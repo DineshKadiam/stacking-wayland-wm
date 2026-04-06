@@ -13,7 +13,7 @@ that in with being a wayland display server.
 `cow`'s aims are to provide the following:
 
 * The look-and-feel of `fvwm` and `mwm`.
-* To provide a sensible mechanism for configuration, dicorcing the need for
+* To provide a sensible mechanism for configuration, divorcing the need for
   complex configuration syntaxes, instead using dedicated commands that can be
   used both as a configuration file, and via IPC (runtime).
 
@@ -83,6 +83,14 @@ This is via a tty.
 
 Alternatively, a globally-installed `cow.desktop` file is installed allowing
 cow to be used with wayland login managers.
+
+## Contact and Support
+
+You can find me at: thomas at xteddy dot org
+
+I've setup an IRC channel on libra.chat -- #cow-wayland
+
+IRC is preferred over other forma of communication.  Maybe I'll see you there?
 
 -----
 
