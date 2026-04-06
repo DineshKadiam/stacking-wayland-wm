@@ -1,0 +1,298 @@
+/*
+ * Copyright (c) 2026 Thomas Adam
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+#include "cow/seat.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "cow/compat.h"
+#include "cow/config.h"
+#include "cow/keybinding.h"
+#include "cow/layer_shell.h"
+#include "cow/memory.h"
+#include "cow/desk_ops.h"
+#include "cow/status.h"
+#include "cow/view.h"
+#include "cow/wm.h"
+
+#include "river-window-management-v1-client-protocol.h"
+#include "river-xkb-bindings-v1-client-protocol.h"
+
+/*
+ * river_seat_v1 event handlers
+ */
+
+static void
+seat_handle_removed(void *data, __unused struct river_seat_v1 *river_seat)
+{
+	struct cow_seat *seat = data;
+	fprintf(stderr, "cow: seat removed\n");
+	seat->removed = true;
+}
+
+static void
+seat_handle_wl_seat(void *data, __unused struct river_seat_v1 *river_seat,
+    uint32_t name)
+{
+	struct cow_seat *seat = data;
+	seat->wl_seat_name    = name;
+}
+
+static void
+seat_handle_pointer_enter(void *data, __unused struct river_seat_v1 *river_seat,
+    struct river_window_v1 *river_window)
+{
+	struct cow_seat *seat	   = data;
+	struct cow_view *view	   = cow_view_find(river_window);
+	seat->pointer_entered_view = view;
+
+	/* Sloppy focus: focus the view when the pointer enters it */
+	if (cow_config != NULL &&
+	    cow_config->focus_mode == COW_FOCUS_MODE_SLOPPY && view != NULL &&
+	    !view->closed && view != seat->focused_view) {
+		seat->sloppy_focus_view = view;
+	}
+	cow_status_emit();
+}
+
+static void
+seat_handle_pointer_leave(void *data, __unused struct river_seat_v1 *river_seat)
+{
+	struct cow_seat *seat	   = data;
+	seat->pointer_entered_view = NULL;
+
+	cow_status_emit();
+}
+
+static void
+seat_handle_window_interaction(void *data,
+    __unused struct river_seat_v1   *river_seat,
+    struct river_window_v1	    *river_window)
+{
+	struct cow_seat *seat = data;
+
+	struct cow_view *view = cow_view_find(river_window);
+	seat->interacted_view = view;
+
+	/* Focus-follows-click: focus the interacted window */
+	if (view != NULL && view != seat->focused_view) {
+		seat->focused_view  = view;
+		cow_wm.focused_view = view;
+		if (view->output != NULL)
+			cow_wm.current_output = view->output;
+	}
+}
+
+static void
+seat_handle_shell_surface_interaction(__unused void *data,
+    __unused struct river_seat_v1		    *river_seat,
+    struct river_shell_surface_v1		    *shell_surface)
+{
+	/* Check if the clicked shell surface is an icon for an
+	 * iconified view.  If so, deiconify it. */
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (view->icon_shell == shell_surface &&
+		    cow_view_is_iconified(view)) {
+			cow_view_deiconify(view);
+			return;
+		}
+	}
+}
+
+static void
+seat_handle_op_delta(void *data, __unused struct river_seat_v1 *river_seat,
+    int32_t dx, int32_t dy)
+{
+	struct cow_seat *seat = data;
+	seat->op_dx	      = dx;
+	seat->op_dy	      = dy;
+}
+
+static void
+seat_handle_op_release(void *data, __unused struct river_seat_v1 *river_seat)
+{
+	struct cow_seat *seat = data;
+	seat->op_released     = true;
+}
+
+static void
+seat_handle_pointer_position(void *data,
+    __unused struct river_seat_v1 *river_seat, int32_t x, int32_t y)
+{
+	struct cow_seat *seat = data;
+
+	seat->pointer_x		   = x;
+	seat->pointer_y		   = y;
+	seat->has_pointer_position = true;
+}
+
+static const struct river_seat_v1_listener seat_listener = {
+	.removed		   = seat_handle_removed,
+	.wl_seat		   = seat_handle_wl_seat,
+	.pointer_enter		   = seat_handle_pointer_enter,
+	.pointer_leave		   = seat_handle_pointer_leave,
+	.window_interaction	   = seat_handle_window_interaction,
+	.shell_surface_interaction = seat_handle_shell_surface_interaction,
+	.op_delta		   = seat_handle_op_delta,
+	.op_release		   = seat_handle_op_release,
+	.pointer_position	   = seat_handle_pointer_position,
+};
+
+/*
+ * river_xkb_bindings_seat_v1 event: an unbound key was eaten.
+ * Used for sheet-assign mode.
+ */
+static void
+xkb_seat_handle_ate_unbound_key(void	       *data,
+    __unused struct river_xkb_bindings_seat_v1 *xkb_seat)
+{
+	struct cow_seat *seat = data;
+
+	if (seat->awaiting_desk_assign) {
+		seat->awaiting_desk_assign = false;
+	}
+}
+
+static const struct river_xkb_bindings_seat_v1_listener xkb_seat_listener = {
+	.ate_unbound_key = xkb_seat_handle_ate_unbound_key,
+};
+
+struct cow_seat *
+cow_seat_create(struct river_seat_v1 *river_seat)
+{
+	struct cow_seat *seat = xcalloc(1, sizeof(*seat));
+
+	seat->river_seat	   = river_seat;
+	seat->removed		   = false;
+	seat->op_in_progress	   = false;
+	seat->op_released	   = false;
+	seat->has_pointer_position = false;
+	seat->bindings_enabled	   = false;
+	seat->titlebar_press	   = COW_TITLEBAR_PRESS_NONE;
+	seat->pressed_button_idx   = -1;
+	seat->pressed_view	   = NULL;
+
+	wl_list_init(&seat->keybindings);
+	wl_list_init(&seat->pointer_bindings);
+
+	river_seat_v1_add_listener(river_seat, &seat_listener, seat);
+
+	seat->awaiting_desk_assign = false;
+
+	/* Create xkb bindings seat object for ensure_next_key_eaten */
+	if (cow_wm.xkb_bindings != NULL) {
+		seat->xkb_seat = river_xkb_bindings_v1_get_seat(
+		    cow_wm.xkb_bindings, river_seat);
+		river_xkb_bindings_seat_v1_add_listener(seat->xkb_seat,
+		    &xkb_seat_listener, seat);
+	}
+
+	wl_list_insert(&cow_wm.seats, &seat->wm_link);
+
+	/* Register with layer shell for focus events */
+	cow_layer_shell_init_seat(seat);
+
+	/* Register default keybindings */
+	cow_seat_register_default_bindings(seat);
+
+	return seat;
+}
+
+void
+cow_seat_destroy(struct cow_seat *seat)
+{
+	wl_list_remove(&seat->wm_link);
+
+	struct cow_keybinding *kb, *kb_tmp;
+	wl_list_for_each_safe(kb, kb_tmp, &seat->keybindings, link)
+	{
+		wl_list_remove(&kb->link);
+		river_xkb_binding_v1_destroy(kb->river_binding);
+		xfree(kb);
+	}
+
+	struct cow_pointer_binding *pb, *pb_tmp;
+	wl_list_for_each_safe(pb, pb_tmp, &seat->pointer_bindings, link)
+	{
+		wl_list_remove(&pb->link);
+		river_pointer_binding_v1_destroy(pb->river_binding);
+		xfree(pb);
+	}
+
+	if (seat->xkb_seat != NULL)
+		river_xkb_bindings_seat_v1_destroy(seat->xkb_seat);
+
+	river_seat_v1_destroy(seat->river_seat);
+	xfree(seat);
+}
+
+void
+cow_seat_focus_view(struct cow_seat *seat, struct cow_view *view)
+{
+	if (view == NULL || view->closed)
+		return;
+
+	river_seat_v1_focus_window(seat->river_seat, view->river_window);
+	seat->focused_view  = view;
+	cow_wm.focused_view = view;
+	view->needs_raise   = true;
+
+	/* Update current output to follow focus */
+	if (view->output != NULL)
+		cow_wm.current_output = view->output;
+
+	cow_status_emit();
+}
+
+struct cow_seat *
+cow_seat_find(struct river_seat_v1 *river_seat)
+{
+	struct cow_seat *seat;
+	wl_list_for_each(seat, &cow_wm.seats, wm_link)
+	{
+		if (seat->river_seat == river_seat)
+			return seat;
+	}
+	return NULL;
+}
+
+struct cow_seat *
+cow_seat_primary(void)
+{
+	if (wl_list_empty(&cow_wm.seats))
+		return NULL;
+
+	return wl_container_of(cow_wm.seats.next, (struct cow_seat *)NULL,
+	    wm_link);
+}
+
+bool
+cow_seat_get_pointer(int *x, int *y)
+{
+	struct cow_seat *seat;
+	wl_list_for_each(seat, &cow_wm.seats, wm_link)
+	{
+		if (seat->has_pointer_position) {
+			*x = seat->pointer_x;
+			*y = seat->pointer_y;
+			return true;
+		}
+	}
+	return false;
+}

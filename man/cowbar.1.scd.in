@@ -1,0 +1,141 @@
+cowbar(1) "@VERSION@" "cowbar - cow status relay"
+
+# NAME
+
+cowbar - relay cow window manager status updates
+
+# SYNOPSIS
+
+*cowbar* [*-h*] [*-o* _output_] [*-f* _field_]
+
+# DESCRIPTION
+
+*cowbar* connects to the *cow*(1) status socket and relays JSON state snapshots
+to standard output, one per line, whenever window or desk state changes. It is
+intended to be used as a data source for status bars such as *waybar*(1) or
+*i3bar*(1).
+
+With no options, the full snapshot is relayed verbatim. The *-o* option filters
+snapshots to a single named output. The *-f* option extracts a single field
+from each snapshot.
+
+*cowbar* retries the socket connection up to 30 times (once per second),
+allowing it to be started concurrently with *cow* during session initialisation
+without requiring ordering guarantees.
+
+# OPTIONS
+
+*-o* _output_
+	Filter snapshots to the named output. When combined with *-f desks*,
+	the desk information for that output is extracted. When used alone,
+	the full state object for that output is emitted on each update.
+
+*-f* _field_
+	Extract a single field from each snapshot. Valid values:
+
+	*desks*
+		Emit desk state for the selected output (or the first output
+		if *-o* is not given). The emitted object contains _desks_,
+		_current\_desk_, and _output_ keys.
+
+	*focused*
+		Emit the focused window object on each update.
+
+	*outputs*
+		Emit the full outputs array on each update.
+
+*-h*
+	Print usage and exit.
+
+# OUTPUT FORMAT
+
+Each line of output is a self-contained JSON object, suitable for parsing with
+*jq*(1) or any JSON library.
+
+*Full snapshot* (no *-f*):
+
+```
+{
+  "outputs": [
+    {
+      "name": "DP-1",
+      "desks": [...],
+      "current_desk": 1
+    }
+  ],
+  "focused": {
+    "app_id": "foot",
+    "title": "fish",
+    "desk": 1
+  }
+}
+```
+
+*-f desks* output:
+
+```
+{"desks": [...], "current_desk": 1, "output": "DP-1"}
+```
+
+*-f focused* output:
+
+```
+{"app_id": "foot", "title": "fish", "desk": 1}
+```
+
+*-f outputs* output:
+
+```
+[{"name": "DP-1", ...}, {"name": "HDMI-A-1", ...}]
+```
+
+# ENVIRONMENT
+
+*XDG\_RUNTIME\_DIR*
+	Used to locate the status socket. Must be set.
+
+# FILES
+
+_$XDG\_RUNTIME\_DIR/cow-status.sock_
+	Status broadcast socket created by *cow*(1). *cow* writes a JSON
+	snapshot to every connected client on each state change.
+
+# EXAMPLES
+
+Relay all state snapshots:
+
+```
+cowbar
+```
+
+Filter to output DP-1:
+
+```
+cowbar -o DP-1
+```
+
+Extract desk state for output DP-1:
+
+```
+cowbar -f desks -o DP-1
+```
+
+Extract focused window information:
+
+```
+cowbar -f focused
+```
+
+Pipe into *jq*(1) for the title of the focused window:
+
+```
+cowbar -f focused | jq -r '.title // empty'
+```
+
+# SEE ALSO
+
+*cow*(1), *moocow*(1), *jq*(1)
+
+# AUTHORS
+
+Thomas Adam <thomas@xteddy.org>

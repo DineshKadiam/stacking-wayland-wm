@@ -1,0 +1,161 @@
+/*
+ * Copyright (c) 2026 Thomas Adam
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+#if !defined(COW_WM_H)
+#define COW_WM_H
+
+#include <signal.h>
+#include <stdbool.h>
+#include <wayland-client.h>
+
+#define DOUBLE_CLICK_MS 300
+
+/*
+ * Forward declarations for river protocol objects.
+ * The actual types are generated from the protocol XML by wayland-scanner.
+ */
+struct river_window_manager_v1;
+struct river_xkb_bindings_v1;
+struct river_layer_shell_v1;
+struct river_window_v1;
+struct river_output_v1;
+struct river_seat_v1;
+struct river_node_v1;
+struct river_decoration_v1;
+struct river_xkb_binding_v1;
+struct river_xkb_bindings_seat_v1;
+struct river_pointer_binding_v1;
+struct river_shell_surface_v1;
+
+struct cow_view;
+struct cow_output;
+struct cow_seat;
+
+/*
+ * Sequence state: tracks whether we're in a manage or render sequence.
+ */
+enum cow_wm_sequence {
+	COW_WM_SEQUENCE_NONE,
+	COW_WM_SEQUENCE_MANAGE,
+	COW_WM_SEQUENCE_RENDER,
+};
+
+/*
+ * The global window manager state.
+ * Replaces the old cow_server struct.
+ */
+struct cow_wm {
+	struct wl_display    *display;
+	struct wl_registry   *registry;
+	struct wl_compositor *compositor;
+	struct wl_shm	     *shm;
+
+	/* River protocol globals */
+	struct river_window_manager_v1 *manager;
+	struct river_xkb_bindings_v1   *xkb_bindings;
+	struct river_layer_shell_v1    *layer_shell;
+
+	/* Sequence state */
+	enum cow_wm_sequence sequence;
+	bool		     running;
+	bool		     session_locked;
+	bool state_restored; /* true after first manage restores saved state */
+
+	/* Lists of tracked objects */
+	struct wl_list views;	/* cow_view.wm_link */
+	struct wl_list outputs; /* cow_output.wm_link */
+	struct wl_list seats;	/* cow_seat.wm_link */
+
+	/* The "current" output and focused view */
+	struct cow_output *current_output;
+	struct cow_view	  *focused_view;
+
+	/* Pending state changes accumulated between manage sequences */
+	struct wl_list new_views;    /* views created this sequence */
+	struct wl_list closed_views; /* views closed this sequence */
+
+	/* Deferred manage_dirty request from IPC context */
+	bool needs_manage_dirty;
+
+	/* Deferred exec commands pending from config loading */
+	bool exec_pending;
+
+	/* Deferred focus request from IPC context */
+	struct cow_view *pending_focus;
+
+	/* Deferred pointer warp from IPC context */
+	bool pending_warp;
+	int  warp_x, warp_y;
+
+	/* Bound wl_output objects (for matching to cow_outputs) */
+	struct wl_list wl_outputs; /* cow_wl_output_entry.link */
+};
+
+/*
+ * Temporary record for a bound wl_output global.
+ * Used to match registry wl_output objects to cow_output structs.
+ */
+struct cow_wl_output_entry {
+	struct wl_output *wl_output;
+	uint32_t	  global_name;
+	char	      *name; /* human-readable name from wl_output.name event */
+	struct wl_list link;
+};
+
+extern struct cow_wm cow_wm;
+
+/*
+ * Initialize the WM state and connect to the Wayland display.
+ * Returns false on failure.
+ */
+bool cow_wm_init(void);
+
+/*
+ * Run the main event loop.
+ */
+void cow_wm_run(void);
+
+/*
+ * Clean up and disconnect.
+ */
+void cow_wm_fini(void);
+
+/*
+ * Request that the compositor start a manage sequence.
+ */
+void cow_wm_manage_dirty(void);
+
+/*
+ * Signal handler for SIGTERM/SIGINT -- triggers clean shutdown.
+ */
+void cow_wm_signal_handler(int sig);
+
+/*
+ * Signal handler for SIGUSR1 -- triggers a clean restart via execv().
+ */
+void cow_wm_restart_handler(int sig);
+
+/*
+ * Set by SIGUSR1 handler; checked in the event loop.
+ */
+extern volatile sig_atomic_t cow_wm_restart_requested;
+
+/*
+ * Save state, release sockets, and execvp() the new cow process.
+ * Does NOT tear down the River session.
+ */
+void cow_wm_restart(char **argv);
+
+#endif

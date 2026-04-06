@@ -1,0 +1,710 @@
+cow(1) "@VERSION@" "cow - Window Manager"
+
+# NAME
+
+cow - Compositor On Wayland
+
+# SYNOPSIS
+
+*cow* [*-hv*] [*-c* _config_]
+
+# DESCRIPTION
+
+*cow* is a window manager using River as the compositor.
+
+*cow* is therefore responsible for managing windows, performing actions via
+key/mouse bindings, as well as the style of the window. **cow** is a stacking
+window manager meaning there are no tiling or pre-defined layouts.
+
+# OPTIONS
+
+*-c* _config_
+	Load the configuration from _config_ instead of searching the default
+	locations.
+
+*-h*
+	Print usage and exit.
+
+*-v*
+	Print version and exit.
+
+# CONFIGURATION
+
+## File Format
+
+The configuration file is plain text. Each line is a *cow* command, using the
+same syntax accepted over the IPC socket. Lines beginning with *#* are
+comments. A backslash (*\\*) at the end of a line continues the command on the
+next line.
+
+Example:
+
+```
+# Set border width and style
+set border 10
+set border_style fvwm
+
+# Bind Super+Return to launch a terminal
+action terminal foot
+bind L+Return action-terminal
+```
+
+## Search Order
+
+Unless overridden with *-c* or *$COW\_CONFIG*, the configuration file is
+located by searching the following paths in order, stopping at the first that
+exists:
+
+. *$COW\_CONFIG*
+. *~/cow.conf*
+. *$XDG\_CONFIG\_HOME/cow/cow.conf*
+. *~/.config/cow/cow.conf*
+. */<PREFIX>/etc/cow/cow.conf*
+
+# COMMANDS
+
+Commands form the configuration language and are also accepted over the IPC
+socket. Each command is a single line; arguments follow shell quoting
+conventions. See *TARGET SPECIFIER* below for the *-t* syntax used by many
+commands.
+
+## set [-v] key value
+
+Set a configuration option at runtime. *-v* prints the resulting value.
+
+*Integer keys:*
+
+[[ *Key*
+:< *Description*
+|  *border*
+:  Border thickness in pixels (default: 1).
+|  *step*
+:  Move/resize step in pixels (default: 100).
+|  *corner\_length*
+:  Length of border corner handles in pixels (default: 20).
+|  *icon.size*
+:  Iconified window icon size in pixels (default: 64).
+|  *snap\_distance*
+:  Snap attraction distance in pixels; 0 disables (default: 10).
+|  *reserved.top*
+:  Pixels reserved at the top of each output (default: 0).
+|  *reserved.bottom*
+:  Pixels reserved at the bottom of each output (default: 0).
+|  *reserved.left*
+:  Pixels reserved at the left of each output (default: 0).
+|  *reserved.right*
+:  Pixels reserved at the right of each output (default: 0).
+
+*Colour keys* (values are hexadecimal RGB, e.g. *0xFF0000*):
+
+[[ *Key*
+:< *Description*
+|  *colour.active*
+:  Active (focused) window border colour.
+|  *colour.active.n*
+:  Active border: north edge.
+|  *colour.active.s*
+:  Active border: south edge.
+|  *colour.active.e*
+:  Active border: east edge.
+|  *colour.active.w*
+:  Active border: west edge.
+|  *colour.active.nw*
+:  Active border: north-west corner.
+|  *colour.active.ne*
+:  Active border: north-east corner.
+|  *colour.active.sw*
+:  Active border: south-west corner.
+|  *colour.active.se*
+:  Active border: south-east corner.
+|  *colour.inactive*
+:  Inactive (unfocused) border colour.
+|  *colour.inactive.n*
+:  Inactive border: north edge.
+|  *colour.inactive.s*
+:  Inactive border: south edge.
+|  *colour.inactive.e*
+:  Inactive border: east edge.
+|  *colour.inactive.w*
+:  Inactive border: west edge.
+|  *output.colour.background*
+:  Background colour for all outputs.
+|  *output.colour.background.*_name_
+:  Background colour for the named output.
+|  *titlebar.active\_colour*
+:  Titlebar background when focused.
+|  *titlebar.inactive\_colour*
+:  Titlebar background when unfocused.
+|  *titlebar.fg\_active*
+:  Titlebar foreground (text) when focused.
+|  *titlebar.fg\_inactive*
+:  Titlebar foreground (text) when unfocused.
+
+*Other keys:*
+
+[[ *Key*
+:[ *Values*
+:< *Description*
+|  *border\_style*
+:  _fvwm_ | _mwm_ | _none_
+:  Border rendering style. Default: _none_.
+|  *desktop-configuration*
+:  _global_ | _per-output_ | _shared_
+:  Desk layout mode.
+|  *focus*
+:  _sloppy_ | _click_
+:  Focus model. Default: _click_.
+|  *placement*
+:  _cascade_ | _undermouse_ | _centre_ | _center_
+:  New window placement. Default: _cascade_.
+|  *font* _name_
+:  Pango font string
+:  Font for titlebars. Default: _monospace 10_.
+|  *handles*
+:  _true_ | _1_
+:  Draw handle marks on border corners.
+|  *titlebar.enabled*
+:  _true_ | _1_
+:  Show titlebars.
+|  *titlebar.button\_left.vector*
+:  vector string
+:  Geometry of the left titlebar button.
+|  *titlebar.button\_left.action*
+:  command string
+:  Action for the left titlebar button.
+|  *titlebar.button\_right.vector*
+:  vector string
+:  Geometry of the right titlebar button.
+|  *titlebar.button\_right.action*
+:  command string
+:  Action for the right titlebar button.
+|  *titlebar.button\_right2.vector*
+:  vector string
+:  Geometry of the second right titlebar button.
+|  *titlebar.button\_right2.action*
+:  command string
+:  Action for the second right titlebar button.
+
+*Button vector format:* _N_ _x1_*X*_y1_*@*_c1_ _x2_*X*_y2_*@*_c2_ *...* where _N_ is
+the number of points, coordinates are 0-100 (percentages of the button area),
+and *@*_c_ is a colour index (0 or 1).
+
+## bind key action ...
+
+Bind a key combination to a command. _key_ is a modifier string followed by a
+keysym or keycode (see *KEY BINDINGS*). _action_ is any *cow* command or a
+named action defined with *action*. Multiple words form the full command to
+run.
+
+Example:
+
+```
+bind L+Return action-terminal
+bind LCA+q quit
+bind LS+Up window-move -n -d up
+```
+
+## mouse key action ...
+
+Bind a pointer button combination to a command. The _key_ format is the same
+as for *bind*, but the key name is a button name (see *MOUSE BINDINGS*).
+
+Example:
+
+```
+mouse L+left window-move
+mouse L+right resize
+```
+
+## action
+
+```
+action name command ...
+```
+
+Define a named action. The action can then be invoked as *action-*_name_ in
+any binding or command.
+
+Example:
+
+```
+action terminal foot
+bind L+Return action-terminal
+```
+
+## rule [-T] [-t [output]:[desk]] pattern [key value ...]
+
+Apply per-window configuration when a window matching _pattern_ first appears.
+_pattern_ is matched against the window's app\_id (or title if *-T* is given)
+using glob rules; _\*_ matches any window.
+
+*-T*
+	Match against the window title instead of app\_id.
+
+*-t* _[output]:[desk]_
+	Constrain the rule to windows on the specified output and/or desk.
+
+*Special rule form:*
+
+```
+rule restart command ...
+```
+
+Register a shell command to be executed before *cow* restarts itself (on
+*SIGUSR1*). Used to stop processes that must be relaunched cleanly, such as
+status bars.
+
+*Per-window keys:*
+
+[[ *Key*
+:< *Description*
+|  *desk* _N_
+:  Assign window to desk number N.
+|  *sticky true*
+:  Make window sticky (appears on all desks).
+|  *border* _N_
+:  Override border width in pixels.
+|  *colour.active* _RGBA_
+:  Override active border colour.
+|  *colour.active.*_edge_ _RGBA_
+:  Override per-edge active border colour.
+|  *colour.inactive* _RGBA_
+:  Override inactive border colour.
+|  *colour.inactive.*_edge_ _RGBA_
+:  Override per-edge inactive border colour.
+|  *titlebar.enabled* _true_ | _false_
+:  Show or hide titlebar for this window.
+|  *titlebar.active\_colour* _RGBA_
+:  Titlebar background when focused.
+|  *titlebar.inactive\_colour* _RGBA_
+:  Titlebar background when unfocused.
+|  *titlebar.fg\_active* _RGBA_
+:  Titlebar foreground when focused.
+|  *titlebar.fg\_inactive* _RGBA_
+:  Titlebar foreground when unfocused.
+
+Example:
+
+```
+rule '*' colour.active 0xFFFFFF colour.inactive 0x444444
+rule -t ':2' '*' titlebar.active_colour 0xFFD700
+rule restart 'killall waybar'
+```
+
+## exec command ...
+
+Execute a shell command. During configuration loading, *exec* commands are
+deferred until *cow* has fully connected to River.
+
+## show [topic] [config key]
+
+Query window manager state. The response is a JSON object.
+When used via *moocow*(1) the JSON is printed to standard output.
+
+*Topics:*
+
+*show windows*
+	Return an array of all managed windows. Each element contains:
+	_id_, _app\_id_, _title_, _desk_, _x_, _y_, _width_, _height_,
+	_focused_, _maximized_, _shaded_, _iconified_.
+
+*show desk*
+	Return _{"current": N}_ for the current output's active desk.
+
+*show output*
+	Return an array of output objects, each with _name_, _x_, _y_,
+	_width_, _height_, and a _usable_ sub-object reflecting reserved areas.
+
+*show config* _key_
+	Return the current value of a configuration key. Supported keys:
+	_border_, _step_, _corner\_length_, _border\_style_, _focus_.
+	Also accepted as *show config.*_key_.
+
+## quit [-r]
+
+Without any options, *cow* quits. With *-r*, reload the configuration
+from the file *cow* was started with.
+
+Keybindings and window decorations are updated immediately on reload.
+
+## list-commands
+
+Return a JSON array of all registered commands, each with _name_ and _usage_
+fields.
+
+## winops [-Icilrs] [-t target]
+
+Operate on a window.
+
+*-t* _target_
+	Target window (see *TARGET SPECIFIER*). Defaults to the focused window.
+
+*-I*
+	Identify the window; returns a JSON object with geometry and state.
+
+*-c*
+	Close the window.
+
+*-r*
+	Raise the window to the top of the stacking order.
+
+*-l*
+	Lower the window to the bottom of the stacking order.
+
+*-s*
+	Toggle the window's sticky state (visible on all desks).
+
+*-i*
+	Toggle the window's iconified (minimised) state.
+
+## window-move [-t target] [-d dir [-n]] [-o output] [-c] [-k 0-9] [-x X] [-y Y]
+
+Move a window. With no flags, begin an interactive move using the mouse.
+
+*-t* _target_
+	Target window.
+
+*-d* _dir_
+	Move one step in direction _dir_ (_up_, _down_, _left_, _right_).
+
+*-n*
+	With *-d*, snap to the nearest edge instead of stepping.
+
+*-o* _output_
+	Move the window to the named output.
+
+*-c*
+	Centre the window on its current output.
+
+*-k* _0-9_
+	Move the window to desk number _0-9_.
+
+*-x* _X_
+	Set the window's X position. A leading _+_ or _-_ makes the value
+	relative to the current position.
+
+*-y* _Y_
+	Set the window's Y position. A leading _+_ or _-_ makes the value
+	relative to the current position.
+
+## window-resize [-t target] [-gs] [-d dir] [-w width] [-h height]
+
+Resize a window. With no flags, begin an interactive resize operation with the
+mouse, from the bottom-right corner.
+
+*-t* _target_
+	Target window.
+
+*-g -d* _dir_
+	Grow the window in direction _dir_ (_up_, _down_, _left_, _right_)
+	by one step.
+
+*-s -d* _dir_
+	Shrink the window in direction _dir_ by one step.
+
+*-w* _width_
+	Set the window width in pixels.
+
+*-h* _height_
+	Set the window height in pixels.
+
+## focus [-npw] [-t target] [-d dir] [-o output] [-A app_id] [-T title] [-i id]
+
+Move keyboard focus.
+
+*-n*
+	Focus the next window in stacking order.
+
+*-p*
+	Focus the previous window in stacking order.
+
+*-w*
+	Warp the pointer to the centre of the focused window after focus is
+	applied. May be combined with any other focus flag. When used alone,
+	warps to the currently focused window without changing focus.
+
+*-d* _dir_
+	Focus the nearest window in direction _dir_ (_up_, _down_, _left_,
+	_right_).
+
+*-o* _output_
+	Warp the pointer to the named output. The *-w* flag is ignored when
+	*-o* is given, as *-o* performs its own pointer movement.
+
+*-A* _app\_id_
+	Focus the window with the exact app\_id _app\_id_.
+
+*-T* _pattern_
+	Focus the window whose title contains _pattern_.
+
+*-i* _id_
+	Focus the window with River identifier _id_.
+
+## desk [-t output] [-d 0-9] [-c 0-9] [-np]
+
+Switch or manipulate virtual desks.
+
+*-t* _output_
+	Target the named output instead of the current one.
+
+*-d* _0-9_
+	Switch to desk number _0-9_.
+
+*-n*
+	Switch to the next desk, wrapping around.
+
+*-p*
+	Switch to the previous desk, wrapping around.
+
+*-c* _0-9_
+	Toggle collection of desk _0-9_: overlay its windows on top of the
+	current desk without switching.
+
+## window-expand [-t target] [-d dir] [-T]
+
+Expand a window to fill available space between windows, or the whole monitor if
+the window is the only window on that monitor.
+
+*-t* _target_
+	Target window.
+
+*-d* _dir_
+	Expand in direction _dir_ (_up_, _down_, _left_, _right_). Omit to
+	expand in all directions.
+
+*-T*
+	Toggle: restore original geometry if the window is already expanded.
+
+## window-maximize [-t target] [-T] [-m] [-u]
+
+Maximize or restore a window.
+
+*-t* _target_
+	Target window.
+
+*-T*
+	Toggle between maximized and restored.
+
+*-m*
+	Maximize the window (default if no flag is given).
+
+*-u*
+	Restore (unmaximize) the window.
+
+## window-shade [-t target] -d dir
+
+Shade (roll up) a window in a given direction, hiding its content but leaving
+its border visible.
+
+*-t* _target_
+	Target window.
+
+*-d* _dir_
+	Shade direction: _north_, _south_, _east_, _west_, _nw_, _ne_, _sw_,
+	_se_. Required.
+
+# TARGET SPECIFIER
+
+Many commands accept *-t* _target_ to identify a window. The format is:
+
+```
+[output]:[desk].[window]
+```
+
+All three components are optional. Components:
+
+*output*
+	Output name, *@next*, or *@prev*.
+
+*desk*
+	Desk number (0-9), *@next*, or *@prev*.
+
+*window*
+	One of:
+
+	- *%*_app\_id_ - match by app\_id
+	- */*_substring_*/* - match by title substring
+	- *#*_id_ - match by River identifier
+	- *@focused* - the currently focused window (default)
+	- *@next* - next window in stacking order
+	- *@prev* - previous window in stacking order
+
+Examples:
+
+```
+-t @focused
+-t ::.@next
+-t DP-1:2.%foot
+-t :/term/
+```
+
+# KEY BINDINGS
+
+Key bindings are specified as a modifier string immediately followed by *+* and
+a keysym name, or *-* and a numeric keycode:
+
+```
+bind MODIFIERS+keysym  command
+bind MODIFIERS-keycode command
+```
+
+*Modifier characters:*
+
+[[ *Character*
+:< *Modifier*
+|  *L*
+:  Logo (Super / Windows key).
+|  *S*
+:  Shift.
+|  *C*
+:  Control.
+|  *A*
+:  Alt (Mod1).
+|  *5*
+:  AltGr (Mod5).
+
+Modifiers are combined by concatenation: *LS* means Logo+Shift, *LCA* means
+Logo+Control+Alt. Use *0* to specify no modifier.
+
+Key symbols and codes can be determined with *wev*(1).
+
+Examples:
+
+```
+bind L+Return  action-terminal
+bind LS+a      winops -c
+bind LCA+q     quit
+bind 0+F1      action-help
+```
+
+# MOUSE BINDINGS
+
+Mouse bindings use the same modifier format as key bindings. The button name
+replaces the keysym:
+
+```
+mouse MODIFIERS+button command
+```
+
+Button names: *left*, *right*, *middle*, *side*, *extra*, *forward*, *back*,
+*task*.
+
+Examples:
+
+```
+mouse L+left   window-move
+mouse L+right  resize
+```
+
+# IPC
+
+*cow* listens on a Unix domain socket for commands. The socket path is
+_$XDG\_RUNTIME\_DIR/cow-cmd.sock_. Each connection sends one newline-terminated
+command line; *cow* responds with a newline-terminated JSON object:
+
+```
+{"data": ...}
+{"error": "message"}
+```
+
+Use *moocow*(1) to send commands from the shell or scripts.
+
+*cow* also broadcasts state snapshots on a second socket,
+_$XDG\_RUNTIME\_DIR/cow-status.sock_. Each snapshot is a newline-terminated JSON
+object emitted whenever window or desk state changes. Use *cowbar*(1) to
+consume this stream.
+
+# SIGNALS
+
+*SIGTERM*, *SIGINT*
+	Save state and exit cleanly.
+
+*SIGUSR1*
+	Restart: execute the *rule restart* hook command (if configured), then
+	re-execute *cow* itself via *execvp*(3) without tearing down the River
+	session.
+
+*SIGPIPE*
+	Ignored.
+
+# ENVIRONMENT
+
+*COW\_CONFIG*
+	If set, use this path as the configuration file, bypassing the default
+	search order.
+
+*XDG\_CONFIG\_HOME*
+	Base directory for the user configuration search
+	(_$XDG\_CONFIG\_HOME/cow/cow.conf_). Defaults to _~/.config_.
+
+*XDG\_RUNTIME\_DIR*
+	Directory in which the IPC command and status sockets are created.
+
+# FILES
+
+_~/cow.conf_
+	User configuration (second search location).
+
+_$XDG\_CONFIG\_HOME/cow/cow.conf_
+	User configuration in XDG base directory (third search location).
+
+_~/.config/cow/cow.conf_
+	Fallback user configuration (fourth search location).
+
+_/etc/cow/cow.conf_
+	System-wide configuration (fifth search location).
+
+_$XDG\_RUNTIME\_DIR/cow-cmd.sock_
+	IPC command socket. Accepts one command per connection; returns JSON.
+
+_$XDG\_RUNTIME\_DIR/cow-status.sock_
+	Status broadcast socket. Emits a JSON state snapshot on each change.
+
+# SCREEN SHARING
+
+Screen sharing in browsers (e.g. Google Chrome, Firefox) on Wayland requires
+three components beyond *cow* and River:
+
+*pipewire*(1)
+	Provides the media transport for screen capture. Managed by the session;
+	do not start it from _cow.conf_ - duplicate instances break audio,
+	camera, and microphone.
+
+*xdg-desktop-portal*(1)
+	The portal daemon. Brokers the _org.freedesktop.portal.ScreenCast_
+	interface that browsers call when requesting a screen share session.
+
+*xdg-desktop-portal-wlr*(1)
+	The wlroots backend for xdg-desktop-portal. Implements _ScreenCast_
+	using River's _zwlr\_screencopy\_manager\_v1_ protocol. Must be
+	installed separately from xdg-desktop-portal.
+
+Both portal components are D-Bus socket-activated - they start on demand when
+first requested. They do not need to be started explicitly; they only need the
+correct environment to be in place before they are first activated.
+
+## Clipboard persistence
+
+On Wayland, clipboard content is owned by the application that set it and is
+lost when that application exits. To persist clipboard content across
+application lifetimes, run a clipboard manager such as *wl-clip-persist*(1):
+
+```
+exec wl-clip-persist --clipboard regular
+```
+
+*wl-clip-persist* uses the _wlr-data-control_ protocol, which River exposes,
+to hold clipboard content after the owning application closes.
+
+# SEE ALSO
+
+*moocow*(1), *cowbar*(1), *river*(1), *wev*(1), *xdg-desktop-portal*(1),
+*xdg-desktop-portal-wlr*(1), *pipewire*(1), *wl-clip-persist*(1)
+
+# AUTHORS
+
+Thomas Adam <thomas@xteddy.org>
+
+Parts of *cow* were derived from code under copyright by:
+
+Nicholas Marriott

@@ -1,0 +1,11 @@
+option(
+  'etcprefix',
+  type: 'string',
+  description: 'Alternative /etc location'
+)
+option(
+  'cow_debug',
+  type: 'boolean',
+  value: false,
+  description: 'Enable debug build (-g -O0 -fsanitize=address)'
+)

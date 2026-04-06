@@ -1,0 +1,89 @@
+moocow(1) "@VERSION@" "moocow - cow IPC client"
+
+# NAME
+
+moocow - send commands to a running cow instance
+
+# SYNOPSIS
+
+*moocow* _command_ [_args_ ...]
+
+# DESCRIPTION
+
+*moocow* is the command-line IPC client for the *cow*(1) window manager. It
+connects to the cow IPC socket, sends the given command, waits for the JSON
+response, and prints it to standard output.
+
+All arguments are joined with spaces and sent as a single newline-terminated
+line. The full command language is described in *cow*(1).
+
+# EXIT STATUS
+
+*0*
+	The command was accepted and *cow* responded with _"ok": true_.
+
+*1*
+	A connection error occurred, or *cow* responded with _"ok": false_.
+	The error message is included in the JSON response and printed to
+	standard output.
+
+# ENVIRONMENT
+
+*COW\_IPC\_SOCKET*
+	Override the socket path. When set, *moocow* connects to this path
+	instead of the default.
+
+*XDG\_RUNTIME\_DIR*
+	Used to locate the default socket path. Must be set if
+	*COW\_IPC\_SOCKET* is not.
+
+# FILES
+
+_$XDG\_RUNTIME\_DIR/cow-cmd.sock_
+	Default IPC command socket created by *cow*(1).
+
+# EXAMPLES
+
+Query all managed windows:
+
+```
+moocow show windows
+```
+
+Change the border width at runtime:
+
+```
+moocow set border 5
+```
+
+Switch to desk 3:
+
+```
+moocow desk -d 3
+```
+
+Reload the configuration:
+
+```
+moocow quit -r
+```
+
+Close the focused window:
+
+```
+moocow winops -c
+```
+
+List all available commands:
+
+```
+moocow list-commands
+```
+
+# SEE ALSO
+
+*cow*(1), *cowbar*(1)
+
+# AUTHORS
+
+Thomas Adam

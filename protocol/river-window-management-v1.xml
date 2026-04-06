@@ -1,0 +1,635 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="river_window_management_v1">
+  <copyright>
+    SPDX-FileCopyrightText: © 2024 Isaac Freund
+    SPDX-License-Identifier: MIT
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to
+    deal in the Software without restriction, including without limitation the
+    rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+    sell copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+    IN THE SOFTWARE.
+  </copyright>
+
+  <description summary="frame-perfect window management">
+    This protocol allows a single "window manager" client to determine the
+    window management policy of the compositor. State is globally
+    double-buffered allowing for frame perfect state changes involving multiple
+    windows.
+  </description>
+
+  <interface name="river_window_manager_v1" version="4">
+    <description summary="window manager global interface">
+      This global interface should only be advertised to the window manager
+      process. Only one window management client may be active at a time.
+    </description>
+
+    <enum name="error">
+      <entry name="sequence_order" value="0"
+        summary="request violates manage/render sequence ordering"/>
+      <entry name="role" value="1"
+        summary="given wl_surface already has a role"/>
+      <entry name="unresponsive" value="2"
+        summary="window manager unresponsive"/>
+    </enum>
+
+    <event name="unavailable">
+      <description summary="window management unavailable">
+        This event indicates that window management is not available to the
+        client, perhaps due to another window management client already running.
+      </description>
+    </event>
+
+    <request name="stop">
+      <description summary="stop sending events">
+        This request indicates that the client no longer wishes to receive
+        events on this object.
+      </description>
+    </request>
+
+    <event name="finished">
+      <description summary="the server has finished with the window manager">
+        This event indicates that the server will send no further events on this
+        object.
+      </description>
+    </event>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the river_window_manager_v1 object">
+        This request should be called after the finished event has been received.
+      </description>
+    </request>
+
+    <event name="manage_start">
+      <description summary="start a manage sequence">
+        This event indicates that the server has sent events indicating all
+        state changes since the last manage sequence.
+      </description>
+    </event>
+
+    <request name="manage_finish">
+      <description summary="finish a manage sequence">
+        This request indicates that the client has made all changes to window
+        management state.
+      </description>
+    </request>
+
+    <request name="manage_dirty">
+      <description summary="ensure a manage sequence is started">
+        This request ensures a manage sequence is started.
+      </description>
+    </request>
+
+    <event name="render_start">
+      <description summary="start a render sequence">
+        This event indicates that the server has sent all dimension events.
+      </description>
+    </event>
+
+    <request name="render_finish">
+      <description summary="finish a render sequence">
+        This request indicates that the client has made all changes to rendering
+        state.
+      </description>
+    </request>
+
+    <event name="session_locked">
+      <description summary="the session has been locked"/>
+    </event>
+
+    <event name="session_unlocked">
+      <description summary="the session has been unlocked"/>
+    </event>
+
+    <event name="window">
+      <description summary="new window"/>
+      <arg name="id" type="new_id" interface="river_window_v1"/>
+    </event>
+
+    <event name="output">
+      <description summary="new output"/>
+      <arg name="id" type="new_id" interface="river_output_v1"/>
+    </event>
+
+    <event name="seat">
+      <description summary="new seat"/>
+      <arg name="id" type="new_id" interface="river_seat_v1"/>
+    </event>
+
+    <request name="get_shell_surface">
+      <description summary="assign the river_shell_surface_v1 surface role"/>
+      <arg name="id" type="new_id" interface="river_shell_surface_v1"/>
+      <arg name="surface" type="object" interface="wl_surface"/>
+    </request>
+
+    <request name="exit_session" since="4">
+      <description summary="exit the Wayland session"/>
+    </request>
+  </interface>
+
+  <interface name="river_window_v1" version="4">
+    <description summary="a logical window"/>
+
+    <enum name="error">
+      <entry name="node_exists" value="0"/>
+      <entry name="invalid_dimensions" value="1"/>
+      <entry name="invalid_border" value="2"/>
+      <entry name="invalid_clip_box" value="3"/>
+    </enum>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the window object"/>
+    </request>
+
+    <event name="closed">
+      <description summary="the window has been closed"/>
+    </event>
+
+    <request name="close">
+      <description summary="request that the window be closed"/>
+    </request>
+
+    <request name="get_node">
+      <description summary="get the window's render list node"/>
+      <arg name="id" type="new_id" interface="river_node_v1"/>
+    </request>
+
+    <event name="dimensions_hint">
+      <description summary="the window's preferred min/max dimensions"/>
+      <arg name="min_width" type="int"/>
+      <arg name="min_height" type="int"/>
+      <arg name="max_width" type="int"/>
+      <arg name="max_height" type="int"/>
+    </event>
+
+    <event name="dimensions">
+      <description summary="window dimensions"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </event>
+
+    <request name="propose_dimensions">
+      <description summary="propose window dimensions"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </request>
+
+    <request name="hide">
+      <description summary="request that the window be hidden"/>
+    </request>
+
+    <request name="show">
+      <description summary="request that the window be shown"/>
+    </request>
+
+    <event name="app_id">
+      <description summary="the window set an application ID"/>
+      <arg name="app_id" type="string" allow-null="true"/>
+    </event>
+
+    <event name="title">
+      <description summary="the window set a title"/>
+      <arg name="title" type="string" allow-null="true"/>
+    </event>
+
+    <event name="parent">
+      <description summary="the window set a parent"/>
+      <arg name="parent" type="object" allow-null="true" interface="river_window_v1"/>
+    </event>
+
+    <enum name="decoration_hint">
+      <entry name="only_supports_csd" value="0"/>
+      <entry name="prefers_csd" value="1"/>
+      <entry name="prefers_ssd" value="2"/>
+      <entry name="no_preference" value="3"/>
+    </enum>
+
+    <event name="decoration_hint">
+      <description summary="supported/preferred decoration style"/>
+      <arg name="hint" type="uint" enum="decoration_hint"/>
+    </event>
+
+    <request name="use_csd">
+      <description summary="tell the client to use CSD"/>
+    </request>
+
+    <request name="use_ssd">
+      <description summary="tell the client to use SSD"/>
+    </request>
+
+    <enum name="edges" bitfield="true">
+      <entry name="none" value="0"/>
+      <entry name="top" value="1"/>
+      <entry name="bottom" value="2"/>
+      <entry name="left" value="4"/>
+      <entry name="right" value="8"/>
+    </enum>
+
+    <request name="set_borders">
+      <description summary="set window borders"/>
+      <arg name="edges" type="uint" enum="edges"/>
+      <arg name="width" type="int"/>
+      <arg name="r" type="uint"/>
+      <arg name="g" type="uint"/>
+      <arg name="b" type="uint"/>
+      <arg name="a" type="uint"/>
+    </request>
+
+    <request name="set_tiled">
+      <description summary="set window tiled state"/>
+      <arg name="edges" type="uint" enum="edges"/>
+    </request>
+
+    <request name="get_decoration_above">
+      <description summary="create a decoration above the window"/>
+      <arg name="id" type="new_id" interface="river_decoration_v1"/>
+      <arg name="surface" type="object" interface="wl_surface"/>
+    </request>
+
+    <request name="get_decoration_below">
+      <description summary="create a decoration below the window"/>
+      <arg name="id" type="new_id" interface="river_decoration_v1"/>
+      <arg name="surface" type="object" interface="wl_surface"/>
+    </request>
+
+    <event name="pointer_move_requested">
+      <description summary="window requested interactive pointer move"/>
+      <arg name="seat" type="object" interface="river_seat_v1"/>
+    </event>
+
+    <event name="pointer_resize_requested">
+      <description summary="window requested interactive pointer resize"/>
+      <arg name="seat" type="object" interface="river_seat_v1"/>
+      <arg name="edges" type="uint" enum="edges"/>
+    </event>
+
+    <request name="inform_resize_start">
+      <description summary="inform the window it is being resized"/>
+    </request>
+
+    <request name="inform_resize_end">
+      <description summary="inform the window it no longer being resized"/>
+    </request>
+
+    <enum name="capabilities" bitfield="true">
+      <entry name="window_menu" value="1"/>
+      <entry name="maximize" value="2"/>
+      <entry name="fullscreen" value="4"/>
+      <entry name="minimize" value="8"/>
+    </enum>
+
+    <request name="set_capabilities">
+      <description summary="inform window of supported capabilities"/>
+      <arg name="caps" type="uint" enum="capabilities"/>
+    </request>
+
+    <event name="show_window_menu_requested">
+      <description summary="window requested that the window menu be shown"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+    </event>
+
+    <event name="maximize_requested">
+      <description summary="the window requested to be maximized"/>
+    </event>
+
+    <event name="unmaximize_requested">
+      <description summary="the window requested to be unmaximized"/>
+    </event>
+
+    <request name="inform_maximized">
+      <description summary="inform the window that it is maximized"/>
+    </request>
+
+    <request name="inform_unmaximized">
+      <description summary="inform the window that it is unmaximized"/>
+    </request>
+
+    <event name="fullscreen_requested">
+      <description summary="the window requested to be fullscreen"/>
+      <arg name="output" type="object" allow-null="true" interface="river_output_v1"/>
+    </event>
+
+    <event name="exit_fullscreen_requested">
+      <description summary="the window requested to exit fullscreen"/>
+    </event>
+
+    <request name="inform_fullscreen">
+      <description summary="inform the window that it is fullscreen"/>
+    </request>
+
+    <request name="inform_not_fullscreen">
+      <description summary="inform the window that it is not fullscreen"/>
+    </request>
+
+    <request name="fullscreen">
+      <description summary="make the window fullscreen"/>
+      <arg name="output" type="object" interface="river_output_v1"/>
+    </request>
+
+    <request name="exit_fullscreen">
+      <description summary="make the window not fullscreen"/>
+    </request>
+
+    <event name="minimize_requested">
+      <description summary="the window requested to be minimized"/>
+    </event>
+
+    <request name="set_clip_box" since="2">
+      <description summary="clip the window to a given box"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </request>
+
+    <event name="unreliable_pid" since="2">
+      <description summary="unreliable PID of the window's creator"/>
+      <arg name="unreliable_pid" type="int"/>
+    </event>
+
+    <request name="set_content_clip_box" since="3">
+      <description summary="clip the window content to a given box"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </request>
+
+    <event name="presentation_hint" since="4">
+      <description summary="presentation hint set by the window"/>
+      <arg name="hint" type="uint" enum="river_output_v1.presentation_mode"/>
+    </event>
+
+    <event name="identifier" since="4">
+      <description summary="unique window identifier"/>
+      <arg name="identifier" type="string"/>
+    </event>
+
+    <request name="set_dimension_bounds" since="4">
+      <description summary="recommend maximum dimensions to the window"/>
+      <arg name="max_width" type="int"/>
+      <arg name="max_height" type="int"/>
+    </request>
+  </interface>
+
+  <interface name="river_decoration_v1" version="4">
+    <description summary="a window decoration"/>
+
+    <enum name="error">
+      <entry name="no_commit" value="0"
+        summary="failed to commit the surface before the window manager commit"/>
+    </enum>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the decoration object"/>
+    </request>
+
+    <request name="set_offset">
+      <description summary="set offset from the window's top left corner"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+    </request>
+
+    <request name="sync_next_commit">
+      <description summary="sync next commit with other rendering state"/>
+    </request>
+  </interface>
+
+  <interface name="river_shell_surface_v1" version="4">
+    <description summary="a surface for window manager UI"/>
+
+    <enum name="error">
+      <entry name="node_exists" value="0"/>
+      <entry name="no_commit" value="1"/>
+    </enum>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the shell surface object"/>
+    </request>
+
+    <request name="get_node">
+      <description summary="get the shell surface's render list node"/>
+      <arg name="id" type="new_id" interface="river_node_v1"/>
+    </request>
+
+    <request name="sync_next_commit">
+      <description summary="sync next surface commit to window manager commit"/>
+    </request>
+  </interface>
+
+  <interface name="river_node_v1" version="4">
+    <description summary="a node in the render list"/>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the node object"/>
+    </request>
+
+    <request name="set_position">
+      <description summary="set absolute position of the node"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+    </request>
+
+    <request name="place_top">
+      <description summary="place node above all other nodes"/>
+    </request>
+
+    <request name="place_bottom">
+      <description summary="place node below all other nodes"/>
+    </request>
+
+    <request name="place_above">
+      <description summary="place node above another node"/>
+      <arg name="other" type="object" interface="river_node_v1"/>
+    </request>
+
+    <request name="place_below">
+      <description summary="place node below another node"/>
+      <arg name="other" type="object" interface="river_node_v1"/>
+    </request>
+  </interface>
+
+  <interface name="river_output_v1" version="4">
+    <description summary="a logical output"/>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the output object"/>
+    </request>
+
+    <event name="removed">
+      <description summary="the output is removed"/>
+    </event>
+
+    <event name="wl_output">
+      <description summary="corresponding wl_output"/>
+      <arg name="name" type="uint"/>
+    </event>
+
+    <event name="position">
+      <description summary="output position"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+    </event>
+
+    <event name="dimensions">
+      <description summary="output dimensions"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </event>
+
+    <enum name="error" since="4">
+      <entry name="invalid_presentation_mode" value="0" since="4"/>
+    </enum>
+
+    <enum name="presentation_mode" since="4">
+      <entry name="vsync" value="0" summary="tearing-free presentation"/>
+      <entry name="async" value="1" summary="asynchronous presentation"/>
+    </enum>
+
+    <request name="set_presentation_mode" since="4">
+      <description summary="set the preferred presentation mode"/>
+      <arg name="mode" type="uint" enum="presentation_mode"/>
+    </request>
+  </interface>
+
+  <interface name="river_seat_v1" version="4">
+    <description summary="a window management seat"/>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the seat object"/>
+    </request>
+
+    <event name="removed">
+      <description summary="the seat is removed"/>
+    </event>
+
+    <event name="wl_seat">
+      <description summary="corresponding wl_seat"/>
+      <arg name="name" type="uint"/>
+    </event>
+
+    <request name="focus_window">
+      <description summary="give keyboard focus to a window"/>
+      <arg name="window" type="object" interface="river_window_v1"/>
+    </request>
+
+    <request name="focus_shell_surface">
+      <description summary="give keyboard focus to a shell_surface"/>
+      <arg name="shell_surface" type="object" interface="river_shell_surface_v1"/>
+    </request>
+
+    <request name="clear_focus">
+      <description summary="clear keyboard focus"/>
+    </request>
+
+    <event name="pointer_enter">
+      <description summary="pointer entered a window"/>
+      <arg name="window" type="object" interface="river_window_v1"/>
+    </event>
+
+    <event name="pointer_leave">
+      <description summary="pointer left the entered window"/>
+    </event>
+
+    <event name="window_interaction">
+      <description summary="a window has been interacted with"/>
+      <arg name="window" type="object" interface="river_window_v1"/>
+    </event>
+
+    <event name="shell_surface_interaction">
+      <description summary="a shell surface has been interacted with"/>
+      <arg name="shell_surface" type="object" interface="river_shell_surface_v1"/>
+    </event>
+
+    <request name="op_start_pointer">
+      <description summary="start an interactive pointer operation"/>
+    </request>
+
+    <event name="op_delta">
+      <description summary="total cumulative motion since op start"/>
+      <arg name="dx" type="int"/>
+      <arg name="dy" type="int"/>
+    </event>
+
+    <event name="op_release">
+      <description summary="operation input has been released"/>
+    </event>
+
+    <request name="op_end">
+      <description summary="end an interactive operation"/>
+    </request>
+
+    <enum name="modifiers" bitfield="true">
+      <description summary="a set of keyboard modifiers"/>
+      <entry name="none" value="0"/>
+      <entry name="shift" value="1"/>
+      <entry name="ctrl" value="4"/>
+      <entry name="mod1" value="8" summary="commonly called alt"/>
+      <entry name="mod3" value="32"/>
+      <entry name="mod4" value="64" summary="commonly called super or logo"/>
+      <entry name="mod5" value="128"/>
+    </enum>
+
+    <request name="get_pointer_binding">
+      <description summary="define a new pointer binding"/>
+      <arg name="id" type="new_id" interface="river_pointer_binding_v1"/>
+      <arg name="button" type="uint"/>
+      <arg name="modifiers" type="uint" enum="modifiers"/>
+    </request>
+
+    <request name="set_xcursor_theme" since="2">
+      <description summary="set the xcursor theme for the seat"/>
+      <arg name="name" type="string"/>
+      <arg name="size" type="uint"/>
+    </request>
+
+    <event name="pointer_position" since="2">
+      <description summary="The current position of the pointer"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+    </event>
+
+    <request name="pointer_warp" since="3">
+      <description summary="warp the pointer to a given position"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+    </request>
+  </interface>
+
+  <interface name="river_pointer_binding_v1" version="4">
+    <description summary="configure a pointer binding, receive trigger events"/>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the pointer binding object"/>
+    </request>
+
+    <request name="enable">
+      <description summary="enable the pointer binding"/>
+    </request>
+
+    <request name="disable">
+      <description summary="disable the pointer binding"/>
+    </request>
+
+    <event name="pressed">
+      <description summary="the bound pointer button has been pressed"/>
+    </event>
+
+    <event name="released">
+      <description summary="the bound pointer button has been released"/>
+    </event>
+  </interface>
+</protocol>

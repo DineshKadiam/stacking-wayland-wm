@@ -1,0 +1,347 @@
+/*
+ * Copyright (c) 2026 Thomas Adam
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+#include "cow/output.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "cow/colour.h"
+#include "cow/compat.h"
+#include "cow/config.h"
+#include "cow/layer_shell.h"
+#include "cow/memory.h"
+#include "cow/shm.h"
+#include "cow/wm.h"
+#include "cow/seat.h"
+
+#include "river-window-management-v1-client-protocol.h"
+
+/*
+ * Recompute the usable area from the output dimensions (or layer shell
+ * non_exclusive_area), subtracting the configured reserved area.
+ */
+void
+cow_output_apply_reserved_area(struct cow_output *output)
+{
+	if (cow_config == NULL)
+		return;
+
+	int rt = cow_config->reserved.top;
+	int rb = cow_config->reserved.bottom;
+	int rl = cow_config->reserved.left;
+	int rr = cow_config->reserved.right;
+
+	if (rt == 0 && rb == 0 && rl == 0 && rr == 0)
+		return;
+
+	output->usable_area.x += rl;
+	output->usable_area.y += rt;
+	output->usable_area.width -= rl + rr;
+	output->usable_area.height -= rt + rb;
+
+	if (output->usable_area.width < 100)
+		output->usable_area.width = 100;
+	if (output->usable_area.height < 100)
+		output->usable_area.height = 100;
+}
+
+/*
+ * river_output_v1 event handlers
+ */
+
+static void
+output_handle_removed(void *data, __unused struct river_output_v1 *river_output)
+{
+	struct cow_output *output = data;
+
+	fprintf(stderr, "cow: output removed\n");
+	output->removed = true;
+}
+
+static void
+output_handle_wl_output(void	    *data,
+    __unused struct river_output_v1 *river_output, uint32_t name)
+{
+	struct cow_output *output = data;
+	output->wl_output_name	  = name;
+
+	/* Try to match a bound wl_output to get the human-readable name */
+	struct cow_wl_output_entry *entry;
+	wl_list_for_each(entry, &cow_wm.wl_outputs, link)
+	{
+		if (entry->global_name == name) {
+			output->wl_output = entry->wl_output;
+			if (entry->name != NULL && output->name == NULL)
+				output->name = xstrdup(entry->name);
+			break;
+		}
+	}
+}
+
+static void
+output_handle_position(void	    *data,
+    __unused struct river_output_v1 *river_output, int32_t x, int32_t y)
+{
+	struct cow_output *output  = data;
+	output->x		   = x;
+	output->y		   = y;
+	output->usable_area.x	   = x;
+	output->usable_area.y	   = y;
+	output->usable_area.width  = output->width;
+	output->usable_area.height = output->height;
+	cow_output_apply_reserved_area(output);
+}
+
+static void
+output_handle_dimensions(void	    *data,
+    __unused struct river_output_v1 *river_output, int32_t width,
+    int32_t height)
+{
+	struct cow_output *output  = data;
+	output->width		   = width;
+	output->height		   = height;
+	output->usable_area.x	   = output->x;
+	output->usable_area.y	   = output->y;
+	output->usable_area.width  = width;
+	output->usable_area.height = height;
+	cow_output_apply_reserved_area(output);
+}
+
+static const struct river_output_v1_listener output_listener = {
+	.removed    = output_handle_removed,
+	.wl_output  = output_handle_wl_output,
+	.position   = output_handle_position,
+	.dimensions = output_handle_dimensions,
+};
+
+struct cow_output *
+cow_output_create(struct river_output_v1 *river_output)
+{
+	struct cow_output *output = xcalloc(1, sizeof(*output));
+
+	output->river_output = river_output;
+	output->removed	     = false;
+	wl_list_init(&output->visible_views);
+
+	/* Initialize sheets */
+	for (int i = 0; i < COW_NR_OF_DESKS; i++) {
+		output->desks[i].nr	= i;
+		output->desks[i].output = output;
+		wl_list_init(&output->desks[i].views);
+	}
+
+	output->current_desk = &output->desks[0];
+
+	river_output_v1_add_listener(river_output, &output_listener, output);
+
+	wl_list_insert(&cow_wm.outputs, &output->wm_link);
+
+	/* Set as current output if we don't have one yet */
+	if (cow_wm.current_output == NULL) {
+		cow_wm.current_output = output;
+	}
+
+	/* Register with layer shell for non_exclusive_area events */
+	cow_layer_shell_init_output(output);
+
+	return output;
+}
+
+void
+cow_output_destroy(struct cow_output *output)
+{
+	wl_list_remove(&output->wm_link);
+
+	if (cow_wm.current_output == output) {
+		if (!wl_list_empty(&cow_wm.outputs)) {
+			cow_wm.current_output =
+			    wl_container_of(cow_wm.outputs.next,
+				cow_wm.current_output, wm_link);
+		} else {
+			cow_wm.current_output = NULL;
+		}
+	}
+
+	xfree(output->name);
+	river_output_v1_destroy(output->river_output);
+	xfree(output);
+}
+
+void
+cow_output_prepare_background(struct cow_output *output)
+{
+	if (cow_config == NULL || !cow_config->has_output_bg_colour)
+		return;
+	if (output->width <= 0 || output->height <= 0)
+		return;
+
+	/* Create wl_surface + shell_surface during manage sequence */
+	if (output->bg_surface == NULL) {
+		output->bg_surface = wl_compositor_create_surface(
+		    cow_wm.compositor);
+		if (output->bg_surface == NULL)
+			return;
+	}
+
+	if (output->bg_shell_surface == NULL) {
+		output->bg_shell_surface =
+		    river_window_manager_v1_get_shell_surface(cow_wm.manager,
+			output->bg_surface);
+		if (output->bg_shell_surface == NULL)
+			return;
+	}
+
+	if (output->bg_node == NULL) {
+		output->bg_node = river_shell_surface_v1_get_node(
+		    output->bg_shell_surface);
+	}
+}
+
+void
+cow_output_render_background(struct cow_output *output)
+{
+	/* Use per-output colour if set, otherwise fall back to global */
+	bool has_colour = output->has_bg_colour ||
+	    (cow_config != NULL && cow_config->has_output_bg_colour);
+	if (!has_colour)
+		return;
+	if (output->bg_node == NULL || output->bg_surface == NULL ||
+	    output->bg_shell_surface == NULL)
+		return;
+	if (output->width <= 0 || output->height <= 0)
+		return;
+
+	/* Only re-render if dirty or dimensions changed */
+	bool needs_render = output->bg_buffer == NULL || output->bg_dirty ||
+	    output->bg_buffer->width != output->width ||
+	    output->bg_buffer->height != output->height;
+
+	if (needs_render) {
+		/* Free old buffer if wrong size or busy */
+		if (output->bg_buffer != NULL &&
+		    (output->bg_buffer->width != output->width ||
+			output->bg_buffer->height != output->height ||
+			output->bg_buffer->busy)) {
+			cow_shm_buffer_destroy(output->bg_buffer);
+			output->bg_buffer = NULL;
+		}
+
+		if (output->bg_buffer == NULL) {
+			output->bg_buffer = cow_shm_buffer_create(output->width,
+			    output->height);
+			if (output->bg_buffer == NULL)
+				return;
+		}
+
+		/* Fill with background colour (per-output overrides global) */
+		const float *bg	       = output->has_bg_colour ?
+		    output->bg_colour :
+		    cow_config->output_bg_colour;
+		uint32_t     px	       = cow_colour_to_pixel(bg);
+		int	     stride_px = output->bg_buffer->stride / 4;
+		uint32_t    *data      = output->bg_buffer->data;
+		for (int y = 0; y < output->height; y++) {
+			for (int x = 0; x < output->width; x++) {
+				data[y * stride_px + x] = px;
+			}
+		}
+		output->bg_dirty = false;
+	}
+
+	if (output->bg_buffer == NULL)
+		return;
+
+	/* Position at output origin, place at bottom */
+	river_node_v1_set_position(output->bg_node, output->x, output->y);
+	river_node_v1_place_bottom(output->bg_node);
+
+	/* Commit the surface */
+	wl_surface_attach(output->bg_surface, output->bg_buffer->buffer, 0, 0);
+	wl_surface_damage_buffer(output->bg_surface, 0, 0, output->width,
+	    output->height);
+	river_shell_surface_v1_sync_next_commit(output->bg_shell_surface);
+	wl_surface_commit(output->bg_surface);
+	output->bg_buffer->busy = true;
+}
+
+struct cow_output *
+cow_output_at(int x, int y)
+{
+	struct cow_output *output;
+	wl_list_for_each(output, &cow_wm.outputs, wm_link)
+	{
+		if (x >= output->x && x < output->x + output->width &&
+		    y >= output->y && y < output->y + output->height) {
+			return output;
+		}
+	}
+	return cow_wm.current_output;
+}
+
+struct cow_output *
+cow_output_find(struct river_output_v1 *river_output)
+{
+	struct cow_output *output;
+	wl_list_for_each(output, &cow_wm.outputs, wm_link)
+	{
+		if (output->river_output == river_output)
+			return output;
+	}
+	return NULL;
+}
+
+struct cow_output *
+cow_output_find_by_name(const char *name)
+{
+	if (name == NULL)
+		return NULL;
+
+	struct cow_output *output;
+	wl_list_for_each(output, &cow_wm.outputs, wm_link)
+	{
+		if (output->name != NULL && strcmp(output->name, name) == 0)
+			return output;
+	}
+	return NULL;
+}
+
+void
+cow_output_update_current(void)
+{
+	/* TODO -- make this a setting?  To either say the current output is
+	 * based on focused window, or pointer?
+	 *
+	 * For now, assume pointer, not focused window.
+	 */
+
+	if (!cow_wm.running)
+		return;
+
+	if (wl_list_empty(&cow_wm.seats))
+		return;
+
+	struct cow_seat *ps;
+	wl_list_for_each(ps, &cow_wm.seats, wm_link)
+	{
+		if (ps->has_pointer_position) {
+			struct cow_output *this = cow_output_at(ps->pointer_x,
+			    ps->pointer_y);
+			if (this != NULL && this != cow_wm.current_output)
+				cow_wm.current_output = this;
+		}
+	}
+}

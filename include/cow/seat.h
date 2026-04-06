@@ -1,0 +1,122 @@
+/*
+ * Copyright (c) 2026 Thomas Adam
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+#if !defined(COW_SEAT_NEW_H)
+#define COW_SEAT_NEW_H
+
+#include <stdbool.h>
+#include <time.h>
+#include <wayland-client.h>
+
+#include "cow/pointer_op.h"
+
+struct river_seat_v1;
+struct river_xkb_bindings_seat_v1;
+struct cow_view;
+
+/*
+ * A seat tracked by the window manager.
+ * Wraps a river_seat_v1 object.
+ */
+struct cow_seat {
+	struct river_seat_v1		  *river_seat;
+	struct river_xkb_bindings_seat_v1 *xkb_seat;
+	struct wl_list			   wm_link; /* cow_wm.seats */
+
+	/* Registered bindings */
+	struct wl_list keybindings;	 /* cow_keybinding.link */
+	struct wl_list pointer_bindings; /* cow_pointer_binding.link */
+	bool	       bindings_enabled;
+
+	/* Corresponding wl_seat global name */
+	uint32_t wl_seat_name;
+
+	/* Current pointer state */
+	int  pointer_x, pointer_y;
+	bool has_pointer_position;
+
+	/* The window the pointer is currently over */
+	struct cow_view *pointer_entered_view;
+
+	/* The window that was last interacted with */
+	struct cow_view *interacted_view;
+
+	/* The currently focused view (keyboard focus) */
+	struct cow_view *focused_view;
+
+	/* Pending sloppy focus (set on pointer_enter, applied in manage) */
+	struct cow_view *sloppy_focus_view;
+
+	/* Double-click detection for window shading */
+	struct cow_view *last_click_view;
+	int		 last_click_lx, last_click_ly;
+	struct timespec	 last_click_time;
+	bool pending_shade;   /* set when double-click detected in decoration */
+	int  shade_direction; /* COW_SHADE_* direction from double-click */
+
+	/* Pointer operation state */
+	struct cow_pointer_op op;
+	bool		      op_in_progress;
+	int		      op_dx, op_dy;
+	bool		      op_released;
+
+	/* Desk assign mode (ensure_next_key_eaten) */
+	bool awaiting_desk_assign;
+
+	/* Titlebar interaction state */
+	enum {
+		COW_TITLEBAR_PRESS_NONE,
+		COW_TITLEBAR_PRESS_TITLE,
+		COW_TITLEBAR_PRESS_BUTTON,
+	} titlebar_press;
+	int		 pressed_button_idx; /* 0, 1, or 2 */
+	struct cow_view *pressed_view;	     /* view with pressed decoration */
+
+	bool removed;
+};
+
+/*
+ * Create a new seat wrapper for the given river_seat_v1.
+ */
+struct cow_seat *cow_seat_create(struct river_seat_v1 *river_seat);
+
+/*
+ * Destroy a seat wrapper.
+ */
+void cow_seat_destroy(struct cow_seat *seat);
+
+/*
+ * Focus a window from this seat.
+ * Must be called during a manage sequence.
+ */
+void cow_seat_focus_view(struct cow_seat *seat, struct cow_view *view);
+
+/*
+ * Find a seat by its river_seat_v1 pointer.
+ */
+struct cow_seat *cow_seat_find(struct river_seat_v1 *river_seat);
+
+/*
+ * Return the first (primary) seat, or NULL if none.
+ */
+struct cow_seat *cow_seat_primary(void);
+
+/*
+ * Get the current pointer position from the first seat that has one.
+ * Returns true if a position was found.
+ */
+bool cow_seat_get_pointer(int *x, int *y);
+
+#endif

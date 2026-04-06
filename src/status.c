@@ -1,0 +1,269 @@
+/*
+ * Copyright (c) 2026 Thomas Adam
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+#include "cow/status.h"
+
+#include <cJSON.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+#include "cow/memory.h"
+#include "cow/output.h"
+#include "cow/view.h"
+#include "cow/wm.h"
+
+#define MAX_STATUS_CLIENTS 64
+
+static int    server_fd	  = -1;
+static char  *socket_path = NULL;
+static int    clients[MAX_STATUS_CLIENTS];
+static int    nclients		= 0;
+static char  *last_snapshot	= NULL;
+static size_t last_snapshot_len = 0;
+
+void
+cow_status_init(void)
+{
+	const char *runtime = getenv("XDG_RUNTIME_DIR");
+	if (runtime == NULL)
+		return;
+
+	xasprintf(&socket_path, "%s/cow-status.sock", runtime);
+	unlink(socket_path);
+
+	server_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC,
+	    0);
+	if (server_fd < 0) {
+		fprintf(stderr, "cow: status: socket failed: %s\n",
+		    strerror(errno));
+		xfree(socket_path);
+		socket_path = NULL;
+		return;
+	}
+
+	struct sockaddr_un addr = { .sun_family = AF_UNIX };
+	strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
+
+	if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+		fprintf(stderr, "cow: status: bind failed: %s\n",
+		    strerror(errno));
+		close(server_fd);
+		server_fd = -1;
+		xfree(socket_path);
+		socket_path = NULL;
+		return;
+	}
+
+	if (listen(server_fd, 4) < 0) {
+		fprintf(stderr, "cow: status: listen failed: %s\n",
+		    strerror(errno));
+		close(server_fd);
+		server_fd = -1;
+		unlink(socket_path);
+		xfree(socket_path);
+		socket_path = NULL;
+		return;
+	}
+
+	fprintf(stderr, "cow: status: listening on %s\n", socket_path);
+}
+
+void
+cow_status_fini(void)
+{
+	for (int i = 0; i < nclients; i++)
+		close(clients[i]);
+	nclients = 0;
+
+	xfree(last_snapshot);
+	last_snapshot	  = NULL;
+	last_snapshot_len = 0;
+
+	if (server_fd >= 0) {
+		close(server_fd);
+		server_fd = -1;
+	}
+	if (socket_path != NULL) {
+		unlink(socket_path);
+		xfree(socket_path);
+		socket_path = NULL;
+	}
+}
+
+/*
+ * Accept any pending connections.  Called before emitting.
+ */
+static void
+status_accept(void)
+{
+	if (server_fd < 0)
+		return;
+
+	for (;;) {
+		int fd = accept4(server_fd, NULL, NULL,
+		    SOCK_NONBLOCK | SOCK_CLOEXEC);
+		if (fd < 0)
+			break;
+		if (nclients >= MAX_STATUS_CLIENTS) {
+			close(fd);
+			break;
+		}
+		/* Send the last snapshot immediately so the client does not
+		 * have to wait for the next state change to get initial data.
+		 */
+		if (last_snapshot != NULL)
+			write(fd, last_snapshot, last_snapshot_len);
+		clients[nclients++] = fd;
+	}
+}
+
+/*
+ * Send a string to all connected status clients.
+ * Remove clients that have disconnected.
+ */
+static void
+status_broadcast(const char *msg, size_t len)
+{
+	int i = 0;
+	while (i < nclients) {
+		ssize_t n = write(clients[i], msg, len);
+		if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+			/* Client disconnected */
+			close(clients[i]);
+			clients[i] = clients[--nclients];
+		} else {
+			i++;
+		}
+	}
+}
+
+void
+cow_status_emit(void)
+{
+	if (server_fd < 0)
+		return;
+
+	/* Accept new clients first */
+	status_accept();
+
+	if (nclients == 0)
+		return;
+
+	cJSON *root = cJSON_CreateObject();
+
+	/* Per-output desk state */
+	cJSON		  *outputs = cJSON_AddArrayToObject(root, "outputs");
+	struct cow_output *output;
+	wl_list_for_each(output, &cow_wm.outputs, wm_link)
+	{
+		cJSON *out = cJSON_CreateObject();
+		cJSON_AddStringToObject(out, "name",
+		    output->name ? output->name : "");
+		cJSON_AddNumberToObject(out, "current_desk",
+		    output->current_desk->nr);
+
+		cJSON *desks = cJSON_AddArrayToObject(out, "desks");
+		bool global  = cow_config->desktop_config == COW_DESKTOP_GLOBAL;
+		for (int i = 0; i < COW_NR_OF_DESKS; i++) {
+			int		 count = 0;
+			struct cow_view *v;
+			wl_list_for_each(v, &cow_wm.views, wm_link)
+			{
+				if (v->closed)
+					continue;
+				if (!global && v->output != output)
+					continue;
+				if (v->desk != NULL && v->desk->nr == i)
+					count++;
+			}
+			cJSON *d = cJSON_CreateObject();
+			cJSON_AddNumberToObject(d, "nr", i);
+			cJSON_AddNumberToObject(d, "windows", count);
+			cJSON_AddBoolToObject(d, "collected",
+			    (output->collected_desks & (1u << i)) != 0);
+			cJSON_AddBoolToObject(d, "active",
+			    i == (int)output->current_desk->nr);
+			cJSON_AddItemToArray(desks, d);
+		}
+
+		cJSON_AddItemToArray(outputs, out);
+	}
+
+	struct cow_view *focused = cow_wm.focused_view;
+	if (focused != NULL && !focused->closed) {
+		cJSON *fw = cJSON_CreateObject();
+		cJSON_AddStringToObject(fw, "id",
+		    focused->identifier ? focused->identifier : "");
+		cJSON_AddStringToObject(fw, "app_id",
+		    focused->app_id ? focused->app_id : "");
+		cJSON_AddStringToObject(fw, "title",
+		    focused->title ? focused->title : "");
+		cJSON_AddNumberToObject(fw, "desk",
+		    focused->desk ? focused->desk->nr : -1);
+		cJSON_AddStringToObject(fw, "output",
+		    (focused->output && focused->output->name) ?
+			focused->output->name :
+			"");
+		cJSON_AddItemToObject(root, "focused", fw);
+	} else {
+		cJSON_AddNullToObject(root, "focused");
+	}
+
+	int		 total = 0;
+	struct cow_view *v;
+	cJSON *window_ids = cJSON_AddArrayToObject(root, "window_ids");
+	wl_list_for_each(v, &cow_wm.views, wm_link)
+	{
+		if (!v->closed) {
+			total++;
+			if (v->identifier != NULL)
+				cJSON_AddItemToArray(window_ids,
+				    cJSON_CreateString(v->identifier));
+		}
+	}
+	cJSON_AddNumberToObject(root, "total_windows", total);
+	cJSON_AddStringToObject(root, "desktop_configuration",
+	    (cow_config->desktop_config == COW_DESKTOP_GLOBAL) ? "global" :
+		(cow_config->desktop_config == COW_DESKTOP_PER_OUTPUT) ?
+								 "per-output" :
+								 "Shared");
+
+	char *s = cJSON_PrintUnformatted(root);
+	cJSON_Delete(root);
+
+	if (s != NULL) {
+		size_t len = strlen(s);
+		/* Append newline for line-based reading */
+		char *msg = xmalloc(len + 2);
+		memcpy(msg, s, len);
+		msg[len]     = '\n';
+		msg[len + 1] = '\0';
+		cJSON_free(s);
+
+		/* Cache for clients that connect between emits */
+		xfree(last_snapshot);
+		last_snapshot	  = xstrdup(msg);
+		last_snapshot_len = len + 1;
+
+		status_broadcast(msg, len + 1);
+		xfree(msg);
+	}
+}

@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="river_xkb_bindings_v1">
+  <copyright>
+    SPDX-FileCopyrightText: © 2025 Isaac Freund
+    SPDX-License-Identifier: MIT
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to
+    deal in the Software without restriction, including without limitation the
+    rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+    sell copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+    IN THE SOFTWARE.
+  </copyright>
+
+  <description summary="xkbcommon-based key bindings">
+    This protocol allows the river-window-management-v1 window manager to
+    define key bindings in terms of xkbcommon keysyms and other configurable
+    properties.
+  </description>
+
+  <interface name="river_xkb_bindings_v1" version="2">
+    <description summary="xkbcommon bindings global interface"/>
+
+    <enum name="error" since="2">
+      <entry name="object_already_created" value="0" since="2"/>
+    </enum>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the river_xkb_bindings_v1 object"/>
+    </request>
+
+    <request name="get_xkb_binding">
+      <description summary="define a new xkbcommon key binding"/>
+      <arg name="seat" type="object" interface="river_seat_v1"/>
+      <arg name="id" type="new_id" interface="river_xkb_binding_v1"/>
+      <arg name="keysym" type="uint" summary="an xkbcommon keysym"/>
+      <arg name="modifiers" type="uint" enum="river_seat_v1.modifiers"/>
+    </request>
+
+    <request name="get_seat" since="2">
+      <description summary="manage seat-specific state"/>
+      <arg name="id" type="new_id" interface="river_xkb_bindings_seat_v1"/>
+      <arg name="seat" type="object" interface="river_seat_v1"/>
+    </request>
+  </interface>
+
+  <interface name="river_xkb_binding_v1" version="2">
+    <description summary="configure a xkb key binding, receive trigger events"/>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the xkb binding object"/>
+    </request>
+
+    <request name="set_layout_override">
+      <description summary="override currently active xkb layout"/>
+      <arg name="layout" type="uint" summary="0-indexed xkbcommon layout"/>
+    </request>
+
+    <request name="enable">
+      <description summary="enable the key binding"/>
+    </request>
+
+    <request name="disable">
+      <description summary="disable the key binding"/>
+    </request>
+
+    <event name="pressed">
+      <description summary="the key triggering the binding has been pressed"/>
+    </event>
+
+    <event name="released">
+      <description summary="the key triggering the binding has been released"/>
+    </event>
+
+    <event name="stop_repeat" since="2">
+      <description summary="repeating should be stopped"/>
+    </event>
+  </interface>
+
+  <interface name="river_xkb_bindings_seat_v1" version="2">
+    <description summary="xkb bindings seat"/>
+
+    <request name="destroy" type="destructor" since="2">
+      <description summary="destroy the object"/>
+    </request>
+
+    <request name="ensure_next_key_eaten" since="2">
+      <description summary="ensure the next key press event is eaten"/>
+    </request>
+
+    <request name="cancel_ensure_next_key_eaten" since="2">
+      <description summary="cancel an ensure_next_key_eaten request"/>
+    </request>
+
+    <event name="ate_unbound_key" since="2">
+      <description summary="an unbound key press event was eaten"/>
+    </event>
+  </interface>
+</protocol>

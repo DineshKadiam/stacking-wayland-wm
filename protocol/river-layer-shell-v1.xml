@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="river_layer_shell_v1">
+  <copyright>
+    SPDX-FileCopyrightText: © 2025 Isaac Freund
+    SPDX-License-Identifier: MIT
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to
+    deal in the Software without restriction, including without limitation the
+    rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+    sell copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+    IN THE SOFTWARE.
+  </copyright>
+
+  <description summary="optional layer shell support">
+    This protocol allows the river-window-management-v1 window manager to
+    support the wlr-layer-shell-unstable-v1 protocol.
+  </description>
+
+  <interface name="river_layer_shell_v1" version="1">
+    <description summary="river layer shell global interface"/>
+
+    <enum name="error">
+      <entry name="object_already_created" value="0"
+        summary="the layer_shell_output/seat object was already created."/>
+    </enum>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the river_layer_shell_v1 object"/>
+    </request>
+
+    <request name="get_output">
+      <description summary="get layer shell output state"/>
+      <arg name="id" type="new_id" interface="river_layer_shell_output_v1"/>
+      <arg name="output" type="object" interface="river_output_v1"/>
+    </request>
+
+    <request name="get_seat">
+      <description summary="get layer shell seat state"/>
+      <arg name="id" type="new_id" interface="river_layer_shell_seat_v1"/>
+      <arg name="seat" type="object" interface="river_seat_v1"/>
+    </request>
+  </interface>
+
+  <interface name="river_layer_shell_output_v1" version="1">
+    <description summary="layer shell output state"/>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the object"/>
+    </request>
+
+    <event name="non_exclusive_area">
+      <description summary="area left after subtracting exclusive zones"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </event>
+
+    <request name="set_default">
+      <description summary="Set default output for layer surfaces"/>
+    </request>
+  </interface>
+
+  <interface name="river_layer_shell_seat_v1" version="1">
+    <description summary="layer shell seat state"/>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the object"/>
+    </request>
+
+    <event name="focus_exclusive">
+      <description summary="layer shell surface has exclusive focus"/>
+    </event>
+
+    <event name="focus_non_exclusive">
+      <description summary="layer shell surface wants non-exclusive focus"/>
+    </event>
+
+    <event name="focus_none">
+      <description summary="no layer shell surface has focus"/>
+    </event>
+  </interface>
+</protocol>

@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=cow
+Comment=Stacking compositor with tiling capabilities
+Exec=river -c cow-start
+Type=Application
+DesktopNames=river

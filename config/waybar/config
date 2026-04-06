@@ -1,0 +1,46 @@
+{
+    "layer": "top",
+    "position": "top",
+    "height": 18,
+
+    "modules-left": ["custom/cow-desks"],
+    "modules-center": ["custom/cow-title"],
+    "modules-right": ["custom/cpu", "custom/mem", "custom/loadavg", "clock", "tray"],
+
+    "custom/cow-desks": {
+        "exec": "/home/n6tadam/.config/waybar/cow-desks.sh",
+        "return-type": "json",
+        "format": "{}",
+        "tooltip": true
+    },
+    "custom/cow-title": {
+        "exec": "/home/n6tadam/.config/waybar/cow-title.sh",
+        "return-type": "json",
+        "format": "{}",
+        "tooltip": true,
+        "max-length": 80
+    },
+    "custom/cpu": {
+        "exec": "conky -c /home/n6tadam/.config/waybar/conky-cpu.conf 2>/dev/null",
+        "return-type": "json",
+        "format": "{}",
+        "tooltip": false
+    },
+    "custom/mem": {
+        "exec": "conky -c /home/n6tadam/.config/waybar/conky-mem.conf 2>/dev/null",
+        "return-type": "json",
+        "format": "{}",
+        "tooltip": false
+    },
+    "custom/loadavg": {
+        "exec": "conky -c /home/n6tadam/.config/waybar/conky-loadavg.conf 2>/dev/null",
+        "return-type": "json",
+        "format": "{}",
+        "tooltip": false
+    },
+    "clock": {
+        "format": "[{:%b %d %H:%M:%S}]",
+        "tooltip-format": "{:%A, %B %d, %Y}",
+        "interval": 1
+    }
+}
