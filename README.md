@@ -86,11 +86,11 @@ cow to be used with wayland login managers.
 
 ## Contact and Support
 
-You can find me at: thomas at xteddy dot org
+You can email me at: thomas at xteddy dot org
 
-I've setup an IRC channel on libra.chat -- #cow-wayland
+I've setup an IRC channel on `libra.chat` -- `#cow-wayland`
 
-IRC is preferred over other forma of communication.  Maybe I'll see you there?
+IRC is preferred over other forms of communication.  Maybe I'll see you there?
 
 -----
 
