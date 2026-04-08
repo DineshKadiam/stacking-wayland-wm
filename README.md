@@ -42,6 +42,11 @@ More concretely though, have a look at:
 
 ![](./cow-ss.png)
 
+There's also support for containers -- a top-level window which can group
+windows together into tabs.
+
+![](./cow-container.png)
+
 ## How do I build CoW?
 
 Because `cow` is a window manager reliant on `river`, then the binary for
