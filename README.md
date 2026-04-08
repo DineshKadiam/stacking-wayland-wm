@@ -1,5 +1,7 @@
 # CoW -- Compostitor On Wayland
 
+![](./cow-image.png)
+
 `cow` is a stacking window manager.  Unlike other compositors based on
 wlroots, `cow` is a window manager using [river](https://codeberg.org/river/river)
 as the compositor.
