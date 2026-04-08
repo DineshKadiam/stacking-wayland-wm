@@ -352,17 +352,44 @@ void cow_titlebar_render(uint32_t *pixels, int stride_px, int frame_w,
     float tab_active_f[4], tab_inactive_f[4];
     float tab_fg_active_f[4], tab_fg_inactive_f[4];
 
-    /* Use configured value if explicitly set, otherwise inherit from
-     * the titlebar's own base/dk/fg so tabs match the window style. */
-    memcpy(tab_active_f, (cc && cc->has_tab_active) ? cc->tab_active : base,
+    /*
+     * Use configured value if explicitly set, otherwise inherit from
+     * the titlebar's own base/dk/fg so tabs match the window style.
+     *
+     * The overrides are only applied when the window is focused
+     * (active=true).  When unfocused, base/dk/fg already reflect the
+     * inactive titlebar colours (set above from tb_cfg->inactive_colour
+     * etc.), so all tabs correctly adopt the unfocused palette instead
+     * of the configured focused colours bleeding through.
+     */
+    /*
+     * When unfocused (!active), base already holds titlebar.inactive_colour.
+     * All tabs — both the active container tab and inactive ones — use the
+     * same base colour, matching the flat single-colour look of a normal
+     * unfocused titlebar.  Configured container.tab.* overrides are only
+     * applied when the window is focused.
+     */
+    const float *unfocused_bg = base; /* = titlebar.inactive_colour */
+    const float *unfocused_fg = fg;   /* = titlebar.fg_inactive     */
+    memcpy(tab_active_f,
+           (active && cc && cc->has_tab_active)
+               ? cc->tab_active
+               : (active ? base : unfocused_bg),
            sizeof(float) * 4);
-    memcpy(tab_inactive_f, (cc && cc->has_tab_inactive) ? cc->tab_inactive : dk,
+    memcpy(tab_inactive_f,
+           (active && cc && cc->has_tab_inactive)
+               ? cc->tab_inactive
+               : (active ? dk : unfocused_bg),
            sizeof(float) * 4);
     memcpy(tab_fg_active_f,
-           (cc && cc->has_tab_fg_active) ? cc->tab_fg_active : fg,
+           (active && cc && cc->has_tab_fg_active)
+               ? cc->tab_fg_active
+               : (active ? fg : unfocused_fg),
            sizeof(float) * 4);
     memcpy(tab_fg_inactive_f,
-           (cc && cc->has_tab_fg_inactive) ? cc->tab_fg_inactive : fg,
+           (active && cc && cc->has_tab_fg_inactive)
+               ? cc->tab_fg_inactive
+               : (active ? fg : unfocused_fg),
            sizeof(float) * 4);
 
     /* Pre-compute bevel colours for active and inactive tabs */
