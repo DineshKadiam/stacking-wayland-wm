@@ -26,17 +26,19 @@
 #include "cow/compat.h"
 #include "cow/config.h"
 #include "cow/decoration.h"
+#include "cow/desk_ops.h"
 #include "cow/keybinding.h"
 #include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
-#include "cow/desk_ops.h"
 #include "cow/shm.h"
 #include "cow/status.h"
 #include "cow/wm.h"
 
 #include "river-window-management-v1-client-protocol.h"
+
+int next_container_id;
 
 /*
  * river_window_v1 event handlers
@@ -53,9 +55,9 @@ window_handle_closed(void *data, __unused struct river_window_v1 *rw)
 }
 
 static void
-window_handle_dimensions_hint(void  *data, __unused struct river_window_v1 *rw,
-	int32_t min_width, int32_t min_height, int32_t max_width,
-	int32_t max_height)
+window_handle_dimensions_hint(void *data, __unused struct river_window_v1 *rw,
+    int32_t min_width, int32_t min_height, int32_t max_width,
+    int32_t max_height)
 {
 	struct cow_view *view = data;
 	view->min_width	      = min_width;
@@ -66,7 +68,7 @@ window_handle_dimensions_hint(void  *data, __unused struct river_window_v1 *rw,
 
 static void
 window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
-	int32_t width, int32_t height)
+    int32_t width, int32_t height)
 {
 	struct cow_view *view = data;
 
@@ -119,8 +121,8 @@ window_handle_parent(void *data, __unused struct river_window_v1 *rw,
 }
 
 static void
-window_handle_decoration_hint(void  *data,
-    __unused struct river_window_v1 *rw, uint32_t hint)
+window_handle_decoration_hint(void *data, __unused struct river_window_v1 *rw,
+    uint32_t hint)
 {
 	struct cow_view *view = data;
 	view->decoration_hint = hint;
@@ -149,15 +151,14 @@ window_handle_pointer_resize_requested(void *data,
 
 static void
 window_handle_show_window_menu_requested(__unused void *data,
-    __unused struct river_window_v1 *rw, __unused int32_t x,
-    __unused int32_t y)
+    __unused struct river_window_v1 *rw, __unused int32_t x, __unused int32_t y)
 {
 	return;
 }
 
 static void
 window_handle_maximize_requested(void *data,
-    __unused struct river_window_v1 *rw)
+    __unused struct river_window_v1   *rw)
 {
 	struct cow_view *view = data;
 
@@ -167,7 +168,7 @@ window_handle_maximize_requested(void *data,
 
 static void
 window_handle_unmaximize_requested(void *data,
-    __unused struct river_window_v1 *rw)
+    __unused struct river_window_v1	*rw)
 {
 	struct cow_view *view = data;
 	if (view->maximized)
@@ -176,8 +177,8 @@ window_handle_unmaximize_requested(void *data,
 
 static void
 window_handle_fullscreen_requested(void *data,
-    __unused struct river_window_v1 *rw,
-    __unused struct river_output_v1 *output)
+    __unused struct river_window_v1	*rw,
+    __unused struct river_output_v1	*output)
 {
 	struct cow_view *view = data;
 	if (!view->fullscreen)
@@ -186,7 +187,7 @@ window_handle_fullscreen_requested(void *data,
 
 static void
 window_handle_exit_fullscreen_requested(void *data,
-    __unused struct river_window_v1 *rw)
+    __unused struct river_window_v1	     *rw)
 {
 	struct cow_view *view = data;
 	if (view->fullscreen)
@@ -195,7 +196,7 @@ window_handle_exit_fullscreen_requested(void *data,
 
 static void
 window_handle_minimize_requested(__unused void *data,
-    __unused struct river_window_v1 *rw)
+    __unused struct river_window_v1	       *rw)
 {
 	/* TODO: hide the window */
 }
@@ -213,8 +214,8 @@ window_handle_presentation_hint(__unused void *data,
 }
 
 static void
-window_handle_identifier(void *data,
-    __unused struct river_window_v1 *rw, const char *identifier)
+window_handle_identifier(void *data, __unused struct river_window_v1 *rw,
+    const char *identifier)
 {
 	struct cow_view *view = data;
 	xfree(view->identifier);
@@ -273,7 +274,7 @@ cow_view_create(struct river_window_v1 *rw)
 	/* Assign to the current output and its active sheet */
 	if (cow_wm.current_output != NULL) {
 		view->output = cow_wm.current_output;
-		view->desk  = cow_wm.current_output->current_desk;
+		view->desk   = cow_wm.current_output->current_desk;
 	}
 
 	wl_list_init(&view->desk_views);
@@ -286,18 +287,42 @@ cow_view_create(struct river_window_v1 *rw)
 
 	return view;
 }
-
 void
 cow_view_destroy(struct cow_view *view)
 {
 	cow_status_emit();
+
+	/* Clear drag-drop references before freeing */
+	if (cow_wm.drag_drop_target == view)
+		cow_wm.drag_drop_target = NULL;
+	if (cow_wm.drag_drop_source == view)
+		cow_wm.drag_drop_source = NULL;
+
+	/* Detach from container without cascade (WM is shutting down) */
+	if (view->container_member != NULL) {
+		struct cow_container_member *m = view->container_member;
+		struct cow_container	    *c = m->container;
+		wl_list_remove(&m->link);
+		c->n_members--;
+		view->container_member = NULL;
+		xfree(m);
+		if (c->n_members == 0) {
+			wl_list_remove(&c->wm_link);
+			xfree(c);
+		} else if (c->active == m) {
+			c->active = wl_container_of(c->members.next, c->active,
+			    link);
+			c->active->view->use_ssd   = true;
+			c->active->view->dec.dirty = true;
+		}
+	}
+
 	wl_list_remove(&view->wm_link);
 	wl_list_remove(&view->desk_views);
 	wl_list_remove(&view->output_views);
 
 	if (cow_wm.focused_view == view)
 		cow_wm.focused_view = NULL;
-
 	cow_decoration_fini(&view->dec);
 
 	if (view->node != NULL)
@@ -385,6 +410,23 @@ cow_view_apply_render(struct cow_view *view)
 	if (!view->has_dimensions || view->closed)
 		return;
 
+	/*
+	 * Deferred decoration cleanup: if a view lost SSD ownership
+	 * (e.g. a container tab was deactivated) its decoration surface
+	 * must stay alive until this render cycle so that any pending
+	 * window_interaction events are still routed to a valid surface.
+	 * Destroy it now, before hide/show, so the compositor can release
+	 * the surface atomically with the render_finish.
+	 */
+	if (!view->use_ssd && view->decoration != NULL) {
+		river_decoration_v1_destroy(view->decoration);
+		view->decoration = NULL;
+		wl_surface_destroy(view->decoration_surface);
+		view->decoration_surface = NULL;
+		cow_decoration_fini(&view->dec);
+		cow_decoration_init(&view->dec);
+	}
+
 	/* Get the render node if we don't have one yet */
 	if (view->node == NULL) {
 		view->node = river_window_v1_get_node(view->river_window);
@@ -412,8 +454,8 @@ cow_view_apply_render(struct cow_view *view)
 		    view->dec.title_thickness;
 		int			dec_left = view->dec.border_width;
 		enum cow_placement_mode mode	 = cow_config ?
-			cow_config->placement :
-			COW_PLACEMENT_CASCADE;
+		    cow_config->placement :
+		    COW_PLACEMENT_CASCADE;
 
 		switch (mode) {
 		case COW_PLACEMENT_UNDERMOUSE: {
@@ -462,8 +504,9 @@ cow_view_apply_render(struct cow_view *view)
 	/* Ensure non-maximized, non-fullscreen windows don't overlap
 	 * the reserved area (e.g. after WM restart with new config). */
 	if (view->output != NULL && !view->maximized && !view->fullscreen) {
-		struct cow_box *ua = &view->output->usable_area;
-		int dec_top = view->dec.border_width + view->dec.title_thickness;
+		struct cow_box *ua	= &view->output->usable_area;
+		int		dec_top = view->dec.border_width +
+		    view->dec.title_thickness;
 		int dec_left = view->dec.border_width;
 		if (view->x < ua->x + dec_left)
 			view->x = ua->x + dec_left;
@@ -485,11 +528,36 @@ cow_view_apply_render(struct cow_view *view)
 		view->pending_lower = false;
 	}
 
+	/*
+	 * For contained views, pin the node to the container's position.
+	 * propose_dimensions for out-of-sync members is handled by the
+	 * pending_resize mechanism in the manage sequence (via
+	 * view_sync_to_container → cow_view_set_pending_geometry), NOT here.
+	 * Calling river_window_v1_propose_dimensions from the render sequence
+	 * is a sequence_order protocol violation.
+	 */
+	if (view->container_member != NULL) {
+		struct cow_container *c = view->container_member->container;
+		river_node_v1_set_position(view->node, c->x, c->y);
+	}
+
 	/* Show or hide based on desk membership + sticky + iconified */
 	if (view->output == NULL || !cow_view_visible(view, view->output)) {
 		river_window_v1_hide(view->river_window);
 	} else {
 		river_window_v1_show(view->river_window);
+
+		/* Z-ordering: ensure all container members stack together */
+		if (view->container_member != NULL && view->needs_raise) {
+			struct cow_container *c =
+			    view->container_member->container;
+			struct cow_container_member *active = c->active;
+			if (active != NULL && active->view->node != NULL &&
+			    view != active->view) {
+				river_node_v1_place_below(view->node,
+				    active->view->node);
+			}
+		}
 
 		/* Update decoration surface (SSD frame) */
 		if (view->use_ssd) {
@@ -520,7 +588,7 @@ cow_view_reassign_output(struct cow_view *view, struct cow_output *output)
 
 	/* Assign to new output's current sheet */
 	view->output = output;
-	view->desk  = output->current_desk;
+	view->desk   = output->current_desk;
 	wl_list_insert(&output->current_desk->views, &view->desk_views);
 	wl_list_insert(&output->visible_views, &view->output_views);
 
@@ -677,12 +745,12 @@ cow_view_resolve_style(struct cow_view *view)
 		 * original desk's style. */
 		if (vc->desk_nr >= 0 && view->output != NULL) {
 			bool collected	= (view->desk != NULL &&
-			     view->desk != view->output->current_desk &&
-			     (view->output->collected_desks &
-				 (1u << view->desk->nr)));
+			    view->desk != view->output->current_desk &&
+			    (view->output->collected_desks &
+				(1u << view->desk->nr)));
 			int  match_desk = collected ?
-			     view->desk->nr :
-			     view->output->current_desk->nr;
+			    view->desk->nr :
+			    view->output->current_desk->nr;
 			if (match_desk != vc->desk_nr)
 				continue;
 		}
@@ -793,6 +861,30 @@ cow_view_maximize(struct cow_view *view)
 	river_window_v1_inform_maximized(view->river_window);
 	view->maximized = true;
 
+	/*
+	 * Sync the container with the maximized geometry.  Use the proposed
+	 * w/h directly because the dimensions event hasn't arrived yet and
+	 * view->content_width still holds the old value.
+	 */
+	if (view->container_member != NULL) {
+		struct cow_container *c = view->container_member->container;
+		c->x			= view->x;
+		c->y			= view->y;
+		c->content_width	= w;
+		c->content_height	= h;
+		struct cow_container_member *m;
+		wl_list_for_each(m, &c->members, link)
+		{
+			if (m->view == view)
+				continue;
+			m->view->x	   = view->x;
+			m->view->y	   = view->y;
+			m->view->dec.dirty = true;
+			cow_view_set_pending_geometry(m->view, view->x, view->y,
+			    w, h);
+		}
+	}
+
 	int mbi = cow_find_maximize_button();
 	if (mbi >= 0) {
 		view->icon_inverted_button = mbi;
@@ -809,6 +901,27 @@ cow_view_unmaximize(struct cow_view *view)
 	    view->saved_width, view->saved_height);
 	river_window_v1_inform_unmaximized(view->river_window);
 	view->maximized = false;
+
+	/* Restore container geometry to the saved (pre-maximize) values. */
+	if (view->container_member != NULL) {
+		struct cow_container *c = view->container_member->container;
+		c->x			= view->saved_x;
+		c->y			= view->saved_y;
+		c->content_width	= view->saved_width;
+		c->content_height	= view->saved_height;
+		struct cow_container_member *m;
+		wl_list_for_each(m, &c->members, link)
+		{
+			if (m->view == view)
+				continue;
+			m->view->x	   = view->saved_x;
+			m->view->y	   = view->saved_y;
+			m->view->dec.dirty = true;
+			cow_view_set_pending_geometry(m->view, view->saved_x,
+			    view->saved_y, view->saved_width,
+			    view->saved_height);
+		}
+	}
 
 	view->icon_inverted_button = -1;
 	view->dec.dirty		   = true;
@@ -1010,9 +1123,9 @@ cow_view_icon_render(struct cow_view *view)
 	memset(pixels, 0, (size_t)stride_px * icon_h * 4);
 
 	/* Use inactive border colors for the icon box */
-	struct cow_border_colour *bc	 = &cow_config->border_inactive;
-	uint32_t		 px_base = cow_colour_to_pixel(bc->n);
-	float			 lt[4], dk[4];
+	struct cow_border_colour *bc	  = &cow_config->border_inactive;
+	uint32_t		  px_base = cow_colour_to_pixel(bc->n);
+	float			  lt[4], dk[4];
 	cow_colour_lighten(lt, bc->n);
 	cow_colour_darken(dk, bc->n);
 	uint32_t px_lt = cow_colour_to_pixel(lt);
@@ -1072,8 +1185,8 @@ cow_view_icon_render(struct cow_view *view)
 		cairo_t *cr = cairo_create(cs);
 
 		const char  *fname	 = cow_config && cow_config->font_name ?
-			   cow_config->font_name :
-			   "monospace 9";
+		    cow_config->font_name :
+		    "monospace 9";
 		PangoLayout *layout	 = pango_cairo_create_layout(cr);
 		PangoFontDescription *fd = pango_font_description_from_string(
 		    fname);
@@ -1194,4 +1307,315 @@ cow_view_find(struct river_window_v1 *river_window)
 			return view;
 	}
 	return NULL;
+}
+
+/*
+ * Remove a view's decoration surfaces so the container can reassign them.
+ */
+static void
+view_drop_decoration(struct cow_view *view)
+{
+	if (view->decoration != NULL) {
+		river_decoration_v1_destroy(view->decoration);
+		view->decoration = NULL;
+	}
+	if (view->decoration_surface != NULL) {
+		wl_surface_destroy(view->decoration_surface);
+		view->decoration_surface = NULL;
+	}
+	cow_decoration_fini(&view->dec);
+	cow_decoration_init(&view->dec);
+}
+
+/*
+ * Assign a view's geometry from its container and queue a pending resize.
+ */
+static void
+view_sync_to_container(struct cow_view *view, struct cow_container *c)
+{
+	cow_view_set_pending_geometry(view, c->x, c->y, c->content_width,
+	    c->content_height);
+}
+
+struct cow_container *
+cow_container_create(struct cow_view *first, struct cow_view *second)
+{
+	struct cow_container *c = xcalloc(1, sizeof(*c));
+
+	wl_list_init(&c->members);
+	c->n_members = 0;
+	c->id	     = next_container_id++;
+
+	/* Geometry, desk and output come from the drop target (first) */
+	c->x		  = first->x;
+	c->y		  = first->y;
+	c->content_width  = first->content_width;
+	c->content_height = first->content_height;
+	c->desk		  = first->desk;
+	c->output	  = first->output;
+	c->flags	  = first->flags;
+
+	wl_list_insert(&cow_wm.containers, &c->wm_link);
+
+	cow_container_add(c, first);
+	cow_container_add(c, second);
+
+	/* first (the drop target) is the active tab */
+	c->active = wl_container_of(c->members.next, c->active, link);
+
+	cow_wm.needs_manage_dirty = true;
+	return c;
+}
+
+bool
+cow_container_add(struct cow_container *c, struct cow_view *view)
+{
+	if (view->container_member != NULL)
+		return false;
+
+	struct cow_container_member *m = xcalloc(1, sizeof(*m));
+	m->view			       = view;
+	m->container		       = c;
+	wl_list_insert(c->members.prev, &m->link); /* append */
+	c->n_members++;
+
+	view->container_member = m;
+
+	/* Non-active members must not draw their own frame */
+	if (c->active != NULL && c->active != m) {
+		view->use_ssd = false;
+		view_drop_decoration(view);
+	}
+
+	/* Sync dimensions to container */
+	view_sync_to_container(view, c);
+	return true;
+}
+
+void
+cow_container_activate(struct cow_container *c,
+    struct cow_container_member		    *member)
+{
+	if (c->active == member)
+		return;
+
+	/* Deactivate the current active member.
+	 * Do NOT destroy the decoration here: the old surface must remain
+	 * alive until the render cycle so that window_interaction events
+	 * from rapid clicks are still routed to a valid decoration surface.
+	 * The render cycle's deferred cleanup (cow_view_apply_render) will
+	 * destroy it once the new active member's decoration is ready. */
+	if (c->active != NULL) {
+		struct cow_view *old = c->active->view;
+		old->use_ssd	     = false;
+		old->dec.dirty	     = true;
+		old->needs_raise     = false;
+	}
+
+	c->active		  = member;
+	member->view->use_ssd	  = true;
+	member->view->dec.dirty	  = true;
+	member->view->needs_raise = true;
+	cow_wm.pending_focus	  = member->view;
+	cow_wm.needs_manage_dirty = true;
+}
+
+static void
+container_redraw(struct cow_container *c)
+{
+	if (c->active != NULL && c->active->view->use_ssd)
+		c->active->view->dec.dirty = true;
+	cow_wm.needs_manage_dirty = true;
+}
+
+void
+cow_container_swap_next(struct cow_container *c)
+{
+	if (c->active == NULL)
+		return;
+	struct wl_list *cur  = &c->active->link;
+	struct wl_list *next = cur->next;
+	if (next == &c->members)
+		return; /* already the last tab */
+
+	/* Remove cur from its current position then re-insert after next */
+	wl_list_remove(cur);
+	wl_list_insert(next, cur);
+	container_redraw(c);
+}
+
+void
+cow_container_swap_prev(struct cow_container *c)
+{
+	if (c->active == NULL)
+		return;
+	struct wl_list *cur  = &c->active->link;
+	struct wl_list *prev = cur->prev;
+	if (prev == &c->members)
+		return; /* already the first tab */
+
+	/* Remove cur then re-insert before prev (i.e. after prev->prev) */
+	struct wl_list *before_prev = prev->prev;
+	wl_list_remove(cur);
+	wl_list_insert(before_prev, cur);
+	container_redraw(c);
+}
+
+void
+cow_container_activate_next(struct cow_container *c)
+{
+	struct wl_list *next = c->active->link.next;
+	if (next == &c->members)
+		next = next->next; /* wrap */
+	struct cow_container_member *m = wl_container_of(next, m, link);
+	cow_container_activate(c, m);
+}
+
+void
+cow_container_activate_prev(struct cow_container *c)
+{
+	struct wl_list *prev = c->active->link.prev;
+	if (prev == &c->members)
+		prev = prev->prev; /* wrap */
+	struct cow_container_member *m = wl_container_of(prev, m, link);
+	cow_container_activate(c, m);
+}
+
+void
+cow_container_remove_view(struct cow_view *view)
+{
+	struct cow_container_member *m = view->container_member;
+	if (m == NULL)
+		return;
+
+	struct cow_container *c		 = m->container;
+	bool		      was_active = (c->active == m);
+
+	wl_list_remove(&m->link);
+	c->n_members--;
+	view->container_member = NULL;
+	xfree(m);
+
+	/* Restore independent decoration */
+	view->use_ssd = true;
+	cow_decoration_init(&view->dec);
+	cow_view_resolve_style(view);
+
+	/* Cascade the detached view away from the container */
+	int step	= 30;
+	view->x		= c->x + step;
+	view->y		= c->y + step;
+	view->dec.dirty = true;
+
+	if (c->n_members <= 1) {
+		/* Disband: release the last member too */
+		if (!wl_list_empty(&c->members)) {
+			struct cow_container_member *last =
+			    wl_container_of(c->members.next, last, link);
+			struct cow_view *lv = last->view;
+			wl_list_remove(&last->link);
+			c->n_members--;
+			lv->container_member = NULL;
+			xfree(last);
+			lv->use_ssd = true;
+			cow_decoration_init(&lv->dec);
+			cow_view_resolve_style(lv);
+			lv->dec.dirty = true;
+		}
+		wl_list_remove(&c->wm_link);
+		xfree(c);
+	} else if (was_active) {
+		/* Activate the first remaining member */
+		struct cow_container_member *next =
+		    wl_container_of(c->members.next, next, link);
+		c->active = NULL; /* clear first so activate doesn't skip */
+		cow_container_activate(c, next);
+	}
+
+	cow_wm.needs_manage_dirty = true;
+}
+
+void
+cow_container_destroy(struct cow_container *c)
+{
+	struct cow_container_member *m, *tmp;
+	wl_list_for_each_safe(m, tmp, &c->members, link)
+	{
+		m->view->container_member = NULL;
+		m->view->use_ssd	  = true;
+		wl_list_remove(&m->link);
+		xfree(m);
+	}
+	wl_list_remove(&c->wm_link);
+	xfree(c);
+}
+
+struct cow_container *
+cow_view_container(const struct cow_view *view)
+{
+	if (view->container_member == NULL)
+		return NULL;
+	return view->container_member->container;
+}
+
+bool
+cow_view_is_active_tab(const struct cow_view *view)
+{
+	if (view->container_member == NULL)
+		return true; /* uncontained views are always "active" */
+	struct cow_container *c = view->container_member->container;
+	return c->active == view->container_member;
+}
+bool
+cow_view_is_drop_target(const struct cow_view *view)
+{
+	return cow_wm.drag_drop_target == view;
+}
+
+void
+cow_view_sync_container_pos(struct cow_view *view)
+{
+	if (view->container_member == NULL)
+		return;
+
+	struct cow_container	    *c = view->container_member->container;
+	struct cow_container_member *m;
+
+	c->x = view->x;
+	c->y = view->y;
+
+	wl_list_for_each(m, &c->members, link)
+	{
+		if (m->view == view)
+			continue;
+		m->view->x	   = c->x;
+		m->view->y	   = c->y;
+		m->view->dec.dirty = true;
+	}
+}
+
+void
+cow_view_sync_container_geometry(struct cow_view *view, int x, int y, int w,
+    int h)
+{
+	if (view->container_member == NULL)
+		return;
+
+	struct cow_container	    *c = view->container_member->container;
+	struct cow_container_member *m;
+
+	c->x		  = x;
+	c->y		  = y;
+	c->content_width  = w;
+	c->content_height = h;
+
+	wl_list_for_each(m, &c->members, link)
+	{
+		if (m->view == view)
+			continue;
+		m->view->x	   = x;
+		m->view->y	   = y;
+		m->view->dec.dirty = true;
+		cow_view_set_pending_geometry(m->view, x, y, w, h);
+	}
 }

@@ -20,14 +20,46 @@
 #include <wayland-client.h>
 
 #include "cow/config.h"
-#include "cow/decoration.h"
 #include "cow/cow_box.h"
+#include "cow/decoration.h"
 
+struct cow_container;
+struct cow_container_member;
 struct river_window_v1;
 struct river_node_v1;
 struct river_decoration_v1;
 struct cow_output;
 struct cow_desk;
+
+/*
+ * Container: a meta-window that groups multiple views as tabs.
+ * Only the active member's content is visible; all others are hidden.
+ * The active member owns the shared decoration frame which renders
+ * the full tab strip in the titlebar.
+ */
+extern int next_container_id;
+
+struct cow_container_member {
+	struct wl_list	      link; /* cow_container.members */
+	struct cow_view	     *view;
+	struct cow_container *container;
+};
+
+struct cow_container {
+	struct wl_list		     wm_link; /* cow_wm.containers */
+	struct wl_list		     members; /* cow_container_member.link */
+	int			     id;
+	int			     n_members;
+	struct cow_container_member *active;
+
+	/* Geometry (authoritative for all members) */
+	int x, y;
+	int content_width, content_height;
+
+	struct cow_desk	  *desk;
+	struct cow_output *output;
+	uint32_t	   flags; /* sticky etc., shared across members */
+};
 
 /*
  * View flags (carried over from original cow).
@@ -53,18 +85,18 @@ enum shade_direction {
  * defaults and is overridden by matching rules.
  */
 struct cow_view_style {
-	int			border;
+	int			 border;
 	struct cow_border_colour border_active;
 	struct cow_border_colour border_inactive;
-	bool			has_border_override; /* per-edge override set */
-	float			titlebar_active[4];
-	float			titlebar_inactive[4];
-	float			titlebar_fg_active[4];
-	float			titlebar_fg_inactive[4];
-	bool			has_titlebar_override;
-	bool			has_titlebar_fg_override;
-	bool			titlebar_enabled;
-	bool			resolved;
+	bool  has_border_override; /* per-edge override set */
+	float titlebar_active[4];
+	float titlebar_inactive[4];
+	float titlebar_fg_active[4];
+	float titlebar_fg_inactive[4];
+	bool  has_titlebar_override;
+	bool  has_titlebar_fg_override;
+	bool  titlebar_enabled;
+	bool  resolved;
 };
 
 /*
@@ -176,6 +208,14 @@ struct cow_view {
 	struct cow_shm_buffer	      *icon_buffer;
 	int			       icon_x, icon_y;
 	int			       icon_width, icon_height;
+
+	/*
+	 * Container membership.  NULL when the view is not grouped.
+	 * When non-NULL the container owns geometry and the decoration
+	 * is managed at the container level (only the active member
+	 * has use_ssd = true).
+	 */
+	struct cow_container_member *container_member;
 };
 
 /*
@@ -299,5 +339,91 @@ bool cow_view_is_iconified(const struct cow_view *view);
  * Called when the view is created and when rules/config change.
  */
 void cow_view_resolve_style(struct cow_view *view);
+
+/* -----------------------------------------------------------------------
+ * Container API
+ * ----------------------------------------------------------------------- */
+
+/*
+ * Create a new container from two uncontained views.
+ * first_view becomes the active (visible) member.
+ */
+struct cow_container *cow_container_create(struct cow_view *first_view,
+    struct cow_view					   *second_view);
+
+/*
+ * Add a view to an existing container.  The view must not already be
+ * in a container.  Returns false if the view is already a member.
+ */
+bool cow_container_add(struct cow_container *container, struct cow_view *view);
+
+/*
+ * Remove a view from its container.  If the container drops to one
+ * member, that member is also released and the container is destroyed.
+ * The detached view is given a cascade-offset position relative to the
+ * container.
+ */
+void cow_container_remove_view(struct cow_view *view);
+
+/*
+ * Make member the active (visible) tab.  Destroys the old active
+ * member's decoration and marks the new one dirty.
+ */
+void cow_container_activate(struct cow_container *container,
+    struct cow_container_member			 *member);
+
+/*
+ * Activate the next or previous tab in the container.
+ */
+void cow_container_activate_next(struct cow_container *container);
+void cow_container_activate_prev(struct cow_container *container);
+
+/*
+ * Move the active tab one position to the right (next) or left (prev)
+ * within the container's tab strip.  The tab remains active after the
+ * swap.  No-ops if the tab is already at the respective end.
+ */
+void cow_container_swap_next(struct cow_container *container);
+void cow_container_swap_prev(struct cow_container *container);
+
+/*
+ * Return the container that contains view, or NULL.
+ */
+struct cow_container *cow_view_container(const struct cow_view *view);
+
+/*
+ * Return true if view is the active tab in its container.
+ */
+bool cow_view_is_active_tab(const struct cow_view *view);
+
+/*
+ * Destroy a container and release all its members (detach, no cascade).
+ * Called during WM shutdown.
+ */
+void cow_container_destroy(struct cow_container *container);
+
+/*
+ * Return true if view is the drop indicator target for a container drag.
+ * The view's decoration will draw a highlight when this is set.
+ */
+bool cow_view_is_drop_target(const struct cow_view *view);
+
+/*
+ * If view is in a container, propagate view->x/view->y to the container
+ * and to every other member's x/y so that all members stay in sync.
+ * Must be called after any operation that changes a container member's
+ * position (move, snap, centre, etc.).
+ */
+void cow_view_sync_container_pos(struct cow_view *view);
+
+/*
+ * Sync the container's full geometry (position AND dimensions) from the
+ * given explicit values.  Used by resize operations where the new w/h
+ * come from proposed values before the dimensions event has arrived,
+ * so view->content_width/height are not yet updated.
+ * Also queues pending_resize for all non-active members.
+ */
+void cow_view_sync_container_geometry(struct cow_view *view, int x, int y,
+    int w, int h);
 
 #endif

@@ -184,6 +184,21 @@ Set a configuration option at runtime. *-v* prints the resulting value.
 |  *titlebar.button\_right2.action*
 :  command string
 :  Action for the second right titlebar button.
+|  *container.tab.active\_colour*
+:  hex colour (_0xRRGGBB_)
+:  Background colour of the active tab label. Default: _0xC0C0C0_.
+|  *container.tab.inactive\_colour*
+:  hex colour (_0xRRGGBB_)
+:  Background colour of inactive tab labels. Default: _0x808080_.
+|  *container.tab.fg\_active*
+:  hex colour (_0xRRGGBB_)
+:  Foreground (text) colour of the active tab label. Default: _0x000000_.
+|  *container.tab.fg\_inactive*
+:  hex colour (_0xRRGGBB_)
+:  Foreground (text) colour of inactive tab labels. Default: _0x202020_.
+|  *container.tab.sunken*
+:  _true_ | _1_ | _false_ | _0_
+:  Draw inactive tabs with a sunken (depressed) bevel. Default: _false_ (flat).
 
 *Button vector format:* _N_ _x1_*X*_y1_*@*_c1_ _x2_*X*_y2_*@*_c2_ *...* where _N_ is
 the number of points, coordinates are 0-100 (percentages of the button area),
@@ -212,8 +227,9 @@ as for *bind*, but the key name is a button name (see *MOUSE BINDINGS*).
 Example:
 
 ```
-mouse L+left window-move
-mouse L+right resize
+mouse L+left   window-move
+mouse L+right  resize
+mouse L+middle window-move -C
 ```
 
 ## action
@@ -357,7 +373,7 @@ Operate on a window.
 *-i*
 	Toggle the window's iconified (minimised) state.
 
-## window-move [-t target] [-d dir [-n]] [-o output] [-c] [-k 0-9] [-x X] [-y Y]
+## window-move [-C] [-t target] [-d dir [-n]] [-o output] [-c] [-k 0-9] [-x X] [-y Y]
 
 Move a window. With no flags, begin an interactive move using the mouse.
 
@@ -372,6 +388,13 @@ Move a window. With no flags, begin an interactive move using the mouse.
 
 *-o* _output_
 	Move the window to the named output.
+
+*-C*
+	Enable container-formation on drop. When the interactive move ends
+	with the pointer over another window's titlebar, the two windows are
+	grouped into a container instead of completing a normal move. Releasing
+	over empty space performs a normal move. The target window's titlebar
+	highlights in orange while the pointer is over it.
 
 *-c*
 	Centre the window on its current output.
@@ -491,6 +514,57 @@ Maximize or restore a window.
 *-u*
 	Restore (unmaximize) the window.
 
+## container [-t target] [-s source] [-arnpNP]
+
+Group windows into a tabbed container. A container is a meta-window that holds
+multiple application windows as tabs. Only the active tab's content is visible;
+all tabs share the container's position, size, and frame. The titlebar shows a
+clickable label for each member. Clicking a label activates that tab.
+
+*window-container -a*
+	Add _source_ to _target_'s container. If neither window is already in
+	a container, a new container is created.
+
+	_source_ defaults to the focused window. _target_ defaults to the
+	focused window when *-t* is given explicitly.
+
+	When neither *-t* nor *-s* is given, _source_ is the focused window
+	and _target_ is the next focusable window in stacking order. This
+	means *container add* with no arguments is a self-contained
+	keyboard-only action: it groups the focused window with the one below
+	it in the stack. This is useful in environments where mouse modifier
+	combinations are unavailable (e.g. VNC).
+
+*window-container -r* [-t _target_]
+	Remove _target_ from its container. The detached window reappears
+	offset from the container position. If the container drops to one
+	member, the container is dissolved.
+
+*window-container -n* [-t _target_]
+	Activate the next tab in the container that holds _target_.
+
+*window-container -p* [-t _target_]
+	Activate the previous tab in the container that holds _target_.
+
+*window-container -N* [-t _target_]
+	Move the tab containing _target_ one position to the right in the tab
+	strip. The tab remains active. No-op if it is already the last tab.
+
+*window-container -P* [-t _target_]
+	Move the tab containing _target_ one position to the left in the tab
+	strip. The tab remains active. No-op if it is already the first tab.
+
+See also *window-move* *-C*, which allows containers to be formed
+interactively by dragging a window's titlebar onto another. In
+environments where mouse modifier combinations are unreliable (e.g. VNC),
+bind *container add* to a key instead:
+
+```
+bind L+g   window-container -a
+bind LS+g  window-container -r
+bind L+Tab window-container -n
+```
+
 ## window-shade [-t target] -d dir
 
 Shade (roll up) a window in a given direction, hiding its content but leaving
@@ -594,7 +668,13 @@ Examples:
 ```
 mouse L+left   window-move
 mouse L+right  resize
+mouse L+middle window-move -C
 ```
+
+The conventional cow mouse binding for container formation is
+*L+middle* (*window-move -C*): hold Super and middle-drag a window's
+titlebar onto another window's titlebar to group them into a container.
+*LS+left* provides a keyboard-accessible alternative for the same operation.
 
 # IPC
 

@@ -47,9 +47,9 @@ struct cow_seat;
  * Sequence state: tracks whether we're in a manage or render sequence.
  */
 enum cow_wm_sequence {
-	COW_WM_SEQUENCE_NONE,
-	COW_WM_SEQUENCE_MANAGE,
-	COW_WM_SEQUENCE_RENDER,
+  COW_WM_SEQUENCE_NONE,
+  COW_WM_SEQUENCE_MANAGE,
+  COW_WM_SEQUENCE_RENDER,
 };
 
 /*
@@ -57,50 +57,60 @@ enum cow_wm_sequence {
  * Replaces the old cow_server struct.
  */
 struct cow_wm {
-	struct wl_display    *display;
-	struct wl_registry   *registry;
-	struct wl_compositor *compositor;
-	struct wl_shm	     *shm;
+  struct wl_display *display;
+  struct wl_registry *registry;
+  struct wl_compositor *compositor;
+  struct wl_shm *shm;
 
-	/* River protocol globals */
-	struct river_window_manager_v1 *manager;
-	struct river_xkb_bindings_v1   *xkb_bindings;
-	struct river_layer_shell_v1    *layer_shell;
+  /* River protocol globals */
+  struct river_window_manager_v1 *manager;
+  struct river_xkb_bindings_v1 *xkb_bindings;
+  struct river_layer_shell_v1 *layer_shell;
 
-	/* Sequence state */
-	enum cow_wm_sequence sequence;
-	bool		     running;
-	bool		     session_locked;
-	bool state_restored; /* true after first manage restores saved state */
+  /* Sequence state */
+  enum cow_wm_sequence sequence;
+  bool running;
+  bool session_locked;
+  bool state_restored; /* true after first manage restores saved state */
 
-	/* Lists of tracked objects */
-	struct wl_list views;	/* cow_view.wm_link */
-	struct wl_list outputs; /* cow_output.wm_link */
-	struct wl_list seats;	/* cow_seat.wm_link */
+  /* Lists of tracked objects */
+  struct wl_list views;      /* cow_view.wm_link */
+  struct wl_list outputs;    /* cow_output.wm_link */
+  struct wl_list seats;      /* cow_seat.wm_link */
+  struct wl_list containers; /* cow_container.wm_link */
 
-	/* The "current" output and focused view */
-	struct cow_output *current_output;
-	struct cow_view	  *focused_view;
+  /* The "current" output and focused view */
+  struct cow_output *current_output;
+  struct cow_view *focused_view;
 
-	/* Pending state changes accumulated between manage sequences */
-	struct wl_list new_views;    /* views created this sequence */
-	struct wl_list closed_views; /* views closed this sequence */
+  /* Pending state changes accumulated between manage sequences */
+  struct wl_list new_views;    /* views created this sequence */
+  struct wl_list closed_views; /* views closed this sequence */
 
-	/* Deferred manage_dirty request from IPC context */
-	bool needs_manage_dirty;
+  /* Deferred manage_dirty request from IPC context */
+  bool needs_manage_dirty;
 
-	/* Deferred exec commands pending from config loading */
-	bool exec_pending;
+  /* Deferred exec commands pending from config loading */
+  bool exec_pending;
 
-	/* Deferred focus request from IPC context */
-	struct cow_view *pending_focus;
+  /* Deferred focus request from IPC context */
+  struct cow_view *pending_focus;
 
-	/* Deferred pointer warp from IPC context */
-	bool pending_warp;
-	int  warp_x, warp_y;
+  /* Deferred pointer warp from IPC context */
+  bool pending_warp;
+  int warp_x, warp_y;
 
-	/* Bound wl_output objects (for matching to cow_outputs) */
-	struct wl_list wl_outputs; /* cow_wl_output_entry.link */
+  /*
+   * Container drag-and-drop state.
+   * drag_drop_source: the view currently being dragged with -C.
+   * drag_drop_target: the view whose titlebar is highlighted as the
+   *                   drop target.  NULL when no drag is in progress.
+   */
+  struct cow_view *drag_drop_source;
+  struct cow_view *drag_drop_target;
+
+  /* Bound wl_output objects (for matching to cow_outputs) */
+  struct wl_list wl_outputs; /* cow_wl_output_entry.link */
 };
 
 /*
@@ -108,10 +118,10 @@ struct cow_wm {
  * Used to match registry wl_output objects to cow_output structs.
  */
 struct cow_wl_output_entry {
-	struct wl_output *wl_output;
-	uint32_t	  global_name;
-	char	      *name; /* human-readable name from wl_output.name event */
-	struct wl_list link;
+  struct wl_output *wl_output;
+  uint32_t global_name;
+  char *name; /* human-readable name from wl_output.name event */
+  struct wl_list link;
 };
 
 extern struct cow_wm cow_wm;

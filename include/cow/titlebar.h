@@ -53,10 +53,21 @@ int cow_titlebar_compute_thickness(struct cow_font *font);
  * `icon_inverted_button`: -1 = none, 0/1/2 = button with swapped icon relief
  * `title_pressed`: true = title area drawn sunken (during drag)
  */
+/*
+ * tab_titles: array of n_tabs strings (app_id or title per member).
+ *             NULL means single-window mode (normal rendering).
+ * n_tabs:     number of tab labels (>1 means container tab strip).
+ * active_tab: index of the active member in tab_titles.
+ * drop_target: when true, draw a highlight border on the title strip
+ *              to indicate this window is the current drop target.
+ */
 void cow_titlebar_render(uint32_t *pixels, int stride_px, int frame_w,
-    int border_width, int title_thickness, const char *title, bool active,
-    struct cow_font *font, int pressed_button, int icon_inverted_button,
-    bool title_pressed, const float *style_colour, const float *style_fg,
-    bool sticky);
+                         int border_width, int title_thickness,
+                         const char *title, bool active, struct cow_font *font,
+                         int pressed_button, int icon_inverted_button,
+                         bool title_pressed, const float *style_colour,
+                         const float *style_fg, bool sticky,
+                         const char **tab_titles, int n_tabs, int active_tab,
+                         bool drop_target);
 
 #endif

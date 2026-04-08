@@ -14,6 +14,7 @@ srcs = [
     'src/border.c',
     'src/cmd-action.c',
     'src/cmd-bind.c',
+    'src/cmd-container.c',
     'src/cmd-ctx.c',
     'src/cmd-desk.c',
     'src/cmd-exec.c',
