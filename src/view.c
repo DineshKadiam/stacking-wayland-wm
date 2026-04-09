@@ -379,13 +379,17 @@ cow_view_configure(struct cow_view *view)
 	cow_view_resolve_style(view);
 
 	/*
-	 * Do not propose initial dimensions.  Letting the application choose
-	 * its own natural size avoids overriding fixed-cell-size applications
-	 * (e.g. xterm at 80x24): proposing a fraction of the output size
-	 * causes such apps to scale up to fill the hint rather than opening
-	 * at their configured default.  cow will propose dimensions later if
-	 * the user maximizes, expands, or explicitly resizes the window.
+	 * Trigger River's .ready -> .initialized state transition by calling
+	 * propose_dimensions.  Without this call, River never sends the first
+	 * configure and the window stays invisible.
+	 *
+	 * Proposing 0x0 means "no preference":
+	 * - XDG shell apps (Chrome, pavucontrol): receive configure(0, 0)
+	 *   which means "choose your own size" per the XDG shell spec.
+	 * - XWayland apps (xterm): River substitutes the X11 surface's own
+	 *   geometry for 0, so xterm -g 80x24 is honoured.
 	 */
+	river_window_v1_propose_dimensions(view->river_window, 0, 0);
 
 	view->configured = true;
 
