@@ -109,6 +109,19 @@ struct cow_wm {
   struct cow_view *drag_drop_source;
   struct cow_view *drag_drop_target;
 
+  /*
+   * Drag ghost: a small circle that follows the pointer during a
+   * container-forming drag (-C), giving visual feedback without
+   * moving the source window.
+   */
+  struct wl_surface            *drag_ghost_surface;
+  struct river_shell_surface_v1 *drag_ghost_shell;
+  struct river_node_v1          *drag_ghost_node;
+  struct cow_shm_buffer         *drag_ghost_buffer;
+  bool  drag_ghost_committed;
+  int   drag_ghost_x;
+  int   drag_ghost_y;
+
   /* Bound wl_output objects (for matching to cow_outputs) */
   struct wl_list wl_outputs; /* cow_wl_output_entry.link */
 };
@@ -146,6 +159,7 @@ void cow_wm_fini(void);
  * Request that the compositor start a manage sequence.
  */
 void cow_wm_manage_dirty(void);
+void cow_drag_ghost_destroy(void);
 
 /*
  * Signal handler for SIGTERM/SIGINT -- triggers clean shutdown.

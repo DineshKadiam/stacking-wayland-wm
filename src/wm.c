@@ -21,6 +21,9 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <cairo.h>
+#include <math.h>
+
 
 #include <wayland-client.h>
 
@@ -36,8 +39,11 @@
 #include "cow/state.h"
 #include "cow/status.h"
 #include "cow/titlebar.h"
+#include "cow/shm.h"
 #include "cow/view.h"
 #include "cow/wm.h"
+
+#define GHOST_RADIUS 24
 
 #include "river-layer-shell-v1-client-protocol.h"
 #include "river-window-management-v1-client-protocol.h"
@@ -50,6 +56,8 @@ static void handle_wm_unavailable(void *, struct river_window_manager_v1 *);
 static void handle_wm_finished(void *, struct river_window_manager_v1 *);
 static void handle_wm_manage_start(void *, struct river_window_manager_v1 *);
 static void handle_wm_render_start(void *, struct river_window_manager_v1 *);
+static void cow_drag_ghost_create(struct cow_view *);
+
 static void handle_wm_session_locked(void *, struct river_window_manager_v1 *);
 static void handle_wm_session_unlocked(void *,
                                        struct river_window_manager_v1 *);
@@ -175,10 +183,6 @@ static const struct wl_registry_listener registry_listener = {
     .global_remove = registry_global_remove,
 };
 
-/*
- * Window manager event handlers.
- */
-
 static void
 handle_wm_unavailable(__unused void *data,
                       __unused struct river_window_manager_v1 *manager) {
@@ -294,8 +298,8 @@ static void handle_wm_manage_start(__unused void *data,
 
     /*
      * Container drag: scan for a drop target when a -C move is
-     * in progress.  Highlight the titlebar of any window whose
-     * titlebar zone contains the pointer.
+     * in progress.  Highlight any window whose frame contains the
+     * pointer.
      */
     if (s->container_drag && s->op_in_progress &&
         s->op.type == COW_POINTER_OP_MOVE && s->has_pointer_position) {
@@ -304,17 +308,12 @@ static void handle_wm_manage_start(__unused void *data,
       wl_list_for_each(sv, &cow_wm.views, wm_link) {
         if (sv->closed || sv == s->op.view)
           continue;
-        if (!sv->use_ssd || sv->dec.title_thickness <= 0)
-          continue;
         if (sv->output == NULL || !cow_view_visible(sv, sv->output))
           continue;
-        /* Check pointer in titlebar zone */
-        int tt = sv->dec.title_thickness;
-        int bw = sv->dec.border_width;
-        int lx = s->pointer_x - sv->x;
-        int ly = s->pointer_y - sv->y;
-        int cw = sv->content_width;
-        if (lx >= -bw && lx < cw + bw && ly >= -(tt + bw) && ly < -bw) {
+        /* Check pointer anywhere in the window's frame */
+        struct cow_box fb = cow_view_frame_box(sv);
+        if (s->pointer_x >= fb.x && s->pointer_x < fb.x + fb.width &&
+            s->pointer_y >= fb.y && s->pointer_y < fb.y + fb.height) {
           new_target = sv;
           break;
         }
@@ -328,6 +327,11 @@ static void handle_wm_manage_start(__unused void *data,
           cow_wm.drag_drop_target->dec.dirty = true;
       }
     }
+
+    /* Create drag ghost when container drag first starts */
+    if (s->container_drag && s->op_in_progress &&
+        cow_wm.drag_ghost_surface == NULL && cow_wm.drag_drop_source != NULL)
+      cow_drag_ghost_create(cow_wm.drag_drop_source);
 
     /* Handle focus + decoration click dispatch */
     if (s->interacted_view != NULL && !s->interacted_view->closed) {
@@ -524,7 +528,7 @@ static void handle_wm_manage_start(__unused void *data,
       }
       s->interacted_view = NULL;
     }
-  seat_done:;
+  seat_done:
 
     /* Sloppy focus */
     if (s->sloppy_focus_view != NULL && !s->sloppy_focus_view->closed &&
@@ -620,6 +624,95 @@ static void handle_wm_manage_start(__unused void *data,
   }
 }
 
+static void
+cow_drag_ghost_create(__unused struct cow_view *src)
+{
+	if (cow_wm.compositor == NULL || cow_wm.manager == NULL ||
+	    cow_wm.drag_ghost_surface != NULL)
+		return;
+
+	int sz = GHOST_RADIUS * 2;
+
+	struct wl_surface *surf =
+	    wl_compositor_create_surface(cow_wm.compositor);
+	if (surf == NULL)
+		return;
+
+	struct river_shell_surface_v1 *shell =
+	    river_window_manager_v1_get_shell_surface(cow_wm.manager, surf);
+	if (shell == NULL) {
+		wl_surface_destroy(surf);
+		return;
+	}
+
+	struct cow_shm_buffer *buf = cow_shm_buffer_create(sz, sz);
+	if (buf == NULL) {
+		river_shell_surface_v1_destroy(shell);
+		wl_surface_destroy(surf);
+		return;
+	}
+
+	/* Draw a filled circle with a border using Cairo */
+	cairo_surface_t *cs = cairo_image_surface_create_for_data(
+	    (unsigned char *)buf->data, CAIRO_FORMAT_ARGB32,
+	    sz, sz, buf->stride);
+	cairo_t *cr = cairo_create(cs);
+
+	cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+	cairo_paint(cr);
+	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+
+	/* Filled circle: semi-transparent orange */
+	cairo_arc(cr, GHOST_RADIUS, GHOST_RADIUS, GHOST_RADIUS - 2,
+	    0, 2 * M_PI);
+	cairo_set_source_rgba(cr, 1.0, 0.53, 0.0, 0.4);
+	cairo_fill_preserve(cr);
+
+	/* Border: opaque orange, 2px */
+	cairo_set_source_rgba(cr, 1.0, 0.53, 0.0, 0.85);
+	cairo_set_line_width(cr, 2.0);
+	cairo_stroke(cr);
+
+	cairo_destroy(cr);
+	cairo_surface_destroy(cs);
+
+	cow_wm.drag_ghost_surface   = surf;
+	cow_wm.drag_ghost_shell     = shell;
+	cow_wm.drag_ghost_node      = river_shell_surface_v1_get_node(shell);
+	cow_wm.drag_ghost_buffer    = buf;
+	cow_wm.drag_ghost_committed = false;
+	/* Use the current pointer position so the circle appears under
+	 * the cursor immediately, not at the source window's origin. */
+	struct cow_seat *gs;
+	wl_list_for_each(gs, &cow_wm.seats, wm_link) {
+		if (gs->has_pointer_position) {
+			cow_wm.drag_ghost_x = gs->pointer_x;
+			cow_wm.drag_ghost_y = gs->pointer_y;
+			break;
+		}
+	}
+}
+
+void
+cow_drag_ghost_destroy(void)
+{
+	if (cow_wm.drag_ghost_node != NULL) {
+		river_node_v1_destroy(cow_wm.drag_ghost_node);
+		cow_wm.drag_ghost_node = NULL;
+	}
+	if (cow_wm.drag_ghost_shell != NULL) {
+		river_shell_surface_v1_destroy(cow_wm.drag_ghost_shell);
+		cow_wm.drag_ghost_shell = NULL;
+	}
+	if (cow_wm.drag_ghost_surface != NULL) {
+		wl_surface_destroy(cow_wm.drag_ghost_surface);
+		cow_wm.drag_ghost_surface = NULL;
+	}
+	cow_shm_buffer_destroy(cow_wm.drag_ghost_buffer);
+	cow_wm.drag_ghost_buffer    = NULL;
+	cow_wm.drag_ghost_committed = false;
+}
+
 static void handle_wm_render_start(__unused void *data,
                                    struct river_window_manager_v1 *manager) {
   cow_wm.sequence = COW_WM_SEQUENCE_RENDER;
@@ -638,6 +731,23 @@ static void handle_wm_render_start(__unused void *data,
       /* Render icon for iconified views */
       if (cow_view_is_iconified(view))
         cow_view_icon_render(view);
+    }
+  }
+
+  /* Render drag ghost if a container drag is in progress */
+  if (cow_wm.drag_ghost_node != NULL) {
+    river_node_v1_set_position(cow_wm.drag_ghost_node,
+        cow_wm.drag_ghost_x - GHOST_RADIUS,
+        cow_wm.drag_ghost_y - GHOST_RADIUS);
+    river_node_v1_place_top(cow_wm.drag_ghost_node);
+    if (!cow_wm.drag_ghost_committed) {
+      wl_surface_attach(cow_wm.drag_ghost_surface,
+          cow_wm.drag_ghost_buffer->buffer, 0, 0);
+      wl_surface_damage_buffer(cow_wm.drag_ghost_surface, 0, 0,
+          GHOST_RADIUS * 2, GHOST_RADIUS * 2);
+      river_shell_surface_v1_sync_next_commit(cow_wm.drag_ghost_shell);
+      wl_surface_commit(cow_wm.drag_ghost_surface);
+      cow_wm.drag_ghost_committed = true;
     }
   }
 

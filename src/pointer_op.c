@@ -254,31 +254,28 @@ void cow_pointer_op_process(struct cow_seat *seat) {
 
   switch (seat->op.type) {
   case COW_POINTER_OP_MOVE: {
-    view->x = seat->op.start_x + dx;
-    view->y = seat->op.start_y + dy;
-
-    /* Snap to nearby edges */
     int bw = view->dec.border_width;
     int tt = view->dec.title_thickness;
-    int fl = view->x - bw;
-    int ft = view->y - bw - tt;
-    int fr = view->x + view->content_width + bw;
-    int fb = view->y + view->content_height + bw;
+
+    int cx = seat->op.start_x + dx;
+    int cy = seat->op.start_y + dy;
+    int fl = cx - bw;
+    int ft = cy - bw - tt;
+    int fr = cx + view->content_width + bw;
+    int fb = cy + view->content_height + bw;
     snap_edges(view, &fl, &ft, &fr, &fb, false);
-    view->x = fl + bw;
-    view->y = ft + bw + tt;
 
-    /* Update output assignment in real time so the
-     * compositor renders the window on the correct
-     * monitor during the drag. */
-    cow_view_update_output(view);
-
-    /* Propagate position to the container so all members and
-     * the container's authoritative x/y stay in sync.  Without
-     * this, c->x/c->y are stale and river_node_v1_set_position
-     * snaps every node back to the old position on the next
-     * render, breaking subsequent hit-detection. */
-    cow_view_sync_container_pos(view);
+    if (seat->container_drag) {
+      /* Container drag (-C): keep source in place, move ghost */
+      cow_wm.drag_ghost_x = seat->pointer_x;
+      cow_wm.drag_ghost_y = seat->pointer_y;
+    } else {
+      /* Normal move */
+      view->x = fl + bw;
+      view->y = ft + bw + tt;
+      cow_view_update_output(view);
+      cow_view_sync_container_pos(view);
+    }
     break;
   }
 
@@ -408,6 +405,7 @@ void cow_pointer_op_process(struct cow_seat *seat) {
     }
     seat->container_drag = false;
     cow_wm.drag_drop_source = NULL;
+    cow_drag_ghost_destroy();
 
     /* After move/resize, update the view's output assignment
      * based on where the window ended up. */
