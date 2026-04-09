@@ -13,19 +13,6 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-/*
- * Command: window -- operations on the focused window.
- *
- * usage: window close
- *        window raise
- *        window lower
- *        window hide
- *        window only
- *        window maximize
- *        window expand
- *        window shade [-d direction]
- *        window toggle -f sticky
- */
 
 #include <cJSON.h>
 #include <limits.h>
@@ -33,6 +20,7 @@
 
 #include "cow/cmd.h"
 #include "cow/config.h"
+#include "cow/desk_ops.h"
 #include "cow/ipc.h"
 #include "cow/keybinding.h"
 #include "cow/output.h"
@@ -99,9 +87,17 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 		do_lower(view);
 
 	if (args_has(args, 's')) {
+		bool was_sticky = (view->flags & COW_VIEW_STICKY_FLAG) != 0;
+
 		view->flags ^= COW_VIEW_STICKY_FLAG;
 		view->dec.dirty		  = true;
 		cow_wm.needs_manage_dirty = true;
+
+		if (was_sticky) {
+			uint8_t target = (view->output != NULL) ?
+				view->output->current_desk->nr : view->desk->nr;
+			cow_view_assign_desk(view, target);
+		}
 	}
 
 	if (args_has(args, 'i'))
