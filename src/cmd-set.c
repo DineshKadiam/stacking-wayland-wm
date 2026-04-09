@@ -125,6 +125,22 @@ static enum cmd_retval cmd_set_exec(struct cmd *self, struct cmd_q *cmdq) {
     return (CMD_RETURN_NORMAL);
   }
 
+  if (strcmp(key, "titlebar.height") == 0) {
+    if (cow_config != NULL) {
+      const char *errstr;
+      long long v = strtonum(val, 0, INT_MAX, &errstr);
+      if (errstr != NULL) {
+        cmdq_error(cmdq, "set: titlebar.height: bad value: %s", val);
+        xfree(val);
+        return (CMD_RETURN_ERROR);
+      }
+      cow_config->titlebar.height = (int)v;
+      refresh_visuals();
+    }
+    xfree(val);
+    return (CMD_RETURN_NORMAL);
+  }
+
   if (strcmp(key, "container.tab.sunken") == 0) {
     if (cow_config != NULL)
       cow_config->container.tab_sunken_inactive =
@@ -489,12 +505,16 @@ static void refresh_visuals(void) {
 
   int new_tt = 0;
   if (cow_config->titlebar.enabled) {
-    struct cow_font tb_font;
-    const char *fname =
-        cow_config->font_name ? cow_config->font_name : "monospace 10";
-
-    cow_font_init(&tb_font, fname);
-    new_tt = cow_titlebar_compute_thickness(&tb_font);
+    int h = cow_config->titlebar.height;
+    if (h > 0) {
+      new_tt = h;
+    } else {
+      struct cow_font tb_font;
+      const char *fname =
+          cow_config->font_name ? cow_config->font_name : "monospace 10";
+      cow_font_init(&tb_font, fname);
+      new_tt = cow_titlebar_compute_thickness(&tb_font);
+    }
   }
 
   struct cow_view *view;

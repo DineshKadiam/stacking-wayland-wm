@@ -378,23 +378,14 @@ cow_view_configure(struct cow_view *view)
 	/* Resolve visual style from global config + matching rules */
 	cow_view_resolve_style(view);
 
-	/* Propose initial dimensions based on the output's usable area */
-	if (view->output != NULL) {
-		int w = view->output->usable_area.width * 2 / 3;
-		int h = view->output->usable_area.height * 2 / 3;
-		if (w < 200)
-			w = 200;
-		if (h < 200)
-			h = 200;
-		view->proposed_width  = w;
-		view->proposed_height = h;
-		river_window_v1_propose_dimensions(view->river_window, w, h);
-	} else {
-		view->proposed_width  = 800;
-		view->proposed_height = 600;
-		river_window_v1_propose_dimensions(view->river_window, 800,
-		    600);
-	}
+	/*
+	 * Do not propose initial dimensions.  Letting the application choose
+	 * its own natural size avoids overriding fixed-cell-size applications
+	 * (e.g. xterm at 80x24): proposing a fraction of the output size
+	 * causes such apps to scale up to fill the hint rather than opening
+	 * at their configured default.  cow will propose dimensions later if
+	 * the user maximizes, expands, or explicitly resizes the window.
+	 */
 
 	view->configured = true;
 

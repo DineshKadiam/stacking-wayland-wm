@@ -340,8 +340,8 @@ static void handle_wm_manage_start(__unused void *data,
         int lx = s->pointer_x - iv->x;
         int ly = s->pointer_y - iv->y;
         int cl = cow_config ? cow_config->corner_length : 20;
-        if (tt > 0 && cl < bw + tt)
-          cl = bw + tt;
+        if (cl < bw)
+          cl = bw;
 
         int hit_cw = iv->sd != COW_SHADE_NONE ? iv->shade_saved_width
                                               : iv->content_width;

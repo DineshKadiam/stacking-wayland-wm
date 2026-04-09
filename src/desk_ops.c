@@ -16,9 +16,7 @@
 #include "cow/desk_ops.h"
 
 #include <stdbool.h>
-#include <stdio.h>
 
-#include "cow/compat.h"
 #include "cow/config.h"
 #include "cow/output.h"
 #include "cow/seat.h"

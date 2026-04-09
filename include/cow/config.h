@@ -136,6 +136,8 @@ struct cow_titlebar_config {
   float fg_active[4];
   float fg_inactive[4];
   char *font_name;
+  /* Explicit height override; 0 means derive from font. */
+  int height;
 };
 
 /*

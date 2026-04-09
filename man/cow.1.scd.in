@@ -166,6 +166,10 @@ Set a configuration option at runtime. *-v* prints the resulting value.
 |  *titlebar.enabled*
 :  _true_ | _1_
 :  Show titlebars.
+|  *titlebar.height*
+:  integer (pixels)
+:  Fix the titlebar height in pixels. When set to 0 (the default) the
+   height is derived from the font size.
 |  *titlebar.button\_left.vector*
 :  vector string
 :  Geometry of the left titlebar button.

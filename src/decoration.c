@@ -108,7 +108,8 @@ void cow_decoration_init(struct cow_view_decoration *dec) {
   /* Enable titlebar when config says so */
   if (cow_config != NULL && cow_config->titlebar.enabled) {
     struct cow_font *font = get_titlebar_font();
-    dec->title_thickness = cow_titlebar_compute_thickness(font);
+    int h = cow_config->titlebar.height;
+    dec->title_thickness = (h > 0) ? h : cow_titlebar_compute_thickness(font);
   } else {
     dec->title_thickness = 0;
   }
@@ -133,7 +134,8 @@ void cow_decoration_update(struct cow_view *view, bool active) {
     if (view->style.titlebar_enabled) {
       if (dec->title_thickness == 0) {
         struct cow_font *font = get_titlebar_font();
-        dec->title_thickness = cow_titlebar_compute_thickness(font);
+        int h = cow_config ? cow_config->titlebar.height : 0;
+        dec->title_thickness = (h > 0) ? h : cow_titlebar_compute_thickness(font);
       }
     } else {
       dec->title_thickness = 0;
