@@ -376,26 +376,43 @@ void cow_pointer_op_process(struct cow_seat *seat) {
     }
 
     /*
-     * Container drag completion: if this was a -C move and the
-     * pointer was released over another window's titlebar, group
-     * the two windows into a container.
+     * Container drag (-C) completion.
+     *
+     * Source already in a container: always detach, regardless of
+     * where the pointer lands.  No target highlight needed.
+     *
+     * Source NOT in a container: group with whatever window is
+     * under the pointer (if any).
      */
     if (seat->container_drag && seat->op.type == COW_POINTER_OP_MOVE &&
-        cow_wm.drag_drop_target != NULL && !cow_wm.drag_drop_target->closed &&
-        cow_wm.drag_drop_target != view) {
+        view->container_member != NULL) {
+      /* Uncontainerise: detach and place at pointer */
+      if (cow_wm.drag_drop_target != NULL) {
+        cow_wm.drag_drop_target->dec.dirty = true;
+        cow_wm.drag_drop_target = NULL;
+      }
+      int bw = view->dec.border_width;
+      int tt = view->dec.title_thickness;
+      cow_container_remove_view(view);
+      int fw = view->content_width + 2 * bw;
+      int fh = view->content_height + bw + tt + bw;
+      view->x = seat->pointer_x - fw / 2 + bw;
+      view->y = seat->pointer_y - fh / 2 + bw + tt;
+      view->dec.dirty = true;
+      cow_wm.needs_manage_dirty = true;
+    } else if (seat->container_drag &&
+               seat->op.type == COW_POINTER_OP_MOVE &&
+               cow_wm.drag_drop_target != NULL &&
+               !cow_wm.drag_drop_target->closed &&
+               cow_wm.drag_drop_target != view) {
+      /* Containerise: group source with target */
       struct cow_view *target = cow_wm.drag_drop_target;
-
-      /* Clear indicator before grouping (avoid dirty loop) */
       cow_wm.drag_drop_target = NULL;
       target->dec.dirty = true;
-
-      if (target->container_member != NULL) {
-        /* Drop onto an existing container member */
+      if (target->container_member != NULL)
         cow_container_add(target->container_member->container, view);
-      } else {
-        /* Create a new container */
+      else
         cow_container_create(target, view);
-      }
     } else {
       /* Normal drop: clear any lingering indicator */
       if (cow_wm.drag_drop_target != NULL) {

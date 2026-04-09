@@ -302,7 +302,11 @@ static void handle_wm_manage_start(__unused void *data,
      * pointer.
      */
     if (s->container_drag && s->op_in_progress &&
-        s->op.type == COW_POINTER_OP_MOVE && s->has_pointer_position) {
+        s->op.type == COW_POINTER_OP_MOVE && s->has_pointer_position &&
+        s->op.view->container_member == NULL) {
+      /* Only scan for drop targets when the source is NOT already
+       * containerised.  A -C drag from a containerised view is an
+       * uncontainerise operation -- no highlight needed. */
       struct cow_view *new_target = NULL;
       struct cow_view *sv;
       wl_list_for_each(sv, &cow_wm.views, wm_link) {
