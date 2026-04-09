@@ -348,8 +348,10 @@ static void do_set_border_style(const char *val) {
 static void do_set_desktop_config(const char *val, struct cmd_q *cmdq) {
   if (strcmp(val, "global") == 0) {
     cow_config->desktop_config = COW_DESKTOP_GLOBAL;
-    /* Switch all outputs to the current output's desk,
-     * matching fvwm3's behaviour. */
+
+    if (cow_ipc.startup_mode)
+      return;
+
     struct cow_output *cur = cow_wm.current_output;
     if (cur != NULL) {
       uint8_t desk = cur->current_desk->nr;
