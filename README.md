@@ -49,6 +49,8 @@ windows together into tabs.
 
 ![](./cow-container.png)
 
+A very crude video is [also available](https://youtu.be/tRdhfRfdPuI)
+
 ## How do I build CoW?
 
 Because `cow` is a window manager reliant on `river`, then the binary for
