@@ -104,6 +104,8 @@ window_handle_title(void *data, __unused struct river_window_v1 *rw,
 
 	xfree(view->title);
 	view->title = title ? xstrdup(title) : NULL;
+	view->dec.dirty		  = true;
+	cow_wm.needs_manage_dirty = true;
 	cow_status_emit();
 }
 
@@ -1376,6 +1378,12 @@ cow_container_add(struct cow_container *c, struct cow_view *view)
 
 	view->container_member = m;
 
+	/* Save pre-container geometry for restoration on detach */
+	m->pre_x      = view->x;
+	m->pre_y      = view->y;
+	m->pre_width  = view->content_width;
+	m->pre_height = view->content_height;
+
 	/* Non-active members must not draw their own frame */
 	if (c->active != NULL && c->active != m) {
 		view->use_ssd = false;
@@ -1489,17 +1497,30 @@ cow_container_remove_view(struct cow_view *view)
 	wl_list_remove(&m->link);
 	c->n_members--;
 	view->container_member = NULL;
+	int saved_pre_x      = m->pre_x;
+	int saved_pre_y      = m->pre_y;
+	int saved_pre_width  = m->pre_width;
+	int saved_pre_height = m->pre_height;
 	xfree(m);
+	m = NULL;
 
 	/* Restore independent decoration */
 	view->use_ssd = true;
 	cow_decoration_init(&view->dec);
 	cow_view_resolve_style(view);
 
-	/* Cascade the detached view away from the container */
-	int step	= 30;
-	view->x		= c->x + step;
-	view->y		= c->y + step;
+	/* Restore pre-container geometry */
+	if (saved_pre_width > 0 && saved_pre_height > 0) {
+		view->x = saved_pre_x;
+		view->y = saved_pre_y;
+		river_window_v1_propose_dimensions(view->river_window,
+		    saved_pre_width, saved_pre_height);
+		view->proposed_width  = saved_pre_width;
+		view->proposed_height = saved_pre_height;
+	} else {
+		view->x = c->x + 30;
+		view->y = c->y + 30;
+	}
 	view->dec.dirty = true;
 
 	if (c->n_members <= 1) {

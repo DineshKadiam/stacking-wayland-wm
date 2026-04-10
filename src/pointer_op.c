@@ -386,16 +386,18 @@ void cow_pointer_op_process(struct cow_seat *seat) {
      */
     if (seat->container_drag && seat->op.type == COW_POINTER_OP_MOVE &&
         view->container_member != NULL) {
-      /* Uncontainerise: detach and place at pointer */
+      /* Uncontainerise: detach, restore pre-container size, place at pointer */
       if (cow_wm.drag_drop_target != NULL) {
         cow_wm.drag_drop_target->dec.dirty = true;
         cow_wm.drag_drop_target = NULL;
       }
       int bw = view->dec.border_width;
       int tt = view->dec.title_thickness;
+      /* cow_container_remove_view restores pre-container dimensions */
       cow_container_remove_view(view);
-      int fw = view->content_width + 2 * bw;
-      int fh = view->content_height + bw + tt + bw;
+      /* Use restored (proposed) size for centring on pointer */
+      int fw = (view->proposed_width  > 0 ? view->proposed_width  : view->content_width)  + 2 * bw;
+      int fh = (view->proposed_height > 0 ? view->proposed_height : view->content_height) + bw + tt + bw;
       view->x = seat->pointer_x - fw / 2 + bw;
       view->y = seat->pointer_y - fh / 2 + bw + tt;
       view->dec.dirty = true;

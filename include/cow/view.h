@@ -43,6 +43,9 @@ struct cow_container_member {
 	struct wl_list	      link; /* cow_container.members */
 	struct cow_view	     *view;
 	struct cow_container *container;
+	/* Geometry saved when the view joined, restored on detach */
+	int pre_x, pre_y;
+	int pre_width, pre_height;
 };
 
 struct cow_container {
