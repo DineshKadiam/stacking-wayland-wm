@@ -40,6 +40,10 @@ More concretely though, have a look at:
 * [waybar](./config/waybar/) -- this can be copied verbatim to `~/.config/` if
   desired to it can be configured to your liking.
 
+## Wiki
+
+See:  https://codeberg.org/thomasadam/cow/wiki/Home
+
 ## What does it look like?
 
 ![](./cow-ss.png)
