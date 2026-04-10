@@ -101,7 +101,7 @@ cow to be used with wayland login managers.
 
 You can email me at: thomas at xteddy dot org
 
-I've setup an IRC channel on `libra.chat` -- `#cow-wayland`
+Or, use the IRC channel on `libera.chat` -- `#cow-wayland`
 
 IRC is preferred over other forms of communication.  Maybe I'll see you there?
 
