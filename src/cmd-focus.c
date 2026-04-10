@@ -37,7 +37,6 @@ static void	       do_title(const char *, struct cmd_q *);
 static void	       do_id(const char *, struct cmd_q *);
 static void	       do_directional(int, struct cmd_q *);
 static void	       do_screen(const char *, struct cmd_q *);
-static void	       warp_to_view(const struct cow_view *);
 static int	       parse_direction(const char *);
 
 struct cmd_entry cmd_focus_entry = {
@@ -90,17 +89,7 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	if (do_warp) {
-		/*
-		 * defer_focus() sets pending_focus immediately; use it as the
-		 * warp target so the pointer lands on the newly focused window.
-		 * Fall back to focused_view when -w is used without a focus
-		 * change (warp to the currently focused window in place).
-		 */
-		const struct cow_view *target = cow_wm.pending_focus != NULL ?
-		    cow_wm.pending_focus :
-		    cow_wm.focused_view;
-		if (target != NULL)
-			warp_to_view(target);
+		view_warp_to_focused();
 	}
 
 	return (CMD_RETURN_NORMAL);
@@ -257,26 +246,6 @@ parse_direction(const char *s)
 	if (strcmp(s, "right") == 0)
 		return DIR_RIGHT;
 	return -1;
-}
-
-static void
-view_centre(const struct cow_view *v, int *cx, int *cy)
-{
-	*cx = v->x + v->content_width / 2;
-	*cy = v->y - v->dec.title_thickness / 2 + v->content_height / 2;
-}
-
-/* Warp the pointer to the centre of a view (used by focus -w). */
-static void
-warp_to_view(const struct cow_view *v)
-{
-	int cx, cy;
-
-	view_centre(v, &cx, &cy);
-	cow_wm.pending_warp	  = true;
-	cow_wm.warp_x		  = cx;
-	cow_wm.warp_y		  = cy;
-	cow_wm.needs_manage_dirty = true;
 }
 
 static void

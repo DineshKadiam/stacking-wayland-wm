@@ -259,7 +259,7 @@ cow_view_create(struct river_window_v1 *rw)
 	view->has_dimensions	 = false;
 	view->closed		 = false;
 	view->configured	 = false;
-	view->fullscreen	 = false;
+view->fullscreen	 = false;
 	view->maximized		 = false;
 	view->flags		 = 0;
 
@@ -1614,3 +1614,29 @@ cow_view_sync_container_geometry(struct cow_view *view, int x, int y, int w,
 		cow_view_set_pending_geometry(m->view, x, y, w, h);
 	}
 }
+
+void
+view_warp_to_focused(void)
+{
+        const struct cow_view *v = cow_wm.pending_focus != NULL ?
+            cow_wm.pending_focus :
+            cow_wm.focused_view;
+	int cx, cy;
+
+        if (v == NULL)
+          return;
+
+        view_centre(v, &cx, &cy);
+	cow_wm.pending_warp	  = true;
+	cow_wm.warp_x		  = cx;
+	cow_wm.warp_y		  = cy;
+	cow_wm.needs_manage_dirty = true;
+}
+
+void
+view_centre(const struct cow_view *v, int *cx, int *cy)
+{
+	*cx = v->x + v->content_width / 2;
+	*cy = v->y - v->dec.title_thickness / 2 + v->content_height / 2;
+}
+

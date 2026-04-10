@@ -13,14 +13,6 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-/*
- * Command: window-move -- move the focused window.
- *
- * usage: window-move [-o output] [-c]
- *        window-move -d dir [-n]
- *        window-move -k 0-9
- *        window-move [-x X] [-y Y]
- */
 
 #include <bsd/stdlib.h>
 #include <stdio.h>
@@ -53,11 +45,12 @@ static struct cow_output *output_neighbour_in_dir(struct cow_output *,
 
 struct cmd_entry cmd_move_entry = {
     "window-move",
-    "t:d:o:cCnk:x:y:",
+    "t:d:o:cCnwk:x:y:",
     0,
     0,
     "[-C] [-d dir [-n]] [-o output] [-c] [-k 0-9] [-x X] [-y Y]",
-    cmd_move_exec};
+    cmd_move_exec
+};
 
 static enum cmd_retval cmd_move_exec(struct cmd *self, struct cmd_q *cmdq) {
   struct args *args = self->args;
@@ -79,9 +72,13 @@ static enum cmd_retval cmd_move_exec(struct cmd *self, struct cmd_q *cmdq) {
   }
 
   if (dir_val != NULL) {
-    if (args_has(args, 'n'))
+    if (args_has(args, 'n')) {
       do_snap(view, dir_val, cmdq);
-    else
+
+      if (args_has(args, 'w')) {
+         view_warp_to_focused(); 
+      }
+    } else
       do_step(view, dir_val, cmdq);
     return (CMD_RETURN_NORMAL);
   }

@@ -426,4 +426,7 @@ void cow_view_sync_container_pos(struct cow_view *view);
 void cow_view_sync_container_geometry(struct cow_view *view, int x, int y,
     int w, int h);
 
+void view_warp_to_focused(void);
+void view_centre(const struct cow_view *, int *, int *);
+
 #endif
