@@ -113,8 +113,12 @@ struct cow_config *cow_config_create(void) {
   config->border_style = COW_BORDER_STYLE_NONE;
   config->placement = COW_PLACEMENT_CASCADE;
   config->desktop_config = COW_DESKTOP_GLOBAL;
-  config->page_cols      = 1;
-  config->page_rows      = 1;
+  config->page_cols         = 1;
+  config->page_rows         = 1;
+  config->page_scroll_animate   = false;
+  config->page_scroll_ms        = 200;
+  config->edge_scroll           = false;
+  config->edge_scroll_delay_ms  = 300;
   config->icon_size = 64;
   config->snap_distance = 10;
 

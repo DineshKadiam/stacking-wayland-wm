@@ -45,7 +45,7 @@ static struct cow_output *output_neighbour_in_dir(struct cow_output *,
 
 struct cmd_entry cmd_move_entry = {
     "window-move",
-    "t:d:o:cCnwk:x:y:",
+    "t:d:o:cCnwk:x:y:P:",
     0,
     0,
     "[-C] [-d dir [-n]] [-o output] [-c] [-k 0-9] [-x X] [-y Y]",
@@ -115,6 +115,30 @@ static enum cmd_retval cmd_move_exec(struct cmd *self, struct cmd_q *cmdq) {
     return (CMD_RETURN_NORMAL);
   }
 
+  if (args_get(args, 'P') != NULL) {
+    /* -P col [row] : move window to the given page.
+     * col is the -P argument; row follows as positional argv[0]. */
+    const char *col_s = args_get(args, 'P');
+    int col = 0, row = 0;
+    const char *errstr;
+    int cols = cow_config ? cow_config->page_cols : 1;
+    int rows = cow_config ? cow_config->page_rows : 1;
+    col = (int)strtonum(col_s, 0, cols - 1, &errstr);
+    if (errstr != NULL) {
+      cmdq_error(cmdq, "move: bad page column: %s", col_s);
+      return (CMD_RETURN_ERROR);
+    }
+    if (args->argc >= 1) {
+      row = (int)strtonum(args->argv[0], 0, rows - 1, &errstr);
+      if (errstr != NULL) {
+        cmdq_error(cmdq, "move: bad page row: %s", args->argv[0]);
+        return (CMD_RETURN_ERROR);
+      }
+    }
+    cow_view_move_to_page(view, col, row);
+    return (CMD_RETURN_NORMAL);
+  }
+
   /* Interactive move; -C arms container-formation on drop */
   bool container_drag = args_has(args, 'C');
   do_interactive(view);
@@ -144,6 +168,11 @@ static void unmax_if_needed(struct cow_view *view) {
 
 static void apply_move(struct cow_view *view) {
   cow_view_update_output(view);
+  /* Keep virtual position in sync with global position */
+  if (view->output != NULL && view->desk != NULL) {
+    view->vx = (view->x - view->output->x) + view->desk->page_vx;
+    view->vy = (view->y - view->output->y) + view->desk->page_vy;
+  }
   cow_view_sync_container_pos(view);
   view->dec.dirty = true;
   cow_wm.needs_manage_dirty = true;

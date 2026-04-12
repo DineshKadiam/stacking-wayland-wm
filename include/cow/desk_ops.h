@@ -16,6 +16,7 @@
 #if !defined(COW_DESK_OPS_H)
 #define COW_DESK_OPS_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 struct cow_output;
@@ -42,5 +43,39 @@ void cow_view_assign_desk(struct cow_view *view, uint8_t desk_nr);
  */
 int cow_view_visible_on_current(struct cow_view *view,
     struct cow_output				*output);
+
+/*
+ * Switch the current page on the given output to (col, row).
+ * col must be in [0, page_cols-1]; row in [0, page_rows-1].
+ * Clamped silently if out of range.
+ * Triggers a manage cycle; smooth animation is applied if configured.
+ */
+void cow_page_switch(struct cow_output *output, int col, int row);
+
+/*
+ * Return the current page column/row for the given output's current desk.
+ */
+int cow_page_col(const struct cow_output *output);
+int cow_page_row(const struct cow_output *output);
+
+/*
+ * Move view->vx/vy so the window lives on page (col, row) of its output,
+ * preserving its within-page position.
+ * Triggers a manage cycle and re-renders the view.
+ */
+void cow_view_move_to_page(struct cow_view *view, int col, int row);
+
+/*
+ * Clamp any views whose vx/vy fall outside the current page grid.
+ * Called after desktop_size is reduced.
+ */
+void cow_page_clamp_views(struct cow_output *output);
+
+/*
+ * Advance the smooth page scroll animation for one output.
+ * Returns true while the animation is in progress; the caller should
+ * keep the manage cycle running until this returns false.
+ */
+bool cow_page_scroll_tick(struct cow_output *output);
 
 #endif

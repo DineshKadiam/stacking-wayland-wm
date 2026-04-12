@@ -312,6 +312,7 @@ cow_ipc_load_config(const char *path)
 	cmdq_continue(cmdq);
 	cmdq_free(cmdq);
 
+
 	cow_ipc.startup_mode = false;
 
 	/* Report any errors */

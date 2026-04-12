@@ -88,7 +88,8 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	if (args_has(args, 's')) {
 		/* -s: toggle desk-sticky (visible on all desks) */
-		bool was_sticky = (view->flags & COW_VIEW_STICKY_DESK_FLAG) != 0;
+		bool was_sticky = (view->flags & COW_VIEW_STICKY_DESK_FLAG) !=
+		    0;
 
 		view->flags ^= COW_VIEW_STICKY_DESK_FLAG;
 		view->dec.dirty		  = true;
@@ -96,14 +97,16 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 
 		if (was_sticky) {
 			uint8_t target = (view->output != NULL) ?
-				view->output->current_desk->nr : view->desk->nr;
+			    view->output->current_desk->nr :
+			    view->desk->nr;
 			cow_view_assign_desk(view, target);
 		}
 	}
 
 	if (args_has(args, 'S')) {
-		/* -S: toggle page-sticky (visible on all pages of current desk) */
-		view->flags		  ^= COW_VIEW_STICKY_PAGE_FLAG;
+		/* -S: toggle page-sticky (visible on all pages of current desk)
+		 */
+		view->flags ^= COW_VIEW_STICKY_PAGE_FLAG;
 		view->dec.dirty		  = true;
 		cow_wm.needs_manage_dirty = true;
 	}
@@ -235,8 +238,17 @@ do_maximize(struct cow_view *view, enum maximize_type mt)
 		return;
 
 	if ((mt == UNMAXIMIZE || mt == MAX_TOGGLE) && view->maximized) {
-		cow_view_set_pending_geometry(view, view->saved_x,
-		    view->saved_y, view->saved_width, view->saved_height);
+		/* saved_x/y are virtual (vx/vy) coordinates — convert to
+		 * global for pending_resize, which will re-sync vx/vy. */
+		int gx = view->saved_x, gy = view->saved_y;
+		if (view->output != NULL && view->desk != NULL) {
+			gx = view->output->x +
+			    (view->saved_x - view->desk->page_vx);
+			gy = view->output->y +
+			    (view->saved_y - view->desk->page_vy);
+		}
+		cow_view_set_pending_geometry(view, gx, gy, view->saved_width,
+		    view->saved_height);
 		view->maximized		   = false;
 		view->icon_inverted_button = -1;
 		return;
@@ -470,7 +482,7 @@ do_identify(struct cow_view *view, struct cmd_q *cmdq)
 	cJSON_AddBoolToObject(flags, "sticky",
 	    (view->flags & COW_VIEW_STICKY_DESK_FLAG) != 0);
 	cJSON_AddBoolToObject(flags, "page_sticky",
-    (view->flags & COW_VIEW_STICKY_PAGE_FLAG) != 0);
+	    (view->flags & COW_VIEW_STICKY_PAGE_FLAG) != 0);
 	cJSON_AddBoolToObject(flags, "iconified",
 	    (view->flags & COW_VIEW_ICONIFIED_FLAG) != 0);
 	cJSON_AddBoolToObject(flags, "maximized", view->maximized);

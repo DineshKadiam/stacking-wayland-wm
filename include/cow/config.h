@@ -210,6 +210,18 @@ struct cow_config {
 	int page_cols; /* columns (horizontal) */
 	int page_rows; /* rows (vertical) */
 
+	/* Smooth page scroll animation.
+	 * When true, page switches animate over page_scroll_ms milliseconds.
+	 * Default false (instant cut, matching desk-switch behaviour). */
+	bool page_scroll_animate;
+	int  page_scroll_ms; /* animation duration in ms, default 200 */
+
+	/* Edge scroll: trigger a page switch when the pointer dwells at a
+	 * screen edge for edge_scroll_delay_ms milliseconds.
+	 * Default false (disabled). */
+	bool edge_scroll;
+	int  edge_scroll_delay_ms; /* delay before scroll fires, default 300 */
+
 	/* Colors */
 	struct cow_border_colour border_active;
 	struct cow_border_colour border_inactive;

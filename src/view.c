@@ -103,7 +103,7 @@ window_handle_title(void *data, __unused struct river_window_v1 *rw,
 	struct cow_view *view = data;
 
 	xfree(view->title);
-	view->title = title ? xstrdup(title) : NULL;
+	view->title		  = title ? xstrdup(title) : NULL;
 	view->dec.dirty		  = true;
 	cow_wm.needs_manage_dirty = true;
 	cow_status_emit();
@@ -261,7 +261,7 @@ cow_view_create(struct river_window_v1 *rw)
 	view->has_dimensions	 = false;
 	view->closed		 = false;
 	view->configured	 = false;
-view->fullscreen	 = false;
+	view->fullscreen	 = false;
 	view->maximized		 = false;
 	view->flags		 = 0;
 
@@ -451,13 +451,15 @@ cow_view_apply_render(struct cow_view *view)
 		    view->dec.title_thickness;
 		int			dec_left = view->dec.border_width;
 		enum cow_placement_mode mode	 = cow_config ?
-		    cow_config->placement :
-		    COW_PLACEMENT_CASCADE;
+			cow_config->placement :
+			COW_PLACEMENT_CASCADE;
 
 		switch (mode) {
 		case COW_PLACEMENT_UNDERMOUSE: {
-			/* Centre the window on the pointer position
-			 * (like FVWM's PositionPlacement UnderMouse). */
+			/* Centre the window frame on the pointer position.
+			 * pointer_x/y are global compositor coords; convert
+			 * to within-output position, then add page offset so
+			 * the window lands on the current virtual page. */
 			struct cow_seat *seat;
 			int		 px = ua->x + ua->width / 2;
 			int		 py = ua->y + ua->height / 2;
@@ -469,10 +471,16 @@ cow_view_apply_render(struct cow_view *view)
 					break;
 				}
 			}
-			int fw = view->content_width +
-			    2 * view->dec.border_width;
-			int fh = view->content_height + dec_top +
-			    view->dec.border_width;
+			/* Use actual dimensions if known, else a sensible
+			 * default so the window centred on the pointer even
+			 * before the first dimensions event arrives. */
+			int cw = view->content_width > 0 ? view->content_width :
+							   640;
+			int ch = view->content_height > 0 ?
+			    view->content_height :
+			    400;
+			int fw = cw + 2 * view->dec.border_width;
+			int fh = ch + dec_top + view->dec.border_width;
 			view->x = px - fw / 2 + dec_left;
 			view->y = py - fh / 2 + dec_top;
 			break;
@@ -496,33 +504,78 @@ cow_view_apply_render(struct cow_view *view)
 			break;
 		}
 		}
-	}
-
-	/* Ensure non-maximized, non-fullscreen windows don't overlap
-	 * the reserved area (e.g. after WM restart with new config). */
-	if (view->output != NULL && !view->maximized && !view->fullscreen) {
-		struct cow_box *ua	= &view->output->usable_area;
-		int		dec_top = view->dec.border_width +
-		    view->dec.title_thickness;
-		int dec_left = view->dec.border_width;
-		if (view->x < ua->x + dec_left)
-			view->x = ua->x + dec_left;
-		if (view->y < ua->y + dec_top)
-			view->y = ua->y + dec_top;
+		/*
+		 * Convert the global placement position to a virtual position.
+		 * vx/vy must include the current page viewport offset so that
+		 * the window appears on the page the user is currently viewing,
+		 * not always on page (0,0).
+		 *
+		 * vx = (x - output->x) + page_vx
+		 *    = offset-within-output + current-page-left
+		 */
+		{
+			struct cow_desk *pd = view->output->current_desk;
+			view->vx = (view->x - view->output->x) + pd->page_vx;
+			view->vy = (view->y - view->output->y) + pd->page_vy;
+		}
 	}
 
 	/*
-	 * Keep vx/vy (virtual position) in sync with x/y (global render
-	 * position) while the page grid is 1x1 and page_vx=page_vy=0.
-	 * In Stage 4 this will be reversed: vx/vy become primary and x/y
-	 * are derived from them via:  x = output->x + (vx - page_vx).
+	 * Do NOT clamp view->x/y to the usable area here.  The rendered
+	 * x/y is legitimately negative or out-of-bounds for windows that
+	 * live on a different page from the one currently displayed — their
+	 * vx/vy are correct and the render correctly places them off-screen.
+	 * Clamping here would corrupt vx/vy by treating the off-screen
+	 * render position as if the window had moved off the usable area.
+	 * Boundary clamping is applied at placement time and when windows
+	 * are explicitly moved or resized.
+	 */
+
+	/*
+	 * Compute the global compositor render position from the virtual
+	 * position (vx, vy) and the current page viewport offset.
+	 * With a 1x1 grid (page_vx=page_vy=0):
+	 *   x = output->x + vx,  y = output->y + vy
+	 * which matches the previous single-page behaviour exactly.
+	 * When the user scrolls to page (1,0):
+	 *   page_vx = output_width  →  x = output->x + vx - output_width
+	 * causing the window to slide one screen-width to the left.
 	 */
 	if (view->output != NULL && view->desk != NULL) {
-		view->vx = view->x - view->output->x + view->desk->page_vx;
-		view->vy = view->y - view->output->y + view->desk->page_vy;
+		view->x = view->output->x + (view->vx - view->desk->page_vx);
+		view->y = view->output->y + (view->vy - view->desk->page_vy);
 	}
 
-	river_node_v1_set_position(view->node, view->x, view->y);
+	/*
+	 * River assigns a window to whichever output contains its position,
+	 * even for hidden windows.  An off-page window has a large negative
+	 * or large positive y (or x), which may fall inside a physically
+	 * adjacent monitor (e.g. monitor X above monitor Y).  When the page
+	 * switches back, River uses the wrong output.
+	 *
+	 * Fix: for windows that are not visible on their page, park them at
+	 * a position that is guaranteed to be outside all physical outputs.
+	 * We use one pixel below the bounding box of all outputs, which is
+	 * always off-screen on Wayland.  This does not affect vx/vy — those
+	 * remain correct for when the window comes back into view.
+	 */
+	int render_x = view->x;
+	int render_y = view->y;
+	if (view->output != NULL && !cow_view_visible(view, view->output)) {
+		/* Find bottom-right corner of the union of all outputs */
+		int		   park_y = 0;
+		struct cow_output *o;
+		wl_list_for_each(o, &cow_wm.outputs, wm_link)
+		{
+			int bot = o->y + o->height;
+			if (bot > park_y)
+				park_y = bot;
+		}
+		render_x = 0;
+		render_y = park_y + 1;
+	}
+
+	river_node_v1_set_position(view->node, render_x, render_y);
 
 	/* Raise if requested (from focus change) */
 	if (view->needs_raise && view->node != NULL) {
@@ -670,8 +723,11 @@ cow_view_focusable(const struct cow_view *v)
 void
 cow_view_save_geometry(struct cow_view *view)
 {
-	view->saved_x	   = view->x;
-	view->saved_y	   = view->y;
+	/* Save virtual (page-grid) coordinates, not the rendered
+	 * global position which may be negative when the window is
+	 * on a different page from the current viewport. */
+	view->saved_x	   = view->vx;
+	view->saved_y	   = view->vy;
 	view->saved_width  = view->content_width;
 	view->saved_height = view->content_height;
 }
@@ -753,12 +809,12 @@ cow_view_resolve_style(struct cow_view *view)
 		 * original desk's style. */
 		if (vc->desk_nr >= 0 && view->output != NULL) {
 			bool collected	= (view->desk != NULL &&
-			    view->desk != view->output->current_desk &&
-			    (view->output->collected_desks &
-				(1u << view->desk->nr)));
+			     view->desk != view->output->current_desk &&
+			     (view->output->collected_desks &
+				 (1u << view->desk->nr)));
 			int  match_desk = collected ?
-			    view->desk->nr :
-			    view->output->current_desk->nr;
+			     view->desk->nr :
+			     view->output->current_desk->nr;
 			if (match_desk != vc->desk_nr)
 				continue;
 		}
@@ -857,10 +913,14 @@ cow_view_maximize(struct cow_view *view)
 	int		bw = view->dec.border_width;
 	int		tt = view->dec.title_thickness;
 
-	view->x = ua->x + bw;
-	view->y = ua->y + bw + tt;
-	int w	= ua->width - 2 * bw;
-	int h	= ua->height - 2 * bw - tt;
+	view->x	 = ua->x + bw;
+	view->y	 = ua->y + bw + tt;
+	view->vx = (view->x - view->output->x) +
+	    view->output->current_desk->page_vx;
+	view->vy = (view->y - view->output->y) +
+	    view->output->current_desk->page_vy;
+	int w = ua->width - 2 * bw;
+	int h = ua->height - 2 * bw - tt;
 	if (w < 50)
 		w = 50;
 	if (h < 50)
@@ -903,18 +963,28 @@ cow_view_maximize(struct cow_view *view)
 void
 cow_view_unmaximize(struct cow_view *view)
 {
-	view->x = view->saved_x;
-	view->y = view->saved_y;
+	/* saved_x/y are now virtual (vx/vy) coordinates, not global */
+	view->vx = view->saved_x;
+	view->vy = view->saved_y;
+	/* Recompute global render position from restored virtual coords */
+	if (view->output != NULL && view->desk != NULL) {
+		view->x = view->output->x + (view->vx - view->desk->page_vx);
+		view->y = view->output->y + (view->vy - view->desk->page_vy);
+	} else {
+		view->x = view->saved_x;
+		view->y = view->saved_y;
+	}
 	river_window_v1_propose_dimensions(view->river_window,
 	    view->saved_width, view->saved_height);
 	river_window_v1_inform_unmaximized(view->river_window);
 	view->maximized = false;
 
-	/* Restore container geometry to the saved (pre-maximize) values. */
+	/* Restore container geometry to the saved (pre-maximize) values.
+	 * Use view->x/y (already recomputed from vx/vy) as the global coord. */
 	if (view->container_member != NULL) {
 		struct cow_container *c = view->container_member->container;
-		c->x			= view->saved_x;
-		c->y			= view->saved_y;
+		c->x			= view->x;
+		c->y			= view->y;
 		c->content_width	= view->saved_width;
 		c->content_height	= view->saved_height;
 		struct cow_container_member *m;
@@ -922,10 +992,10 @@ cow_view_unmaximize(struct cow_view *view)
 		{
 			if (m->view == view)
 				continue;
-			m->view->x	   = view->saved_x;
-			m->view->y	   = view->saved_y;
+			m->view->x	   = view->x;
+			m->view->y	   = view->y;
 			m->view->dec.dirty = true;
-			cow_view_set_pending_geometry(m->view, view->saved_x,
+			cow_view_set_pending_geometry(m->view, view->x,
 			    view->saved_y, view->saved_width,
 			    view->saved_height);
 		}
@@ -1002,14 +1072,24 @@ cow_view_fullscreen(struct cow_view *view)
 		return;
 
 	if (!view->fullscreen) {
-		view->saved_x	   = view->x;
-		view->saved_y	   = view->y;
+		/*
+		 * Save the virtual position (vx/vy) rather than the rendered
+		 * global position (x/y).  view->x is the render-cycle output
+		 * of "output->x + (vx - page_vx)" and may be a stale negative
+		 * value if the window is on a different page from the viewport.
+		 * Restoring from vx/vy via pending_resize gives the correct
+		 * position on whichever page the window lives on.
+		 */
+		view->saved_x	   = view->vx;
+		view->saved_y	   = view->vy;
 		view->saved_width  = view->content_width;
 		view->saved_height = view->content_height;
 	}
 
-	view->x = view->output->x;
-	view->y = view->output->y;
+	view->x	 = view->output->x;
+	view->y	 = view->output->y;
+	view->vx = 0;
+	view->vy = 0;
 	river_window_v1_propose_dimensions(view->river_window,
 	    view->output->width, view->output->height);
 	river_window_v1_fullscreen(view->river_window,
@@ -1024,6 +1104,10 @@ cow_view_exit_fullscreen(struct cow_view *view)
 {
 	view->x = view->saved_x;
 	view->y = view->saved_y;
+	if (view->output != NULL && view->desk != NULL) {
+		view->vx = (view->x - view->output->x) + view->desk->page_vx;
+		view->vy = (view->y - view->output->y) + view->desk->page_vy;
+	}
 	river_window_v1_propose_dimensions(view->river_window,
 	    view->saved_width, view->saved_height);
 	river_window_v1_exit_fullscreen(view->river_window);
@@ -1193,8 +1277,8 @@ cow_view_icon_render(struct cow_view *view)
 		cairo_t *cr = cairo_create(cs);
 
 		const char  *fname	 = cow_config && cow_config->font_name ?
-		    cow_config->font_name :
-		    "monospace 9";
+			   cow_config->font_name :
+			   "monospace 9";
 		PangoLayout *layout	 = pango_cairo_create_layout(cr);
 		PangoFontDescription *fd = pango_font_description_from_string(
 		    fname);
@@ -1508,10 +1592,10 @@ cow_container_remove_view(struct cow_view *view)
 	wl_list_remove(&m->link);
 	c->n_members--;
 	view->container_member = NULL;
-	int saved_pre_x      = m->pre_x;
-	int saved_pre_y      = m->pre_y;
-	int saved_pre_width  = m->pre_width;
-	int saved_pre_height = m->pre_height;
+	int saved_pre_x	       = m->pre_x;
+	int saved_pre_y	       = m->pre_y;
+	int saved_pre_width    = m->pre_width;
+	int saved_pre_height   = m->pre_height;
 	xfree(m);
 	m = NULL;
 
@@ -1650,15 +1734,15 @@ cow_view_sync_container_geometry(struct cow_view *view, int x, int y, int w,
 void
 view_warp_to_focused(void)
 {
-        const struct cow_view *v = cow_wm.pending_focus != NULL ?
-            cow_wm.pending_focus :
-            cow_wm.focused_view;
-	int cx, cy;
+	const struct cow_view *v = cow_wm.pending_focus != NULL ?
+	    cow_wm.pending_focus :
+	    cow_wm.focused_view;
+	int		       cx, cy;
 
-        if (v == NULL)
-          return;
+	if (v == NULL)
+		return;
 
-        view_centre(v, &cx, &cy);
+	view_centre(v, &cx, &cy);
 	cow_wm.pending_warp	  = true;
 	cow_wm.warp_x		  = cx;
 	cow_wm.warp_y		  = cy;
@@ -1671,4 +1755,3 @@ view_centre(const struct cow_view *v, int *cx, int *cy)
 	*cx = v->x + v->content_width / 2;
 	*cy = v->y - v->dec.title_thickness / 2 + v->content_height / 2;
 }
-

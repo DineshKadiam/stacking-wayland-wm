@@ -17,6 +17,8 @@
 #define COW_OUTPUT_NEW_H
 
 #include <stdbool.h>
+struct zwlr_layer_surface_v1;
+struct zwp_confined_pointer_v1;
 #include <wayland-client.h>
 
 #include "cow/cow_box.h"
@@ -42,6 +44,12 @@ struct cow_desk {
 	 */
 	int page_vx;
 	int page_vy;
+
+	/* Smooth scroll animation state (only used when page_scroll_animate) */
+	int  scroll_from_vx, scroll_from_vy; /* start viewport */
+	int  scroll_to_vx, scroll_to_vy;     /* target viewport */
+	long scroll_start_ms;		     /* animation start time (ms) */
+	bool scrolling;			     /* animation in progress */
 };
 
 /*
@@ -94,6 +102,39 @@ struct cow_output {
 	struct river_node_v1	      *bg_node;
 	struct cow_shm_buffer	      *bg_buffer;
 	bool			       bg_dirty;
+
+	/*
+	 * Edge scroll dwell state.
+	 *
+	 * Primary path: zwlr_layer_shell pan frame surfaces (pan_frames.c).
+	 * Each edge has a thin input-capable layer surface; wl_pointer
+	 * enter/leave events arm/cancel the dwell timer and paint the frame
+	 * orange.
+	 *
+	 * Fallback path (no wl_layer_shell): proximity detection via the
+	 * pointer-position events River already delivers.
+	 *
+	 * pan_edge:     armed edge (-1 = none; 0=top 1=bottom 2=left 3=right)
+	 * pan_enter_ms: monotonic ms when dwell started.
+	 */
+	int  pan_edge;
+	long pan_enter_ms;
+
+	/*
+	 * Pan frame input surfaces (zwlr_layer_surface_v1).
+	 * Index: 0=top 1=bottom 2=left 3=right.
+	 * Each is a thin input-capable layer surface at the edge.
+	 * When the pointer enters one it turns orange and the dwell
+	 * timer arms; on leave it becomes transparent again.
+	 */
+	struct wl_surface	     *pan_surf[4];
+	struct zwlr_layer_surface_v1 *pan_lsurf[4];
+	struct cow_shm_buffer	     *pan_buf_clear[4];
+	struct cow_shm_buffer	     *pan_buf_orange[4];
+	void *pan_ctx[4]; /* pan_frame_ctx*, freed on destroy */
+	struct zwp_confined_pointer_v1
+	    *pan_confined[4]; /* active confinement */
+	bool pan_entered[4];  /* pointer is over this frame */
 };
 
 /*
@@ -143,5 +184,32 @@ struct cow_output *cow_output_find(struct river_output_v1 *);
 struct cow_output *cow_output_find_by_name(const char *);
 
 void cow_output_update_current(void);
+
+/*
+ * Called from the manage cycle when edge_scroll is enabled.
+ * Fires a page switch if the pointer has dwelt at an edge long enough.
+ * pan_edge is set either by the pan frame wl_pointer listener (primary)
+ * or by cow_output_pan_pointer_leave (fallback when no wl_layer_shell).
+ */
+void cow_output_pan_frame_tick(struct cow_output *output);
+
+/*
+ * Fallback proximity-based edge detection — only active when
+ * wl_layer_shell is unavailable (pan frames cannot be created).
+ * Called on River pointer_leave/enter events from seat.c.
+ */
+void cow_output_pan_pointer_leave(int pointer_x, int pointer_y);
+void cow_output_pan_pointer_enter(void);
+
+/*
+ * Pan frame (zwlr_layer_surface_v1) management.
+ * Initialise after Wayland roundtrip, update when page config or
+ * output state changes, destroy on output removal or WM shutdown.
+ */
+void pan_frames_init(void);
+void pan_frames_update_output(struct cow_output *output);
+void pan_frames_update_all(void);
+void pan_frames_destroy_output(struct cow_output *output);
+void pan_frames_destroy_all(void);
 
 #endif

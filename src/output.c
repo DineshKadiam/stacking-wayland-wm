@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "cow/output.h"
+#include <time.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +27,8 @@
 #include "cow/memory.h"
 #include "cow/shm.h"
 #include "cow/wm.h"
+#include "cow/desk_ops.h"
+#include "cow/pan_frames.h"
 #include "cow/seat.h"
 
 #include "river-window-management-v1-client-protocol.h"
@@ -90,6 +93,12 @@ output_handle_wl_output(void	    *data,
 			break;
 		}
 	}
+
+	/* wl_output is now known — try to create pan frames if dimensions
+	 * are also already set and the config has finished loading. */
+	if (!cow_wm.exec_pending && output->wl_output != NULL &&
+	    output->width > 0 && output->height > 0)
+		pan_frames_update_output(output);
 }
 
 static void
@@ -119,6 +128,12 @@ output_handle_dimensions(void	    *data,
 	output->usable_area.width  = width;
 	output->usable_area.height = height;
 	cow_output_apply_reserved_area(output);
+
+	/* If config has already been loaded, (re-)create pan frames now that
+	 * we have valid dimensions.  During startup this is skipped and
+	 * pan_frames_update_all() is called once at end of exec_pending. */
+	if (!cow_wm.exec_pending)
+		pan_frames_update_output(output);
 }
 
 static const struct river_output_v1_listener output_listener = {
@@ -135,6 +150,7 @@ cow_output_create(struct river_output_v1 *river_output)
 
 	output->river_output = river_output;
 	output->removed	     = false;
+	output->pan_edge     = -1;
 	wl_list_init(&output->visible_views);
 
 	/* Initialize sheets */
@@ -164,6 +180,7 @@ cow_output_create(struct river_output_v1 *river_output)
 void
 cow_output_destroy(struct cow_output *output)
 {
+	pan_frames_destroy_output(output);
 	wl_list_remove(&output->wm_link);
 
 	if (cow_wm.current_output == output) {
@@ -249,8 +266,8 @@ cow_output_render_background(struct cow_output *output)
 
 		/* Fill with background colour (per-output overrides global) */
 		const float *bg	       = output->has_bg_colour ?
-		    output->bg_colour :
-		    cow_config->output_bg_colour;
+			   output->bg_colour :
+			   cow_config->output_bg_colour;
 		uint32_t     px	       = cow_colour_to_pixel(bg);
 		int	     stride_px = output->bg_buffer->stride / 4;
 		uint32_t    *data      = output->bg_buffer->data;
@@ -344,4 +361,170 @@ cow_output_update_current(void)
 				cow_wm.current_output = this;
 		}
 	}
+}
+
+/* -----------------------------------------------------------------------
+ * Edge scroll: proximity-based detection without layer surfaces.
+ * ----------------------------------------------------------------------- */
+
+void
+cow_output_pan_frame_tick(struct cow_output *output)
+{
+	if (output == NULL || cow_config == NULL || !cow_config->edge_scroll)
+		return;
+	if (output->pan_edge < 0)
+		return;
+
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	long now_ms = ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+
+	int  delay   = cow_config->edge_scroll_delay_ms > 0 ?
+	       cow_config->edge_scroll_delay_ms :
+	       300;
+	long elapsed = now_ms - output->pan_enter_ms;
+
+	/* Paint orange after 1/3 of the dwell delay (min 100ms) so that
+	 * fast cursor sweeps across the strip don't cause a visible flash. */
+	int paint_threshold = delay / 3;
+	if (paint_threshold < 100)
+		paint_threshold = 100;
+	if (elapsed >= paint_threshold &&
+	    !output->pan_entered[output->pan_edge])
+		pan_frame_set_orange(output, output->pan_edge, true);
+
+	if (elapsed < delay)
+		return;
+
+	int edge	 = output->pan_edge;
+	int cur_col	 = cow_page_col(output);
+	int cur_row	 = cow_page_row(output);
+	output->pan_edge = -1;
+
+	/* Get current pointer position to preserve the perpendicular axis.
+	 * Clamp to this output's bounds so we never warp onto a neighbour. */
+	int ptr_x = output->x + output->width / 2;
+	int ptr_y = output->y + output->height / 2;
+	{
+		struct cow_seat *ps;
+		wl_list_for_each(ps, &cow_wm.seats, wm_link)
+		{
+			if (ps->has_pointer_position) {
+				ptr_x = ps->pointer_x;
+				ptr_y = ps->pointer_y;
+			}
+			break;
+		}
+	}
+	/* Clamp perpendicular coords to this output's area */
+	if (ptr_x < output->x)
+		ptr_x = output->x;
+	if (ptr_x >= output->x + output->width)
+		ptr_x = output->x + output->width - 1;
+	if (ptr_y < output->y)
+		ptr_y = output->y;
+	if (ptr_y >= output->y + output->height)
+		ptr_y = output->y + output->height - 1;
+
+	/* Margin: land well past the opposite pan frame so we don't
+	 * immediately re-enter that strip and trigger another switch.
+	 * Also account for the usable area offset (e.g. waybar at top).
+	 * Must be meaningfully larger than PAN_FRAME_SIZE (32). */
+	const int margin = 64;
+	int	  ua_top = output->usable_area.y;
+	int	  ua_bot = output->usable_area.y + output->usable_area.height;
+	int	  ua_lft = output->usable_area.x;
+	int	  ua_rgt = output->usable_area.x + output->usable_area.width;
+
+	switch (edge) {
+	case 0: /* scrolled UP → land near bottom of new page */
+		cow_page_switch(output, cur_col, cur_row - 1);
+		cow_wm.pending_warp = true;
+		cow_wm.warp_x	    = ptr_x;
+		cow_wm.warp_y	    = ua_bot - margin;
+		break;
+	case 1: /* scrolled DOWN → land near top of new page */
+		cow_page_switch(output, cur_col, cur_row + 1);
+		cow_wm.pending_warp = true;
+		cow_wm.warp_x	    = ptr_x;
+		cow_wm.warp_y	    = ua_top + margin;
+		break;
+	case 2: /* scrolled LEFT → land near right edge of new page */
+		cow_page_switch(output, cur_col - 1, cur_row);
+		cow_wm.pending_warp = true;
+		cow_wm.warp_x	    = ua_rgt - margin;
+		cow_wm.warp_y	    = ptr_y;
+		break;
+	case 3: /* scrolled RIGHT → land near left edge of new page */
+		cow_page_switch(output, cur_col + 1, cur_row);
+		cow_wm.pending_warp = true;
+		cow_wm.warp_x	    = ua_lft + margin;
+		cow_wm.warp_y	    = ptr_y;
+		break;
+	}
+}
+
+void
+cow_output_pan_pointer_leave(int px, int py)
+{
+	/* Pan frames (zwlr_layer_shell) handle this directly via wl_pointer.
+	 * Only use the proximity fallback when layer shell is unavailable. */
+	if (cow_wm.wl_layer_shell != NULL)
+		return;
+	if (cow_config == NULL || !cow_config->edge_scroll)
+		return;
+	if (cow_config->page_cols <= 1 && cow_config->page_rows <= 1)
+		return;
+
+	int cols = cow_config->page_cols;
+	int rows = cow_config->page_rows;
+
+	struct cow_output *output;
+	wl_list_for_each(output, &cow_wm.outputs, wm_link)
+	{
+		int cur_col = cow_page_col(output);
+		int cur_row = cow_page_row(output);
+		int edge    = -1;
+
+		if (rows > 1) {
+			if (py <= output->y + 1 && cur_row > 0)
+				edge = 0;
+			else if (py >= output->y + output->height - 2 &&
+			    cur_row < rows - 1)
+				edge = 1;
+		}
+		if (cols > 1 && edge < 0) {
+			if (px <= output->x + 1 && cur_col > 0)
+				edge = 2;
+			else if (px >= output->x + output->width - 2 &&
+			    cur_col < cols - 1)
+				edge = 3;
+		}
+
+		if (edge >= 0) {
+			struct timespec ts;
+			clock_gettime(CLOCK_MONOTONIC, &ts);
+			output->pan_edge     = edge;
+			output->pan_enter_ms = ts.tv_sec * 1000L +
+			    ts.tv_nsec / 1000000L;
+		} else {
+			output->pan_edge = -1;
+		}
+	}
+	/* Trigger render so indicator appears immediately */
+	cow_wm.needs_manage_dirty = true;
+}
+
+void
+cow_output_pan_pointer_enter(void)
+{
+	/* Pan frames handle cancel via pointer_leave on the layer surface.
+	 * Only needed for the proximity fallback path. */
+	if (cow_wm.wl_layer_shell != NULL)
+		return;
+	/* Pointer entered a window — cancel dwell */
+	struct cow_output *output;
+	wl_list_for_each(output, &cow_wm.outputs, wm_link)
+	    output->pan_edge	  = -1;
+	cow_wm.needs_manage_dirty = true;
 }

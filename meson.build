@@ -19,6 +19,7 @@ srcs = [
     'src/cmd-container.c',
     'src/cmd-ctx.c',
     'src/cmd-desk.c',
+    'src/cmd-page.c',
     'src/cmd-exec.c',
     'src/cmd-focus.c',
     'src/cmd-list-commands.c',
@@ -47,6 +48,7 @@ srcs = [
     'src/main.c',
     'src/memory.c',
     'src/output.c',
+    'src/pan_frames.c',
     'src/pointer_op.c',
     'src/seat.c',
     'src/shm.c',
@@ -138,6 +140,9 @@ generated = wl_mod.scan_xml(
     'protocol/river-window-management-v1.xml',
     'protocol/river-xkb-bindings-v1.xml',
     'protocol/river-layer-shell-v1.xml',
+    '/usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml',
+    'protocol/wlr-layer-shell-unstable-v1.xml',
+    'protocol/pointer-constraints-unstable-v1.xml',
 )
 
 include_dirs = [

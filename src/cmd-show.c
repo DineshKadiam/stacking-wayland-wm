@@ -105,6 +105,8 @@ do_show_windows(int fd)
 		    view->desk ? view->desk->nr : -1);
 		cJSON_AddNumberToObject(w, "x", view->x);
 		cJSON_AddNumberToObject(w, "y", view->y);
+		cJSON_AddNumberToObject(w, "vx", view->vx);
+		cJSON_AddNumberToObject(w, "vy", view->vy);
 		cJSON_AddNumberToObject(w, "width", view->content_width);
 		cJSON_AddNumberToObject(w, "height", view->content_height);
 		cJSON_AddBoolToObject(w, "focused",

@@ -13,6 +13,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
+#include "cow/output.h"
 #include "cow/seat.h"
 
 #include <stdio.h>
@@ -60,6 +61,9 @@ seat_handle_pointer_enter(void *data, __unused struct river_seat_v1 *river_seat,
 	struct cow_view *view	   = cow_view_find(river_window);
 	seat->pointer_entered_view = view;
 
+	/* Cancel any pending edge scroll — pointer is on a window */
+	cow_output_pan_pointer_enter();
+
 	/* Sloppy focus: focus the view when the pointer enters it */
 	if (cow_config != NULL &&
 	    cow_config->focus_mode == COW_FOCUS_MODE_SLOPPY && view != NULL &&
@@ -74,6 +78,10 @@ seat_handle_pointer_leave(void *data, __unused struct river_seat_v1 *river_seat)
 {
 	struct cow_seat *seat	   = data;
 	seat->pointer_entered_view = NULL;
+
+	/* Arm edge scroll if the pointer is now at a screen edge */
+	if (seat->has_pointer_position)
+		cow_output_pan_pointer_leave(seat->pointer_x, seat->pointer_y);
 
 	cow_status_emit();
 }

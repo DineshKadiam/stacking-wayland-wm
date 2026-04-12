@@ -74,6 +74,8 @@ cow_shm_buffer_create(int width, int height)
 {
 	if (cow_wm.shm == NULL)
 		return NULL;
+	if (width <= 0 || height <= 0)
+		return NULL;
 
 	int    stride = width * 4; /* ARGB8888 = 4 bytes per pixel */
 	size_t size   = (size_t)stride * height;

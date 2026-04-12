@@ -151,6 +151,24 @@ Set a configuration option at runtime. *-v* prints the resulting value.
 |  *desktop-configuration*
 :  _global_ | _per-output_ | _shared_
 :  Desk layout mode.
+|  *desktop\_size* _N_ _M_
+:  N × M integer
+:  Virtual page grid: N columns × M rows per desk. Default: _1 1_
+   (no pages). Set e.g. _3 2_ for three columns and two rows.
+|  *page\_scroll\_animate*
+:  _true_ | _false_
+:  Animate page transitions. Default: _false_ (instant cut).
+|  *page\_scroll\_ms*
+:  integer (ms)
+:  Page scroll animation duration. Default: _200_.
+|  *edge\_scroll*
+:  _true_ | _false_
+:  Enable edge scroll: dwell at a screen edge to switch page.
+   Default: _false_.
+|  *edge\_scroll\_delay\_ms*
+:  integer (ms)
+:  Time the pointer must dwell at an edge before a page switch fires.
+   Default: _300_.
 |  *focus*
 :  _sloppy_ | _click_
 :  Focus model. Default: _click_.
@@ -372,7 +390,11 @@ Operate on a window.
 	Lower the window to the bottom of the stacking order.
 
 *-s*
-	Toggle the window's sticky state (visible on all desks).
+	Toggle desk-sticky: window appears on all desks.
+
+*-S*
+	Toggle page-sticky: window appears on all pages of the current
+	desk. Combine *-s* and *-S* for fully sticky (all desks and pages).
 
 *-i*
 	Toggle the window's iconified (minimised) state.
@@ -399,6 +421,11 @@ Move a window. With no flags, begin an interactive move using the mouse.
 	grouped into a container instead of completing a normal move. Releasing
 	over empty space performs a normal move. The target window's titlebar
 	highlights in orange while the pointer is over it.
+
+*-P* _col_ [_row_]
+	Move the window to the page at column _col_, row _row_ (0-indexed),
+	preserving its within-page position.  _row_ defaults to 0.
+	Only meaningful when _desktop\_size_ is larger than 1×1.
 
 *-c*
 	Centre the window on its current output.
@@ -466,6 +493,30 @@ Move keyboard focus.
 
 *-i* _id_
 	Focus the window with River identifier _id_.
+
+## page [-t output] [-n] [-p] [-d dir] [-c col row]
+
+Navigate the virtual page grid within the current desk.
+
+*-t* _output_
+	Target the named output instead of the current one.
+
+*-n*
+	Next page: right along the current row, wrapping to the first column
+	of the next row at the end.
+
+*-p*
+	Previous page.
+
+*-d* _dir_
+	Move in direction _dir_: _left_, _right_, _up_, or _down_. Wraps
+	at edges.
+
+*-c* _col_ _row_
+	Go directly to the page at column _col_, row _row_ (0-indexed).
+
+Pages exist only when _desktop\_size N M_ is configured with N > 1 or
+M > 1. *page* is a no-op with the default 1×1 grid.
 
 ## desk [-t output] [-d 0-9] [-c 0-9] [-np]
 
