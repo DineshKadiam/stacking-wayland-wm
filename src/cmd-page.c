@@ -36,7 +36,7 @@
 
 static enum cmd_retval cmd_page_exec(struct cmd *, struct cmd_q *);
 
-struct cmd_entry cmd_page_entry = { "page", "t:d:c:np", 0, 0,
+struct cmd_entry cmd_page_entry = { "page", "t:d:c:np", 0, 1,
 	"page [-t output] [-n] [-p] [-d left|right|up|down] [-c col row]",
 	cmd_page_exec };
 
