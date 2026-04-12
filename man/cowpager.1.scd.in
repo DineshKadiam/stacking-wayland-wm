@@ -1,0 +1,86 @@
+cowpager(1) "@VERSION@" "cowpager - cow pager"
+
+# NAME
+
+cowpager - FvwmPager-style visual pager for the cow window manager
+
+# SYNOPSIS
+
+*cowpager* [*-a* _anchor_] [*-h*]
+
+# DESCRIPTION
+
+*cowpager* connects to the cow window manager's status socket and
+presents a floating layer-shell window showing all desks and pages
+with miniature representations of window positions.
+
+The pager updates in real time as desks, pages, and windows change.
+Clicking a desk cell switches to that desk; clicking a page sub-cell
+within the active desk switches to that page.
+
+*cowpager* requires cow to be running and accessible via
+_$XDG\_RUNTIME\_DIR/cow-status.sock_ and
+_$XDG\_RUNTIME\_DIR/cow-cmd.sock_.
+
+# OPTIONS
+
+*-a* _anchor_
+	Anchor position on the screen. Valid values:
+
+	*top-right* (default), *top-left*, *bottom-right*, *bottom-left*
+
+*-h*
+	Print usage and exit.
+
+# DISPLAY
+
+Each desk is shown as a rounded rectangle labelled with its desk
+number.  The currently active desk is highlighted in blue.
+
+When the page grid is larger than 1×1 (configured via
+*set desktop\_size N M*), each desk cell is subdivided into a grid of
+page sub-cells.  The currently visible page is highlighted in green.
+
+Miniature window positions are drawn within each page sub-cell at
+proportional coordinates.  The focused window is shown in orange;
+other windows in grey.  Windows on non-active desks show a count
+rather than individual miniatures.
+
+# INTERACTIVITY
+
+- *Click a desk cell*: sends *desk -d N* to switch to that desk.
+- *Click a page sub-cell*: sends *page -c col row* to switch to that
+  page (only meaningful when the page grid is larger than 1×1).
+
+# ENVIRONMENT
+
+*XDG\_RUNTIME\_DIR*
+	Used to locate the cow status and command sockets.
+
+# EXAMPLE
+
+Start cowpager in the top-right corner (the default):
+
+```
+cowpager &
+```
+
+Place it in the bottom-left:
+
+```
+cowpager -a bottom-left &
+```
+
+Launch from *cow.conf* so it starts with the session:
+
+```
+exec cowpager
+```
+
+# SEE ALSO
+
+*cow*(1), *cowbar*(1), *moocow*(1)
+
+# AUTHORS
+
+Thomas Adam

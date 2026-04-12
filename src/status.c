@@ -219,6 +219,9 @@ cow_status_emit(void)
 		cJSON_AddNumberToObject(out, "page_rows", prows);
 		cJSON_AddNumberToObject(out, "page_col", pcol);
 		cJSON_AddNumberToObject(out, "page_row", prow);
+		/* Usable area for cowpager window scaling */
+		cJSON_AddNumberToObject(out, "output_w", pw);
+		cJSON_AddNumberToObject(out, "output_h", ph);
 
 		cJSON_AddItemToArray(outputs, out);
 	}

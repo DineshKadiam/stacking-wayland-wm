@@ -39,12 +39,8 @@ static void	       do_show_desk(int fd);
 static void	       do_show_output(int fd);
 static void	       do_show_config(const char *ckey, int fd, struct cmd_q *);
 
-struct cmd_entry cmd_show_entry = {
-	"show", "",
-	1, 2,
-	"show topic",
-	cmd_show_exec
-};
+struct cmd_entry cmd_show_entry = { "show", "", 1, 2, "show topic",
+	cmd_show_exec };
 
 static enum cmd_retval
 cmd_show_exec(struct cmd *self, struct cmd_q *cmdq)
@@ -103,6 +99,9 @@ do_show_windows(int fd)
 		    view->title ? view->title : "");
 		cJSON_AddNumberToObject(w, "desk",
 		    view->desk ? view->desk->nr : -1);
+		cJSON_AddStringToObject(w, "output",
+		    (view->output && view->output->name) ? view->output->name :
+							   "");
 		cJSON_AddNumberToObject(w, "x", view->x);
 		cJSON_AddNumberToObject(w, "y", view->y);
 		cJSON_AddNumberToObject(w, "vx", view->vx);
