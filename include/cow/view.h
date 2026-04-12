@@ -67,7 +67,17 @@ struct cow_container {
 /*
  * View flags (carried over from original cow).
  */
-#define COW_VIEW_STICKY_FLAG (1 << 0)
+/*
+ * COW_VIEW_STICKY_DESK_FLAG: window appears on all desks of its output.
+ * COW_VIEW_STICKY_PAGE_FLAG: window appears on all pages of its current desk.
+ * Both set: fully sticky (visible regardless of desk or page).
+ *
+ * The legacy COW_VIEW_STICKY_FLAG alias maps to desk-sticky so that
+ * existing code using it is not broken.
+ */
+#define COW_VIEW_STICKY_DESK_FLAG (1 << 0)
+#define COW_VIEW_STICKY_PAGE_FLAG (1 << 2)
+#define COW_VIEW_STICKY_FLAG COW_VIEW_STICKY_DESK_FLAG /* legacy alias */
 #define COW_VIEW_ICONIFIED_FLAG (1 << 1)
 
 enum shade_direction {

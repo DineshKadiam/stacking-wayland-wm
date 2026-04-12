@@ -57,7 +57,7 @@ static void		    do_shade(struct cow_view *, const char *);
 static enum expand_dir	    resolve_direction(const char *);
 static enum shade_direction resolve_shade_direction(const char *);
 
-struct cmd_entry cmd_winops_entry = { "winops", "t:Icrlsi", 0, 0,
+struct cmd_entry cmd_winops_entry = { "winops", "t:IcrlsiS", 0, 0,
 	"[-Icilrs] [-t target window]", cmd_winops_exec };
 
 static enum cmd_retval
@@ -87,9 +87,10 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 		do_lower(view);
 
 	if (args_has(args, 's')) {
-		bool was_sticky = (view->flags & COW_VIEW_STICKY_FLAG) != 0;
+		/* -s: toggle desk-sticky (visible on all desks) */
+		bool was_sticky = (view->flags & COW_VIEW_STICKY_DESK_FLAG) != 0;
 
-		view->flags ^= COW_VIEW_STICKY_FLAG;
+		view->flags ^= COW_VIEW_STICKY_DESK_FLAG;
 		view->dec.dirty		  = true;
 		cow_wm.needs_manage_dirty = true;
 
@@ -98,6 +99,13 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 				view->output->current_desk->nr : view->desk->nr;
 			cow_view_assign_desk(view, target);
 		}
+	}
+
+	if (args_has(args, 'S')) {
+		/* -S: toggle page-sticky (visible on all pages of current desk) */
+		view->flags		  ^= COW_VIEW_STICKY_PAGE_FLAG;
+		view->dec.dirty		  = true;
+		cow_wm.needs_manage_dirty = true;
 	}
 
 	if (args_has(args, 'i'))
@@ -460,7 +468,9 @@ do_identify(struct cow_view *view, struct cmd_q *cmdq)
 	/* Flags */
 	cJSON *flags = cJSON_CreateObject();
 	cJSON_AddBoolToObject(flags, "sticky",
-	    (view->flags & COW_VIEW_STICKY_FLAG) != 0);
+	    (view->flags & COW_VIEW_STICKY_DESK_FLAG) != 0);
+	cJSON_AddBoolToObject(flags, "page_sticky",
+    (view->flags & COW_VIEW_STICKY_PAGE_FLAG) != 0);
 	cJSON_AddBoolToObject(flags, "iconified",
 	    (view->flags & COW_VIEW_ICONIFIED_FLAG) != 0);
 	cJSON_AddBoolToObject(flags, "maximized", view->maximized);
