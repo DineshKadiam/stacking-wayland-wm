@@ -511,6 +511,17 @@ cow_view_apply_render(struct cow_view *view)
 			view->y = ua->y + dec_top;
 	}
 
+	/*
+	 * Keep vx/vy (virtual position) in sync with x/y (global render
+	 * position) while the page grid is 1x1 and page_vx=page_vy=0.
+	 * In Stage 4 this will be reversed: vx/vy become primary and x/y
+	 * are derived from them via:  x = output->x + (vx - page_vx).
+	 */
+	if (view->output != NULL && view->desk != NULL) {
+		view->vx = view->x - view->output->x + view->desk->page_vx;
+		view->vy = view->y - view->output->y + view->desk->page_vy;
+	}
+
 	river_node_v1_set_position(view->node, view->x, view->y);
 
 	/* Raise if requested (from focus change) */

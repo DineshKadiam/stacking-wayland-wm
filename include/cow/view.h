@@ -143,7 +143,20 @@ struct cow_view {
 	int  content_height;
 	bool has_dimensions; /* true after first dimensions event */
 
-	/* Position in global compositor coordinates */
+	/*
+	 * Virtual position: the window's location in the virtual page grid
+	 * (desk-space coordinates).  On a 3×2 page grid with a 1920-wide
+	 * output, vx=1920 puts the window on page column 1.
+	 *
+	 * With a 1×1 grid (the default), vx==x and vy==y.
+	 */
+	int vx, vy;
+
+	/*
+	 * Rendered global compositor position: derived from vx/vy minus the
+	 * current page viewport (desk->page_vx/vy) plus the output origin.
+	 * Recomputed each render cycle; do not store persistent state here.
+	 */
 	int x, y;
 
 	/* The geometry we want the window to have (proposed) */
