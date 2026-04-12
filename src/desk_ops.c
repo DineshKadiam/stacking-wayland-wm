@@ -46,9 +46,36 @@ bool cow_view_visible(const struct cow_view *view,
     return false;
   if (view->desk == NULL)
     return true;
-  if (view->desk == output->current_desk)
+  if (view->desk == output->current_desk) {
+    /* On the correct desk: now check the page.  A view is on the
+     * current page if its virtual frame rectangle intersects the
+     * current viewport.  With a 1x1 grid (page_vx=page_vy=0 and
+     * viewport == full output) this always passes. */
+    if (view->flags & COW_VIEW_STICKY_PAGE_FLAG)
+      return true; /* page-sticky: always visible on this desk */
+    if (cow_config != NULL &&
+        (cow_config->page_cols > 1 || cow_config->page_rows > 1)) {
+      struct cow_desk *desk = output->current_desk;
+      int bw  = view->dec.border_width;
+      int tt  = view->dec.title_thickness;
+      /* Virtual frame rectangle */
+      int vfx = view->vx - bw;
+      int vfy = view->vy - bw - tt;
+      int vfw = view->content_width  + 2 * bw;
+      int vfh = view->content_height + 2 * bw + tt;
+      /* Viewport rectangle (in virtual coordinates) */
+      int vpx = desk->page_vx;
+      int vpy = desk->page_vy;
+      int vpw = output->usable_area.width;
+      int vph = output->usable_area.height;
+      bool on_page = (vfx < vpx + vpw && vfx + vfw > vpx &&
+                      vfy < vpy + vph && vfy + vfh > vpy);
+      if (!on_page)
+        return false;
+    }
     return true;
-  if (view->flags & COW_VIEW_STICKY_FLAG)
+  }
+  if (view->flags & COW_VIEW_STICKY_DESK_FLAG)
     return true;
   /* Visible if on a collected desk */
   if (view->desk != NULL && (output->collected_desks & (1u << view->desk->nr)))
