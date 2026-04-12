@@ -32,6 +32,16 @@ struct cow_desk {
 	uint8_t		   nr;
 	struct wl_list	   views; /* cow_view.desk_views */
 	struct cow_output *output;
+
+	/*
+	 * Virtual page viewport: the top-left corner of the currently
+	 * visible page in virtual desktop coordinates.
+	 *   page_vx = page_col * output_width
+	 *   page_vy = page_row * output_height
+	 * Both are 0 when the page grid is 1×1 (the default).
+	 */
+	int page_vx;
+	int page_vy;
 };
 
 /*
