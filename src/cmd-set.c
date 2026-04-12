@@ -102,6 +102,23 @@ static enum cmd_retval cmd_set_exec(struct cmd *self, struct cmd_q *cmdq) {
     return (CMD_RETURN_NORMAL);
   }
 
+  if (strcmp(key, "desktop_size") == 0) {
+    /* desktop_size is parsed from 2 positional argv words (cols rows),
+     * but cmd_argv_to_string already joined them as "cols rows". */
+    int cols = 1, rows = 1;
+    if (sscanf(val, "%d %d", &cols, &rows) != 2 || cols < 1 || rows < 1) {
+      cmdq_error(cmdq, "set: desktop_size: expected 'N M' (e.g. '3 2')");
+      xfree(val);
+      return (CMD_RETURN_ERROR);
+    }
+    if (cow_config != NULL) {
+      cow_config->page_cols = cols;
+      cow_config->page_rows = rows;
+    }
+    xfree(val);
+    return (CMD_RETURN_NORMAL);
+  }
+
   if (strcmp(key, "focus") == 0) {
     do_set_focus(val);
     xfree(val);
