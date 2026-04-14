@@ -17,7 +17,7 @@
  * Command: desk -- virtual desktop operations.
  */
 
-#include <bsd/stdlib.h>
+#include "cow/compat.h"
 
 #include "cow/cmd.h"
 #include "cow/output.h"

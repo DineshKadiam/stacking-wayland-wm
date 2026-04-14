@@ -27,9 +27,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include <bsd/sys/queue.h>
-#include <bsd/sys/tree.h>
-
+#include "cow/compat.h"
 #include "cow/array.h"
 
 /* Attribute macros. */

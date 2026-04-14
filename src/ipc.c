@@ -13,9 +13,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#include "cow/ipc.h"
 
-#include <bsd/libutil.h>
 #include <cJSON.h>
 #include <errno.h>
 #include <stdio.h>
@@ -25,7 +23,9 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include "cow/compat.h"
 #include "cow/cmd.h"
+#include "cow/ipc.h"
 #include "cow/command.h"
 #include "cow/config.h"
 #include "cow/keybinding.h"

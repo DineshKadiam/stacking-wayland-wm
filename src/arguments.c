@@ -23,8 +23,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <bsd/stdlib.h>
-
+#include "cow/compat.h"
 #include "cow/cmd.h"
 
 /*

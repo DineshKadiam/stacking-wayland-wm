@@ -14,11 +14,11 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <bsd/stdlib.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "cow/compat.h"
 #include "cow/cmd.h"
 #include "cow/config.h"
 #include "cow/desk_ops.h"

@@ -13,9 +13,6 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#include "cow/command.h"
-
-#include <bsd/stdlib.h>
 #include <dirent.h>
 #include <errno.h>
 #include <limits.h>
@@ -25,6 +22,9 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+#include "cow/compat.h"
+#include "cow/command.h"
 
 /*
  * Find the DISPLAY for XWayland if one is running.

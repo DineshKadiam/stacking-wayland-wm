@@ -16,10 +16,10 @@
 
 /* Routines for generic command parsing. */
 
-#include <bsd/string.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "cow/compat.h"
 #include "cow/cmd.h"
 
 struct causelist cfg_causes;

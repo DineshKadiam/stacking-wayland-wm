@@ -13,14 +13,13 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#include "cow/keybinding.h"
 
-#include <bsd/string.h>
-#include <linux/input-event-codes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "cow/compat.h"
+#include "cow/keybinding.h"
 #include "cow/cmd.h"
 #include "cow/command.h"
 #include "cow/compat.h"

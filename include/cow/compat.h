@@ -16,6 +16,22 @@
 #if !defined(COW_COMPAT_H)
 #define COW_COMPAT_H
 
+#if !defined(__linux)
+#include <stdlib.h>
+#include <string.h>
+#include <sys/queue.h>
+#include <sys/tree.h>
+#include <libutil.h>
+#include <dev/evdev/input-event-codes.h>
+#else
+#include <bsd/libutil.h>
+#include <bsd/stdlib.h>
+#include <bsd/sys/queue.h>
+#include <bsd/sys/tree.h>
+#include <bsd/string.h>
+#include <linux/input-event-codes.h>
+#endif
+
 #ifndef __unused
 #define __unused __attribute__((__unused__))
 #endif

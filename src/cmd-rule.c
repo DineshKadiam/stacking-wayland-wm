@@ -21,11 +21,11 @@
  * During startup, rules are deferred until outputs are available.
  */
 
-#include <bsd/stdlib.h>
 #include <fnmatch.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "cow/compat.h"
 #include "cow/cmd.h"
 #include "cow/colour.h"
 #include "cow/config.h"

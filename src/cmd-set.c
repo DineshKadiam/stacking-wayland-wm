@@ -19,12 +19,12 @@
  * usage: set [-v] key value
  */
 
-#include <bsd/stdlib.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "cow/compat.h"
 #include "cow/cmd.h"
 #include "cow/colour.h"
 #include "cow/config.h"

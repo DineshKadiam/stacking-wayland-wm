@@ -9,6 +9,8 @@ project(
     meson_version: '>= 1.3.0',
 )
 
+hostsys = host_machine.system()
+
 srcs = [
     'src/arguments.c',
     'src/border.c',
@@ -66,16 +68,18 @@ endif
 cc = meson.get_compiler('c')
 m_dep = cc.find_library('m', required: false)
 
-
 add_project_arguments(
     [
         '-D_GNU_SOURCE',
-        '-D_POSIX_C_SOURCE=200809L',
         '-DCOW_VERSION="' + meson.project_version() + '"',
         '-DCOW_SYSCONFDIR="' + etc_prefix + '/etc/cow"',
     ],
     language: 'c',
 )
+
+if hostsys == 'linux'
+    add_project_arguments('-D_POSIX_C_SOURCE=200809L', language: 'c')
+endif
 
 if get_option('cow_debug')
     add_project_arguments(['-g', '-O0', '-fsanitize=address'], language: 'c')
@@ -86,22 +90,32 @@ endif
 
 # Dependencies
 wayland_client = dependency('wayland-client')
+wayland_protos = dependency('wayland-protocols', version: '>=1.41', default_options: ['tests=false'])
 xkbcommon      = dependency('xkbcommon')
 pangocairo     = dependency('pangocairo')
 cairo          = dependency('cairo')
 
-libbsd = dependency('libbsd', required: true)
+libbsd = dependency('libbsd', required: false)
+if libbsd.found()
+    add_project_arguments('-DHAVE_LIBBSD', language: 'c')
+endif
 
 all_deps = [
     wayland_client,
     xkbcommon,
     pangocairo,
     cairo,
-    libbsd,
 ]
+if libbsd.found()
+    all_deps += libbsd
+endif
 
 if m_dep.found()
     all_deps += m_dep
+endif
+
+if hostsys == 'freebsd'
+    add_project_link_arguments('-lutil', language: 'c')
 endif
 
 # Protocol header/code generation using Meson's wayland module.
@@ -112,6 +126,9 @@ if meson.version().version_compare('>= 1.8.0')
 else
     wl_mod = import('unstable-wayland')
 endif
+
+wl_proto_dir = wayland_protos.get_variable('pkgdatadir')
+
 generated = wl_mod.scan_xml(
     'protocol/river-window-management-v1.xml',
     'protocol/river-xkb-bindings-v1.xml',

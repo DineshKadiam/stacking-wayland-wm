@@ -19,8 +19,6 @@
  * The x*() family is derived from lswm/tmux.
  */
 
-#include "cow/memory.h"
-
 #include <errno.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -28,7 +26,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <bsd/string.h>
+#include "cow/compat.h"
+#include "cow/memory.h"
 
 void
 xfree(void *ptr)
