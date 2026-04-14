@@ -86,7 +86,16 @@ args_parse(const char *template, int argc, char **argv)
 	args = xcalloc(1, sizeof *args);
 
 	if (template[0] != '\0') {
+#if defined(__linux__)
 		optind = 0;
+#else
+		/* On BSD this must be set to avoid parsing errors. */
+		optind = 1;
+#endif
+
+#ifdef HAVE_OPTRESET
+		optreset = 1;
+#endif
 
 		while ((opt = getopt(argc, argv, template)) != -1) {
 			if (opt < 0)

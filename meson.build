@@ -81,6 +81,11 @@ if hostsys == 'linux'
     add_project_arguments('-D_POSIX_C_SOURCE=200809L', language: 'c')
 endif
 
+# getopts on BSD needs optreset handling.
+if cc.has_header_symbol('unistd.h', 'optreset')
+    add_project_arguments('-DHAVE_OPTRESET', language: 'c')
+endif
+
 if get_option('cow_debug')
     add_project_arguments(['-g', '-O0', '-fsanitize=address'], language: 'c')
     add_project_link_arguments(['-fsanitize=address'], language: 'c')
