@@ -140,7 +140,7 @@ generated = wl_mod.scan_xml(
     'protocol/river-window-management-v1.xml',
     'protocol/river-xkb-bindings-v1.xml',
     'protocol/river-layer-shell-v1.xml',
-    '/usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml',
+    wl_proto_dir / 'stable/xdg-shell/xdg-shell.xml',
     'protocol/wlr-layer-shell-unstable-v1.xml',
     'protocol/pointer-constraints-unstable-v1.xml',
 )
