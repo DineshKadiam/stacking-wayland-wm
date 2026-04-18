@@ -53,6 +53,10 @@ windows together into tabs.
 
 ![](./cow-container.png)
 
+### Pages / Pager
+
+![](./cow-pages.png)
+
 A very crude video is [also available](https://youtu.be/tRdhfRfdPuI)
 
 ## How do I build CoW?
