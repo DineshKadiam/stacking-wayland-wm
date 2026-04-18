@@ -516,7 +516,7 @@ Navigate the virtual page grid within the current desk.
 	Go directly to the page at column _col_, row _row_ (0-indexed).
 
 Pages exist only when _desktop\_size N M_ is configured with N > 1 or
-M > 1. *page* is a no-op with the default 1×1 grid.
+M > 1.
 
 ## desk [-t output] [-d 0-9] [-c 0-9] [-np]
 
