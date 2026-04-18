@@ -163,7 +163,6 @@ window_handle_maximize_requested(void *data,
     __unused struct river_window_v1   *rw)
 {
 	struct cow_view *view = data;
-
 	if (!view->maximized)
 		cow_view_maximize(view);
 }
@@ -430,7 +429,7 @@ cow_view_apply_render(struct cow_view *view)
 	}
 
 	/* Initial window placement based on the configured strategy. */
-	if (view->x == 0 && view->y == 0 && view->output != NULL) {
+	if (!view->placed && view->output != NULL) {
 		/* Place on the output where the pointer is, not
 		 * necessarily the output that created the view. */
 		struct cow_seat *ps;
@@ -512,12 +511,43 @@ cow_view_apply_render(struct cow_view *view)
 		 *
 		 * vx = (x - output->x) + page_vx
 		 *    = offset-within-output + current-page-left
+		 *
+		 * Clamp so the window's top-left corner lands within the
+		 * current page; a negative or over-width vx would cause
+		 * cow_view_visible to immediately hide the window.
 		 */
 		{
-			struct cow_desk *pd = view->output->current_desk;
-			view->vx = (view->x - view->output->x) + pd->page_vx;
-			view->vy = (view->y - view->output->y) + pd->page_vy;
+			struct cow_desk *pd  = view->output->current_desk;
+			int		 vpx = pd->page_vx;
+			int		 vpy = pd->page_vy;
+			int		 ow  = ua->width;
+			int		 oh  = ua->height;
+			view->vx = (view->x - view->output->x) + vpx;
+			view->vy = (view->y - view->output->y) + vpy;
+			if (ow > 0 && view->vx < vpx)
+				view->vx = vpx;
+			if (ow > 0 && view->vx >= vpx + ow)
+				view->vx = vpx + ow - 1;
+			if (oh > 0 && view->vy < vpy)
+				view->vy = vpy;
+			if (oh > 0 && view->vy >= vpy + oh)
+				view->vy = vpy + oh - 1;
+			/* Recompute x/y from the clamped virtual position */
+			view->x = view->output->x + (view->vx - vpx);
+			view->y = view->output->y + (view->vy - vpy);
 		}
+		view->placed = true;
+	} else if (!view->placed && view->output != NULL &&
+	    view->desk != NULL) {
+		/*
+		 * Window arrived with a pre-set position (e.g. XWayland with
+		 * a saved geometry) that bypassed the placement block above.
+		 * vx/vy are still zero; seed them from x/y now so the window
+		 * lands on the correct page instead of always page (0,0).
+		 */
+		view->vx = (view->x - view->output->x) + view->desk->page_vx;
+		view->vy = (view->y - view->output->y) + view->desk->page_vy;
+		view->placed = true;
 	}
 
 	/*
@@ -904,8 +934,21 @@ cow_view_maximize(struct cow_view *view)
 	if (view->output == NULL)
 		return;
 
-	view->saved_x	   = view->x;
-	view->saved_y	   = view->y;
+	/* Save virtual coordinates so cow_view_unmaximize can restore
+	 * them correctly via vx/vy regardless of the current page.
+	 * Only save if the window has been placed; if maximize_requested
+	 * fires before the first render (e.g. Chrome at startup) vx/vy
+	 * are still zero and saving them would cause unmaximize to
+	 * teleport the window to vx=0,vy=0. */
+	if (view->placed) {
+		view->saved_x = view->vx;
+		view->saved_y = view->vy;
+	} else {
+		/* Not yet placed — defer the save; unmaximize will fall
+		 * back to placement coordinates set later. */
+		view->saved_x = 0;
+		view->saved_y = 0;
+	}
 	view->saved_width  = view->content_width;
 	view->saved_height = view->content_height;
 
@@ -963,7 +1006,22 @@ cow_view_maximize(struct cow_view *view)
 void
 cow_view_unmaximize(struct cow_view *view)
 {
-	/* saved_x/y are now virtual (vx/vy) coordinates, not global */
+	/* saved_x/y hold virtual (vx/vy) coordinates saved by
+	 * cow_view_maximize.  If maximize fired before the window was
+	 * placed (e.g. Chrome's startup maximize_requested), saved_x/y
+	 * are zero and must not be restored — clear placed so normal
+	 * placement runs on the next render instead. */
+	if (!view->placed) {
+		/* Placement hasn't run yet; just drop the maximized state
+		 * and let cow_view_apply_render place the window normally. */
+		view->maximized = false;
+		river_window_v1_propose_dimensions(view->river_window,
+		    view->saved_width, view->saved_height);
+		river_window_v1_inform_unmaximized(view->river_window);
+		view->dec.dirty = true;
+		return;
+	}
+	/* saved_x/y are virtual (vx/vy) coordinates */
 	view->vx = view->saved_x;
 	view->vy = view->saved_y;
 	/* Recompute global render position from restored virtual coords */

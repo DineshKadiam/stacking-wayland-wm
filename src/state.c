@@ -296,9 +296,51 @@ cow_state_restore(void)
 			if (vs == NULL)
 				continue;
 
-			/* Position and dimensions -- use set_pending_geometry
-			 * so both are pushed to River in the next manage cycle.
-			 */
+			/* Output matching — must happen before position
+			 * restore so that vx/vy are computed against the
+			 * correct output origin and page viewport. */
+			cJSON *out_x = cJSON_GetObjectItem(vs, "output_x");
+			cJSON *out_y = cJSON_GetObjectItem(vs, "output_y");
+			if (cJSON_IsNumber(out_x) && cJSON_IsNumber(out_y)) {
+				struct cow_output *target =
+				    find_output_by_position(
+					(int)out_x->valuedouble,
+					(int)out_y->valuedouble);
+				if (target != NULL && target != view->output) {
+					view->output = target;
+					if (view->desk != NULL) {
+						int nr = view->desk->nr;
+						wl_list_remove(
+						    &view->desk_views);
+						view->desk = &target->desks[nr];
+						wl_list_insert(
+						    &view->desk->views,
+						    &view->desk_views);
+					}
+				}
+			}
+
+			/* Flags */
+			cJSON *vf = cJSON_GetObjectItem(vs, "flags");
+			if (cJSON_IsNumber(vf))
+				view->flags = (uint32_t)vf->valuedouble;
+
+			/* Sheet assignment — must happen before position
+			 * restore so pending_x/y use the correct page_vx/vy. */
+			cJSON *vdesk = cJSON_GetObjectItem(vs, "desk");
+			if (cJSON_IsNumber(vdesk) && view->output != NULL) {
+				int nr = (int)vdesk->valuedouble;
+				if (nr >= 0 && nr < COW_NR_OF_DESKS) {
+					wl_list_remove(&view->desk_views);
+					view->desk = &view->output->desks[nr];
+					wl_list_insert(&view->desk->views,
+					    &view->desk_views);
+				}
+			}
+
+			/* Position and dimensions — now that output and desk
+			 * are correct, compute pending_x/y from the saved
+			 * virtual position against the right page viewport. */
 			cJSON *vx_j = cJSON_GetObjectItem(vs, "vx");
 			cJSON *vy_j = cJSON_GetObjectItem(vs, "vy");
 			cJSON *vx   = cJSON_GetObjectItem(vs, "x");
@@ -309,8 +351,6 @@ cow_state_restore(void)
 				int w = (int)vw->valuedouble;
 				int h = (int)vh->valuedouble;
 
-				/* Restore virtual position from saved vx/vy
-				 * first */
 				if (cJSON_IsNumber(vx_j))
 					view->vx = (int)vx_j->valuedouble;
 				else if (cJSON_IsNumber(vx) &&
@@ -334,11 +374,6 @@ cow_state_restore(void)
 					view->vy = (int)vy->valuedouble -
 					    view->output->y;
 
-				/* Queue a size-only propose; compute
-				 * pending_x/y from the restored vx/vy so that
-				 * when the pending_resize handler recomputes
-				 * vx/vy it arrives at the same correct value.
-				 */
 				if (w > 0 && h > 0 && view->output != NULL &&
 				    view->desk != NULL) {
 					int px = view->output->x +
@@ -347,45 +382,7 @@ cow_state_restore(void)
 					    (view->vy - view->desk->page_vy);
 					cow_view_set_pending_geometry(view, px,
 					    py, w, h);
-				}
-			}
-
-			/* Flags */
-			cJSON *vf = cJSON_GetObjectItem(vs, "flags");
-			if (cJSON_IsNumber(vf))
-				view->flags = (uint32_t)vf->valuedouble;
-
-			/* Sheet assignment */
-			cJSON *vdesk = cJSON_GetObjectItem(vs, "desk");
-			if (cJSON_IsNumber(vdesk) && view->output != NULL) {
-				int nr = (int)vdesk->valuedouble;
-				if (nr >= 0 && nr < COW_NR_OF_DESKS) {
-					wl_list_remove(&view->desk_views);
-					view->desk = &view->output->desks[nr];
-					wl_list_insert(&view->desk->views,
-					    &view->desk_views);
-				}
-			}
-
-			/* Output matching */
-			cJSON *out_x = cJSON_GetObjectItem(vs, "output_x");
-			cJSON *out_y = cJSON_GetObjectItem(vs, "output_y");
-			if (cJSON_IsNumber(out_x) && cJSON_IsNumber(out_y)) {
-				struct cow_output *target =
-				    find_output_by_position(
-					(int)out_x->valuedouble,
-					(int)out_y->valuedouble);
-				if (target != NULL && target != view->output) {
-					view->output = target;
-					if (view->desk != NULL) {
-						int nr = view->desk->nr;
-						wl_list_remove(
-						    &view->desk_views);
-						view->desk = &target->desks[nr];
-						wl_list_insert(
-						    &view->desk->views,
-						    &view->desk_views);
-					}
+					view->placed = true;
 				}
 			}
 

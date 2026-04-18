@@ -279,6 +279,8 @@ switch_output_page(struct cow_output *output, int new_vx, int new_vy)
 		desk->scrolling = false;
 	}
 
+	int		 w = output->usable_area.width;
+	int		 h = output->usable_area.height;
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
@@ -287,6 +289,20 @@ switch_output_page(struct cow_output *output, int new_vx, int new_vy)
 		if (view->desk != desk &&
 		    !(view->flags & COW_VIEW_STICKY_PAGE_FLAG))
 			continue;
+		/*
+		 * Page-sticky windows must follow the viewport: update their
+		 * virtual position to keep the same within-page offset on the
+		 * new page.  Without this the render formula
+		 * (output->x + vx - new_page_vx) lands them on a different
+		 * physical output whenever vx was anchored to a different page.
+		 */
+		if ((view->flags & COW_VIEW_STICKY_PAGE_FLAG) && w > 0 &&
+		    h > 0) {
+			int within_x = view->vx % w;
+			int within_y = view->vy % h;
+			view->vx     = new_vx + within_x;
+			view->vy     = new_vy + within_y;
+		}
 		view->dec.dirty = true;
 	}
 }

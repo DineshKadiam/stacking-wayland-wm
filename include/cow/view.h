@@ -142,6 +142,7 @@ struct cow_view {
 	int  content_width;
 	int  content_height;
 	bool has_dimensions; /* true after first dimensions event */
+	bool placed;
 
 	/*
 	 * Virtual position: the window's location in the virtual page grid

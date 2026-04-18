@@ -340,8 +340,17 @@ do_expand(struct cow_view *view, enum expand_dir dir, bool toggle)
 
 	/* Toggle: if already expanded, restore saved geometry. */
 	if (toggle && view->maximized) {
-		cow_view_set_pending_geometry(view, view->saved_x,
-		    view->saved_y, view->saved_width, view->saved_height);
+		/* saved_x/y are virtual (vx/vy) coordinates — convert to
+		 * global for pending_resize, which will re-sync vx/vy. */
+		int gx = view->saved_x, gy = view->saved_y;
+		if (view->output != NULL && view->desk != NULL) {
+			gx = view->output->x +
+			    (view->saved_x - view->desk->page_vx);
+			gy = view->output->y +
+			    (view->saved_y - view->desk->page_vy);
+		}
+		cow_view_set_pending_geometry(view, gx, gy, view->saved_width,
+		    view->saved_height);
 		view->maximized		   = false;
 		view->icon_inverted_button = -1;
 		return;

@@ -36,7 +36,7 @@
 static struct cow_output *
 resolve_output(const char *spec, char **cause)
 {
-	if (spec == NULL || *spec == '\0')
+	if (spec == NULL || *spec == '\0' || (strcmp(spec, "@current") == 0))
 		return cow_wm.current_output;
 
 	if (strcmp(spec, "@next") == 0) {
@@ -278,8 +278,23 @@ cmd_ctx_parse(const char *spec, struct cmd_ctx *ctx, char **cause)
 			desk_str   = buf;
 			window_str = dot + 1;
 		} else {
-			/* No delimiters: entire string is a window selector */
-			window_str = buf;
+			/* No delimiters: check if it matches an output name
+			 * first; if so treat it as an output specifier rather
+			 * than a window selector. */
+			struct cow_output *o;
+			bool		   is_output = false;
+			wl_list_for_each(o, &cow_wm.outputs, wm_link)
+			{
+				if (o->name != NULL &&
+				    strcmp(o->name, buf) == 0) {
+					is_output = true;
+					break;
+				}
+			}
+			if (is_output)
+				output_str = buf;
+			else
+				window_str = buf;
 		}
 	}
 
