@@ -155,6 +155,35 @@ static const struct wl_output_listener wl_output_listener = {
 	.description = wl_output_handle_description,
 };
 
+/* -----------------------------------------------------------------------
+ * Raw wl_seat listener: track pointer capability for pan frames.
+ * ----------------------------------------------------------------------- */
+
+static void
+wl_seat_handle_capabilities(__unused void *data, __unused struct wl_seat *seat,
+    uint32_t capabilities)
+{
+	cow_wm.wl_seat_has_pointer = (capabilities &
+					 WL_SEAT_CAPABILITY_POINTER) != 0;
+
+	if (!cow_wm.wl_seat_has_pointer && cow_wm.wl_pointer_raw != NULL) {
+		/* Pointer capability removed — release the wl_pointer. */
+		wl_pointer_destroy(cow_wm.wl_pointer_raw);
+		cow_wm.wl_pointer_raw = NULL;
+	}
+}
+
+static void
+wl_seat_handle_name(__unused void *data, __unused struct wl_seat *seat,
+    __unused const char *name)
+{
+}
+
+static const struct wl_seat_listener wl_seat_listener = {
+	.capabilities = wl_seat_handle_capabilities,
+	.name	      = wl_seat_handle_name,
+};
+
 /*
  * Registry handler: bind river globals.
  */
@@ -189,6 +218,8 @@ registry_global(__unused void *data, struct wl_registry *registry,
 	    version >= 5) {
 		cow_wm.wl_seat_raw = wl_registry_bind(registry, name,
 		    &wl_seat_interface, 5);
+		wl_seat_add_listener(cow_wm.wl_seat_raw, &wl_seat_listener,
+		    NULL);
 	} else if (strcmp(interface,
 		       zwp_pointer_constraints_v1_interface.name) == 0 &&
 	    version >= 1) {

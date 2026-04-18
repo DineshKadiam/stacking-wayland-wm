@@ -67,6 +67,7 @@ struct cow_wm {
 	/* Raw Wayland seat/pointer/constraints for pan frame input events */
 	struct zwlr_layer_shell_v1	  *wl_layer_shell;
 	struct wl_seat			  *wl_seat_raw;
+	bool				   wl_seat_has_pointer;
 	struct wl_pointer		  *wl_pointer_raw;
 	struct zwp_pointer_constraints_v1 *wl_pointer_constraints;
 

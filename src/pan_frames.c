@@ -42,17 +42,9 @@
 #define PAN_LEFT 2
 #define PAN_RIGHT 3
 
-/* -----------------------------------------------------------------------
- * Forward declarations
- * ----------------------------------------------------------------------- */
-
 static void pan_frame_destroy(struct cow_output *output, int edge);
 static void pan_frame_paint(struct cow_output *output, int edge, bool orange);
 static void pan_confine_release(struct cow_output *output, int edge);
-
-/* -----------------------------------------------------------------------
- * wl_pointer callbacks
- * ----------------------------------------------------------------------- */
 
 /* Map a wl_surface back to (output, edge) */
 static int
@@ -89,7 +81,8 @@ pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 	output->pan_entered[edge] = true;
 	/* Do NOT paint orange immediately — wait for the first tick after a
 	 * short dwell so that fast cursor sweeps across the strip (e.g. when
-	 * moving between monitors) don't produce a visible flash. */
+	 * moving between monitors) don't produce a visible flash.
+	 */
 
 	/* Arm dwell timer */
 	struct timespec ts;
@@ -98,7 +91,8 @@ pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 	output->pan_enter_ms = ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
 
 	/* Confine the pointer to this strip so it can't cross the monitor
-	 * boundary while the dwell timer is running. */
+	 * boundary while the dwell timer is running.
+	 */
 	if (cow_wm.wl_pointer_constraints != NULL &&
 	    output->pan_confined[edge] == NULL) {
 		output->pan_confined[edge] =
@@ -473,7 +467,7 @@ pan_frames_init(void)
 	 * leaving wl_pointer_raw NULL.  Calling get_pointer() directly is
 	 * safe; if the seat has no pointer the compositor will send an error
 	 * which we will see as a protocol error (acceptable).
-	 * */
+	 */
 	if (cow_wm.wl_pointer_raw == NULL) {
 		cow_wm.wl_pointer_raw = wl_seat_get_pointer(cow_wm.wl_seat_raw);
 		if (cow_wm.wl_pointer_raw != NULL)
