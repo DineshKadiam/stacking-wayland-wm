@@ -471,8 +471,8 @@ cow_view_apply_render(struct cow_view *view)
 				}
 			}
 			/* Use actual dimensions if known, else a sensible
-			 * default so the window centred on the pointer even
-			 * before the first dimensions event arrives. */
+			 * default so the window is centred on the pointer
+			 * even before the first dimensions event arrives. */
 			int cw = view->content_width > 0 ? view->content_width :
 							   640;
 			int ch = view->content_height > 0 ?
@@ -482,6 +482,27 @@ cow_view_apply_render(struct cow_view *view)
 			int fh = ch + dec_top + view->dec.border_width;
 			view->x = px - fw / 2 + dec_left;
 			view->y = py - fh / 2 + dec_top;
+
+			/* Clamp so the full frame stays within the usable
+			 * area (which already has reserved areas applied).
+			 * Clamp max before min so that on a screen smaller
+			 * than the window the top-left is still visible. */
+			if (ua->width > 0) {
+				int max_x = ua->x + ua->width - fw + dec_left;
+				int min_x = ua->x + dec_left;
+				if (view->x > max_x)
+					view->x = max_x;
+				if (view->x < min_x)
+					view->x = min_x;
+			}
+			if (ua->height > 0) {
+				int max_y = ua->y + ua->height - fh + dec_top;
+				int min_y = ua->y + dec_top;
+				if (view->y > max_y)
+					view->y = max_y;
+				if (view->y < min_y)
+					view->y = min_y;
+			}
 			break;
 		}
 		case COW_PLACEMENT_CENTRE: {
