@@ -477,6 +477,9 @@ cow_page_scroll_tick(struct cow_output *output)
 		desk->page_vy		  = desk->scroll_to_vy;
 		desk->scrolling		  = false;
 		cow_wm.needs_manage_dirty = true;
+		/* Update pan frames now that the final page position is
+		 * committed — scrollable edges may have changed. */
+		pan_frames_update_all();
 		return false;
 	}
 

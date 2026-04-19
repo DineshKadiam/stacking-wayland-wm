@@ -326,10 +326,27 @@ edge_is_scrollable(struct cow_output *output, int edge)
 {
 	if (!cow_config || !cow_config->edge_scroll)
 		return false;
-	int cols    = cow_config->page_cols;
-	int rows    = cow_config->page_rows;
-	int cur_col = cow_page_col(output);
-	int cur_row = cow_page_row(output);
+	int cols = cow_config->page_cols;
+	int rows = cow_config->page_rows;
+
+	/* When a page-scroll animation is in progress, use the target page
+	 * position rather than the current mid-animation page_vx/vy.  This
+	 * ensures pan frames are created/destroyed for the destination page
+	 * rather than whichever intermediate position happens to be current
+	 * when pan_frames_update_* is called. */
+	int		 cur_col, cur_row;
+	struct cow_desk *desk = (output->current_desk != NULL) ?
+	    output->current_desk :
+	    NULL;
+	if (desk != NULL && desk->scrolling) {
+		int w	= output->usable_area.width;
+		int h	= output->usable_area.height;
+		cur_col = (w > 0) ? desk->scroll_to_vx / w : 0;
+		cur_row = (h > 0) ? desk->scroll_to_vy / h : 0;
+	} else {
+		cur_col = cow_page_col(output);
+		cur_row = cow_page_row(output);
+	}
 
 	switch (edge) {
 	case PAN_TOP:
