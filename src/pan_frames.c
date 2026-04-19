@@ -461,14 +461,11 @@ pan_frames_init(void)
 	if (!cow_wm.wl_seat_raw)
 		return;
 
-	/* Get a wl_pointer directly from the seat.  We skip the seat
-	 * capabilities event because wl_seat_add_listener() silently fails
-	 * if the proxy already has a listener (e.g. from a prior roundtrip),
-	 * leaving wl_pointer_raw NULL.  Calling get_pointer() directly is
-	 * safe; if the seat has no pointer the compositor will send an error
-	 * which we will see as a protocol error (acceptable).
-	 */
-	if (cow_wm.wl_pointer_raw == NULL) {
+	/* Only call wl_seat_get_pointer if the seat actually advertises the
+	 * pointer capability.  Calling it on a seat without a pointer device
+	 * (e.g. a headless/VNC session before a client connects) is a fatal
+	 * Wayland protocol error that kills the connection. */
+	if (cow_wm.wl_pointer_raw == NULL && cow_wm.wl_seat_has_pointer) {
 		cow_wm.wl_pointer_raw = wl_seat_get_pointer(cow_wm.wl_seat_raw);
 		if (cow_wm.wl_pointer_raw != NULL)
 			wl_pointer_add_listener(cow_wm.wl_pointer_raw,
