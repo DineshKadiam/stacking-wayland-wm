@@ -1192,10 +1192,7 @@ cow_view_exit_fullscreen(struct cow_view *view)
 	river_window_v1_exit_fullscreen(view->river_window);
 	river_window_v1_inform_not_fullscreen(view->river_window);
 	view->fullscreen = false;
-
-	if (view->decoration_hint !=
-	    RIVER_WINDOW_V1_DECORATION_HINT_ONLY_SUPPORTS_CSD)
-		view->use_ssd = true;
+	view->use_ssd	 = true;
 }
 
 /* ================================================================
