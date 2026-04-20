@@ -1,0 +1,190 @@
+name: IRC Notifications
+
+on:
+  issues:
+    types: [opened, edited, closed, reopened]
+  pull_request:
+    types: [opened, edited, synchronize, closed, reopened]
+  push:
+    tags:
+      - 'v*'
+
+env:
+  IRC_SERVER:  "irc.libera.chat:6697"
+  IRC_CHANNEL: "#cow-wayland"
+  IRC_NICK:    "cow-notify"
+
+jobs:
+  issue_notify:
+    name: Issue IRC notification
+    runs-on: codeberg-tiny
+    if: ${{ forgejo.event_name == 'issues' }}
+    concurrency:
+      group: irc-issue-${{ forgejo.event.issue.number }}
+      cancel-in-progress: true
+    timeout-minutes: 2
+    steps:
+      - name: Compose IRC message
+        id: compose
+        shell: bash
+        env:
+          STATE:  ${{ forgejo.event.issue.state }}
+          NUM:    ${{ forgejo.event.issue.number }}
+          USER:   ${{ forgejo.event.issue.user.login }}
+          TITLE:  ${{ forgejo.event.issue.title }}
+          URL:    ${{ forgejo.event.issue.html_url }}
+          ACTION: ${{ forgejo.event.action }}
+        run: |
+          # mIRC colour/formatting codes
+          BOLD=$'\x02'; RESET=$'\x0F'
+          GREEN=$'\x0303'; RED=$'\x0304'; BLUE=$'\x0312'
+          GREY=$'\x0314'; YELLOW=$'\x0308'; PURPLE=$'\x0306'
+
+          case "$STATE" in
+            open)   STATE_FMT="${GREEN}open${RESET}" ;;
+            closed) STATE_FMT="${RED}closed${RESET}" ;;
+            *)      STATE_FMT="${BLUE}${STATE}${RESET}" ;;
+          esac
+
+          case "$ACTION" in
+            edited|reopened) ACTION_FMT=" ${GREY}(${ACTION})${RESET}" ;;
+            *)               ACTION_FMT="" ;;
+          esac
+
+          max=200
+          title="$TITLE"
+          [ ${#title} -gt $max ] && title="${title:0:$max}..."
+          TITLE_FMT="${BOLD}${YELLOW}${title}${RESET}"
+          USER_FMT="${PURPLE}${USER}${RESET}"
+          URL_FMT="${BOLD}${URL}${RESET}"
+
+          printf 'message=ISSUE: [%s]%s #%s by @%s: "%s" \xe2\x80\x94 %s\n' \
+            "$STATE_FMT" "$ACTION_FMT" "$NUM" "$USER_FMT" "$TITLE_FMT" "$URL_FMT" \
+            >> "$FORGEJO_OUTPUT"
+
+      - name: Send IRC notification
+        shell: bash
+        env:
+          PLUGIN_IRC_SERVER:  ${{ env.IRC_SERVER }}
+          PLUGIN_IRC_CHANNEL: ${{ env.IRC_CHANNEL }}
+          PLUGIN_IRC_NICK:    ${{ env.IRC_NICK }}
+          PLUGIN_IRC_MSG:     ${{ steps.compose.outputs.message }}
+        run: |
+          curl -fsSL https://get.miconoco.de/notify-irc/notify-irc -o /tmp/notify-irc
+          chmod +x /tmp/notify-irc
+          /tmp/notify-irc
+        continue-on-error: true
+
+  pr_notify:
+    name: Pull request IRC notification
+    runs-on: codeberg-tiny
+    if: ${{ forgejo.event_name == 'pull_request' }}
+    concurrency:
+      group: irc-pr-${{ forgejo.event.pull_request.number }}
+      cancel-in-progress: true
+    timeout-minutes: 2
+    steps:
+      - name: Compose IRC message
+        id: compose
+        shell: bash
+        env:
+          STATE:  ${{ forgejo.event.pull_request.state }}
+          MERGED: ${{ forgejo.event.pull_request.merged }}
+          NUM:    ${{ forgejo.event.pull_request.number }}
+          USER:   ${{ forgejo.event.pull_request.user.login }}
+          TITLE:  ${{ forgejo.event.pull_request.title }}
+          URL:    ${{ forgejo.event.pull_request.html_url }}
+          ACTION: ${{ forgejo.event.action }}
+          DRAFT:  ${{ forgejo.event.pull_request.draft }}
+          HEAD:   ${{ forgejo.event.pull_request.head.ref }}
+          BASE:   ${{ forgejo.event.pull_request.base.ref }}
+        run: |
+          # mIRC colour/formatting codes
+          BOLD=$'\x02'; RESET=$'\x0F'
+          GREEN=$'\x0303'; RED=$'\x0304'; BLUE=$'\x0312'
+          GREY=$'\x0314'; YELLOW=$'\x0308'; MAGENTA=$'\x0306'; PURPLE=$'\x0306'
+
+          if [ "$ACTION" = "closed" ] && [ "$MERGED" = "true" ]; then
+            STATE_FMT="${MAGENTA}merged${RESET}"
+          else
+            case "$STATE" in
+              open)   STATE_FMT="${GREEN}open${RESET}" ;;
+              closed) STATE_FMT="${RED}closed${RESET}" ;;
+              *)      STATE_FMT="${BLUE}${STATE}${RESET}" ;;
+            esac
+          fi
+
+          [ "$DRAFT" = "true" ] && DRAFT_FMT=" ${GREY}[draft]${RESET}" || DRAFT_FMT=""
+
+          case "$ACTION" in
+            synchronize|edited|reopened|ready_for_review|converted_to_draft)
+              ACTION_FMT=" ${BOLD}${GREY}(${ACTION})${RESET}" ;;
+            *) ACTION_FMT="" ;;
+          esac
+
+          max=200
+          title="$TITLE"
+          [ ${#title} -gt $max ] && title="${title:0:$max}..."
+          TITLE_FMT="${BOLD}${YELLOW}${title}${RESET}"
+          BRANCHES="${HEAD} -> ${BASE}"
+          USER_FMT="${PURPLE}${USER}${RESET}"
+          URL_FMT="${BOLD}${URL}${RESET}"
+
+          printf 'message=PR: [%s]%s%s #%s by @%s: "%s" [%s] \xe2\x80\x94 %s\n' \
+            "$STATE_FMT" "$ACTION_FMT" "$DRAFT_FMT" "$NUM" "$USER_FMT" \
+            "$TITLE_FMT" "$BRANCHES" "$URL_FMT" \
+            >> "$FORGEJO_OUTPUT"
+
+      - name: Send IRC notification
+        shell: bash
+        env:
+          PLUGIN_IRC_SERVER:  ${{ env.IRC_SERVER }}
+          PLUGIN_IRC_CHANNEL: ${{ env.IRC_CHANNEL }}
+          PLUGIN_IRC_NICK:    ${{ env.IRC_NICK }}
+          PLUGIN_IRC_MSG:     ${{ steps.compose.outputs.message }}
+        run: |
+          curl -fsSL https://get.miconoco.de/notify-irc/notify-irc -o /tmp/notify-irc
+          chmod +x /tmp/notify-irc
+          /tmp/notify-irc
+        continue-on-error: true
+
+  tag_notify:
+    name: Tag IRC notification
+    runs-on: codeberg-tiny
+    if: ${{ forgejo.event_name == 'push' }}
+    timeout-minutes: 2
+    steps:
+      - name: Compose IRC message
+        id: compose
+        shell: bash
+        env:
+          TAG:        ${{ forgejo.ref_name }}
+          ACTOR:      ${{ forgejo.actor }}
+          REPO:       ${{ forgejo.repository }}
+          SERVER_URL: ${{ forgejo.server_url }}
+        run: |
+          # mIRC colour/formatting codes
+          BOLD=$'\x02'; RESET=$'\x0F'
+          YELLOW=$'\x0308'; PURPLE=$'\x0306'
+
+          TAG_FMT="${BOLD}${YELLOW}${TAG}${RESET}"
+          ACTOR_FMT="${PURPLE}${ACTOR}${RESET}"
+          URL="${SERVER_URL}/${REPO}/releases/tag/${TAG}"
+          URL_FMT="${BOLD}${URL}${RESET}"
+
+          printf 'message=TAG: cow %s tagged by @%s \xe2\x80\x94 %s\n' \
+            "$TAG_FMT" "$ACTOR_FMT" "$URL_FMT" \
+            >> "$FORGEJO_OUTPUT"
+
+      - name: Send IRC notification
+        shell: bash
+        env:
+          PLUGIN_IRC_SERVER:  ${{ env.IRC_SERVER }}
+          PLUGIN_IRC_CHANNEL: ${{ env.IRC_CHANNEL }}
+          PLUGIN_IRC_NICK:    ${{ env.IRC_NICK }}
+          PLUGIN_IRC_MSG:     ${{ steps.compose.outputs.message }}
+        run: |
+          curl -fsSL https://get.miconoco.de/notify-irc/notify-irc -o /tmp/notify-irc
+          chmod +x /tmp/notify-irc
+          /tmp/notify-irc
+        continue-on-error: true
