@@ -45,8 +45,7 @@ set border 10
 set border_style fvwm
 
 # Bind Super+Return to launch a terminal
-action terminal foot
-bind L+Return action-terminal
+bind L+Return exec foot
 ```
 
 ## Search Order
@@ -229,14 +228,13 @@ and *@*_c_ is a colour index (0 or 1).
 ## bind key action ...
 
 Bind a key combination to a command. _key_ is a modifier string followed by a
-keysym or keycode (see *KEY BINDINGS*). _action_ is any *cow* command or a
-named action defined with *action*. Multiple words form the full command to
-run.
+keysym or keycode (see *KEY BINDINGS*). _action_ is any *cow* command.  To run
+external programs, use the _exec_ command.
 
 Example:
 
 ```
-bind L+Return action-terminal
+bind L+Return exec foot
 bind LCA+q quit
 bind LS+Up window-move -n -d up
 ```
@@ -252,22 +250,6 @@ Example:
 mouse L+left   window-move
 mouse L+right  resize
 mouse L+middle window-move -C
-```
-
-## action
-
-```
-action name command ...
-```
-
-Define a named action. The action can then be invoked as *action-*_name_ in
-any binding or command.
-
-Example:
-
-```
-action terminal foot
-bind L+Return action-terminal
 ```
 
 ## rule [-T] [-t [output]:[desk]] pattern [key value ...]
