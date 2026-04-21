@@ -1181,11 +1181,18 @@ cow_view_fullscreen(struct cow_view *view)
 void
 cow_view_exit_fullscreen(struct cow_view *view)
 {
-	view->x = view->saved_x;
-	view->y = view->saved_y;
-	if (view->output != NULL && view->desk != NULL) {
-		view->vx = (view->x - view->output->x) + view->desk->page_vx;
-		view->vy = (view->y - view->output->y) + view->desk->page_vy;
+	/*
+	 * saved_x/saved_y hold the virtual (vx/vy) coordinates from before
+	 * fullscreen — restore them directly.  The render cycle will compute
+	 * the on-screen position from vx/vy and the current page offset.
+	 */
+	view->vx = view->saved_x;
+	view->vy = view->saved_y;
+	if (view->output != NULL) {
+		view->x = view->output->x +
+		    (view->vx - (view->desk ? view->desk->page_vx : 0));
+		view->y = view->output->y +
+		    (view->vy - (view->desk ? view->desk->page_vy : 0));
 	}
 	river_window_v1_propose_dimensions(view->river_window,
 	    view->saved_width, view->saved_height);

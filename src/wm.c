@@ -1056,6 +1056,18 @@ cow_wm_init(void)
 	/* Second roundtrip: process initial events from bound globals */
 	wl_display_roundtrip(cow_wm.display);
 
+	/*
+	 * Apply reserved area to all outputs after all initial Wayland
+	 * events have settled.  output_handle_dimensions/position skip this
+	 * during startup (exec_pending=true); this is the single startup
+	 * application.
+	 */
+	{
+		struct cow_output *co;
+		wl_list_for_each(co, &cow_wm.outputs, wm_link)
+		    cow_output_apply_reserved_area(co);
+	}
+
 	/* Initialise pan frames after globals are bound */
 	pan_frames_init();
 

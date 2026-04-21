@@ -127,7 +127,12 @@ output_handle_dimensions(void	    *data,
 	output->usable_area.y	   = output->y;
 	output->usable_area.width  = width;
 	output->usable_area.height = height;
-	cow_output_apply_reserved_area(output);
+
+	/* At runtime (after startup) apply reserved immediately.
+	 * During startup this is skipped — wm.c applies reserved once
+	 * after the second roundtrip when all initial events have settled. */
+	if (!cow_wm.exec_pending)
+		cow_output_apply_reserved_area(output);
 
 	/* If config has already been loaded, (re-)create pan frames now that
 	 * we have valid dimensions.  During startup this is skipped and

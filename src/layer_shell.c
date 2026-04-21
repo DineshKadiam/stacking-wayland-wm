@@ -30,18 +30,14 @@
  */
 
 static void
-ls_output_handle_non_exclusive_area(void	*data,
-    __unused struct river_layer_shell_output_v1 *ls_output, int32_t x,
-    int32_t y, int32_t width, int32_t height)
+ls_output_handle_non_exclusive_area(__unused void *data,
+    __unused struct river_layer_shell_output_v1 *ls_output, __unused int32_t x,
+    __unused int32_t y, __unused int32_t width, __unused int32_t height)
 {
-	struct cow_layer_shell_output *lso    = data;
-	struct cow_output	      *output = lso->output;
-
-	output->usable_area.x	   = x;
-	output->usable_area.y	   = y;
-	output->usable_area.width  = width;
-	output->usable_area.height = height;
-	cow_output_apply_reserved_area(output);
+	/* River's non_exclusive_area reflects panel exclusive zones.
+	 * cow uses its own reserved area (set reserved.*) for usable_area,
+	 * applied independently from raw output dimensions.
+	 */
 }
 
 static const struct river_layer_shell_output_v1_listener ls_output_listener = {
