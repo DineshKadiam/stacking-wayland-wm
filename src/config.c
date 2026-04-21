@@ -181,7 +181,6 @@ struct cow_config *cow_config_create(void) {
 
   wl_list_init(&config->keyboard_bindings);
   wl_list_init(&config->mouse_bindings);
-  wl_list_init(&config->actions);
   wl_list_init(&config->view_configs);
 
   return config;
@@ -208,14 +207,6 @@ void cow_config_destroy(struct cow_config *config) {
     xfree(mb->key_string);
     xfree(mb->action_string);
     xfree(mb);
-  }
-
-  struct cow_action_entry *ae, *ae_tmp;
-  wl_list_for_each_safe(ae, ae_tmp, &config->actions, link) {
-    wl_list_remove(&ae->link);
-    xfree(ae->name);
-    xfree(ae->command);
-    xfree(ae);
   }
 
   struct cow_view_config_entry *vc, *vc_tmp;
@@ -301,16 +292,6 @@ struct cow_view_config_entry *cow_config_find_view(struct cow_config *config,
     if (entry->app_id != NULL &&
         pattern_match(entry->app_id, app_id, entry->use_glob))
       return entry;
-  }
-  return NULL;
-}
-
-const char *cow_config_find_action(struct cow_config *config,
-                                   const char *name) {
-  struct cow_action_entry *entry;
-  wl_list_for_each(entry, &config->actions, link) {
-    if (!strcmp(entry->name, name))
-      return entry->command;
   }
   return NULL;
 }

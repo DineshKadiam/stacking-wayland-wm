@@ -174,15 +174,6 @@ void cow_seat_process_bindings(struct cow_seat *seat) {
 }
 
 /*
- * Execute a shell command (for user-defined "action-<name>" actions).
- */
-static void action_execute_command(void *arg) {
-  const char *cmd = arg;
-  if (cmd != NULL)
-    cow_command_execute(cmd);
-}
-
-/*
  * Execute a command string through the command system.
  * This bridges any registered command into keybindings.
  */
@@ -338,23 +329,10 @@ static bool parse_mouse_string(const char *str, uint32_t *button_out,
  * ================================================================ */
 
 bool cow_resolve_action(const char *action_str, cow_action_fn *fn_out,
-                        void **arg_out) {
-  /* User-defined actions: "action-<name>" -> shell command */
-  if (strncmp(action_str, "action-", 7) == 0) {
-    const char *name = action_str + 7;
-    const char *cmd = cow_config_find_action(cow_config, name);
-    if (cmd != NULL) {
-      *fn_out = action_execute_command;
-      *arg_out = (void *)cmd;
-      return true;
-    }
-    fprintf(stderr, "cow: unknown action \"%s\"\n", action_str);
-    return false;
-  }
-
+                        void **arg_out)
+{
   /* Try as a registered command (e.g. "close", "focus next",
    * "expand", "workspace switch 3", etc.) */
-  {
     char tmp[256];
     strlcpy(tmp, action_str, sizeof(tmp));
     char *sp = strchr(tmp, ' ');
@@ -365,7 +343,6 @@ bool cow_resolve_action(const char *action_str, cow_action_fn *fn_out,
       *arg_out = xstrdup(action_str);
       return true;
     }
-  }
 
   /* Unrecognized -- silently ignore (may be compositor-specific) */
   fprintf(stderr, "cow: ignoring unimplemented action \"%s\"\n", action_str);

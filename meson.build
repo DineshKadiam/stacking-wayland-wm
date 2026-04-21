@@ -14,7 +14,6 @@ hostsys = host_machine.system()
 srcs = [
     'src/arguments.c',
     'src/border.c',
-    'src/cmd-action.c',
     'src/cmd-bind.c',
     'src/cmd-container.c',
     'src/cmd-ctx.c',

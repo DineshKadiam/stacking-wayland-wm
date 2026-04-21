@@ -73,15 +73,6 @@ struct cow_mouse_binding_entry {
 };
 
 /*
- * A named action (user-defined command).
- */
-struct cow_action_entry {
-	struct wl_list link;
-	char	      *name;
-	char	      *command;
-};
-
-/*
  * Button action enum.
  */
 enum cow_button_action {
