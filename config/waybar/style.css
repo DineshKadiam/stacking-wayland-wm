@@ -32,9 +32,12 @@ window#waybar {
 
 /* Right modules — colours from ~/.conkyrc, cyan over/underline, white fg.
  * No left/right padding or margin so modules sit flush against each other. */
+#cpu,
+#memory,
 #custom-cpu,
 #custom-mem,
 #custom-loadavg,
+#cpu.loadavg,
 #clock {
     color: #ffffff;
     padding: 0;
@@ -43,14 +46,17 @@ window#waybar {
     border-bottom: 1px solid #00ffff;
 }
 
+#cpu,
 #custom-cpu {
     background-color: #4ECC4E;
 }
 
+#memory,
 #custom-mem {
     background-color: #66B2FF;
 }
 
+#cpu.loadavg,
 #custom-loadavg {
     background-color: #D68C5A;
 }

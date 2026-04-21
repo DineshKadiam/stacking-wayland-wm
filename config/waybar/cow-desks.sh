@@ -29,6 +29,8 @@ cowbar | while read -r line; do
 
             # Info block: yellow-green background, white text, magenta leading pipe
             ("<span color=\"#FF00FF\">|</span>"
+              + "<span background=\"#E3A3BE\" color=\"#ffffff\">"
+              + "["     + ($out.page_col|tostring) + ", " + ($out.page_row|tostring) + "]</span>"
               + "<span background=\"#D7C72F\" color=\"#ffffff\">"
               + "[Scr:" + ($out.name // "") + "]"
               + "[A:"   + ($active_wins | tostring) + "]"
