@@ -171,7 +171,7 @@ install_data(
 )
 
 install_data(
-    'config/cow.conf',
+    'config/cow/cow.conf',
     install_dir: etc_prefix + '/etc/cow',
 )
 

@@ -96,7 +96,15 @@ There's a command called `cow-start` which you can run thus:
 river -c 'cow-start'
 ```
 
-This is via a tty.
+It's recommended that you copy the [river init file](config/river/init) to
+`~/.config/river` so that you can just run:
+
+```
+river
+```
+
+This will set up the environment before river starts to enable screen-sharing,
+etc.  The [river init file](config/river/init) can be customised as needed.
 
 Alternatively, a globally-installed `cow.desktop` file is installed allowing
 cow to be used with wayland login managers.
