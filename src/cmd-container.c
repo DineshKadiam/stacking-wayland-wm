@@ -25,15 +25,16 @@ static enum cmd_retval cmd_container_exec(struct cmd *, struct cmd_q *);
 struct cmd_entry cmd_container_entry = {
 	"window-container",
 	"t:s:arnpNS",
-	0, 0,
+	0,
+	0,
 	"[-t target] [-s source] [-arnpNS]",
-	cmd_container_exec
+	cmd_container_exec,
 };
 
 static enum cmd_retval
 cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 {
-	struct args *args   = self->args;
+	struct args *args = self->args;
 
 	/* Resolve the target window (-t or focused) */
 	struct cow_view *target = cmd_ctx_target_window(cmdq);
@@ -150,6 +151,12 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		return CMD_RETURN_NORMAL;
 	}
 
+	/*
+	 * XXX: 'P' is not in cmd_container_entry.args_template ("t:s:arnpNS")
+	 * so args_parse() currently rejects -P before exec runs, making this
+	 * branch unreachable.  Either add 'P' to the template and document
+	 * swap-prev in the usage string, or delete this block.
+	 */
 	if (args_has(args, 'P')) {
 		struct cow_container *ctr = cow_view_container(target);
 		if (ctr == NULL) {

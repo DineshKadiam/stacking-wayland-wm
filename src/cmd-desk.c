@@ -30,8 +30,14 @@
 static enum cmd_retval cmd_desk_exec(struct cmd *, struct cmd_q *);
 static void	       do_collect(struct cow_output *, uint8_t);
 
-struct cmd_entry cmd_desk_entry = { "desk", "t:d:c:np", 0, 0,
-	"[-t target output] [-d 0-9] [-c 0-9] [-n] [-p]", cmd_desk_exec };
+struct cmd_entry cmd_desk_entry = {
+	"desk",
+	"t:d:c:np",
+	0,
+	0,
+	"[-t target output] [-d 0-9] [-c 0-9] [-n] [-p]",
+	cmd_desk_exec,
+};
 
 static enum cmd_retval
 cmd_desk_exec(struct cmd *self, struct cmd_q *cmdq)

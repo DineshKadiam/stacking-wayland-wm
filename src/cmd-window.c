@@ -57,8 +57,14 @@ static void		    do_shade(struct cow_view *, const char *);
 static enum expand_dir	    resolve_direction(const char *);
 static enum shade_direction resolve_shade_direction(const char *);
 
-struct cmd_entry cmd_winops_entry = { "winops", "t:IcrlsiS", 0, 0,
-	"[-Icilrs] [-t target window]", cmd_winops_exec };
+struct cmd_entry cmd_winops_entry = {
+	"winops",
+	"t:IcrlsiS",
+	0,
+	0,
+	"[-Icilrs] [-t target window]",
+	cmd_winops_exec,
+};
 
 static enum cmd_retval
 cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)

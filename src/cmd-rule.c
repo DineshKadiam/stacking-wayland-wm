@@ -43,9 +43,10 @@ static bool	       parse_colour(const char *, float[4]);
 struct cmd_entry cmd_rule_entry = {
 	"rule",
 	"t:s:T",
-	1, -1,
+	1,
+	-1,
 	"rule [-T] [-t spec] pattern [key value ...]",
-	cmd_rule_exec
+	cmd_rule_exec,
 };
 
 /* Deferred rule list for startup mode. */
@@ -93,7 +94,7 @@ cmd_rule_exec(struct cmd *self, struct cmd_q *cmdq)
 			    deferred_rules_cap * 2 :
 			    8;
 			deferred_rules	   = xrealloc(deferred_rules,
-			    deferred_rules_cap, sizeof(char *));
+				deferred_rules_cap, sizeof(char *));
 		}
 		deferred_rules[num_deferred_rules++] = xstrdup(line);
 

@@ -27,10 +27,12 @@
 static enum cmd_retval cmd_bind_exec(struct cmd *, struct cmd_q *);
 
 struct cmd_entry cmd_bind_entry = {
-	"bind", "",
-	2, -1,
+	"bind",
+	"",
+	2,
+	-1,
 	"bind key action ...",
-	cmd_bind_exec
+	cmd_bind_exec,
 };
 
 static enum cmd_retval
@@ -39,7 +41,7 @@ cmd_bind_exec(struct cmd *self, __unused struct cmd_q *cmdq)
 	struct args *args = self->args;
 
 	struct cow_binding_entry *entry = xcalloc(1, sizeof(*entry));
-	entry->key_string = xstrdup(args->argv[0]);
+	entry->key_string		= xstrdup(args->argv[0]);
 	entry->action_string = cmd_argv_to_string(args->argc, args->argv, 1);
 
 	wl_list_insert(&cow_config->keyboard_bindings, &entry->link);

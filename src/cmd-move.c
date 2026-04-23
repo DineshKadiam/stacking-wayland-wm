@@ -43,9 +43,14 @@ static void do_transfer_to_output(struct cow_view *, struct cow_output *,
 static struct cow_output *output_neighbour_in_dir(struct cow_output *,
     const char *);
 
-struct cmd_entry cmd_move_entry = { "window-move", "t:d:o:cCnwk:x:y:P:", 0, 0,
+struct cmd_entry cmd_move_entry = {
+	"window-move",
+	"t:d:o:cCnwk:x:y:P:",
+	0,
+	0,
 	"[-C] [-d dir [-n]] [-o output] [-c] [-k 0-9] [-x X] [-y Y]",
-	cmd_move_exec };
+	cmd_move_exec,
+};
 
 static enum cmd_retval
 cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)

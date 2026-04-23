@@ -39,9 +39,14 @@ static void	       do_directional(int, struct cmd_q *);
 static void	       do_screen(const char *, struct cmd_q *);
 static int	       parse_direction(const char *);
 
-struct cmd_entry cmd_focus_entry = { "focus", "t:npwd:o:A:T:i:", 0, 0,
+struct cmd_entry cmd_focus_entry = {
+	"focus",
+	"t:npwd:o:A:T:i:",
+	0,
+	0,
 	"focus [-npw] [-d dir] [-o output] [-A app_id] [-T title] [-i id]",
-	cmd_focus_exec };
+	cmd_focus_exec,
+};
 
 static enum cmd_retval
 cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
@@ -223,7 +228,12 @@ do_id(const char *id, struct cmd_q *cmdq)
 	cmdq_error(cmdq, "focus: no window with id: %s", id);
 }
 
-enum { DIR_UP = 0, DIR_DOWN = 1, DIR_LEFT = 2, DIR_RIGHT = 3 };
+enum {
+	DIR_UP	  = 0,
+	DIR_DOWN  = 1,
+	DIR_LEFT  = 2,
+	DIR_RIGHT = 3,
+};
 
 static int
 parse_direction(const char *s)

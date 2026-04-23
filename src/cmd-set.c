@@ -53,8 +53,14 @@ static void do_set_button(const char *, const char *);
 static void refresh_visuals(void);
 static bool parse_colour_value(const char *, float[4]);
 
-struct cmd_entry cmd_set_entry = { "set", "v", 2, -1, "set [-v] key value",
-	cmd_set_exec };
+struct cmd_entry cmd_set_entry = {
+	"set",
+	"v",
+	2,
+	-1,
+	"set [-v] key value",
+	cmd_set_exec,
+};
 
 static enum cmd_retval
 cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)

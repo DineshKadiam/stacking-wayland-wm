@@ -33,8 +33,14 @@ static void do_set_size(struct cow_view *, const char *, const char *,
     struct cmd_q *);
 static void do_interactive(struct cow_view *);
 
-struct cmd_entry cmd_resize_entry = { "window-resize", "t:gsd:w:h:", 0, 0,
-	"[-gs] [-d dir] [-w width] [-h height]", cmd_resize_exec };
+struct cmd_entry cmd_resize_entry = {
+	"window-resize",
+	"t:gsd:w:h:",
+	0,
+	0,
+	"[-gs] [-d dir] [-w width] [-h height]",
+	cmd_resize_exec,
+};
 
 static enum cmd_retval
 cmd_resize_exec(struct cmd *self, struct cmd_q *cmdq)

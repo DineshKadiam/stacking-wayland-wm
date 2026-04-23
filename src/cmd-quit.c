@@ -36,8 +36,14 @@
 static enum cmd_retval cmd_quit_exec(struct cmd *, struct cmd_q *);
 static void	       do_reload(struct cmd_q *);
 
-struct cmd_entry cmd_quit_entry = { "quit", "r", 0, 0, "quit [-r]",
-	cmd_quit_exec };
+struct cmd_entry cmd_quit_entry = {
+	"quit",
+	"r",
+	0,
+	0,
+	"quit [-r]",
+	cmd_quit_exec,
+};
 
 static enum cmd_retval
 cmd_quit_exec(struct cmd *self, struct cmd_q *cmdq)

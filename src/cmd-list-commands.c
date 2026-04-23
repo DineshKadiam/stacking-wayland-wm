@@ -27,8 +27,14 @@
 
 static enum cmd_retval cmd_list_commands_exec(struct cmd *, struct cmd_q *);
 
-struct cmd_entry cmd_list_commands_entry = { "list-commands", "", 0, 0,
-	"list-commands", cmd_list_commands_exec };
+struct cmd_entry cmd_list_commands_entry = {
+	"list-commands",
+	"",
+	0,
+	0,
+	"list-commands",
+	cmd_list_commands_exec,
+};
 
 static enum cmd_retval
 cmd_list_commands_exec(__unused struct cmd *self, struct cmd_q *cmdq)

@@ -33,8 +33,14 @@
 
 static enum cmd_retval cmd_exec_exec(struct cmd *, struct cmd_q *);
 
-struct cmd_entry cmd_exec_entry = { "exec", "", 1, -1, "exec command ...",
-	cmd_exec_exec };
+struct cmd_entry cmd_exec_entry = {
+	"exec",
+	"",
+	1,
+	-1,
+	"exec command ...",
+	cmd_exec_exec,
+};
 
 /* Deferred exec list for startup mode. */
 static char **deferred_execs;

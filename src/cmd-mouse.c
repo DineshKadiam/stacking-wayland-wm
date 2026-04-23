@@ -30,8 +30,14 @@
 
 static enum cmd_retval cmd_mouse_exec(struct cmd *, struct cmd_q *);
 
-struct cmd_entry cmd_mouse_entry = { "mouse", "", 2, -1, "mouse key action ...",
-	cmd_mouse_exec };
+struct cmd_entry cmd_mouse_entry = {
+	"mouse",
+	"",
+	2,
+	-1,
+	"mouse key action ...",
+	cmd_mouse_exec,
+};
 
 static enum cmd_retval
 cmd_mouse_exec(struct cmd *self, __unused struct cmd_q *cmdq)

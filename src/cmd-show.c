@@ -39,8 +39,14 @@ static void	       do_show_desk(int fd);
 static void	       do_show_output(int fd);
 static void	       do_show_config(const char *ckey, int fd, struct cmd_q *);
 
-struct cmd_entry cmd_show_entry = { "show", "", 1, 2, "show topic",
-	cmd_show_exec };
+struct cmd_entry cmd_show_entry = {
+	"show",
+	"",
+	1,
+	2,
+	"show topic",
+	cmd_show_exec,
+};
 
 static enum cmd_retval
 cmd_show_exec(struct cmd *self, struct cmd_q *cmdq)
