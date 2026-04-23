@@ -27,6 +27,23 @@ struct cow_output;
 struct cow_desk;
 
 /*
+ * Default config values.  Used both by cow_config_create() and by the
+ * ternary fallbacks at sites where cow_config may be NULL (e.g. during
+ * early startup before the config is parsed).  Keeping them here means
+ * the two code paths cannot drift.
+ */
+#define COW_CFG_DEFAULT_BORDER 1
+#define COW_CFG_DEFAULT_GAP 5
+#define COW_CFG_DEFAULT_STEP 100
+#define COW_CFG_DEFAULT_CORNER_LENGTH 20
+#define COW_CFG_DEFAULT_ICON_SIZE 64
+#define COW_CFG_DEFAULT_SNAP_DISTANCE 10
+#define COW_CFG_DEFAULT_PAGE_COLS 1
+#define COW_CFG_DEFAULT_PAGE_ROWS 1
+#define COW_CFG_DEFAULT_PAGE_SCROLL_MS 200
+#define COW_CFG_DEFAULT_EDGE_SCROLL_DELAY 300
+
+/*
  * Border style enum (carried from original cow).
  */
 enum cow_border_style {

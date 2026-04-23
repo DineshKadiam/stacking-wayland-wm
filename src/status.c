@@ -238,8 +238,10 @@ cow_status_emit(void)
 		/* Page grid state */
 		int pw	  = output->usable_area.width;
 		int ph	  = output->usable_area.height;
-		int pcols = cow_config ? cow_config->page_cols : 1;
-		int prows = cow_config ? cow_config->page_rows : 1;
+		int pcols = cow_config ? cow_config->page_cols :
+					 COW_CFG_DEFAULT_PAGE_COLS;
+		int prows = cow_config ? cow_config->page_rows :
+					 COW_CFG_DEFAULT_PAGE_ROWS;
 		int pcol  = (pw > 0 && pcols > 1) ?
 		     output->current_desk->page_vx / pw :
 		     0;

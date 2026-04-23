@@ -110,7 +110,8 @@ cow_decoration_init(struct cow_view_decoration *dec)
 {
 	memset(dec, 0, sizeof(*dec));
 	dec->dirty	  = true;
-	dec->border_width = cow_config ? cow_config->border : 3;
+	dec->border_width = cow_config ? cow_config->border :
+					 COW_CFG_DEFAULT_BORDER;
 
 	/* Enable titlebar when config says so */
 	if (cow_config != NULL && cow_config->titlebar.enabled) {

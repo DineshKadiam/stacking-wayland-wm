@@ -444,9 +444,9 @@ cow_view_apply_render(struct cow_view *view)
 			}
 		}
 
-		struct cow_box *ua	= &view->output->usable_area;
-		int		gap	= cow_config ? cow_config->gap : 5;
-		int		dec_top = view->dec.border_width +
+		struct cow_box *ua = &view->output->usable_area;
+		int gap = cow_config ? cow_config->gap : COW_CFG_DEFAULT_GAP;
+		int dec_top = view->dec.border_width +
 		    view->dec.title_thickness;
 		int			dec_left = view->dec.border_width;
 		enum cow_placement_mode mode	 = cow_config ?
@@ -808,7 +808,7 @@ cow_view_resolve_style(struct cow_view *view)
 	struct cow_view_style *s = &view->style;
 
 	/* Start from global config defaults */
-	s->border		    = cow_config ? cow_config->border : 6;
+	s->border = cow_config ? cow_config->border : COW_CFG_DEFAULT_BORDER;
 	s->has_border_override	    = false;
 	s->has_titlebar_override    = false;
 	s->has_titlebar_fg_override = false;
@@ -1205,7 +1205,8 @@ cow_view_exit_fullscreen(struct cow_view *view)
 void
 cow_output_layout_icons(struct cow_output *output)
 {
-	int icon_sz = cow_config ? cow_config->icon_size : 64;
+	int icon_sz = cow_config ? cow_config->icon_size :
+				   COW_CFG_DEFAULT_ICON_SIZE;
 	int icon_h  = icon_sz + 20; /* extra height for text below */
 	int icon_w  = icon_sz;
 	int gap	    = 8;
@@ -1298,7 +1299,8 @@ cow_view_icon_render(struct cow_view *view)
 	uint32_t px_lt = cow_colour_to_pixel(lt);
 	uint32_t px_dk = cow_colour_to_pixel(dk);
 
-	int icon_sz = cow_config ? cow_config->icon_size : 64;
+	int icon_sz = cow_config ? cow_config->icon_size :
+				   COW_CFG_DEFAULT_ICON_SIZE;
 	int box_x   = (icon_w - icon_sz) / 2;
 	int box_y   = 0;
 	int bw	    = 3; /* icon border width */

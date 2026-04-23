@@ -125,8 +125,10 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 		const char *col_s = args_get(args, 'P');
 		int	    col = 0, row = 0;
 		const char *errstr;
-		int	    cols = cow_config ? cow_config->page_cols : 1;
-		int	    rows = cow_config ? cow_config->page_rows : 1;
+		int	    cols = cow_config ? cow_config->page_cols :
+						COW_CFG_DEFAULT_PAGE_COLS;
+		int	    rows = cow_config ? cow_config->page_rows :
+						COW_CFG_DEFAULT_PAGE_ROWS;
 		col		 = (int)strtonum(col_s, 0, cols - 1, &errstr);
 		if (errstr != NULL) {
 			cmdq_error(cmdq, "move: bad page column: %s", col_s);
@@ -374,10 +376,10 @@ do_interactive(struct cow_view *view)
 static void
 do_step(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
 {
-	int		step = cow_config ? cow_config->step : 100;
-	struct cow_box *ua   = &view->output->usable_area;
-	int		bw   = view->dec.border_width;
-	int		tt   = view->dec.title_thickness;
+	int step = cow_config ? cow_config->step : COW_CFG_DEFAULT_STEP;
+	struct cow_box *ua = &view->output->usable_area;
+	int		bw = view->dec.border_width;
+	int		tt = view->dec.title_thickness;
 
 	unmax_if_needed(view);
 

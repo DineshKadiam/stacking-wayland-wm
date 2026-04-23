@@ -38,7 +38,7 @@ static void
 snap_edges(struct cow_view *view, int *frame_left, int *frame_top,
     int *frame_right, int *frame_bottom, bool snap_size)
 {
-	int sd = cow_config ? cow_config->snap_distance : 0;
+	int sd = cow_config ? cow_config->snap_distance : 0; /* snap off */
 	if (sd <= 0)
 		return;
 

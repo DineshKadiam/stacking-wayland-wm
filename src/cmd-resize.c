@@ -90,11 +90,12 @@ do_resize_step(struct cow_view *view, const char *dir, int sign,
 		return;
 	}
 
-	int step = (cow_config ? cow_config->step : 100) * sign;
-	int w	 = view->content_width;
-	int h	 = view->content_height;
-	int x	 = view->x;
-	int y	 = view->y;
+	int step = (cow_config ? cow_config->step : COW_CFG_DEFAULT_STEP) *
+	    sign;
+	int w = view->content_width;
+	int h = view->content_height;
+	int x = view->x;
+	int y = view->y;
 
 	switch (cow_parse_direction(dir)) {
 	case COW_DIR_UP:

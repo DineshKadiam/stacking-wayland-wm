@@ -109,22 +109,22 @@ cow_config_create(void)
 	struct cow_config *config = xcalloc(1, sizeof(*config));
 
 	/* Defaults matching original cow */
-	config->border		     = 1;
-	config->gap		     = 5;
-	config->step		     = 100;
-	config->corner_length	     = 20;
+	config->border		     = COW_CFG_DEFAULT_BORDER;
+	config->gap		     = COW_CFG_DEFAULT_GAP;
+	config->step		     = COW_CFG_DEFAULT_STEP;
+	config->corner_length	     = COW_CFG_DEFAULT_CORNER_LENGTH;
 	config->handles		     = true;
 	config->border_style	     = COW_BORDER_STYLE_NONE;
 	config->placement	     = COW_PLACEMENT_CASCADE;
 	config->desktop_config	     = COW_DESKTOP_GLOBAL;
-	config->page_cols	     = 1;
-	config->page_rows	     = 1;
+	config->page_cols	     = COW_CFG_DEFAULT_PAGE_COLS;
+	config->page_rows	     = COW_CFG_DEFAULT_PAGE_ROWS;
 	config->page_scroll_animate  = false;
-	config->page_scroll_ms	     = 200;
+	config->page_scroll_ms	     = COW_CFG_DEFAULT_PAGE_SCROLL_MS;
 	config->edge_scroll	     = false;
-	config->edge_scroll_delay_ms = 300;
-	config->icon_size	     = 64;
-	config->snap_distance	     = 10;
+	config->edge_scroll_delay_ms = COW_CFG_DEFAULT_EDGE_SCROLL_DELAY;
+	config->icon_size	     = COW_CFG_DEFAULT_ICON_SIZE;
+	config->snap_distance	     = COW_CFG_DEFAULT_SNAP_DISTANCE;
 
 	border_colour_set_uniform(&config->border_active, 0xFFFFFF);
 	border_colour_set_uniform(&config->border_inactive, 0x465457);
