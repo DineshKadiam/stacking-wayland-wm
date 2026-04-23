@@ -39,7 +39,7 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 	/* Resolve the target window (-t or focused) */
 	struct cow_view *target = cmd_require_target_window(cmdq, "container");
 	if (target == NULL)
-		return CMD_RETURN_ERROR;
+		return (CMD_RETURN_ERROR);
 
 	if (args_has(args, 'a')) {
 		/* Resolve source window (-s flag, else focused) */
@@ -52,7 +52,7 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 				cmdq_error(cmdq,
 				    "container add: bad -s specifier: %s",
 				    cause ? cause : "unknown");
-				return CMD_RETURN_ERROR;
+				return (CMD_RETURN_ERROR);
 			}
 			source = src_ctx.window;
 		} else {
@@ -61,7 +61,7 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 
 		if (source == NULL || source->closed) {
 			cmdq_error(cmdq, "container add: no source window");
-			return CMD_RETURN_ERROR;
+			return (CMD_RETURN_ERROR);
 		}
 
 		/*
@@ -76,14 +76,14 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 			if (target == NULL || target == source) {
 				cmdq_error(cmdq,
 				    "container add: no other window to group with");
-				return CMD_RETURN_ERROR;
+				return (CMD_RETURN_ERROR);
 			}
 		}
 
 		if (source == target) {
 			cmdq_error(cmdq,
 			    "container add: source and target are the same window");
-			return CMD_RETURN_ERROR;
+			return (CMD_RETURN_ERROR);
 		}
 
 		struct cow_container *ctr = cow_view_container(target);
@@ -91,7 +91,7 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		    source->container_member->container == ctr) {
 			cmdq_error(cmdq,
 			    "container add: source is already in this container");
-			return CMD_RETURN_ERROR;
+			return (CMD_RETURN_ERROR);
 		}
 
 		/* If source is in a different container, remove it first */
@@ -103,17 +103,17 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		} else {
 			cow_container_create(target, source);
 		}
-		return CMD_RETURN_NORMAL;
+		return (CMD_RETURN_NORMAL);
 	}
 
 	if (args_has(args, 'r')) {
 		if (target->container_member == NULL) {
 			cmdq_error(cmdq,
 			    "container remove: window is not in a container");
-			return CMD_RETURN_ERROR;
+			return (CMD_RETURN_ERROR);
 		}
 		cow_container_remove_view(target);
-		return CMD_RETURN_NORMAL;
+		return (CMD_RETURN_NORMAL);
 	}
 
 	if (args_has(args, 'n')) {
@@ -121,10 +121,10 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		if (ctr == NULL) {
 			cmdq_error(cmdq,
 			    "container next: window is not in a container");
-			return CMD_RETURN_ERROR;
+			return (CMD_RETURN_ERROR);
 		}
 		cow_container_activate_next(ctr);
-		return CMD_RETURN_NORMAL;
+		return (CMD_RETURN_NORMAL);
 	}
 
 	if (args_has(args, 'p')) {
@@ -132,10 +132,10 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		if (ctr == NULL) {
 			cmdq_error(cmdq,
 			    "container prev: window is not in a container");
-			return CMD_RETURN_ERROR;
+			return (CMD_RETURN_ERROR);
 		}
 		cow_container_activate_prev(ctr);
-		return CMD_RETURN_NORMAL;
+		return (CMD_RETURN_NORMAL);
 	}
 
 	if (args_has(args, 'N')) {
@@ -143,10 +143,10 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		if (ctr == NULL) {
 			cmdq_error(cmdq,
 			    "container swap-next: window is not in a container");
-			return CMD_RETURN_ERROR;
+			return (CMD_RETURN_ERROR);
 		}
 		cow_container_swap_next(ctr);
-		return CMD_RETURN_NORMAL;
+		return (CMD_RETURN_NORMAL);
 	}
 
 	/*
@@ -160,12 +160,12 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		if (ctr == NULL) {
 			cmdq_error(cmdq,
 			    "container swap-prev: window is not in a container");
-			return CMD_RETURN_ERROR;
+			return (CMD_RETURN_ERROR);
 		}
 		cow_container_swap_prev(ctr);
-		return CMD_RETURN_NORMAL;
+		return (CMD_RETURN_NORMAL);
 	}
 
 	cmdq_error(cmdq, "container: unknown command: %s", args->argv[0]);
-	return CMD_RETURN_ERROR;
+	return (CMD_RETURN_ERROR);
 }

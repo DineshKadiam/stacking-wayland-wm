@@ -65,7 +65,7 @@ cmd_page_exec(struct cmd *self, struct cmd_q *cmdq)
 		}
 		if (output == NULL) {
 			cmdq_error(cmdq, "page: unknown output: %s", out_name);
-			return CMD_RETURN_ERROR;
+			return (CMD_RETURN_ERROR);
 		}
 	} else {
 		output = cow_wm.current_output;
@@ -73,13 +73,13 @@ cmd_page_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	if (output == NULL) {
 		cmdq_error(cmdq, "page: no output");
-		return CMD_RETURN_ERROR;
+		return (CMD_RETURN_ERROR);
 	}
 
 	if (cow_config == NULL ||
 	    (cow_config->page_cols <= 1 && cow_config->page_rows <= 1)) {
 		/* Single-page grid — nothing to navigate */
-		return CMD_RETURN_NORMAL;
+		return (CMD_RETURN_NORMAL);
 	}
 
 	int cols = cow_config->page_cols;
@@ -121,7 +121,7 @@ cmd_page_exec(struct cmd *self, struct cmd_q *cmdq)
 			cmdq_error(cmdq,
 			    "page: unknown direction: %s (left|right|up|down)",
 			    dir);
-			return CMD_RETURN_ERROR;
+			return (CMD_RETURN_ERROR);
 		}
 	} else if (args_get(args, 'c') != NULL) {
 		/* Absolute page: -c col row (two positional args follow) */
@@ -129,25 +129,25 @@ cmd_page_exec(struct cmd *self, struct cmd_q *cmdq)
 		if (args->argc < 1) {
 			cmdq_error(cmdq,
 			    "page: -c requires col and row arguments");
-			return CMD_RETURN_ERROR;
+			return (CMD_RETURN_ERROR);
 		}
 		const char *row_s = args->argv[0];
 		const char *errstr;
 		col = (int)strtonum(col_s, 0, cols - 1, &errstr);
 		if (errstr != NULL) {
 			cmdq_error(cmdq, "page: bad col value: %s", col_s);
-			return CMD_RETURN_ERROR;
+			return (CMD_RETURN_ERROR);
 		}
 		row = (int)strtonum(row_s, 0, rows - 1, &errstr);
 		if (errstr != NULL) {
 			cmdq_error(cmdq, "page: bad row value: %s", row_s);
-			return CMD_RETURN_ERROR;
+			return (CMD_RETURN_ERROR);
 		}
 	} else {
 		cmdq_error(cmdq, cmd_page_entry.usage);
-		return CMD_RETURN_ERROR;
+		return (CMD_RETURN_ERROR);
 	}
 
 	cow_page_switch(output, col, row);
-	return CMD_RETURN_NORMAL;
+	return (CMD_RETURN_NORMAL);
 }

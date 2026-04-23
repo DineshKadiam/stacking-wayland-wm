@@ -357,8 +357,9 @@ edge_is_scrollable(struct cow_output *output, int edge)
 		return cols > 1 && cur_col > 0;
 	case PAN_RIGHT:
 		return cols > 1 && cur_col < cols - 1;
+	default:
+		return false;
 	}
-	return false;
 }
 
 static void

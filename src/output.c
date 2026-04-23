@@ -477,6 +477,9 @@ cow_output_pan_frame_tick(struct cow_output *output)
 		cow_wm.warp_x	    = ua_lft + margin;
 		cow_wm.warp_y	    = ptr_y;
 		break;
+	default:
+		/* unreachable: edge is constrained to 0..3 by callers */
+		break;
 	}
 }
 

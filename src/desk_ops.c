@@ -193,6 +193,10 @@ cow_desk_switch(struct cow_output *output, uint8_t desk_nr)
 			switch_output_desk(output, desk_nr);
 		}
 		break;
+
+	default:
+		/* unreachable: mode is constrained to the three cases */
+		break;
 	}
 
 	cow_status_emit();

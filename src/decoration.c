@@ -30,6 +30,10 @@
 #include "cow/view.h"
 #include "cow/wm.h"
 
+#include "river-window-management-v1-client-protocol.h"
+
+#define COW_MIN_ID_PREFIX 8
+
 /* Global font for titlebar rendering.
  * Rebuilt whenever the font name changes (tracked via last_font_name). */
 static struct cow_font titlebar_font;
@@ -53,10 +57,6 @@ get_titlebar_font(void)
 
 	return &titlebar_font;
 }
-
-#include "river-window-management-v1-client-protocol.h"
-
-#define COW_MIN_ID_PREFIX 8
 
 /*
  * Build a display title of the form "[<short-id>] <title>".
