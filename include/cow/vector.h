@@ -13,8 +13,8 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#if !defined(COW_VECTOR_BUTTON_H)
-#define COW_VECTOR_BUTTON_H
+#if !defined(COW_VECTOR_H)
+#define COW_VECTOR_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -46,10 +46,10 @@ enum cow_vector_colour {
  * button size at render time.
  */
 struct cow_vector_point {
-	int x;	   /* 0-100 */
-	int y;	   /* 0-100 */
-	int xoff;  /* pixel offset (+ or -) */
-	int yoff;  /* pixel offset (+ or -) */
+	int x;	    /* 0-100 */
+	int y;	    /* 0-100 */
+	int xoff;   /* pixel offset (+ or -) */
+	int yoff;   /* pixel offset (+ or -) */
 	int colour; /* cow_vector_colour index, or -1 for pen move */
 };
 

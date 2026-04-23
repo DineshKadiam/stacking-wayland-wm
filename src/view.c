@@ -92,8 +92,6 @@ window_handle_app_id(void *data, __unused struct river_window_v1 *rw,
 
 	xfree(view->app_id);
 	view->app_id = app_id ? xstrdup(app_id) : NULL;
-
-	(void)app_id;
 }
 
 static void

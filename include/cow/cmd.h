@@ -30,33 +30,17 @@
 #include "cow/compat.h"
 #include "cow/array.h"
 
-/* Attribute macros. */
-#ifndef __unused
-#define __unused __attribute__((__unused__))
-#endif
-
-#ifndef printflike1
-#define printflike1 __attribute__((format(printf, 1, 2)))
-#endif
-#ifndef printflike2
-#define printflike2 __attribute__((format(printf, 2, 3)))
-#endif
-
-#ifndef nitems
-#define nitems(n) (sizeof(n) / sizeof(*(n)))
-#endif
-
 struct args_entry {
-  u_char flag;
-  char *value;
-  RB_ENTRY(args_entry) entry;
+	u_char		     flag;
+	char		    *value;
+	RB_ENTRY(args_entry) entry;
 };
 RB_HEAD(args_tree, args_entry);
 
 struct args {
-  struct args_tree tree;
-  int argc;
-  char **argv;
+	struct args_tree tree;
+	int		 argc;
+	char	       **argv;
 };
 
 struct cow_output;
@@ -70,9 +54,9 @@ struct cow_view;
  * NULL fields mean "use current/default".
  */
 struct cmd_ctx {
-  struct cow_output *output;
-  struct cow_desk *desk;
-  struct cow_view *window;
+	struct cow_output *output;
+	struct cow_desk	  *desk;
+	struct cow_view	  *window;
 };
 
 /*
@@ -106,69 +90,69 @@ struct cmd_q;
 
 /* Command return values. */
 enum cmd_retval {
-  CMD_RETURN_ERROR = -1,
-  CMD_RETURN_NORMAL = 0,
+	CMD_RETURN_ERROR  = -1,
+	CMD_RETURN_NORMAL = 0,
 };
 
 /* Command definition. */
 struct cmd_entry {
-  const char *name;
+	const char *name;
 
-  const char *args_template;
-  int args_lower;
-  int args_upper;
+	const char *args_template;
+	int	    args_lower;
+	int	    args_upper;
 
-  const char *usage;
+	const char *usage;
 
-  enum cmd_retval (*exec)(struct cmd *, struct cmd_q *);
+	enum cmd_retval (*exec)(struct cmd *, struct cmd_q *);
 };
 
 /* A parsed command instance. */
 struct cmd {
-  const struct cmd_entry *entry;
-  struct args *args;
+	const struct cmd_entry *entry;
+	struct args	       *args;
 
-  char *file;
-  u_int line;
+	char *file;
+	u_int line;
 
-  TAILQ_ENTRY(cmd) qentry;
+	TAILQ_ENTRY(cmd) qentry;
 };
 
 /* A list of commands (semicolon-separated chain). */
 struct cmd_list {
-  int references;
-  TAILQ_HEAD(, cmd) list;
+	int references;
+	TAILQ_HEAD(, cmd) list;
 };
 
 /* Command queue entry. */
 struct cmd_q_item {
-  struct cmd_list *cmdlist;
-  TAILQ_ENTRY(cmd_q_item) qentry;
+	struct cmd_list	       *cmdlist;
+	TAILQ_ENTRY(cmd_q_item) qentry;
 };
 TAILQ_HEAD(cmd_q_items, cmd_q_item);
 
 /* Command queue. */
 struct cmd_q {
-  int references;
-  int dead;
+	int references;
+	int dead;
 
-  struct cmd_q_items queue;
-  struct cmd_q_item *item;
-  struct cmd *cmd;
+	struct cmd_q_items queue;
+	struct cmd_q_item *item;
+	struct cmd	  *cmd;
 
-  time_t time;
-  u_int number;
+	time_t time;
+	u_int  number;
 
-  void (*emptyfn)(struct cmd_q *);
-  void *data;
+	void (*emptyfn)(struct cmd_q *);
+	void *data;
 
-  /* IPC client fd for response routing (-1 = config file mode). */
-  int client_fd;
+	/* IPC client fd for response routing (-1 = config file mode). */
+	int client_fd;
 
-  /* Resolved target/source context from -t/-s flags.
-   * Populated by cmdq_continue before calling cmd->exec. */
-  struct cmd_ctx target;
-  struct cmd_ctx source;
+	/* Resolved target/source context from -t/-s flags.
+	 * Populated by cmdq_continue before calling cmd->exec. */
+	struct cmd_ctx target;
+	struct cmd_ctx source;
 };
 
 /* Error cause list. */
@@ -209,7 +193,6 @@ void cow_rule_run_deferred(void);
 extern struct cmd_entry cmd_set_entry;
 extern struct cmd_entry cmd_bind_entry;
 extern struct cmd_entry cmd_mouse_entry;
-extern struct cmd_entry cmd_action_entry;
 extern struct cmd_entry cmd_rule_entry;
 extern struct cmd_entry cmd_exec_entry;
 extern struct cmd_entry cmd_show_entry;
@@ -230,34 +213,34 @@ int args_cmp(struct args_entry *, struct args_entry *);
 RB_PROTOTYPE(args_tree, args_entry, entry, args_cmp);
 struct args *args_create(int, ...);
 struct args *args_parse(const char *, int, char **);
-void args_free(struct args *);
-size_t args_print(struct args *, char *, size_t);
-int args_has(struct args *, u_char);
-void args_set(struct args *, u_char, const char *);
-char *args_get(struct args *, u_char);
+void	     args_free(struct args *);
+size_t	     args_print(struct args *, char *, size_t);
+int	     args_has(struct args *, u_char);
+void	     args_set(struct args *, u_char, const char *);
+char	    *args_get(struct args *, u_char);
 long long args_strtonum(struct args *, u_char, long long, long long, char **);
 
 struct cmd_entry *cmd_find_cmd(const char *);
-char **cmd_copy_argv(int, char *const *);
-void cmd_free_argv(int, char **);
-char *cmd_argv_to_string(int, char **, int);
-size_t cmd_print(struct cmd *, char *, size_t);
-struct cmd *cmd_parse(int, char **, const char *, u_int, char **);
+char		**cmd_copy_argv(int, char *const *);
+void		  cmd_free_argv(int, char **);
+char		 *cmd_argv_to_string(int, char **, int);
+size_t		  cmd_print(struct cmd *, char *, size_t);
+struct cmd	 *cmd_parse(int, char **, const char *, u_int, char **);
 
 struct cmd_list *cmd_list_parse(int, char **, const char *, u_int, char **);
-void cmd_list_free(struct cmd_list *);
-size_t cmd_list_print(struct cmd_list *, char *, size_t);
+void		 cmd_list_free(struct cmd_list *);
+size_t		 cmd_list_print(struct cmd_list *, char *, size_t);
 
 int cmd_string_parse(const char *, struct cmd_list **, const char *, u_int,
-                     char **);
+    char **);
 
-struct cmd_q *cmdq_new(void);
-int cmdq_free(struct cmd_q *);
+struct cmd_q	*cmdq_new(void);
+int		 cmdq_free(struct cmd_q *);
 void printflike2 cmdq_error(struct cmd_q *, const char *, ...);
-void cmdq_run(struct cmd_q *, struct cmd_list *);
-void cmdq_append(struct cmd_q *, struct cmd_list *);
-int cmdq_continue(struct cmd_q *);
-void cmdq_flush(struct cmd_q *);
+void		 cmdq_run(struct cmd_q *, struct cmd_list *);
+void		 cmdq_append(struct cmd_q *, struct cmd_list *);
+int		 cmdq_continue(struct cmd_q *);
+void		 cmdq_flush(struct cmd_q *);
 
 /* Memory wrappers -- declared in cow/memory.h */
 #include "cow/memory.h"

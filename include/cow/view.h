@@ -13,8 +13,8 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#if !defined(COW_VIEW_NEW_H)
-#define COW_VIEW_NEW_H
+#if !defined(COW_VIEW_H)
+#define COW_VIEW_H
 
 #include <stdbool.h>
 #include <wayland-client.h>

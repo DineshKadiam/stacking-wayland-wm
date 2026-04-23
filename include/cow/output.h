@@ -13,8 +13,8 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#if !defined(COW_OUTPUT_NEW_H)
-#define COW_OUTPUT_NEW_H
+#if !defined(COW_OUTPUT_H)
+#define COW_OUTPUT_H
 
 #include <stdbool.h>
 struct zwlr_layer_surface_v1;
@@ -202,14 +202,7 @@ void cow_output_pan_pointer_leave(int pointer_x, int pointer_y);
 void cow_output_pan_pointer_enter(void);
 
 /*
- * Pan frame (zwlr_layer_surface_v1) management.
- * Initialise after Wayland roundtrip, update when page config or
- * output state changes, destroy on output removal or WM shutdown.
+ * Pan frame management API lives in cow/pan_frames.h.
  */
-void pan_frames_init(void);
-void pan_frames_update_output(struct cow_output *output);
-void pan_frames_update_all(void);
-void pan_frames_destroy_output(struct cow_output *output);
-void pan_frames_destroy_all(void);
 
 #endif

@@ -13,8 +13,6 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#include "cow/wm.h"
-
 #include <errno.h>
 #include <poll.h>
 #include <stdio.h>
@@ -42,15 +40,15 @@
 #include "cow/titlebar.h"
 #include "cow/shm.h"
 #include "cow/view.h"
-#include "pointer-constraints-unstable-v1-client-protocol.h"
-#include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "cow/wm.h"
 
-#define GHOST_RADIUS 24
-
+#include "pointer-constraints-unstable-v1-client-protocol.h"
+#include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "river-layer-shell-v1-client-protocol.h"
 #include "river-window-management-v1-client-protocol.h"
 #include "river-xkb-bindings-v1-client-protocol.h"
+
+#define GHOST_RADIUS 24
 
 struct cow_wm cow_wm;
 

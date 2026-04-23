@@ -36,4 +36,15 @@
 #define __unused __attribute__((__unused__))
 #endif
 
+#ifndef printflike1
+#define printflike1 __attribute__((format(printf, 1, 2)))
+#endif
+#ifndef printflike2
+#define printflike2 __attribute__((format(printf, 2, 3)))
+#endif
+
+#ifndef nitems
+#define nitems(n) (sizeof(n) / sizeof(*(n)))
+#endif
+
 #endif

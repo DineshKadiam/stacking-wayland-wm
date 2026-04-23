@@ -13,8 +13,8 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#if !defined(COW_SEAT_NEW_H)
-#define COW_SEAT_NEW_H
+#if !defined(COW_SEAT_H)
+#define COW_SEAT_H
 
 #include <stdbool.h>
 #include <time.h>
@@ -31,68 +31,68 @@ struct cow_view;
  * Wraps a river_seat_v1 object.
  */
 struct cow_seat {
-  struct river_seat_v1 *river_seat;
-  struct river_xkb_bindings_seat_v1 *xkb_seat;
-  struct wl_list wm_link; /* cow_wm.seats */
+	struct river_seat_v1		  *river_seat;
+	struct river_xkb_bindings_seat_v1 *xkb_seat;
+	struct wl_list			   wm_link; /* cow_wm.seats */
 
-  /* Registered bindings */
-  struct wl_list keybindings;      /* cow_keybinding.link */
-  struct wl_list pointer_bindings; /* cow_pointer_binding.link */
-  bool bindings_enabled;
+	/* Registered bindings */
+	struct wl_list keybindings;	 /* cow_keybinding.link */
+	struct wl_list pointer_bindings; /* cow_pointer_binding.link */
+	bool	       bindings_enabled;
 
-  /* Corresponding wl_seat global name */
-  uint32_t wl_seat_name;
+	/* Corresponding wl_seat global name */
+	uint32_t wl_seat_name;
 
-  /* Current pointer state */
-  int pointer_x, pointer_y;
-  bool has_pointer_position;
+	/* Current pointer state */
+	int  pointer_x, pointer_y;
+	bool has_pointer_position;
 
-  /* The window the pointer is currently over */
-  struct cow_view *pointer_entered_view;
+	/* The window the pointer is currently over */
+	struct cow_view *pointer_entered_view;
 
-  /* The window that was last interacted with */
-  struct cow_view *interacted_view;
+	/* The window that was last interacted with */
+	struct cow_view *interacted_view;
 
-  /* The currently focused view (keyboard focus) */
-  struct cow_view *focused_view;
+	/* The currently focused view (keyboard focus) */
+	struct cow_view *focused_view;
 
-  /* Pending sloppy focus (set on pointer_enter, applied in manage) */
-  struct cow_view *sloppy_focus_view;
+	/* Pending sloppy focus (set on pointer_enter, applied in manage) */
+	struct cow_view *sloppy_focus_view;
 
-  /* Double-click detection for window shading */
-  struct cow_view *last_click_view;
-  int last_click_lx, last_click_ly;
-  struct timespec last_click_time;
-  bool pending_shade;  /* set when double-click detected in decoration */
-  int shade_direction; /* COW_SHADE_* direction from double-click */
+	/* Double-click detection for window shading */
+	struct cow_view *last_click_view;
+	int		 last_click_lx, last_click_ly;
+	struct timespec	 last_click_time;
+	bool pending_shade;   /* set when double-click detected in decoration */
+	int  shade_direction; /* COW_SHADE_* direction from double-click */
 
-  /* Pointer operation state */
-  struct cow_pointer_op op;
-  bool op_in_progress;
-  int op_dx, op_dy;
-  bool op_released;
+	/* Pointer operation state */
+	struct cow_pointer_op op;
+	bool		      op_in_progress;
+	int		      op_dx, op_dy;
+	bool		      op_released;
 
-  /* Desk assign mode (ensure_next_key_eaten) */
-  bool awaiting_desk_assign;
+	/* Desk assign mode (ensure_next_key_eaten) */
+	bool awaiting_desk_assign;
 
-  /* Titlebar interaction state */
-  enum {
-    COW_TITLEBAR_PRESS_NONE,
-    COW_TITLEBAR_PRESS_TITLE,
-    COW_TITLEBAR_PRESS_BUTTON,
-  } titlebar_press;
-  int pressed_button_idx;        /* 0, 1, or 2 */
-  struct cow_view *pressed_view; /* view with pressed decoration */
+	/* Titlebar interaction state */
+	enum {
+		COW_TITLEBAR_PRESS_NONE,
+		COW_TITLEBAR_PRESS_TITLE,
+		COW_TITLEBAR_PRESS_BUTTON,
+	} titlebar_press;
+	int		 pressed_button_idx; /* 0, 1, or 2 */
+	struct cow_view *pressed_view;	     /* view with pressed decoration */
 
-  bool removed;
+	bool removed;
 
-  /*
-   * Set when the current window-move was started with -C (container
-   * drag mode).  When op_released, if drag_drop_target is set, the
-   * two views are grouped into a container instead of completing a
-   * normal move.  Cleared on every op release.
-   */
-  bool container_drag;
+	/*
+	 * Set when the current window-move was started with -C (container
+	 * drag mode).  When op_released, if drag_drop_target is set, the
+	 * two views are grouped into a container instead of completing a
+	 * normal move.  Cleared on every op release.
+	 */
+	bool container_drag;
 };
 
 /*

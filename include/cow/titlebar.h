@@ -13,8 +13,8 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#if !defined(COW_TITLEBAR_NEW_H)
-#define COW_TITLEBAR_NEW_H
+#if !defined(COW_TITLEBAR_H)
+#define COW_TITLEBAR_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -62,12 +62,10 @@ int cow_titlebar_compute_thickness(struct cow_font *font);
  *              to indicate this window is the current drop target.
  */
 void cow_titlebar_render(uint32_t *pixels, int stride_px, int frame_w,
-                         int border_width, int title_thickness,
-                         const char *title, bool active, struct cow_font *font,
-                         int pressed_button, int icon_inverted_button,
-                         bool title_pressed, const float *style_colour,
-                         const float *style_fg, bool sticky,
-                         const char **tab_titles, int n_tabs, int active_tab,
-                         bool drop_target);
+    int border_width, int title_thickness, const char *title, bool active,
+    struct cow_font *font, int pressed_button, int icon_inverted_button,
+    bool title_pressed, const float *style_colour, const float *style_fg,
+    bool sticky, const char **tab_titles, int n_tabs, int active_tab,
+    bool drop_target);
 
 #endif
