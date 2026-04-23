@@ -15,6 +15,7 @@
  */
 #include "cow/titlebar.h"
 
+#include <fnmatch.h>
 #include <string.h>
 
 #include <cairo.h>
@@ -24,7 +25,9 @@
 #include "cow/compat.h"
 #include "cow/config.h"
 #include "cow/font.h"
+#include "cow/output.h"
 #include "cow/vector.h"
+#include "cow/view.h"
 
 int
 cow_titlebar_compute_thickness(struct cow_font *font)
@@ -33,6 +36,224 @@ cow_titlebar_compute_thickness(struct cow_font *font)
 	if (raw_height < 12)
 		raw_height = 12;
 	return raw_height + COW_TITLEBAR_PADDING * 2;
+}
+
+/*
+ * Return true if rule 'vc' matches 'view', matching the semantics of
+ * cow_view_resolve_style (which is what actually drives the rest of
+ * the per-rule visual overrides).  We reuse this here instead of
+ * calling cow_config_find_view() so that:
+ *
+ *   - "last match wins" is honoured across multiple rules, matching
+ *     resolve_style's behaviour;
+ *   - a rule pattern of "*" matches even views whose app_id is NULL.
+ */
+static bool
+rule_matches_view(const struct cow_view_config_entry *vc,
+    const struct cow_view			     *view)
+{
+	if (vc->output_name != NULL && view->output != NULL &&
+	    view->output->name != NULL &&
+	    strcmp(vc->output_name, view->output->name) != 0)
+		return false;
+	if (vc->desk_nr >= 0 && view->output != NULL) {
+		bool collected	= (view->desk != NULL &&
+		     view->desk != view->output->current_desk &&
+		     (view->output->collected_desks & (1u << view->desk->nr)));
+		int  match_desk = collected ? view->desk->nr :
+					      view->output->current_desk->nr;
+		if (match_desk != vc->desk_nr)
+			return false;
+	}
+
+	if (vc->title != NULL) {
+		if (view->title == NULL)
+			return false;
+		if (vc->use_glob)
+			return fnmatch(vc->title, view->title, 0) == 0;
+		return strcmp(vc->title, view->title) == 0;
+	}
+	if (vc->app_id != NULL) {
+		const char *id = view->app_id ? view->app_id : "";
+		if (strcmp(vc->app_id, "*") == 0)
+			return true;
+		if (vc->use_glob)
+			return fnmatch(vc->app_id, id, 0) == 0;
+		return strcmp(vc->app_id, id) == 0;
+	}
+	return false;
+}
+
+void
+cow_titlebar_effective_squeeze(const struct cow_view *view,
+    struct cow_titlebar_squeeze			     *out)
+{
+	/*
+	 * Containers with more than one member render a tab strip and
+	 * cannot compose cleanly with squeeze; force NONE there.
+	 */
+	struct cow_container *ctr = cow_view_container(view);
+	if (ctr != NULL && ctr->n_members > 1) {
+		out->mode      = COW_SQUEEZE_NONE;
+		out->justify   = COW_JUST_LEFT;
+		out->width     = 0;
+		out->offset    = 0;
+		out->min_width = 0;
+		return;
+	}
+
+	/* Start from the global config default. */
+	if (cow_config != NULL) {
+		*out = cow_config->titlebar.squeeze;
+	} else {
+		out->mode      = COW_SQUEEZE_NONE;
+		out->justify   = COW_JUST_LEFT;
+		out->width     = COW_CFG_DEFAULT_SQUEEZE_WIDTH;
+		out->offset    = 0;
+		out->min_width = COW_CFG_DEFAULT_SQUEEZE_MIN_WIDTH;
+	}
+
+	if (cow_config == NULL)
+		return;
+
+	/*
+	 * Walk every rule and let the last matching one win -- matches
+	 * cow_view_resolve_style's iteration semantics.
+	 */
+	struct cow_view_config_entry *vc;
+	wl_list_for_each(vc, &cow_config->view_configs, link)
+	{
+		if (!rule_matches_view(vc, view))
+			continue;
+		if (vc->has_squeeze_mode)
+			out->mode = vc->squeeze.mode;
+		if (vc->has_squeeze_justify)
+			out->justify = vc->squeeze.justify;
+		if (vc->has_squeeze_width)
+			out->width = vc->squeeze.width;
+		if (vc->has_squeeze_offset)
+			out->offset = vc->squeeze.offset;
+		if (vc->has_squeeze_min_width)
+			out->min_width = vc->squeeze.min_width;
+	}
+}
+
+/*
+ * The drawn titlebar rectangle inside the decoration buffer.
+ * Coordinates match the (tb_x, tb_y, tb_w, tb_h) used by
+ * cow_titlebar_render: tb_x = border_width, tb_y = border_width,
+ * tb_w spans the frame inside the left/right borders.
+ */
+struct cow_box
+cow_titlebar_squeezed_rect(const struct cow_view *view)
+{
+	int bw	    = view->dec.border_width;
+	int tt	    = view->dec.title_thickness;
+	int frame_w = view->content_width + 2 * bw;
+	int strip_x = bw;
+	int strip_y = bw;
+	int strip_w = frame_w - 2 * bw;
+
+	struct cow_box empty = { 0, 0, 0, 0 };
+	if (tt <= 0 || strip_w <= 0)
+		return empty;
+
+	struct cow_titlebar_squeeze sq;
+	cow_titlebar_effective_squeeze(view, &sq);
+
+	int want;
+	if (sq.mode == COW_SQUEEZE_NONE) {
+		return (struct cow_box) {
+			.x	= strip_x,
+			.y	= strip_y,
+			.width	= strip_w,
+			.height = tt,
+		};
+	} else if (sq.mode == COW_SQUEEZE_FIXED) {
+		want = sq.width > 0 ? sq.width : 1;
+	} else { /* NATURAL */
+		/*
+		 * Approximate: title text + button run (3 buttons, each
+		 * button_width == title_thickness) + inner padding.  We
+		 * cannot call pango from here without a font handle, so
+		 * use a rough character-based estimate from tt.
+		 *
+		 * The renderer will do the exact measurement when it has
+		 * the font; squeeze geometry in that path recomputes.
+		 * Until then, fall back to a min_width-derived estimate
+		 * so hit-testing has something sensible to use.
+		 */
+		int btn_run = tt * COW_TITLEBAR_NUM_BUTTONS;
+		int text    = 0;
+		if (view->title != NULL)
+			text = (int)strlen(view->title) * (tt / 2);
+		want = btn_run + text + 2 * COW_TITLEBAR_PADDING;
+		if (sq.min_width > 0 && want < sq.min_width)
+			want = sq.min_width;
+	}
+
+	if (want > strip_w)
+		want = strip_w;
+	if (want < 1)
+		want = 1;
+
+	int x;
+	switch (sq.justify) {
+	case COW_JUST_CENTRE:
+		x = strip_x + (strip_w - want) / 2;
+		break;
+	case COW_JUST_RIGHT:
+		x = strip_x + strip_w - want;
+		break;
+	case COW_JUST_LEFT:
+	default:
+		x = strip_x;
+		break;
+	}
+	x += sq.offset;
+
+	/* Clamp so the squeezed rect stays inside the strip. */
+	if (x < strip_x)
+		x = strip_x;
+	if (x + want > strip_x + strip_w)
+		x = strip_x + strip_w - want;
+
+	return (struct cow_box) {
+		.x	= x,
+		.y	= strip_y,
+		.width	= want,
+		.height = tt,
+	};
+}
+
+bool
+cow_titlebar_hit(const struct cow_view *view, int lx, int ly)
+{
+	int bw = view->dec.border_width;
+	int tt = view->dec.title_thickness;
+
+	if (tt <= 0)
+		return false;
+
+	struct cow_box r = cow_titlebar_squeezed_rect(view);
+	if (r.width <= 0 || r.height <= 0)
+		return false;
+
+	/*
+	 * lx, ly are view-relative: (0, 0) is the content's top-left.
+	 * The decoration buffer origin is (-bw, -bw - tt) in that
+	 * space, so a dec-coord (dx, dy) corresponds to
+	 *   lx = dx - bw
+	 *   ly = dy - bw - tt.
+	 * The titlebar rect's y is always bw (top border), so the
+	 * vertical test in view-relative space is ly ∈ [-tt, 0).
+	 */
+	if (ly < -tt || ly >= 0)
+		return false;
+
+	int left  = r.x - bw;
+	int right = left + r.width;
+	return lx >= left && lx < right;
 }
 
 /*
@@ -68,13 +289,14 @@ draw_fvwm_relief(uint32_t *pixels, int stride, int rx, int ry, int rw, int rh,
 
 void
 cow_titlebar_render(uint32_t *pixels, int stride_px, int frame_w,
-    int border_width, int title_thickness, const char *title, bool active,
+    int border_width, struct cow_box tb_rect, const char *title, bool active,
     struct cow_font *font, int pressed_button, int icon_inverted_button,
     bool title_pressed, const float *style_colour, const float *style_fg,
     bool sticky, const char **tab_titles, int n_tabs, int active_tab,
     bool drop_target)
 {
-	if (title_thickness <= 0 || frame_w <= 2 * border_width)
+	if (tb_rect.height <= 0 || tb_rect.width <= 0 ||
+	    frame_w <= 2 * border_width)
 		return;
 
 	/* Titlebar colors: use style override if provided,
@@ -113,16 +335,34 @@ cow_titlebar_render(uint32_t *pixels, int stride_px, int frame_w,
 	uint32_t px_dk	 = cow_colour_to_pixel(dk);
 	uint32_t px_fg	 = cow_colour_to_pixel(fg);
 
-	/* Titlebar geometry within the frame */
-	int tb_x = border_width;
-	int tb_y = border_width;
-	int tb_w = frame_w - 2 * border_width;
-	int tb_h = title_thickness;
+	/*
+	 * Titlebar geometry within the decoration frame.  The caller
+	 * passes the exact rectangle it wants painted; for unsqueezed
+	 * views this is the full inner strip, for squeezed ones it is
+	 * narrower and positioned by effective justify + offset.  The
+	 * rest of the full-width strip (between the left/right borders)
+	 * is cleared to transparent so those pixels fall through.
+	 */
+	int tb_x = tb_rect.x;
+	int tb_y = tb_rect.y;
+	int tb_w = tb_rect.width;
+	int tb_h = tb_rect.height;
 
-	if (tb_w <= 0)
+	int strip_x = border_width;
+	int strip_y = border_width;
+	int strip_w = frame_w - 2 * border_width;
+
+	if (tb_w <= 0 || strip_w <= 0)
 		return;
 
-	/* Fill titlebar base colour */
+	/* Clear the full-width strip to transparent ... */
+	for (int y = strip_y; y < strip_y + tb_h; y++) {
+		for (int x = strip_x; x < strip_x + strip_w; x++) {
+			pixels[y * stride_px + x] = 0;
+		}
+	}
+
+	/* ... then fill only the squeezed rect with the base colour. */
 	for (int y = tb_y; y < tb_y + tb_h; y++) {
 		for (int x = tb_x; x < tb_x + tb_w; x++) {
 			pixels[y * stride_px + x] = px_base;

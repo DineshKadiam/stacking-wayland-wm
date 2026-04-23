@@ -65,3 +65,14 @@ cow_font_fini(struct cow_font *font)
 {
 	pango_font_description_free(font->desc);
 }
+
+int
+cow_font_text_width(struct cow_font *font, const char *text)
+{
+	int w = 0, h = 0;
+
+	if (text == NULL || text[0] == '\0')
+		return 0;
+	font_metrics(font, text, &w, &h);
+	return w;
+}

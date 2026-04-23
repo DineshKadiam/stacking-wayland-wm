@@ -30,6 +30,7 @@
 #include "cow/config.h"
 #include "cow/ipc.h"
 #include "cow/output.h"
+#include "cow/titlebar.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
@@ -111,6 +112,34 @@ do_show_windows(int fd)
 		cJSON_AddBoolToObject(w, "shaded", view->sd != COW_SHADE_NONE);
 		cJSON_AddBoolToObject(w, "iconified",
 		    cow_view_is_iconified(view));
+
+		/* Decoration / squeeze diagnostics. */
+		cJSON_AddBoolToObject(w, "use_ssd", view->use_ssd);
+		cJSON_AddNumberToObject(w, "title_thickness",
+		    view->dec.title_thickness);
+		cJSON_AddNumberToObject(w, "border_width",
+		    view->dec.border_width);
+		struct cow_titlebar_squeeze sq;
+		cow_titlebar_effective_squeeze(view, &sq);
+		const char *mode = sq.mode == COW_SQUEEZE_NATURAL ? "natural" :
+		    sq.mode == COW_SQUEEZE_FIXED		  ? "fixed" :
+								    "none";
+		const char *just = sq.justify == COW_JUST_CENTRE ? "centre" :
+		    sq.justify == COW_JUST_RIGHT		 ? "right" :
+								   "left";
+		cJSON	   *sqo	 = cJSON_CreateObject();
+		cJSON_AddStringToObject(sqo, "mode", mode);
+		cJSON_AddStringToObject(sqo, "justify", just);
+		cJSON_AddNumberToObject(sqo, "width", sq.width);
+		cJSON_AddNumberToObject(sqo, "offset", sq.offset);
+		cJSON_AddNumberToObject(sqo, "min_width", sq.min_width);
+		cJSON_AddItemToObject(w, "squeeze", sqo);
+
+		struct cow_box tbr  = cow_titlebar_squeezed_rect(view);
+		cJSON	      *tbrj = cJSON_CreateObject();
+		cow_box_json_add(tbrj, &tbr);
+		cJSON_AddItemToObject(w, "squeezed_rect", tbrj);
+
 		cJSON_AddItemToArray(arr, w);
 	}
 	cow_ipc_respond_data(fd, arr);

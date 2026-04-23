@@ -29,4 +29,10 @@ void cow_font_init(struct cow_font *font, const char *font_name);
 
 void cow_font_fini(struct cow_font *font);
 
+/*
+ * Return the pango-rendered pixel width of 'text' in 'font'.
+ * Returns 0 if text is NULL or empty.
+ */
+int cow_font_text_width(struct cow_font *font, const char *text);
+
 #endif

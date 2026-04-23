@@ -324,23 +324,28 @@ handle_wm_manage_start(__unused void *data,
 			if (pv != NULL && !pv->closed) {
 				bool still_on_button = false;
 				if (s->has_pointer_position) {
-					int tt	  = pv->dec.title_thickness;
-					int bw	  = pv->dec.border_width;
-					int lx	  = s->pointer_x - pv->x;
-					int ly	  = s->pointer_y - pv->y;
-					int tb_w  = pv->content_width;
-					int btn_s = tt;
-					int bi	  = s->pressed_button_idx;
-					if (ly >= -(tt + bw) && ly < 0) {
-						int hit = -1;
-						if (lx >= 0 && lx < btn_s)
+					int tt = pv->dec.title_thickness;
+					int bw = pv->dec.border_width;
+					int lx = s->pointer_x - pv->x;
+					int ly = s->pointer_y - pv->y;
+					int bi = s->pressed_button_idx;
+					if (cow_titlebar_hit(pv, lx, ly)) {
+						struct cow_box tbr =
+						    cow_titlebar_squeezed_rect(
+							pv);
+						int btn_s = tt;
+						int tbr_l = tbr.x - bw;
+						int tbr_r = tbr_l + tbr.width;
+						int hit	  = -1;
+						if (lx >= tbr_l &&
+						    lx < tbr_l + btn_s)
 							hit = 0;
 						else if (lx >=
-							tb_w - 2 * btn_s &&
-						    lx < tb_w - btn_s)
+							tbr_r - 2 * btn_s &&
+						    lx < tbr_r - btn_s)
 							hit = 1;
-						else if (lx >= tb_w - btn_s &&
-						    lx < tb_w)
+						else if (lx >= tbr_r - btn_s &&
+						    lx < tbr_r)
 							hit = 2;
 						still_on_button = (hit == bi);
 					}
@@ -466,8 +471,8 @@ handle_wm_manage_start(__unused void *data,
 
 				/* Double-click on titlebar -> shade/unshade
 				 * (north) */
-				bool in_titlebar = (ly >= -tt && ly < 0 &&
-						       tt > 0) ||
+				bool in_titlebar = cow_titlebar_hit(iv, lx,
+						       ly) ||
 				    (iv->sd != COW_SHADE_NONE);
 				if (in_titlebar) {
 					struct timespec now;
@@ -584,19 +589,31 @@ handle_wm_manage_start(__unused void *data,
 				if (in_corner && corner_edges != 0) {
 					cow_pointer_op_start_resize(s, iv,
 					    corner_edges);
-				} else if (ly >= -tt && ly < 0 && tt > 0) {
-					/* Titlebar (below north border, above
-					 * content) */
-					int tb_w    = hit_cw;
-					int btn_s   = tt;
-					int hit_btn = -1;
-					if (lx >= 0 && lx < btn_s)
+				} else if (cow_titlebar_hit(iv, lx, ly)) {
+					/*
+					 * Titlebar (below north border, above
+					 * content).  Button extents follow
+					 * the squeezed rect so buttons pack
+					 * to the left/right ends of the
+					 * *visible* titlebar, not the
+					 * full-frame strip.
+					 */
+					struct cow_box tbr =
+					    cow_titlebar_squeezed_rect(iv);
+					int btn_s = tt;
+					/* Convert tbr (decoration coords) to
+					 * view-relative: left = tbr.x - bw. */
+					int tbr_left  = tbr.x - bw;
+					int tbr_right = tbr_left + tbr.width;
+					int hit_btn   = -1;
+					if (lx >= tbr_left &&
+					    lx < tbr_left + btn_s)
 						hit_btn = 0;
-					else if (lx >= tb_w - 2 * btn_s &&
-					    lx < tb_w - btn_s)
+					else if (lx >= tbr_right - 2 * btn_s &&
+					    lx < tbr_right - btn_s)
 						hit_btn = 1;
-					else if (lx >= tb_w - btn_s &&
-					    lx < tb_w)
+					else if (lx >= tbr_right - btn_s &&
+					    lx < tbr_right)
 						hit_btn = 2;
 
 					if (hit_btn >= 0) {
@@ -616,13 +633,20 @@ handle_wm_manage_start(__unused void *data,
 						 * in a container with multiple
 						 * members, check if the click
 						 * landed on a tab label.
+						 *
+						 * Containers force squeeze
+						 * NONE (see
+						 * cow_titlebar_effective_squeeze),
+						 * so the tab strip still
+						 * spans the full content
+						 * width.
 						 */
 						struct cow_container *ctr =
 						    cow_view_container(iv);
 						if (ctr != NULL &&
 						    ctr->n_members > 1) {
 							int strip_x = btn_s;
-							int strip_w = tb_w -
+							int strip_w = hit_cw -
 							    3 * btn_s;
 							if (strip_w > 0 &&
 							    lx >= strip_x &&

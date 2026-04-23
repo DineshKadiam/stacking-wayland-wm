@@ -344,8 +344,17 @@ cow_decoration_update(struct cow_view *view, bool active)
 			}
 
 			char *display_title = make_display_title(view);
+			/*
+			 * For unsqueezed views this is the full-width strip;
+			 * for squeezed ones it is the cow_titlebar_squeezed
+			 * rect.  The renderer clears any strip pixels
+			 * outside the rect so they fall through to whatever
+			 * is below.
+			 */
+			struct cow_box tb_rect = cow_titlebar_squeezed_rect(
+			    view);
 			cow_titlebar_render(dec->buffer->data, stride_px,
-			    frame_w, bw, tt, display_title, active, font,
+			    frame_w, bw, tb_rect, display_title, active, font,
 			    view->pressed_button, view->icon_inverted_button,
 			    view->title_pressed, tb_colour, tb_fg, is_sticky,
 			    tab_titles, n_tabs, active_tab, is_drop_target);
@@ -380,6 +389,43 @@ commit:
 	/* Set offset: position the frame so the client content area
 	 * aligns with the window's top-left corner. */
 	river_decoration_v1_set_offset(view->decoration, -bw, -top_border);
+
+	/*
+	 * Input region: set to the union of the borders and the
+	 * (possibly squeezed) titlebar rectangle, so pointer events
+	 * landing in the cleared pixels of the titlebar strip pass
+	 * through the decoration surface to whatever is beneath.
+	 *
+	 * Regions live entirely in the decoration buffer coordinate
+	 * system where (0, 0) is the top-left of the outer frame.
+	 */
+	struct wl_region *region = wl_compositor_create_region(
+	    cow_wm.compositor);
+	if (region != NULL) {
+		/* Top border (full-width strip above the titlebar). */
+		if (bw > 0)
+			wl_region_add(region, 0, 0, frame_w, bw);
+		/* Titlebar: the squeezed rectangle only. */
+		if (tt > 0) {
+			struct cow_box tbr = cow_titlebar_squeezed_rect(view);
+			if (tbr.width > 0 && tbr.height > 0)
+				wl_region_add(region, tbr.x, tbr.y, tbr.width,
+				    tbr.height);
+		}
+		/* Left/right side borders next to content. */
+		if (bw > 0) {
+			wl_region_add(region, 0, top_border, bw,
+			    frame_h - top_border - bw);
+			wl_region_add(region, frame_w - bw, top_border, bw,
+			    frame_h - top_border - bw);
+		}
+		/* Bottom border. */
+		if (bw > 0)
+			wl_region_add(region, 0, frame_h - bw, frame_w, bw);
+
+		wl_surface_set_input_region(view->decoration_surface, region);
+		wl_region_destroy(region);
+	}
 
 	/* Attach buffer and commit */
 	if (dec->buffer != NULL) {
