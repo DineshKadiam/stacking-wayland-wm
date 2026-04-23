@@ -42,6 +42,8 @@ struct cow_desk;
 #define COW_CFG_DEFAULT_PAGE_ROWS 1
 #define COW_CFG_DEFAULT_PAGE_SCROLL_MS 200
 #define COW_CFG_DEFAULT_EDGE_SCROLL_DELAY 300
+#define COW_CFG_DEFAULT_SQUEEZE_WIDTH 300
+#define COW_CFG_DEFAULT_SQUEEZE_MIN_WIDTH 80
 
 /*
  * Border style enum (carried from original cow).
@@ -100,6 +102,37 @@ enum cow_button_action {
 };
 
 /*
+ * Squeezed titlebar (CTWM SqueezeTitle).  When enabled, the titlebar
+ * is painted as a rectangle strictly narrower than the window frame;
+ * the remainder of the titlebar strip is transparent and passes
+ * clicks through to whatever is underneath.
+ *
+ *   NONE    full-width titlebar (default; same as unsqueezed)
+ *   NATURAL width follows the title-text extent + button run, clamped
+ *           to >= min_width
+ *   FIXED   width is taken from cow_titlebar_squeeze.width
+ */
+enum cow_squeeze_mode {
+	COW_SQUEEZE_NONE = 0,
+	COW_SQUEEZE_NATURAL,
+	COW_SQUEEZE_FIXED,
+};
+
+enum cow_squeeze_just {
+	COW_JUST_LEFT = 0,
+	COW_JUST_CENTRE,
+	COW_JUST_RIGHT,
+};
+
+struct cow_titlebar_squeeze {
+	enum cow_squeeze_mode mode;
+	enum cow_squeeze_just justify;
+	int		      width;	 /* fixed mode */
+	int		      offset;	 /* signed; nudge after justify */
+	int		      min_width; /* floor for natural mode */
+};
+
+/*
  * Titlebar button config.
  */
 struct cow_titlebar_button_config {
@@ -146,6 +179,9 @@ struct cow_titlebar_config {
 	char				 *font_name;
 	/* Explicit height override; 0 means derive from font. */
 	int height;
+
+	/* Squeezed titlebar (CTWM SqueezeTitle). */
+	struct cow_titlebar_squeeze squeeze;
 };
 
 /*
@@ -186,6 +222,14 @@ struct cow_view_config_entry {
 	float titlebar_fg_inactive[4];
 	bool  has_titlebar_enabled;
 	bool  titlebar_enabled;
+
+	/* Squeezed titlebar overrides. */
+	bool			    has_squeeze_mode;
+	bool			    has_squeeze_justify;
+	bool			    has_squeeze_width;
+	bool			    has_squeeze_offset;
+	bool			    has_squeeze_min_width;
+	struct cow_titlebar_squeeze squeeze;
 };
 
 /*

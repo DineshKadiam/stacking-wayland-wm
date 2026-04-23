@@ -144,6 +144,13 @@ cow_config_create(void)
 	cow_colour_convert(config->titlebar.fg_active, 0x000000);
 	cow_colour_convert(config->titlebar.fg_inactive, 0x000000);
 
+	/* Default squeeze config: disabled. */
+	config->titlebar.squeeze.mode	   = COW_SQUEEZE_NONE;
+	config->titlebar.squeeze.justify   = COW_JUST_LEFT;
+	config->titlebar.squeeze.width	   = COW_CFG_DEFAULT_SQUEEZE_WIDTH;
+	config->titlebar.squeeze.offset	   = 0;
+	config->titlebar.squeeze.min_width = COW_CFG_DEFAULT_SQUEEZE_MIN_WIDTH;
+
 	/*
 	 * Container tab colours are intentionally left unset (has_* = false).
 	 * titlebar.c falls back to the titlebar's base/dk/fg colours so that
