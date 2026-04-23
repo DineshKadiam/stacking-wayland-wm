@@ -540,13 +540,19 @@ do_xy(struct cow_view *view, const char *xs, const char *ys, struct cmd_q *cmdq)
 	int	    x = 0, y = 0;
 	bool	    x_rel = false, y_rel = false;
 
+	/*
+	 * A leading '+' or '-' makes the value relative to the current
+	 * position.  '-0' and '+0' are treated as absolute zero, since
+	 * relative-by-zero is a no-op that users never actually want --
+	 * in practice they have typed '-y -0' meaning '-y 0'.
+	 */
 	if (xs != NULL) {
 		x = (int)strtonum(xs, -32768, 32767, &errstr);
 		if (errstr != NULL) {
 			cmdq_error(cmdq, "move: bad x value: %s", xs);
 			return;
 		}
-		x_rel = (xs[0] == '+' || xs[0] == '-');
+		x_rel = (xs[0] == '+' || xs[0] == '-') && x != 0;
 	}
 	if (ys != NULL) {
 		y = (int)strtonum(ys, -32768, 32767, &errstr);
@@ -554,7 +560,7 @@ do_xy(struct cow_view *view, const char *xs, const char *ys, struct cmd_q *cmdq)
 			cmdq_error(cmdq, "move: bad y value: %s", ys);
 			return;
 		}
-		y_rel = (ys[0] == '+' || ys[0] == '-');
+		y_rel = (ys[0] == '+' || ys[0] == '-') && y != 0;
 	}
 
 	unmax_if_needed(view);
