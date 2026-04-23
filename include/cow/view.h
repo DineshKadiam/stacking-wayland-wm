@@ -454,6 +454,33 @@ void cow_view_sync_container_geometry(struct cow_view *view, int x, int y,
 void cow_view_warp_to_focused(void);
 void cow_view_centre(const struct cow_view *, int *, int *);
 
+/* Minimum content width/height for resize/clamp operations. */
+#define COW_MIN_WINDOW_DIM 50
+
+static inline void
+cow_clamp_dimensions(int *w, int *h)
+{
+	if (*w < COW_MIN_WINDOW_DIM)
+		*w = COW_MIN_WINDOW_DIM;
+	if (*h < COW_MIN_WINDOW_DIM)
+		*h = COW_MIN_WINDOW_DIM;
+}
+
+/*
+ * True if 'other' should be skipped during a snap/expand edge search
+ * from 'self': it is 'self' itself, closed, iconified, or not on the
+ * same output.  Callers that also require the window to have received
+ * dimensions should check !other->has_dimensions separately.
+ */
+static inline bool
+cow_view_skip_for_expand(const struct cow_view *other,
+    const struct cow_view		       *self)
+{
+	return other == self || other->closed ||
+	    (other->flags & COW_VIEW_ICONIFIED_FLAG) ||
+	    other->output != self->output;
+}
+
 /*
  * Synchronise view->vx/vy (virtual/page-relative) from view->x/y
  * (global compositor coordinates), using the view's output and desk

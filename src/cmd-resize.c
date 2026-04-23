@@ -27,8 +27,8 @@
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_resize_exec(struct cmd *, struct cmd_q *);
-static void	       do_grow(struct cow_view *, const char *, struct cmd_q *);
-static void do_shrink(struct cow_view *, const char *, struct cmd_q *);
+static void	       do_resize_step(struct cow_view *, const char *, int,
+	       struct cmd_q *);
 static void do_set_size(struct cow_view *, const char *, const char *,
     struct cmd_q *);
 static void do_interactive(struct cow_view *);
@@ -56,12 +56,12 @@ cmd_resize_exec(struct cmd *self, struct cmd_q *cmdq)
 	const char *h_val   = args_get(args, 'h');
 
 	if (args_has(args, 'g')) {
-		do_grow(view, dir_val, cmdq);
+		do_resize_step(view, dir_val, +1, cmdq);
 		return (CMD_RETURN_NORMAL);
 	}
 
 	if (args_has(args, 's')) {
-		do_shrink(view, dir_val, cmdq);
+		do_resize_step(view, dir_val, -1, cmdq);
 		return (CMD_RETURN_NORMAL);
 	}
 
@@ -74,72 +74,52 @@ cmd_resize_exec(struct cmd *self, struct cmd_q *cmdq)
 	return (CMD_RETURN_NORMAL);
 }
 
+/*
+ * Resize by +/- one step in the given cardinal direction.
+ * sign == +1 grows, sign == -1 shrinks.
+ */
 static void
-do_grow(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
+do_resize_step(struct cow_view *view, const char *dir, int sign,
+    struct cmd_q *cmdq)
 {
+	const char *label = (sign > 0) ? "grow" : "shrink";
+
 	if (dir == NULL) {
-		cmdq_error(cmdq, "window-resize grow: -d direction required");
+		cmdq_error(cmdq, "window-resize %s: -d direction required",
+		    label);
 		return;
 	}
 
-	int step = cow_config ? cow_config->step : 100;
+	int step = (cow_config ? cow_config->step : 100) * sign;
 	int w	 = view->content_width;
 	int h	 = view->content_height;
-	int x = view->x, y = view->y;
+	int x	 = view->x;
+	int y	 = view->y;
 
-	if (strcmp(dir, "up") == 0) {
+	switch (cow_parse_direction(dir)) {
+	case COW_DIR_UP:
 		h += step;
 		y -= step;
-	} else if (strcmp(dir, "down") == 0) {
+		break;
+	case COW_DIR_DOWN:
 		h += step;
-	} else if (strcmp(dir, "left") == 0) {
+		break;
+	case COW_DIR_LEFT:
 		w += step;
 		x -= step;
-	} else if (strcmp(dir, "right") == 0) {
+		break;
+	case COW_DIR_RIGHT:
 		w += step;
-	} else {
-		cmdq_error(cmdq, "window-resize grow: unknown direction: %s",
-		    dir);
+		break;
+	case COW_DIR_NONE:
+	default:
+		cmdq_error(cmdq, "window-resize %s: unknown direction: %s",
+		    label, dir);
 		return;
 	}
 
-	cow_view_set_pending_geometry(view, x, y, w, h);
-	cow_view_sync_container_geometry(view, x, y, w, h);
-}
-
-static void
-do_shrink(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
-{
-	if (dir == NULL) {
-		cmdq_error(cmdq, "window-resize shrink: -d direction required");
-		return;
-	}
-
-	int step = cow_config ? cow_config->step : 100;
-	int w	 = view->content_width;
-	int h	 = view->content_height;
-	int x = view->x, y = view->y;
-
-	if (strcmp(dir, "up") == 0) {
-		h -= step;
-		y += step;
-	} else if (strcmp(dir, "down") == 0) {
-		h -= step;
-	} else if (strcmp(dir, "left") == 0) {
-		w -= step;
-		x += step;
-	} else if (strcmp(dir, "right") == 0) {
-		w -= step;
-	} else {
-		cmdq_error(cmdq, "window-resize shrink: unknown direction: %s",
-		    dir);
-		return;
-	}
-
-	if (w < 50)
-		w = 50;
-	if (h < 50)
-		h = 50;
+	if (sign < 0)
+		cow_clamp_dimensions(&w, &h);
 
 	cow_view_set_pending_geometry(view, x, y, w, h);
 	cow_view_sync_container_geometry(view, x, y, w, h);
@@ -168,10 +148,7 @@ do_set_size(struct cow_view *view, const char *ws, const char *hs,
 		}
 	}
 
-	if (w < 50)
-		w = 50;
-	if (h < 50)
-		h = 50;
+	cow_clamp_dimensions(&w, &h);
 
 	cow_view_set_pending_geometry(view, view->x, view->y, w, h);
 	cow_view_sync_container_geometry(view, view->x, view->y, w, h);

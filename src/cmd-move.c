@@ -233,12 +233,7 @@ do_transfer_to_output(struct cow_view *view, struct cow_output *target,
 			view->x = maxx;
 	}
 
-	wl_list_remove(&view->desk_views);
-	wl_list_remove(&view->output_views);
-	view->output = target;
-	view->desk   = target->current_desk;
-	wl_list_insert(&target->current_desk->views, &view->desk_views);
-	wl_list_insert(&target->visible_views, &view->output_views);
+	cow_view_reassign_output(view, target);
 }
 
 /*
@@ -353,12 +348,7 @@ do_screen(struct cow_view *view, const char *name, struct cmd_q *cmdq)
 	view->x = dst_ua->x + (int)(rx * dst_ua->width);
 	view->y = dst_ua->y + (int)(ry * dst_ua->height);
 
-	wl_list_remove(&view->desk_views);
-	wl_list_remove(&view->output_views);
-	view->output = target;
-	view->desk   = target->current_desk;
-	wl_list_insert(&target->current_desk->views, &view->desk_views);
-	wl_list_insert(&target->visible_views, &view->output_views);
+	cow_view_reassign_output(view, target);
 
 	apply_move(view);
 }
@@ -489,9 +479,7 @@ do_snap(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
 		struct cow_view *v;
 		wl_list_for_each(v, &cow_wm.views, wm_link)
 		{
-			if (v == view || v->closed ||
-			    (v->flags & COW_VIEW_ICONIFIED_FLAG) ||
-			    v->output != view->output)
+			if (cow_view_skip_for_expand(v, view))
 				continue;
 			int vb = v->y + v->content_height + v->dec.border_width;
 			if (vb < frame_top && vb > target)
@@ -503,9 +491,7 @@ do_snap(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
 		struct cow_view *v;
 		wl_list_for_each(v, &cow_wm.views, wm_link)
 		{
-			if (v == view || v->closed ||
-			    (v->flags & COW_VIEW_ICONIFIED_FLAG) ||
-			    v->output != view->output)
+			if (cow_view_skip_for_expand(v, view))
 				continue;
 			int vt = v->y - v->dec.border_width -
 			    v->dec.title_thickness;
@@ -518,9 +504,7 @@ do_snap(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
 		struct cow_view *v;
 		wl_list_for_each(v, &cow_wm.views, wm_link)
 		{
-			if (v == view || v->closed ||
-			    (v->flags & COW_VIEW_ICONIFIED_FLAG) ||
-			    v->output != view->output)
+			if (cow_view_skip_for_expand(v, view))
 				continue;
 			int vr = v->x + v->content_width + v->dec.border_width;
 			if (vr < frame_left && vr > target)
@@ -532,9 +516,7 @@ do_snap(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
 		struct cow_view *v;
 		wl_list_for_each(v, &cow_wm.views, wm_link)
 		{
-			if (v == view || v->closed ||
-			    (v->flags & COW_VIEW_ICONIFIED_FLAG) ||
-			    v->output != view->output)
+			if (cow_view_skip_for_expand(v, view))
 				continue;
 			int vl = v->x - v->dec.border_width;
 			if (vl > frame_right && vl < target)

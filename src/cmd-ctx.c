@@ -121,42 +121,18 @@ resolve_window(const char *spec, struct cow_output *output,
 	if (strcmp(spec, "@focused") == 0)
 		return cow_wm.focused_view;
 
-	if (strcmp(spec, "@next") == 0) {
+	if (strcmp(spec, "@next") == 0 || strcmp(spec, "@prev") == 0) {
 		struct cow_view *focused = cow_wm.focused_view;
 		if (focused == NULL || wl_list_empty(&cow_wm.views))
 			return NULL;
-		struct wl_list *pos   = focused->wm_link.next;
-		struct wl_list *start = pos;
-		do {
-			if (pos == &cow_wm.views) {
-				pos = pos->next;
-				continue;
-			}
-			struct cow_view *v = wl_container_of(pos, v, wm_link);
-			if (cow_view_focusable(v))
-				return v;
-			pos = pos->next;
-		} while (pos != start);
-		return focused;
-	}
-
-	if (strcmp(spec, "@prev") == 0) {
-		struct cow_view *focused = cow_wm.focused_view;
-		if (focused == NULL || wl_list_empty(&cow_wm.views))
-			return NULL;
-		struct wl_list *pos   = focused->wm_link.prev;
-		struct wl_list *start = pos;
-		do {
-			if (pos == &cow_wm.views) {
-				pos = pos->prev;
-				continue;
-			}
-			struct cow_view *v = wl_container_of(pos, v, wm_link);
-			if (cow_view_focusable(v))
-				return v;
-			pos = pos->prev;
-		} while (pos != start);
-		return focused;
+		struct cow_view *v = cow_view_walk(focused,
+		    strcmp(spec, "@next") == 0, cow_view_focusable);
+		/*
+		 * Behaviour is 'stay on current' rather than 'report none':
+		 * historically this resolver has returned the focused view
+		 * when no other focusable candidate exists.
+		 */
+		return v != NULL ? v : focused;
 	}
 
 	/* %app_id -- match by app_id */

@@ -251,10 +251,7 @@ do_maximize(struct cow_view *view, enum maximize_type mt)
 	if (mt != MAXIMIZE_KEEP) {
 		int w = ua->width - 2 * bw;
 		int h = ua->height - 2 * bw - tt;
-		if (w < 50)
-			w = 50;
-		if (h < 50)
-			h = 50;
+		cow_clamp_dimensions(&w, &h);
 
 		cow_view_set_pending_geometry(view, ua->x + bw, ua->y + bw + tt,
 		    w, h);

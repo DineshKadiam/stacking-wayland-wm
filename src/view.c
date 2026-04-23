@@ -981,10 +981,7 @@ cow_view_maximize(struct cow_view *view)
 	    view->output->current_desk->page_vy;
 	int w = ua->width - 2 * bw;
 	int h = ua->height - 2 * bw - tt;
-	if (w < 50)
-		w = 50;
-	if (h < 50)
-		h = 50;
+	cow_clamp_dimensions(&w, &h);
 	river_window_v1_propose_dimensions(view->river_window, w, h);
 	river_window_v1_inform_maximized(view->river_window);
 	view->maximized = true;
