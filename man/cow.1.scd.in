@@ -205,6 +205,31 @@ Set a configuration option at runtime. *-v* prints the resulting value.
 |  *titlebar.button\_right2.action*
 :  command string
 :  Action for the second right titlebar button.
+|  *titlebar.squeeze*
+:  _none_ | _natural_ | _fixed_
+:  Shrink the titlebar down to a minimum size.
+   
+   Remaining pixels of the titlebar
+   strip are transparent and pass clicks through.  _none_ is the
+   default (full-width titlebar); _natural_ sizes the titlebar to
+   the title text + buttons; _fixed_ uses _titlebar.squeeze.width_.
+|  *titlebar.squeeze.justify*
+:  _left_ | _centre_ | _right_
+:  Horizontal alignment of the squeezed titlebar within the
+   full-width strip.  Default: _left_.  _center_ is accepted as a
+   synonym for _centre_.
+|  *titlebar.squeeze.width*
+:  integer (pixels)
+:  Width of the squeezed titlebar when
+   _titlebar.squeeze_ is _fixed_.  Default: _300_.
+|  *titlebar.squeeze.offset*
+:  integer (pixels; may be negative)
+:  Horizontal nudge applied after _justify_.  Useful for e.g.
+   positioning the titlebar 40px in from the left edge.  Default: _0_.
+|  *titlebar.squeeze.min\_width*
+:  integer (pixels)
+:  Minimum width for _natural_ mode (floor applied after
+   measurement).  Default: _80_.
 |  *container.tab.active\_colour*
 :  hex colour (_0xRRGGBB_)
 :  Background colour of the active tab label. Default: _0xC0C0C0_.
@@ -302,12 +327,23 @@ status bars.
 :  Titlebar foreground when focused.
 |  *titlebar.fg\_inactive* _RGBA_
 :  Titlebar foreground when unfocused.
+|  *titlebar.squeeze* _none_ | _natural_ | _fixed_
+:  Override the squeeze mode for matching windows.
+|  *titlebar.squeeze.justify* _left_ | _centre_ | _right_
+:  Override the squeeze justify for matching windows.
+|  *titlebar.squeeze.width* _N_
+:  Override the fixed-mode squeeze width for matching windows.
+|  *titlebar.squeeze.offset* _N_
+:  Override the squeeze offset for matching windows.
+|  *titlebar.squeeze.min\_width* _N_
+:  Override the natural-mode minimum width for matching windows.
 
 Example:
 
 ```
 rule '*' colour.active 0xFFFFFF colour.inactive 0x444444
 rule -t ':2' '*' titlebar.active_colour 0xFFD700
+rule 'Eterm' titlebar.squeeze natural titlebar.squeeze.justify left
 rule restart 'killall waybar'
 ```
 
