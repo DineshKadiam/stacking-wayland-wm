@@ -37,8 +37,6 @@ struct cow_desk;
  * The active member owns the shared decoration frame which renders
  * the full tab strip in the titlebar.
  */
-extern int next_container_id;
-
 struct cow_container_member {
 	struct wl_list	      link; /* cow_container.members */
 	struct cow_view	     *view;
@@ -453,7 +451,7 @@ void cow_view_sync_container_pos(struct cow_view *view);
 void cow_view_sync_container_geometry(struct cow_view *view, int x, int y,
     int w, int h);
 
-void view_warp_to_focused(void);
-void view_centre(const struct cow_view *, int *, int *);
+void cow_view_warp_to_focused(void);
+void cow_view_centre(const struct cow_view *, int *, int *);
 
 #endif

@@ -38,7 +38,7 @@
 
 #include "river-window-management-v1-client-protocol.h"
 
-int next_container_id;
+static int next_container_id;
 
 /*
  * river_window_v1 event handlers
@@ -1813,7 +1813,7 @@ cow_view_sync_container_geometry(struct cow_view *view, int x, int y, int w,
 }
 
 void
-view_warp_to_focused(void)
+cow_view_warp_to_focused(void)
 {
 	const struct cow_view *v = cow_wm.pending_focus != NULL ?
 	    cow_wm.pending_focus :
@@ -1823,7 +1823,7 @@ view_warp_to_focused(void)
 	if (v == NULL)
 		return;
 
-	view_centre(v, &cx, &cy);
+	cow_view_centre(v, &cx, &cy);
 	cow_wm.pending_warp	  = true;
 	cow_wm.warp_x		  = cx;
 	cow_wm.warp_y		  = cy;
@@ -1831,7 +1831,7 @@ view_warp_to_focused(void)
 }
 
 void
-view_centre(const struct cow_view *v, int *cx, int *cy)
+cow_view_centre(const struct cow_view *v, int *cx, int *cy)
 {
 	*cx = v->x + v->content_width / 2;
 	*cy = v->y - v->dec.title_thickness / 2 + v->content_height / 2;

@@ -57,7 +57,7 @@ static void handle_wm_unavailable(void *, struct river_window_manager_v1 *);
 static void handle_wm_finished(void *, struct river_window_manager_v1 *);
 static void handle_wm_manage_start(void *, struct river_window_manager_v1 *);
 static void handle_wm_render_start(void *, struct river_window_manager_v1 *);
-static void cow_drag_ghost_create(struct cow_view *);
+static void drag_ghost_create(struct cow_view *);
 
 static void handle_wm_session_locked(void *, struct river_window_manager_v1 *);
 static void handle_wm_session_unlocked(void *,
@@ -438,7 +438,7 @@ handle_wm_manage_start(__unused void *data,
 		if (s->container_drag && s->op_in_progress &&
 		    cow_wm.drag_ghost_surface == NULL &&
 		    cow_wm.drag_drop_source != NULL)
-			cow_drag_ghost_create(cow_wm.drag_drop_source);
+			drag_ghost_create(cow_wm.drag_drop_source);
 
 		/* Handle focus + decoration click dispatch */
 		if (s->interacted_view != NULL && !s->interacted_view->closed) {
@@ -822,7 +822,7 @@ handle_wm_manage_start(__unused void *data,
 }
 
 static void
-cow_drag_ghost_create(__unused struct cow_view *src)
+drag_ghost_create(__unused struct cow_view *src)
 {
 	if (cow_wm.compositor == NULL || cow_wm.manager == NULL ||
 	    cow_wm.drag_ghost_surface != NULL)

@@ -443,7 +443,7 @@ do_shade(struct cow_view *view, const char *dir_str)
 	cow_wm.needs_manage_dirty = true;
 }
 
-void
+static void
 do_identify(struct cow_view *view, struct cmd_q *cmdq)
 {
 	int    fd   = cmdq->client_fd;

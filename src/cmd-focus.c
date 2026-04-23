@@ -39,25 +39,21 @@ static void	       do_directional(int, struct cmd_q *);
 static void	       do_screen(const char *, struct cmd_q *);
 static int	       parse_direction(const char *);
 
-struct cmd_entry cmd_focus_entry = {
-	"focus",
-	"t:npwd:o:A:T:i:",
-	0, 0,
+struct cmd_entry cmd_focus_entry = { "focus", "t:npwd:o:A:T:i:", 0, 0,
 	"focus [-npw] [-d dir] [-o output] [-A app_id] [-T title] [-i id]",
-	cmd_focus_exec
-};
+	cmd_focus_exec };
 
 static enum cmd_retval
 cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 {
-	struct args *args    = self->args;
+	struct args *args = self->args;
 
-	const char  *dir_val = args_get(args, 'd');
-	const char  *scr_val = args_get(args, 'o');
-	const char  *app_val = args_get(args, 'A');
-	const char  *ttl_val = args_get(args, 'T');
-	const char  *id_val  = args_get(args, 'i');
-	bool	     do_warp = args_has(args, 'w');
+	const char *dir_val = args_get(args, 'd');
+	const char *scr_val = args_get(args, 'o');
+	const char *app_val = args_get(args, 'A');
+	const char *ttl_val = args_get(args, 'T');
+	const char *id_val  = args_get(args, 'i');
+	bool	    do_warp = args_has(args, 'w');
 
 	if (args->argc > 0) {
 		cmdq_error(cmdq, "focus: unexpected argument: %s",
@@ -89,7 +85,7 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	if (do_warp) {
-		view_warp_to_focused();
+		cow_view_warp_to_focused();
 	}
 
 	return (CMD_RETURN_NORMAL);
@@ -227,12 +223,7 @@ do_id(const char *id, struct cmd_q *cmdq)
 	cmdq_error(cmdq, "focus: no window with id: %s", id);
 }
 
-enum {
-	DIR_UP = 0,
-	DIR_DOWN = 1,
-	DIR_LEFT = 2,
-	DIR_RIGHT = 3
-};
+enum { DIR_UP = 0, DIR_DOWN = 1, DIR_LEFT = 2, DIR_RIGHT = 3 };
 
 static int
 parse_direction(const char *s)
@@ -259,7 +250,7 @@ do_directional(int dir, struct cmd_q *cmdq)
 	}
 
 	int fx, fy;
-	view_centre(focused, &fx, &fy);
+	cow_view_centre(focused, &fx, &fy);
 
 	struct cow_view *best	       = NULL;
 	int		 best_dist     = INT_MAX;
@@ -274,7 +265,7 @@ do_directional(int dir, struct cmd_q *cmdq)
 			continue;
 
 		int vx, vy;
-		view_centre(v, &vx, &vy);
+		cow_view_centre(v, &vx, &vy);
 
 		int f_top = focused->y - focused->dec.title_thickness -
 		    focused->dec.border_width;
