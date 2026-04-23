@@ -37,3 +37,12 @@ cow_box_intersection(const struct cow_box *a, const struct cow_box *b,
 	dest->width  = x2 > x1 ? x2 - x1 : 0;
 	dest->height = y2 > y1 ? y2 - y1 : 0;
 }
+
+void
+cow_box_json_add(cJSON *obj, const struct cow_box *box)
+{
+	cJSON_AddNumberToObject(obj, "x", box->x);
+	cJSON_AddNumberToObject(obj, "y", box->y);
+	cJSON_AddNumberToObject(obj, "width", box->width);
+	cJSON_AddNumberToObject(obj, "height", box->height);
+}

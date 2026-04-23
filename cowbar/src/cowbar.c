@@ -124,6 +124,12 @@ main(int argc, char *argv[])
 			return 1;
 		}
 		struct sockaddr_un addr = { .sun_family = AF_UNIX };
+		if (strlen(sock_path) >= sizeof(addr.sun_path)) {
+			fprintf(stderr, "cowbar: socket path too long: %s\n",
+			    sock_path);
+			close(sockfd);
+			return 1;
+		}
 		strncpy(addr.sun_path, sock_path, sizeof(addr.sun_path) - 1);
 		if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) ==
 		    0)

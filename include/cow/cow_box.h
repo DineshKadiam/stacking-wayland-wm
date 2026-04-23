@@ -18,6 +18,8 @@
 
 #include <stdbool.h>
 
+#include <cJSON.h>
+
 /*
  * Simple box struct replacing wlr_box.
  */
@@ -29,5 +31,10 @@ struct cow_box {
 bool cow_box_contains_point(const struct cow_box *box, double px, double py);
 void cow_box_intersection(const struct cow_box *a, const struct cow_box *b,
     struct cow_box *dest);
+
+/*
+ * Add {x, y, width, height} number fields for 'box' to 'obj'.
+ */
+void cow_box_json_add(cJSON *obj, const struct cow_box *box);
 
 #endif

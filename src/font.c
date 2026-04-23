@@ -16,6 +16,7 @@
 #include "cow/font.h"
 
 #include <cairo/cairo.h>
+#include <stdio.h>
 #include <string.h>
 
 static void
@@ -42,11 +43,20 @@ void
 cow_font_init(struct cow_font *font, const char *font_name)
 {
 	font->desc = pango_font_description_from_string(font_name);
+	if (font->desc == NULL) {
+		fprintf(stderr,
+		    "cow: invalid font description '%s'; "
+		    "falling back to 'monospace 10'\n",
+		    font_name ? font_name : "(null)");
+		font->desc = pango_font_description_from_string("monospace 10");
+	}
 
 	font_metrics(font, "W", &font->character_width, &font->height);
 
-	// precalculate height for indicator bars since this is the only height
-	// we need.
+	/*
+	 * Precalculate height for indicator bars since this is the only
+	 * height we need.
+	 */
 	font->height += 8;
 }
 

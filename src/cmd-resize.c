@@ -46,12 +46,10 @@ static enum cmd_retval
 cmd_resize_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	struct args	*args = self->args;
-	struct cow_view *view = cmd_ctx_target_window(cmdq);
+	struct cow_view *view = cmd_require_target_window(cmdq, "resize");
 
-	if (view == NULL || view->closed) {
-		cmdq_error(cmdq, "resize: no target window");
+	if (view == NULL)
 		return (CMD_RETURN_ERROR);
-	}
 
 	const char *dir_val = args_get(args, 'd');
 	const char *w_val   = args_get(args, 'w');

@@ -179,10 +179,7 @@ apply_move(struct cow_view *view)
 {
 	cow_view_update_output(view);
 	/* Keep virtual position in sync with global position */
-	if (view->output != NULL && view->desk != NULL) {
-		view->vx = (view->x - view->output->x) + view->desk->page_vx;
-		view->vy = (view->y - view->output->y) + view->desk->page_vy;
-	}
+	cow_view_sync_vxy_from_global(view);
 	cow_view_sync_container_pos(view);
 	view->dec.dirty		  = true;
 	cow_wm.needs_manage_dirty = true;

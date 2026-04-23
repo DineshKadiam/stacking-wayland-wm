@@ -433,15 +433,29 @@ cow_page_clamp_views(struct cow_output *output)
 	{
 		if (view->closed || view->output != output)
 			continue;
-		/* Clamp to nearest valid page */
-		int page_col = view->vx / w;
-		int page_row = view->vy / h;
-		if (page_col >= cols) {
-			int within = view->vx % w;
+
+		/*
+		 * Clamp to nearest valid page.  Truncating signed division
+		 * rounds toward zero, not toward minus-infinity, so negative
+		 * coordinates would be treated as page 0; use floor-div here.
+		 * The modulo is normalised into [0, dim) for the same reason.
+		 */
+		int page_col = (view->vx >= 0) ? view->vx / w :
+						 -((-view->vx + w - 1) / w);
+		int page_row = (view->vy >= 0) ? view->vy / h :
+						 -((-view->vy + h - 1) / h);
+		if (page_col < 0) {
+			int within = ((view->vx % w) + w) % w;
+			view->vx   = within;
+		} else if (page_col >= cols) {
+			int within = ((view->vx % w) + w) % w;
 			view->vx   = (cols - 1) * w + within;
 		}
-		if (page_row >= rows) {
-			int within = view->vy % h;
+		if (page_row < 0) {
+			int within = ((view->vy % h) + h) % h;
+			view->vy   = within;
+		} else if (page_row >= rows) {
+			int within = ((view->vy % h) + h) % h;
 			view->vy   = (rows - 1) * h + within;
 		}
 		view->dec.dirty = true;

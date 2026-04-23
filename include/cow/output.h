@@ -103,6 +103,9 @@ struct cow_output {
 	struct cow_shm_buffer	      *bg_buffer;
 	bool			       bg_dirty;
 
+	/* Per-output layer-shell state (opaque to consumers). */
+	struct cow_layer_shell_output *layer_shell_state;
+
 	/*
 	 * Edge scroll dwell state.
 	 *

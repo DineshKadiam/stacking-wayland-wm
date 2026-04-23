@@ -35,9 +35,8 @@ static void	       do_prev(void);
 static void	       do_app_id(const char *, struct cmd_q *);
 static void	       do_title(const char *, struct cmd_q *);
 static void	       do_id(const char *, struct cmd_q *);
-static void	       do_directional(int, struct cmd_q *);
+static void	       do_directional(enum cow_direction, struct cmd_q *);
 static void	       do_screen(const char *, struct cmd_q *);
-static int	       parse_direction(const char *);
 
 struct cmd_entry cmd_focus_entry = {
 	"focus",
@@ -74,8 +73,8 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 		do_screen(scr_val, cmdq);
 		return (CMD_RETURN_NORMAL);
 	} else if (dir_val != NULL) {
-		int dir = parse_direction(dir_val);
-		if (dir < 0) {
+		enum cow_direction dir = cow_parse_direction(dir_val);
+		if (dir == COW_DIR_NONE) {
 			cmdq_error(cmdq, "focus: unknown direction: %s",
 			    dir_val);
 			return (CMD_RETURN_ERROR);
@@ -207,29 +206,8 @@ do_id(const char *id, struct cmd_q *cmdq)
 	cmdq_error(cmdq, "focus: no window with id: %s", id);
 }
 
-enum {
-	DIR_UP	  = 0,
-	DIR_DOWN  = 1,
-	DIR_LEFT  = 2,
-	DIR_RIGHT = 3,
-};
-
-static int
-parse_direction(const char *s)
-{
-	if (strcmp(s, "up") == 0)
-		return DIR_UP;
-	if (strcmp(s, "down") == 0)
-		return DIR_DOWN;
-	if (strcmp(s, "left") == 0)
-		return DIR_LEFT;
-	if (strcmp(s, "right") == 0)
-		return DIR_RIGHT;
-	return -1;
-}
-
 static void
-do_directional(int dir, struct cmd_q *cmdq)
+do_directional(enum cow_direction dir, struct cmd_q *cmdq)
 {
 	struct cow_view *focused = cow_wm.focused_view;
 
@@ -273,22 +251,22 @@ do_directional(int dir, struct cmd_q *cmdq)
 		bool in_direction, overlaps;
 
 		switch (dir) {
-		case DIR_UP:
+		case COW_DIR_UP:
 			in_direction = (vy < fy);
 			primary_dist = fy - vy;
 			overlaps     = (v_right > f_left && v_left < f_right);
 			break;
-		case DIR_DOWN:
+		case COW_DIR_DOWN:
 			in_direction = (vy > fy);
 			primary_dist = vy - fy;
 			overlaps     = (v_right > f_left && v_left < f_right);
 			break;
-		case DIR_LEFT:
+		case COW_DIR_LEFT:
 			in_direction = (vx < fx);
 			primary_dist = fx - vx;
 			overlaps     = (v_bot > f_top && v_top < f_bot);
 			break;
-		case DIR_RIGHT:
+		case COW_DIR_RIGHT:
 			in_direction = (vx > fx);
 			primary_dist = vx - fx;
 			overlaps     = (v_bot > f_top && v_top < f_bot);

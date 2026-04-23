@@ -15,6 +15,19 @@
  */
 #include "cow/colour.h"
 
+#include <stdlib.h>
+
+bool
+cow_colour_parse(const char *str, float out[static 4])
+{
+	char	     *end;
+	unsigned long v = strtoul(str, &end, 0);
+	if (end == str)
+		return false;
+	cow_colour_convert(out, (uint32_t)v);
+	return true;
+}
+
 uint32_t
 cow_colour_to_pixel(const float colour[static 4])
 {
@@ -174,6 +187,9 @@ cow_colour_mult(float *r, float *g, float *b, float k)
 		ri = (unsigned int)middle;
 		gi = (unsigned int)new_min;
 		bi = (unsigned int)new_max;
+		break;
+	default:
+		/* unreachable: state is computed into [0,5] above */
 		break;
 	}
 

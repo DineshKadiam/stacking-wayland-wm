@@ -97,17 +97,8 @@ do_show_windows(int fd)
 		if (view->closed)
 			continue;
 		cJSON *w = cJSON_CreateObject();
-		cJSON_AddStringToObject(w, "id",
-		    view->identifier ? view->identifier : "");
-		cJSON_AddStringToObject(w, "app_id",
-		    view->app_id ? view->app_id : "");
-		cJSON_AddStringToObject(w, "title",
-		    view->title ? view->title : "");
-		cJSON_AddNumberToObject(w, "desk",
-		    view->desk ? view->desk->nr : -1);
-		cJSON_AddStringToObject(w, "output",
-		    (view->output && view->output->name) ? view->output->name :
-							   "");
+		cow_view_json_add_identity(w, view);
+		cow_view_json_add_placement(w, view);
 		cJSON_AddNumberToObject(w, "x", view->x);
 		cJSON_AddNumberToObject(w, "y", view->y);
 		cJSON_AddNumberToObject(w, "vx", view->vx);
@@ -149,15 +140,15 @@ do_show_output(int fd)
 	{
 		cJSON *o = cJSON_CreateObject();
 		cJSON_AddStringToObject(o, "name", out->name ? out->name : "");
-		cJSON_AddNumberToObject(o, "x", out->x);
-		cJSON_AddNumberToObject(o, "y", out->y);
-		cJSON_AddNumberToObject(o, "width", out->width);
-		cJSON_AddNumberToObject(o, "height", out->height);
+		struct cow_box geom = {
+			.x	= out->x,
+			.y	= out->y,
+			.width	= out->width,
+			.height = out->height,
+		};
+		cow_box_json_add(o, &geom);
 		cJSON *ua = cJSON_CreateObject();
-		cJSON_AddNumberToObject(ua, "x", out->usable_area.x);
-		cJSON_AddNumberToObject(ua, "y", out->usable_area.y);
-		cJSON_AddNumberToObject(ua, "width", out->usable_area.width);
-		cJSON_AddNumberToObject(ua, "height", out->usable_area.height);
+		cow_box_json_add(ua, &out->usable_area);
 		cJSON_AddItemToObject(o, "usable", ua);
 		cJSON_AddItemToArray(arr, o);
 	}

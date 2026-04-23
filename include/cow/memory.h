@@ -17,6 +17,7 @@
 #define COW_MEMORY_H
 
 #include <stdlib.h>
+#include <sys/types.h>
 
 /*
  * All allocation wrappers abort on failure.
@@ -31,5 +32,14 @@ void *xrealloc(void *, size_t, size_t);
 void  xfree(void *);
 
 void log_fatal(const char *, ...) __attribute__((noreturn));
+
+/*
+ * Loop write(2) until the full buffer is sent or an error occurs.
+ * Returns the number of bytes written (== len on success), or -1 on
+ * error with errno set.  Interrupted writes (EINTR) are retried.
+ * EAGAIN/EWOULDBLOCK are treated as errors -- callers using
+ * non-blocking sockets must handle short writes themselves.
+ */
+ssize_t cow_write_all(int fd, const void *buf, size_t len);
 
 #endif

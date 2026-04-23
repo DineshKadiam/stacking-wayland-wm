@@ -243,6 +243,8 @@ cow_seat_destroy(struct cow_seat *seat)
 		xfree(pb);
 	}
 
+	cow_layer_shell_fini_seat(seat);
+
 	if (seat->xkb_seat != NULL)
 		river_xkb_bindings_seat_v1_destroy(seat->xkb_seat);
 

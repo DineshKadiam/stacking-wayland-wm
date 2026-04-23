@@ -70,12 +70,10 @@ static enum cmd_retval
 cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	struct args	*args = self->args;
-	struct cow_view *view = cmd_ctx_target_window(cmdq);
+	struct cow_view *view = cmd_require_target_window(cmdq, "winops");
 
-	if (view == NULL || view->closed) {
-		cmdq_error(cmdq, "winops: no target window");
+	if (view == NULL)
 		return (CMD_RETURN_ERROR);
-	}
 
 	/* Close -- deferred to manage callback */
 	if (args_has(args, 'c')) {
@@ -136,13 +134,12 @@ static enum cmd_retval
 cmd_window_expand_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	struct args	*args = self->args;
-	struct cow_view *view = cmd_ctx_target_window(cmdq);
+	struct cow_view *view = cmd_require_target_window(cmdq,
+	    "window-expand");
 	bool		 toggle;
 
-	if (view == NULL || view->closed) {
-		cmdq_error(cmdq, "window-expand: no target window");
+	if (view == NULL)
 		return (CMD_RETURN_ERROR);
-	}
 
 	enum expand_dir dir = resolve_direction(args_get(args, 'd'));
 	if (dir == EXPAND_ERROR) {
@@ -173,12 +170,11 @@ static enum cmd_retval
 cmd_window_maximize_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	struct args	*args = self->args;
-	struct cow_view *view = cmd_ctx_target_window(cmdq);
+	struct cow_view *view = cmd_require_target_window(cmdq,
+	    "window-maximize");
 
-	if (view == NULL || view->closed) {
-		cmdq_error(cmdq, "window-maximize: no target window");
+	if (view == NULL)
 		return (CMD_RETURN_ERROR);
-	}
 
 	if (args_has(args, 'T'))
 		do_maximize(view, MAX_TOGGLE);
@@ -206,12 +202,10 @@ static enum cmd_retval
 cmd_window_shade_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	struct args	*args = self->args;
-	struct cow_view *view = cmd_ctx_target_window(cmdq);
+	struct cow_view *view = cmd_require_target_window(cmdq, "window-shade");
 
-	if (view == NULL || view->closed) {
-		cmdq_error(cmdq, "window-shade: no target window");
+	if (view == NULL)
 		return (CMD_RETURN_ERROR);
-	}
 
 	if (!args_has(args, 'd')) {
 		cmdq_error(cmdq, "No direction given");
@@ -244,19 +238,7 @@ do_maximize(struct cow_view *view, enum maximize_type mt)
 		return;
 
 	if ((mt == UNMAXIMIZE || mt == MAX_TOGGLE) && view->maximized) {
-		/* saved_x/y are virtual (vx/vy) coordinates — convert to
-		 * global for pending_resize, which will re-sync vx/vy. */
-		int gx = view->saved_x, gy = view->saved_y;
-		if (view->output != NULL && view->desk != NULL) {
-			gx = view->output->x +
-			    (view->saved_x - view->desk->page_vx);
-			gy = view->output->y +
-			    (view->saved_y - view->desk->page_vy);
-		}
-		cow_view_set_pending_geometry(view, gx, gy, view->saved_width,
-		    view->saved_height);
-		view->maximized		   = false;
-		view->icon_inverted_button = -1;
+		cow_view_restore_saved_geometry(view);
 		return;
 	}
 
@@ -287,22 +269,22 @@ do_maximize(struct cow_view *view, enum maximize_type mt)
 static enum expand_dir
 resolve_direction(const char *dir_str)
 {
-	enum expand_dir dir = EXPAND_ALL;
-
 	if (dir_str == NULL)
-		return (dir);
+		return (EXPAND_ALL);
 
-	if (strcmp(dir_str, "left") == 0)
-		dir = EXPAND_LEFT;
-	else if (strcmp(dir_str, "right") == 0)
-		dir = EXPAND_RIGHT;
-	else if (strcmp(dir_str, "up") == 0)
-		dir = EXPAND_UP;
-	else if (strcmp(dir_str, "down") == 0)
-		dir = EXPAND_DOWN;
-	else
-		dir = EXPAND_ERROR;
-	return (dir);
+	switch (cow_parse_direction(dir_str)) {
+	case COW_DIR_LEFT:
+		return (EXPAND_LEFT);
+	case COW_DIR_RIGHT:
+		return (EXPAND_RIGHT);
+	case COW_DIR_UP:
+		return (EXPAND_UP);
+	case COW_DIR_DOWN:
+		return (EXPAND_DOWN);
+	case COW_DIR_NONE:
+	default:
+		return (EXPAND_ERROR);
+	}
 }
 
 static enum shade_direction
@@ -346,19 +328,7 @@ do_expand(struct cow_view *view, enum expand_dir dir, bool toggle)
 
 	/* Toggle: if already expanded, restore saved geometry. */
 	if (toggle && view->maximized) {
-		/* saved_x/y are virtual (vx/vy) coordinates — convert to
-		 * global for pending_resize, which will re-sync vx/vy. */
-		int gx = view->saved_x, gy = view->saved_y;
-		if (view->output != NULL && view->desk != NULL) {
-			gx = view->output->x +
-			    (view->saved_x - view->desk->page_vx);
-			gy = view->output->y +
-			    (view->saved_y - view->desk->page_vy);
-		}
-		cow_view_set_pending_geometry(view, gx, gy, view->saved_width,
-		    view->saved_height);
-		view->maximized		   = false;
-		view->icon_inverted_button = -1;
+		cow_view_restore_saved_geometry(view);
 		return;
 	}
 
@@ -456,27 +426,23 @@ do_identify(struct cow_view *view, struct cmd_q *cmdq)
 	cJSON *info = cJSON_CreateObject();
 
 	/* Identity */
-	cJSON_AddStringToObject(info, "id",
-	    view->identifier ? view->identifier : "");
-	cJSON_AddStringToObject(info, "app_id",
-	    view->app_id ? view->app_id : "");
-	cJSON_AddStringToObject(info, "title", view->title ? view->title : "");
+	cow_view_json_add_identity(info, view);
 
 	/* Geometry */
+	struct cow_box gb = {
+		.x	= view->x,
+		.y	= view->y,
+		.width	= view->content_width,
+		.height = view->content_height,
+	};
 	cJSON *geo = cJSON_CreateObject();
-	cJSON_AddNumberToObject(geo, "x", view->x);
-	cJSON_AddNumberToObject(geo, "y", view->y);
-	cJSON_AddNumberToObject(geo, "width", view->content_width);
-	cJSON_AddNumberToObject(geo, "height", view->content_height);
+	cow_box_json_add(geo, &gb);
 	cJSON_AddItemToObject(info, "geometry", geo);
 
 	/* Frame */
 	struct cow_box fb    = cow_view_frame_box(view);
 	cJSON	      *frame = cJSON_CreateObject();
-	cJSON_AddNumberToObject(frame, "x", fb.x);
-	cJSON_AddNumberToObject(frame, "y", fb.y);
-	cJSON_AddNumberToObject(frame, "width", fb.width);
-	cJSON_AddNumberToObject(frame, "height", fb.height);
+	cow_box_json_add(frame, &fb);
 	cJSON_AddItemToObject(info, "frame", frame);
 
 	/* Decoration */

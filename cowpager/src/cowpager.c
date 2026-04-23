@@ -123,6 +123,12 @@ ipc_send(const char *cmd)
 		return;
 
 	struct sockaddr_un a = { .sun_family = AF_UNIX };
+	if (strlen(cmd_sock) >= sizeof(a.sun_path)) {
+		fprintf(stderr, "cowpager: socket path too long: %s\n",
+		    cmd_sock);
+		close(fd);
+		return;
+	}
 	strncpy(a.sun_path, cmd_sock, sizeof(a.sun_path) - 1);
 
 	if (connect(fd, (struct sockaddr *)&a, sizeof(a)) == 0) {
@@ -143,6 +149,12 @@ ipc_query(const char *cmd)
 		return NULL;
 
 	struct sockaddr_un a = { .sun_family = AF_UNIX };
+	if (strlen(cmd_sock) >= sizeof(a.sun_path)) {
+		fprintf(stderr, "cowpager: socket path too long: %s\n",
+		    cmd_sock);
+		close(fd);
+		return NULL;
+	}
 	strncpy(a.sun_path, cmd_sock, sizeof(a.sun_path) - 1);
 
 	if (connect(fd, (struct sockaddr *)&a, sizeof(a)) != 0) {
@@ -573,10 +585,10 @@ hit_test_window(const state_t *st, double x, double y)
 		double ch = gh / prows;
 		int    pc = (int)((x - gx) / cw);
 		int    pr = (int)((y - gy) / ch);
-	
+
 		if (pc < 0 || pc >= pcols || pr < 0 || pr >= prows)
 			continue;
-		
+
 		double cx  = gx + pc * cw;
 		double cy  = gy + pr * ch;
 		double cpw = cw - 1;
@@ -1039,6 +1051,12 @@ status_thread(void *arg)
 		if (fd < 0)
 			return NULL;
 		struct sockaddr_un a = { .sun_family = AF_UNIX };
+		if (strlen(status_sock) >= sizeof(a.sun_path)) {
+			fprintf(stderr, "cowpager: socket path too long: %s\n",
+			    status_sock);
+			close(fd);
+			return NULL;
+		}
 		strncpy(a.sun_path, status_sock, sizeof(a.sun_path) - 1);
 		if (connect(fd, (struct sockaddr *)&a, sizeof(a)) == 0)
 			break;

@@ -15,6 +15,7 @@
  */
 #include "cow/view.h"
 
+#include <cJSON.h>
 #include <cairo/cairo.h>
 #include <fnmatch.h>
 #include <pango/pangocairo.h>
@@ -565,8 +566,7 @@ cow_view_apply_render(struct cow_view *view)
 		 * vx/vy are still zero; seed them from x/y now so the window
 		 * lands on the correct page instead of always page (0,0).
 		 */
-		view->vx = (view->x - view->output->x) + view->desk->page_vx;
-		view->vy = (view->y - view->output->y) + view->desk->page_vy;
+		cow_view_sync_vxy_from_global(view);
 		view->placed = true;
 	}
 
@@ -591,10 +591,7 @@ cow_view_apply_render(struct cow_view *view)
 	 *   page_vx = output_width  →  x = output->x + vx - output_width
 	 * causing the window to slide one screen-width to the left.
 	 */
-	if (view->output != NULL && view->desk != NULL) {
-		view->x = view->output->x + (view->vx - view->desk->page_vx);
-		view->y = view->output->y + (view->vy - view->desk->page_vy);
-	}
+	cow_view_sync_global_from_vxy(view);
 
 	/*
 	 * River assigns a window to whichever output contains its position,
@@ -1046,8 +1043,7 @@ cow_view_unmaximize(struct cow_view *view)
 	view->vy = view->saved_y;
 	/* Recompute global render position from restored virtual coords */
 	if (view->output != NULL && view->desk != NULL) {
-		view->x = view->output->x + (view->vx - view->desk->page_vx);
-		view->y = view->output->y + (view->vy - view->desk->page_vy);
+		cow_view_sync_global_from_vxy(view);
 	} else {
 		view->x = view->saved_x;
 		view->y = view->saved_y;
@@ -1644,20 +1640,40 @@ cow_container_swap_prev(struct cow_container *c)
 void
 cow_container_activate_next(struct cow_container *c)
 {
+	struct cow_container_member *m;
+
+	if (c->active == NULL) {
+		if (wl_list_empty(&c->members))
+			return;
+		m = wl_container_of(c->members.next, m, link);
+		cow_container_activate(c, m);
+		return;
+	}
+
 	struct wl_list *next = c->active->link.next;
 	if (next == &c->members)
 		next = next->next; /* wrap */
-	struct cow_container_member *m = wl_container_of(next, m, link);
+	m = wl_container_of(next, m, link);
 	cow_container_activate(c, m);
 }
 
 void
 cow_container_activate_prev(struct cow_container *c)
 {
+	struct cow_container_member *m;
+
+	if (c->active == NULL) {
+		if (wl_list_empty(&c->members))
+			return;
+		m = wl_container_of(c->members.prev, m, link);
+		cow_container_activate(c, m);
+		return;
+	}
+
 	struct wl_list *prev = c->active->link.prev;
 	if (prev == &c->members)
 		prev = prev->prev; /* wrap */
-	struct cow_container_member *m = wl_container_of(prev, m, link);
+	m = wl_container_of(prev, m, link);
 	cow_container_activate(c, m);
 }
 
@@ -1683,6 +1699,7 @@ cow_container_remove_view(struct cow_view *view)
 
 	/* Restore independent decoration */
 	view->use_ssd = true;
+	cow_decoration_fini(&view->dec);
 	cow_decoration_init(&view->dec);
 	cow_view_resolve_style(view);
 
@@ -1711,6 +1728,7 @@ cow_container_remove_view(struct cow_view *view)
 			lv->container_member = NULL;
 			xfree(last);
 			lv->use_ssd = true;
+			cow_decoration_fini(&lv->dec);
 			cow_decoration_init(&lv->dec);
 			cow_view_resolve_style(lv);
 			lv->dec.dirty = true;
@@ -1836,4 +1854,59 @@ cow_view_centre(const struct cow_view *v, int *cx, int *cy)
 {
 	*cx = v->x + v->content_width / 2;
 	*cy = v->y - v->dec.title_thickness / 2 + v->content_height / 2;
+}
+
+void
+cow_view_sync_vxy_from_global(struct cow_view *view)
+{
+	if (view->output == NULL || view->desk == NULL)
+		return;
+	view->vx = (view->x - view->output->x) + view->desk->page_vx;
+	view->vy = (view->y - view->output->y) + view->desk->page_vy;
+}
+
+void
+cow_view_sync_global_from_vxy(struct cow_view *view)
+{
+	if (view->output == NULL || view->desk == NULL)
+		return;
+	view->x = view->output->x + (view->vx - view->desk->page_vx);
+	view->y = view->output->y + (view->vy - view->desk->page_vy);
+}
+
+void
+cow_view_restore_saved_geometry(struct cow_view *view)
+{
+	/*
+	 * saved_x/y are in virtual (vx/vy) coordinates.  Convert to global
+	 * for the pending_resize, which will re-sync vx/vy when applied.
+	 */
+	int gx = view->saved_x;
+	int gy = view->saved_y;
+	if (view->output != NULL && view->desk != NULL) {
+		gx = view->output->x + (view->saved_x - view->desk->page_vx);
+		gy = view->output->y + (view->saved_y - view->desk->page_vy);
+	}
+	cow_view_set_pending_geometry(view, gx, gy, view->saved_width,
+	    view->saved_height);
+	view->maximized		   = false;
+	view->icon_inverted_button = -1;
+}
+
+void
+cow_view_json_add_identity(struct cJSON *obj, const struct cow_view *view)
+{
+	cJSON_AddStringToObject(obj, "id",
+	    view->identifier ? view->identifier : "");
+	cJSON_AddStringToObject(obj, "app_id",
+	    view->app_id ? view->app_id : "");
+	cJSON_AddStringToObject(obj, "title", view->title ? view->title : "");
+}
+
+void
+cow_view_json_add_placement(struct cJSON *obj, const struct cow_view *view)
+{
+	cJSON_AddNumberToObject(obj, "desk", view->desk ? view->desk->nr : -1);
+	cJSON_AddStringToObject(obj, "output",
+	    (view->output && view->output->name) ? view->output->name : "");
 }

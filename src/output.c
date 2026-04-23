@@ -186,6 +186,7 @@ void
 cow_output_destroy(struct cow_output *output)
 {
 	pan_frames_destroy_output(output);
+	cow_layer_shell_fini_output(output);
 	wl_list_remove(&output->wm_link);
 
 	if (cow_wm.current_output == output) {
@@ -197,6 +198,16 @@ cow_output_destroy(struct cow_output *output)
 			cow_wm.current_output = NULL;
 		}
 	}
+
+	/* Background shell surface resources */
+	if (output->bg_buffer != NULL)
+		cow_shm_buffer_destroy(output->bg_buffer);
+	if (output->bg_node != NULL)
+		river_node_v1_destroy(output->bg_node);
+	if (output->bg_shell_surface != NULL)
+		river_shell_surface_v1_destroy(output->bg_shell_surface);
+	if (output->bg_surface != NULL)
+		wl_surface_destroy(output->bg_surface);
 
 	xfree(output->name);
 	river_output_v1_destroy(output->river_output);

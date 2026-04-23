@@ -60,6 +60,16 @@ cow_status_init(void)
 	}
 
 	struct sockaddr_un addr = { .sun_family = AF_UNIX };
+	if (strlen(socket_path) >= sizeof(addr.sun_path)) {
+		fprintf(stderr,
+		    "cow: status: socket path too long (%zu >= %zu): %s\n",
+		    strlen(socket_path), sizeof(addr.sun_path), socket_path);
+		close(server_fd);
+		server_fd = -1;
+		xfree(socket_path);
+		socket_path = NULL;
+		return;
+	}
 	strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
 
 	if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
@@ -128,16 +138,25 @@ status_accept(void)
 		}
 		/* Send the last snapshot immediately so the client does not
 		 * have to wait for the next state change to get initial data.
+		 * If the write fails (e.g. client went away between accept
+		 * and this call), drop the fd.
 		 */
-		if (last_snapshot != NULL)
-			write(fd, last_snapshot, last_snapshot_len);
+		if (last_snapshot != NULL) {
+			if (cow_write_all(fd, last_snapshot,
+				last_snapshot_len) < 0) {
+				close(fd);
+				continue;
+			}
+		}
 		clients[nclients++] = fd;
 	}
 }
 
 /*
  * Send a string to all connected status clients.
- * Remove clients that have disconnected.
+ * Remove clients that disconnect or that cannot accept a short write;
+ * the status protocol is line-oriented and a partial write corrupts
+ * the stream, so better to drop the client than desync.
  */
 static void
 status_broadcast(const char *msg, size_t len)
@@ -145,13 +164,25 @@ status_broadcast(const char *msg, size_t len)
 	int i = 0;
 	while (i < nclients) {
 		ssize_t n = write(clients[i], msg, len);
-		if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+		if (n < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK ||
+			    errno == EINTR) {
+				/* Socket full; skip this tick. */
+				i++;
+				continue;
+			}
 			/* Client disconnected */
 			close(clients[i]);
 			clients[i] = clients[--nclients];
-		} else {
-			i++;
+			continue;
 		}
+		if ((size_t)n < len) {
+			/* Partial write; stream is desynced -- drop. */
+			close(clients[i]);
+			clients[i] = clients[--nclients];
+			continue;
+		}
+		i++;
 	}
 }
 
@@ -229,18 +260,8 @@ cow_status_emit(void)
 	struct cow_view *focused = cow_wm.focused_view;
 	if (focused != NULL && !focused->closed) {
 		cJSON *fw = cJSON_CreateObject();
-		cJSON_AddStringToObject(fw, "id",
-		    focused->identifier ? focused->identifier : "");
-		cJSON_AddStringToObject(fw, "app_id",
-		    focused->app_id ? focused->app_id : "");
-		cJSON_AddStringToObject(fw, "title",
-		    focused->title ? focused->title : "");
-		cJSON_AddNumberToObject(fw, "desk",
-		    focused->desk ? focused->desk->nr : -1);
-		cJSON_AddStringToObject(fw, "output",
-		    (focused->output && focused->output->name) ?
-			focused->output->name :
-			"");
+		cow_view_json_add_identity(fw, focused);
+		cow_view_json_add_placement(fw, focused);
 		cJSON_AddItemToObject(root, "focused", fw);
 	} else {
 		cJSON_AddNullToObject(root, "focused");

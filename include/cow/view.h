@@ -454,4 +454,38 @@ void cow_view_sync_container_geometry(struct cow_view *view, int x, int y,
 void cow_view_warp_to_focused(void);
 void cow_view_centre(const struct cow_view *, int *, int *);
 
+/*
+ * Synchronise view->vx/vy (virtual/page-relative) from view->x/y
+ * (global compositor coordinates), using the view's output and desk
+ * page viewport offset.  No-op if view->output or view->desk is NULL.
+ */
+void cow_view_sync_vxy_from_global(struct cow_view *view);
+
+/*
+ * The inverse: compute view->x/y from view->vx/vy and the current
+ * page viewport offset.  No-op if view->output or view->desk is NULL.
+ */
+void cow_view_sync_global_from_vxy(struct cow_view *view);
+
+/*
+ * Restore a view to its saved (pre-maximise/pre-expand) geometry.
+ * saved_x/y are in virtual coordinates; this converts to global
+ * coords, issues a pending-resize to saved_width/height, and clears
+ * the maximized flag and the icon inverted-button indicator.
+ */
+void cow_view_restore_saved_geometry(struct cow_view *view);
+
+/*
+ * JSON serialisation helpers for view metadata.
+ * Each adds scalar fields directly to 'obj'; callers are responsible
+ * for wrapping the object into the parent structure they need.
+ *
+ * _identity  adds: id, app_id, title
+ * _placement adds: desk, output
+ */
+struct cJSON;
+void cow_view_json_add_identity(struct cJSON *obj, const struct cow_view *view);
+void cow_view_json_add_placement(struct cJSON *obj,
+    const struct cow_view		      *view);
+
 #endif

@@ -50,26 +50,32 @@ cow_state_save(void)
 
 	cJSON *root = cJSON_CreateObject();
 
-  /* Save per-output current sheet */
-  cJSON *outputs = cJSON_AddArrayToObject(root, "outputs");
-  struct cow_output *output;
-  wl_list_for_each(output, &cow_wm.outputs, wm_link) {
-    cJSON *o = cJSON_CreateObject();
-    cJSON_AddNumberToObject(o, "x", output->x);
-    cJSON_AddNumberToObject(o, "y", output->y);
-    cJSON_AddNumberToObject(o, "current_desk", output->current_desk->nr);
-    /* Save current page viewport for each desk */
-    cJSON *desk_pages = cJSON_AddArrayToObject(o, "desk_pages");
-    for (int i = 0; i < COW_NR_OF_DESKS; i++) {
-      cJSON *dp = cJSON_CreateObject();
-      cJSON_AddNumberToObject(dp, "page_col",
-          output->usable_area.width > 0
-          ? output->desks[i].page_vx / output->usable_area.width : 0);
-      cJSON_AddNumberToObject(dp, "page_row",
-          output->usable_area.height > 0
-          ? output->desks[i].page_vy / output->usable_area.height : 0);
-      cJSON_AddItemToArray(desk_pages, dp);
-    }
+	/* Save per-output current sheet */
+	cJSON		  *outputs = cJSON_AddArrayToObject(root, "outputs");
+	struct cow_output *output;
+	wl_list_for_each(output, &cow_wm.outputs, wm_link)
+	{
+		cJSON *o = cJSON_CreateObject();
+		cJSON_AddNumberToObject(o, "x", output->x);
+		cJSON_AddNumberToObject(o, "y", output->y);
+		cJSON_AddNumberToObject(o, "current_desk",
+		    output->current_desk->nr);
+		/* Save current page viewport for each desk */
+		cJSON *desk_pages = cJSON_AddArrayToObject(o, "desk_pages");
+		for (int i = 0; i < COW_NR_OF_DESKS; i++) {
+			cJSON *dp = cJSON_CreateObject();
+			cJSON_AddNumberToObject(dp, "page_col",
+			    output->usable_area.width > 0 ?
+				output->desks[i].page_vx /
+				    output->usable_area.width :
+				0);
+			cJSON_AddNumberToObject(dp, "page_row",
+			    output->usable_area.height > 0 ?
+				output->desks[i].page_vy /
+				    output->usable_area.height :
+				0);
+			cJSON_AddItemToArray(desk_pages, dp);
+		}
 
 		cJSON_AddItemToArray(outputs, o);
 	}
@@ -204,10 +210,17 @@ cow_state_restore(void)
 		return false;
 	}
 
-	char *buf = xmalloc(size + 1);
-	fread(buf, 1, size, f);
-	buf[size] = '\0';
+	char  *buf    = xmalloc(size + 1);
+	size_t n_read = fread(buf, 1, size, f);
 	fclose(f);
+	if ((long)n_read != size) {
+		fprintf(stderr,
+		    "cow: state restore: short read (%zu of %ld bytes)\n",
+		    n_read, size);
+		xfree(buf);
+		return false;
+	}
+	buf[size] = '\0';
 
 	cJSON *root = cJSON_Parse(buf);
 	xfree(buf);

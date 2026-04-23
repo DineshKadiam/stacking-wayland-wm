@@ -51,7 +51,6 @@ static void do_set_font(const char *);
 static void do_set_titlebar(const char *, const char *);
 static void do_set_button(const char *, const char *);
 static void refresh_visuals(void);
-static bool parse_colour_value(const char *, float[4]);
 
 struct cmd_entry cmd_set_entry = {
 	"set",
@@ -199,18 +198,18 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	if (strcmp(key, "container.tab.sunken") == 0) {
-		if (cow_config != NULL)
-			cow_config->container.tab_sunken_inactive =
-			    (strcmp(val, "true") == 0 || strcmp(val, "1") == 0);
+		bool b;
+		if (cow_config != NULL && cmd_parse_bool(val, &b))
+			cow_config->container.tab_sunken_inactive = b;
 		xfree(val);
 		refresh_visuals();
 		return (CMD_RETURN_NORMAL);
 	}
 
 	if (strcmp(key, "edge_scroll") == 0) {
-		if (cow_config != NULL) {
-			cow_config->edge_scroll = (strcmp(val, "true") == 0 ||
-			    strcmp(val, "1") == 0);
+		bool b;
+		if (cow_config != NULL && cmd_parse_bool(val, &b)) {
+			cow_config->edge_scroll = b;
 			if (!cow_ipc.startup_mode)
 				pan_frames_update_all();
 		}
@@ -234,10 +233,9 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	if (strcmp(key, "page_scroll_animate") == 0) {
-		if (cow_config != NULL)
-			cow_config->page_scroll_animate = (strcmp(val,
-							       "true") == 0 ||
-			    strcmp(val, "1") == 0);
+		bool b;
+		if (cow_config != NULL && cmd_parse_bool(val, &b))
+			cow_config->page_scroll_animate = b;
 		xfree(val);
 		return (CMD_RETURN_NORMAL);
 	}
@@ -311,7 +309,7 @@ do_set_colour(const char *key, const char *val, struct cmd_q *cmdq)
 	if (strncmp(key, "output.colour.background.", 25) == 0) {
 		const char *oname = key + 25;
 		float	    c[4];
-		if (!parse_colour_value(val, c)) {
+		if (!cow_colour_parse(val, c)) {
 			cmdq_error(cmdq, "set: invalid colour value");
 			return;
 		}
@@ -335,7 +333,7 @@ do_set_colour(const char *key, const char *val, struct cmd_q *cmdq)
 	if (strcmp(key, "colour.active") == 0 ||
 	    strcmp(key, "colour.inactive") == 0) {
 		float c[4];
-		if (!parse_colour_value(val, c)) {
+		if (!cow_colour_parse(val, c)) {
 			cmdq_error(cmdq, "set: invalid colour value");
 			return;
 		}
@@ -366,7 +364,7 @@ do_set_colour(const char *key, const char *val, struct cmd_q *cmdq)
 	};
 	for (int i = 0; tb_fields[i].name != NULL; i++) {
 		if (strcmp(key, tb_fields[i].name) == 0) {
-			if (!parse_colour_value(val, tb_fields[i].ptr)) {
+			if (!cow_colour_parse(val, tb_fields[i].ptr)) {
 				cmdq_error(cmdq, "set: invalid colour value");
 				return;
 			}
@@ -397,7 +395,7 @@ do_set_colour(const char *key, const char *val, struct cmd_q *cmdq)
 	};
 	for (int i = 0; ct_fields[i].name != NULL; i++) {
 		if (strcmp(key, ct_fields[i].name) == 0) {
-			if (!parse_colour_value(val, ct_fields[i].ptr)) {
+			if (!cow_colour_parse(val, ct_fields[i].ptr)) {
 				cmdq_error(cmdq, "set: invalid colour value");
 				return;
 			}
@@ -435,7 +433,7 @@ do_set_colour(const char *key, const char *val, struct cmd_q *cmdq)
 	for (int i = 0; colour_fields[i].name != NULL; i++) {
 		if (strcmp(key, colour_fields[i].name) != 0)
 			continue;
-		if (!parse_colour_value(val, colour_fields[i].ptr)) {
+		if (!cow_colour_parse(val, colour_fields[i].ptr)) {
 			cmdq_error(cmdq, "set: invalid colour value");
 			return;
 		}
@@ -585,12 +583,14 @@ do_set_font(const char *val)
 static void
 do_set_titlebar(const char *key, const char *val)
 {
+	bool b;
+
 	if (strcmp(key, "titlebar.enabled") == 0) {
-		cow_config->titlebar.enabled = (strcmp(val, "true") == 0 ||
-		    strcmp(val, "1") == 0);
+		if (cmd_parse_bool(val, &b))
+			cow_config->titlebar.enabled = b;
 	} else if (strcmp(key, "handles") == 0) {
-		cow_config->handles = (strcmp(val, "true") == 0 ||
-		    strcmp(val, "1") == 0);
+		if (cmd_parse_bool(val, &b))
+			cow_config->handles = b;
 	}
 	refresh_visuals();
 }
@@ -637,17 +637,6 @@ do_set_button(const char *key, const char *val)
 			return;
 		}
 	}
-}
-
-static bool
-parse_colour_value(const char *str, float out[4])
-{
-	char	     *end;
-	unsigned long v = strtoul(str, &end, 0);
-	if (end == str)
-		return false;
-	cow_colour_convert(out, (uint32_t)v);
-	return true;
 }
 
 static void

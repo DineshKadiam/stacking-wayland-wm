@@ -38,7 +38,6 @@
 static enum cmd_retval cmd_rule_exec(struct cmd *, struct cmd_q *);
 static void	       do_rule(struct cmd *, struct cmd_q *);
 static bool	       has_glob_chars(const char *);
-static bool	       parse_colour(const char *, float[4]);
 
 struct cmd_entry cmd_rule_entry = {
 	"rule",
@@ -172,7 +171,9 @@ do_rule(struct cmd *self, struct cmd_q *cmdq)
 			if (errstr != NULL)
 				entry->assign_desk_nr = -1;
 		} else if (strcmp(key, "sticky") == 0) {
-			entry->sticky = (strcmp(val, "true") == 0);
+			bool b;
+			if (cmd_parse_bool(val, &b))
+				entry->sticky = b;
 		} else if (strcmp(key, "border") == 0) {
 			const char *errstr;
 			entry->border = (int)strtonum(val, 0, 100, &errstr);
@@ -181,7 +182,7 @@ do_rule(struct cmd *self, struct cmd_q *cmdq)
 		} else if (strcmp(key, "colour.active") == 0) {
 			/* Uniform active border colour (all edges) */
 			float c[4];
-			if (parse_colour(val, c)) {
+			if (cow_colour_parse(val, c)) {
 				struct cow_border_colour *bc =
 				    &entry->border_colour_active;
 				memcpy(bc->n, c, sizeof(float) * 4);
@@ -192,7 +193,7 @@ do_rule(struct cmd *self, struct cmd_q *cmdq)
 			}
 		} else if (strcmp(key, "colour.inactive") == 0) {
 			float c[4];
-			if (parse_colour(val, c)) {
+			if (cow_colour_parse(val, c)) {
 				struct cow_border_colour *bc =
 				    &entry->border_colour_inactive;
 				memcpy(bc->n, c, sizeof(float) * 4);
@@ -205,7 +206,7 @@ do_rule(struct cmd *self, struct cmd_q *cmdq)
 			/* Per-edge: colour.active.n, .s, .e, .w, .nw etc */
 			const char *edge = key + 14;
 			float	    c[4];
-			if (!parse_colour(val, c))
+			if (!cow_colour_parse(val, c))
 				goto bad_key;
 			struct cow_border_colour *bc =
 			    &entry->border_colour_active;
@@ -239,7 +240,7 @@ do_rule(struct cmd *self, struct cmd_q *cmdq)
 		} else if (strncmp(key, "colour.inactive.", 16) == 0) {
 			const char *edge = key + 16;
 			float	    c[4];
-			if (!parse_colour(val, c))
+			if (!cow_colour_parse(val, c))
 				goto bad_key;
 			struct cow_border_colour *bc =
 			    &entry->border_colour_inactive;
@@ -252,23 +253,44 @@ do_rule(struct cmd *self, struct cmd_q *cmdq)
 				memcpy(bc->e, c, sizeof(float) * 4);
 			else if (strcmp(edge, "w") == 0)
 				memcpy(bc->w, c, sizeof(float) * 4);
-			else
+			else if (strcmp(edge, "nw") == 0) {
+				memcpy(bc->nw, c, sizeof(float) * 4);
+				bc->has_nw	= true;
+				bc->has_corners = true;
+			} else if (strcmp(edge, "ne") == 0) {
+				memcpy(bc->ne, c, sizeof(float) * 4);
+				bc->has_ne	= true;
+				bc->has_corners = true;
+			} else if (strcmp(edge, "sw") == 0) {
+				memcpy(bc->sw, c, sizeof(float) * 4);
+				bc->has_sw	= true;
+				bc->has_corners = true;
+			} else if (strcmp(edge, "se") == 0) {
+				memcpy(bc->se, c, sizeof(float) * 4);
+				bc->has_se	= true;
+				bc->has_corners = true;
+			} else
 				goto bad_key;
 		} else if (strcmp(key, "titlebar.active_colour") == 0) {
-			if (parse_colour(val, entry->titlebar_active_colour))
+			if (cow_colour_parse(val,
+				entry->titlebar_active_colour))
 				entry->has_titlebar_active = true;
 		} else if (strcmp(key, "titlebar.inactive_colour") == 0) {
-			if (parse_colour(val, entry->titlebar_inactive_colour))
+			if (cow_colour_parse(val,
+				entry->titlebar_inactive_colour))
 				entry->has_titlebar_inactive = true;
 		} else if (strcmp(key, "titlebar.fg_active") == 0) {
-			if (parse_colour(val, entry->titlebar_fg_active))
+			if (cow_colour_parse(val, entry->titlebar_fg_active))
 				entry->has_titlebar_fg_active = true;
 		} else if (strcmp(key, "titlebar.fg_inactive") == 0) {
-			if (parse_colour(val, entry->titlebar_fg_inactive))
+			if (cow_colour_parse(val, entry->titlebar_fg_inactive))
 				entry->has_titlebar_fg_inactive = true;
 		} else if (strcmp(key, "titlebar.enabled") == 0) {
-			entry->has_titlebar_enabled = true;
-			entry->titlebar_enabled = (strcmp(val, "true") == 0);
+			bool b;
+			if (cmd_parse_bool(val, &b)) {
+				entry->has_titlebar_enabled = true;
+				entry->titlebar_enabled	    = b;
+			}
 		} else {
 		bad_key:
 			cmdq_error(cmdq, "rule: unknown key: %s", key);
@@ -301,17 +323,6 @@ has_glob_chars(const char *s)
 {
 	return strchr(s, '*') != NULL || strchr(s, '?') != NULL ||
 	    strchr(s, '[') != NULL;
-}
-
-static bool
-parse_colour(const char *str, float out[4])
-{
-	char	     *end;
-	unsigned long v = strtoul(str, &end, 0);
-	if (end == str)
-		return false;
-	cow_colour_convert(out, (uint32_t)v);
-	return true;
 }
 
 void

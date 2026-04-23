@@ -37,11 +37,9 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 	struct args *args = self->args;
 
 	/* Resolve the target window (-t or focused) */
-	struct cow_view *target = cmd_ctx_target_window(cmdq);
-	if (target == NULL || target->closed) {
-		cmdq_error(cmdq, "container: no target window");
+	struct cow_view *target = cmd_require_target_window(cmdq, "container");
+	if (target == NULL)
 		return CMD_RETURN_ERROR;
-	}
 
 	if (args_has(args, 'a')) {
 		/* Resolve source window (-s flag, else focused) */

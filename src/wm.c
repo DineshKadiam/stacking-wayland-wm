@@ -1033,22 +1033,22 @@ cow_wm_init(void)
 		fprintf(stderr,
 		    "cow: river_window_manager_v1 not available "
 		    "(is river running?)\n");
-		return false;
+		goto fail;
 	}
 
 	if (cow_wm.xkb_bindings == NULL) {
 		fprintf(stderr, "cow: river_xkb_bindings_v1 not available\n");
-		return false;
+		goto fail;
 	}
 
 	if (cow_wm.compositor == NULL) {
 		fprintf(stderr, "cow: wl_compositor not available\n");
-		return false;
+		goto fail;
 	}
 
 	if (cow_wm.shm == NULL) {
 		fprintf(stderr, "cow: wl_shm not available\n");
-		return false;
+		goto fail;
 	}
 
 	/* Second roundtrip: process initial events from bound globals */
@@ -1080,6 +1080,17 @@ cow_wm_init(void)
 	cow_status_init();
 
 	return true;
+
+fail:
+	if (cow_wm.registry != NULL) {
+		wl_registry_destroy(cow_wm.registry);
+		cow_wm.registry = NULL;
+	}
+	if (cow_wm.display != NULL) {
+		wl_display_disconnect(cow_wm.display);
+		cow_wm.display = NULL;
+	}
+	return false;
 }
 
 void

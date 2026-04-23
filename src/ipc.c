@@ -29,6 +29,7 @@
 #include "cow/command.h"
 #include "cow/config.h"
 #include "cow/keybinding.h"
+#include "cow/memory.h"
 #include "cow/wm.h"
 
 struct cow_ipc cow_ipc;
@@ -62,6 +63,14 @@ cow_ipc_init(void)
 	}
 
 	struct sockaddr_un addr = { .sun_family = AF_UNIX };
+	if (strlen(cow_ipc.socket_path) >= sizeof(addr.sun_path)) {
+		fprintf(stderr,
+		    "cow: ipc: socket path too long (%zu >= %zu): %s\n",
+		    strlen(cow_ipc.socket_path), sizeof(addr.sun_path),
+		    cow_ipc.socket_path);
+		close(fd);
+		return false;
+	}
 	strncpy(addr.sun_path, cow_ipc.socket_path, sizeof(addr.sun_path) - 1);
 
 	if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
@@ -142,9 +151,10 @@ cow_ipc_respond(int fd, const char *json)
 	if (fd < 0)
 		return;
 	size_t len = strlen(json);
-	write(fd, json, len);
+	if (cow_write_all(fd, json, len) < 0)
+		return;
 	if (len == 0 || json[len - 1] != '\n')
-		write(fd, "\n", 1);
+		(void)cow_write_all(fd, "\n", 1);
 }
 
 void

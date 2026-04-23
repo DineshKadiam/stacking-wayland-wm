@@ -65,6 +65,11 @@ connect_to_cow(void)
 	}
 
 	struct sockaddr_un addr = { .sun_family = AF_UNIX };
+	if (strlen(path) >= sizeof(addr.sun_path)) {
+		fprintf(stderr, "moocow: socket path too long: %s\n", path);
+		close(fd);
+		return -1;
+	}
 	strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
 
 	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {

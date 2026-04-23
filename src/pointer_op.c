@@ -285,12 +285,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 			view->x = fl + bw;
 			view->y = ft + bw + tt;
 			cow_view_update_output(view);
-			if (view->output != NULL && view->desk != NULL) {
-				view->vx = (view->x - view->output->x) +
-				    view->desk->page_vx;
-				view->vy = (view->y - view->output->y) +
-				    view->desk->page_vy;
-			}
+			cow_view_sync_vxy_from_global(view);
 			cow_view_sync_container_pos(view);
 		}
 		break;

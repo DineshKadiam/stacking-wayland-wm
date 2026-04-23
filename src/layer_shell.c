@@ -81,7 +81,7 @@ static const struct river_layer_shell_seat_v1_listener ls_seat_listener = {
 void
 cow_layer_shell_init_output(struct cow_output *output)
 {
-	if (cow_wm.layer_shell == NULL)
+	if (cow_wm.layer_shell == NULL || output->layer_shell_state != NULL)
 		return;
 
 	struct cow_layer_shell_output *lso = xcalloc(1, sizeof(*lso));
@@ -91,12 +91,27 @@ cow_layer_shell_init_output(struct cow_output *output)
 
 	river_layer_shell_output_v1_add_listener(lso->river_ls_output,
 	    &ls_output_listener, lso);
+
+	output->layer_shell_state = lso;
+}
+
+void
+cow_layer_shell_fini_output(struct cow_output *output)
+{
+	struct cow_layer_shell_output *lso = output->layer_shell_state;
+	if (lso == NULL)
+		return;
+
+	if (lso->river_ls_output != NULL)
+		river_layer_shell_output_v1_destroy(lso->river_ls_output);
+	xfree(lso);
+	output->layer_shell_state = NULL;
 }
 
 void
 cow_layer_shell_init_seat(struct cow_seat *seat)
 {
-	if (cow_wm.layer_shell == NULL)
+	if (cow_wm.layer_shell == NULL || seat->layer_shell_state != NULL)
 		return;
 
 	struct cow_layer_shell_seat *lss = xcalloc(1, sizeof(*lss));
@@ -107,4 +122,19 @@ cow_layer_shell_init_seat(struct cow_seat *seat)
 
 	river_layer_shell_seat_v1_add_listener(lss->river_ls_seat,
 	    &ls_seat_listener, lss);
+
+	seat->layer_shell_state = lss;
+}
+
+void
+cow_layer_shell_fini_seat(struct cow_seat *seat)
+{
+	struct cow_layer_shell_seat *lss = seat->layer_shell_state;
+	if (lss == NULL)
+		return;
+
+	if (lss->river_ls_seat != NULL)
+		river_layer_shell_seat_v1_destroy(lss->river_ls_seat);
+	xfree(lss);
+	seat->layer_shell_state = NULL;
 }

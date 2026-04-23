@@ -46,6 +46,43 @@ struct args {
 struct cow_output;
 struct cow_desk;
 struct cow_view;
+struct cmd_q;
+
+/*
+ * Cardinal direction used by focus, move, resize, page, etc.
+ * COW_DIR_NONE signals an unrecognised input.
+ */
+enum cow_direction {
+	COW_DIR_NONE = -1,
+	COW_DIR_UP,
+	COW_DIR_DOWN,
+	COW_DIR_LEFT,
+	COW_DIR_RIGHT,
+};
+
+/*
+ * Parse a direction token ("up"/"down"/"left"/"right").
+ * Returns COW_DIR_NONE on any other input (including NULL).
+ */
+enum cow_direction cow_parse_direction(const char *s);
+
+/*
+ * Parse a boolean from a config/command value.
+ *   true/yes/on/1  -> true
+ *   false/no/off/0 -> false
+ * Returns true on success; on any other input *out is untouched
+ * and the return is false.  NULL input also returns false.
+ */
+bool cmd_parse_bool(const char *s, bool *out);
+
+/*
+ * Resolve the target window from cmdq or emit a canonical error.
+ * cmd_name is embedded in the error message.  Returns NULL (and
+ * has already reported via cmdq_error) if there is no usable
+ * target, which the caller should translate to CMD_RETURN_ERROR.
+ */
+struct cow_view *cmd_require_target_window(struct cmd_q *cmdq,
+    const char						*cmd_name);
 
 /*
  * Resolved command context.  Produced by parsing a specifier string

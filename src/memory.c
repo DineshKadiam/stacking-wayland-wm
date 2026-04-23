@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "cow/compat.h"
 #include "cow/memory.h"
@@ -109,14 +110,35 @@ xstrdup(const char *s)
 void *
 xrealloc(void *oldptr, size_t nmemb, size_t size)
 {
-	size_t newsize = nmemb * size;
-	void  *newptr;
+	void *newptr;
 
-	if (newsize == 0)
+	if (size == 0 || nmemb == 0)
 		log_fatal("xrealloc: zero size");
 	if (SIZE_MAX / nmemb < size)
 		log_fatal("xrealloc: overflow");
-	if ((newptr = realloc(oldptr, newsize)) == NULL)
+	if ((newptr = realloc(oldptr, nmemb * size)) == NULL)
 		log_fatal("xrealloc: %s", strerror(errno));
 	return (newptr);
+}
+
+ssize_t
+cow_write_all(int fd, const void *buf, size_t len)
+{
+	const char *p	  = buf;
+	size_t	    total = 0;
+
+	while (total < len) {
+		ssize_t n = write(fd, p + total, len - total);
+		if (n < 0) {
+			if (errno == EINTR)
+				continue;
+			return -1;
+		}
+		if (n == 0) {
+			errno = EIO;
+			return -1;
+		}
+		total += (size_t)n;
+	}
+	return (ssize_t)total;
 }

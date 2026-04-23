@@ -103,15 +103,21 @@ cmd_page_exec(struct cmd *self, struct cmd_q *cmdq)
 		}
 	} else if (args_get(args, 'd') != NULL) {
 		const char *dir = args_get(args, 'd');
-		if (strcmp(dir, "right") == 0)
+		switch (cow_parse_direction(dir)) {
+		case COW_DIR_RIGHT:
 			col = (col + 1) % cols;
-		else if (strcmp(dir, "left") == 0)
+			break;
+		case COW_DIR_LEFT:
 			col = (col - 1 + cols) % cols;
-		else if (strcmp(dir, "down") == 0)
+			break;
+		case COW_DIR_DOWN:
 			row = (row + 1) % rows;
-		else if (strcmp(dir, "up") == 0)
+			break;
+		case COW_DIR_UP:
 			row = (row - 1 + rows) % rows;
-		else {
+			break;
+		case COW_DIR_NONE:
+		default:
 			cmdq_error(cmdq,
 			    "page: unknown direction: %s (left|right|up|down)",
 			    dir);

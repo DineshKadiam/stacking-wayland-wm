@@ -21,149 +21,209 @@
 
 #include "cow/compat.h"
 #include "cow/cmd.h"
+#include "cow/view.h"
 
 struct causelist cfg_causes;
 
-struct cmd_entry *cmd_table[] = {&cmd_bind_entry,
-                                 &cmd_container_entry,
-                                 &cmd_desk_entry,
-                                 &cmd_page_entry,
-                                 &cmd_exec_entry,
-                                 &cmd_focus_entry,
-                                 &cmd_list_commands_entry,
-                                 &cmd_mouse_entry,
-                                 &cmd_move_entry,
-                                 &cmd_quit_entry,
-                                 &cmd_resize_entry,
-                                 &cmd_rule_entry,
-                                 &cmd_set_entry,
-                                 &cmd_show_entry,
-                                 &cmd_window_expand_entry,
-                                 &cmd_window_maximize_entry,
-                                 &cmd_window_shade_entry,
-                                 &cmd_winops_entry,
-                                 NULL};
+struct cmd_entry *cmd_table[] = {
+	&cmd_bind_entry,
+	&cmd_container_entry,
+	&cmd_desk_entry,
+	&cmd_page_entry,
+	&cmd_exec_entry,
+	&cmd_focus_entry,
+	&cmd_list_commands_entry,
+	&cmd_mouse_entry,
+	&cmd_move_entry,
+	&cmd_quit_entry,
+	&cmd_resize_entry,
+	&cmd_rule_entry,
+	&cmd_set_entry,
+	&cmd_show_entry,
+	&cmd_window_expand_entry,
+	&cmd_window_maximize_entry,
+	&cmd_window_shade_entry,
+	&cmd_winops_entry,
+	NULL,
+};
 
-struct cmd_entry *cmd_find_cmd(const char *cmd_name) {
-  struct cmd_entry **cmd_ent = NULL;
-  struct cmd_entry *cmd_p = NULL;
+struct cmd_entry *
+cmd_find_cmd(const char *cmd_name)
+{
+	struct cmd_entry **cmd_ent = NULL;
+	struct cmd_entry  *cmd_p   = NULL;
 
-  if (cmd_name == NULL)
-    log_fatal("command name was NULL");
+	if (cmd_name == NULL)
+		log_fatal("command name was NULL");
 
-  for (cmd_ent = cmd_table; *cmd_ent != NULL; cmd_ent++) {
-    if (strcmp((*cmd_ent)->name, cmd_name) == 0) {
-      cmd_p = *cmd_ent;
-      break;
-    }
-  }
+	for (cmd_ent = cmd_table; *cmd_ent != NULL; cmd_ent++) {
+		if (strcmp((*cmd_ent)->name, cmd_name) == 0) {
+			cmd_p = *cmd_ent;
+			break;
+		}
+	}
 
-  return (cmd_p);
+	return (cmd_p);
 }
 
-char **cmd_copy_argv(int argc, char *const *argv) {
-  char **new_argv;
-  int i;
+char **
+cmd_copy_argv(int argc, char *const *argv)
+{
+	char **new_argv;
+	int    i;
 
-  if (argc == 0)
-    return (NULL);
-  new_argv = xcalloc(argc, sizeof *new_argv);
-  for (i = 0; i < argc; i++) {
-    if (argv[i] != NULL)
-      new_argv[i] = xstrdup(argv[i]);
-  }
-  return (new_argv);
+	if (argc == 0)
+		return (NULL);
+	new_argv = xcalloc(argc, sizeof *new_argv);
+	for (i = 0; i < argc; i++) {
+		if (argv[i] != NULL)
+			new_argv[i] = xstrdup(argv[i]);
+	}
+	return (new_argv);
 }
 
 /*
  * Join argv[start..argc-1] into a single space-separated string.
  * Returns a newly allocated string (caller frees with xfree).
  */
-char *cmd_argv_to_string(int argc, char **argv, int start) {
-  size_t len;
-  int i;
-  char *buf;
+char *
+cmd_argv_to_string(int argc, char **argv, int start)
+{
+	size_t len;
+	int    i;
+	char  *buf;
 
-  len = 0;
-  for (i = start; i < argc; i++)
-    len += strlen(argv[i]) + 1; /* +1 for space or NUL */
+	len = 0;
+	for (i = start; i < argc; i++)
+		len += strlen(argv[i]) + 1; /* +1 for space or NUL */
 
-  if (len == 0)
-    return (xstrdup(""));
+	if (len == 0)
+		return (xstrdup(""));
 
-  buf = xmalloc(len);
-  strlcpy(buf, argv[start], len);
-  for (i = start + 1; i < argc; i++) {
-    strlcat(buf, " ", len);
-    strlcat(buf, argv[i], len);
-  }
+	buf = xmalloc(len);
+	strlcpy(buf, argv[start], len);
+	for (i = start + 1; i < argc; i++) {
+		strlcat(buf, " ", len);
+		strlcat(buf, argv[i], len);
+	}
 
-  return (buf);
+	return (buf);
 }
 
-void cmd_free_argv(int argc, char **argv) {
-  int i;
+void
+cmd_free_argv(int argc, char **argv)
+{
+	int i;
 
-  if (argc == 0)
-    return;
-  for (i = 0; i < argc; i++)
-    xfree(argv[i]);
-  xfree(argv);
+	if (argc == 0)
+		return;
+	for (i = 0; i < argc; i++)
+		xfree(argv[i]);
+	xfree(argv);
 }
 
-size_t cmd_print(struct cmd *cmd, char *buf, size_t len) {
-  size_t off, used;
+size_t
+cmd_print(struct cmd *cmd, char *buf, size_t len)
+{
+	size_t off, used;
 
-  off = snprintf(buf, len, "%s ", cmd->entry->name);
-  if (off + 1 < len) {
-    used = args_print(cmd->args, buf + off, len - off - 1);
-    if (used == 0)
-      off--;
-    else
-      off += used;
-    buf[off] = '\0';
-  }
-  return (off);
+	off = snprintf(buf, len, "%s ", cmd->entry->name);
+	if (off + 1 < len) {
+		used = args_print(cmd->args, buf + off, len - off - 1);
+		if (used == 0)
+			off--;
+		else
+			off += used;
+		buf[off] = '\0';
+	}
+	return (off);
 }
 
-struct cmd *cmd_parse(int argc, char **argv, const char *file, u_int line,
-                      char **cause) {
-  const struct cmd_entry *entry;
-  struct cmd *cmd;
-  struct args *args;
+struct cmd *
+cmd_parse(int argc, char **argv, const char *file, u_int line, char **cause)
+{
+	const struct cmd_entry *entry;
+	struct cmd	       *cmd;
+	struct args	       *args;
 
-  *cause = NULL;
-  if (argc == 0) {
-    xasprintf(cause, "no command");
-    return (NULL);
-  }
+	*cause = NULL;
+	if (argc == 0) {
+		xasprintf(cause, "no command");
+		return (NULL);
+	}
 
-  if ((entry = cmd_find_cmd(argv[0])) == NULL) {
-    xasprintf(cause, "unknown command: %s", argv[0]);
-    return (NULL);
-  }
+	if ((entry = cmd_find_cmd(argv[0])) == NULL) {
+		xasprintf(cause, "unknown command: %s", argv[0]);
+		return (NULL);
+	}
 
-  args = args_parse(entry->args_template, argc, argv);
-  if (args == NULL)
-    goto usage;
-  if (entry->args_lower != -1 && args->argc < entry->args_lower)
-    goto usage;
-  if (entry->args_upper != -1 && args->argc > entry->args_upper)
-    goto usage;
+	args = args_parse(entry->args_template, argc, argv);
+	if (args == NULL)
+		goto usage;
+	if (entry->args_lower != -1 && args->argc < entry->args_lower)
+		goto usage;
+	if (entry->args_upper != -1 && args->argc > entry->args_upper)
+		goto usage;
 
-  cmd = xcalloc(1, sizeof *cmd);
-  cmd->entry = entry;
-  cmd->args = args;
+	cmd	   = xcalloc(1, sizeof *cmd);
+	cmd->entry = entry;
+	cmd->args  = args;
 
-  if (file != NULL)
-    cmd->file = xstrdup(file);
-  cmd->line = line;
+	if (file != NULL)
+		cmd->file = xstrdup(file);
+	cmd->line = line;
 
-  return (cmd);
+	return (cmd);
 
 usage:
-  if (args != NULL)
-    args_free(args);
-  xasprintf(cause, "usage: %s %s", entry->name, entry->usage);
-  return (NULL);
+	if (args != NULL)
+		args_free(args);
+	xasprintf(cause, "usage: %s %s", entry->name, entry->usage);
+	return (NULL);
+}
+
+enum cow_direction
+cow_parse_direction(const char *s)
+{
+	if (s == NULL)
+		return COW_DIR_NONE;
+	if (strcmp(s, "up") == 0)
+		return COW_DIR_UP;
+	if (strcmp(s, "down") == 0)
+		return COW_DIR_DOWN;
+	if (strcmp(s, "left") == 0)
+		return COW_DIR_LEFT;
+	if (strcmp(s, "right") == 0)
+		return COW_DIR_RIGHT;
+	return COW_DIR_NONE;
+}
+
+struct cow_view *
+cmd_require_target_window(struct cmd_q *cmdq, const char *cmd_name)
+{
+	struct cow_view *view = cmd_ctx_target_window(cmdq);
+
+	if (view == NULL || view->closed) {
+		cmdq_error(cmdq, "%s: no target window", cmd_name);
+		return NULL;
+	}
+	return view;
+}
+
+bool
+cmd_parse_bool(const char *s, bool *out)
+{
+	if (s == NULL)
+		return false;
+	if (strcmp(s, "true") == 0 || strcmp(s, "yes") == 0 ||
+	    strcmp(s, "on") == 0 || strcmp(s, "1") == 0) {
+		*out = true;
+		return true;
+	}
+	if (strcmp(s, "false") == 0 || strcmp(s, "no") == 0 ||
+	    strcmp(s, "off") == 0 || strcmp(s, "0") == 0) {
+		*out = false;
+		return true;
+	}
+	return false;
 }
