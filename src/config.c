@@ -28,6 +28,38 @@
 
 struct cow_config *cow_config = NULL;
 
+bool
+cow_parse_squeeze_mode(const char *s, enum cow_squeeze_mode *out)
+{
+	if (s == NULL)
+		return false;
+	if (strcmp(s, "none") == 0)
+		*out = COW_SQUEEZE_NONE;
+	else if (strcmp(s, "natural") == 0)
+		*out = COW_SQUEEZE_NATURAL;
+	else if (strcmp(s, "fixed") == 0)
+		*out = COW_SQUEEZE_FIXED;
+	else
+		return false;
+	return true;
+}
+
+bool
+cow_parse_squeeze_just(const char *s, enum cow_squeeze_just *out)
+{
+	if (s == NULL)
+		return false;
+	if (strcmp(s, "left") == 0)
+		*out = COW_JUST_LEFT;
+	else if (strcmp(s, "centre") == 0 || strcmp(s, "center") == 0)
+		*out = COW_JUST_CENTRE;
+	else if (strcmp(s, "right") == 0)
+		*out = COW_JUST_RIGHT;
+	else
+		return false;
+	return true;
+}
+
 /*
  * Set all 8 edges of a border_colour to a uniform colour.
  */

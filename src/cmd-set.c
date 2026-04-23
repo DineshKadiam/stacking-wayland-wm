@@ -50,8 +50,6 @@ static void do_set_placement(const char *, struct cmd_q *);
 static void do_set_font(const char *);
 static void do_set_titlebar(const char *, const char *);
 static void do_set_button(const char *, const char *);
-static bool parse_squeeze_mode(const char *, enum cow_squeeze_mode *);
-static bool parse_squeeze_just(const char *, enum cow_squeeze_just *);
 static void refresh_visuals(void);
 
 struct cmd_entry cmd_set_entry = {
@@ -201,7 +199,7 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	if (strcmp(key, "titlebar.squeeze") == 0) {
 		enum cow_squeeze_mode m;
-		if (!parse_squeeze_mode(val, &m)) {
+		if (!cow_parse_squeeze_mode(val, &m)) {
 			cmdq_error(cmdq,
 			    "set: titlebar.squeeze: bad value: %s "
 			    "(expected none|natural|fixed)",
@@ -219,7 +217,7 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	if (strcmp(key, "titlebar.squeeze.justify") == 0) {
 		enum cow_squeeze_just j;
-		if (!parse_squeeze_just(val, &j)) {
+		if (!cow_parse_squeeze_just(val, &j)) {
 			cmdq_error(cmdq,
 			    "set: titlebar.squeeze.justify: bad value: %s "
 			    "(expected left|centre|right)",
@@ -545,34 +543,6 @@ do_set_border_style(const char *val)
 	else
 		cow_config->border_style = COW_BORDER_STYLE_NONE;
 	refresh_visuals();
-}
-
-static bool
-parse_squeeze_mode(const char *val, enum cow_squeeze_mode *out)
-{
-	if (strcmp(val, "none") == 0)
-		*out = COW_SQUEEZE_NONE;
-	else if (strcmp(val, "natural") == 0)
-		*out = COW_SQUEEZE_NATURAL;
-	else if (strcmp(val, "fixed") == 0)
-		*out = COW_SQUEEZE_FIXED;
-	else
-		return false;
-	return true;
-}
-
-static bool
-parse_squeeze_just(const char *val, enum cow_squeeze_just *out)
-{
-	if (strcmp(val, "left") == 0)
-		*out = COW_JUST_LEFT;
-	else if (strcmp(val, "centre") == 0 || strcmp(val, "center") == 0)
-		*out = COW_JUST_CENTRE;
-	else if (strcmp(val, "right") == 0)
-		*out = COW_JUST_RIGHT;
-	else
-		return false;
-	return true;
 }
 
 static void

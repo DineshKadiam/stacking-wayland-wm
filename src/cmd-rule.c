@@ -291,6 +291,41 @@ do_rule(struct cmd *self, struct cmd_q *cmdq)
 				entry->has_titlebar_enabled = true;
 				entry->titlebar_enabled	    = b;
 			}
+		} else if (strcmp(key, "titlebar.squeeze") == 0) {
+			enum cow_squeeze_mode m;
+			if (cow_parse_squeeze_mode(val, &m)) {
+				entry->has_squeeze_mode = true;
+				entry->squeeze.mode	= m;
+			} else
+				goto bad_key;
+		} else if (strcmp(key, "titlebar.squeeze.justify") == 0) {
+			enum cow_squeeze_just j;
+			if (cow_parse_squeeze_just(val, &j)) {
+				entry->has_squeeze_justify = true;
+				entry->squeeze.justify	   = j;
+			} else
+				goto bad_key;
+		} else if (strcmp(key, "titlebar.squeeze.width") == 0) {
+			const char *errstr;
+			long long   v = strtonum(val, 0, 32767, &errstr);
+			if (errstr != NULL)
+				goto bad_key;
+			entry->has_squeeze_width = true;
+			entry->squeeze.width	 = (int)v;
+		} else if (strcmp(key, "titlebar.squeeze.offset") == 0) {
+			const char *errstr;
+			long long   v = strtonum(val, -32768, 32767, &errstr);
+			if (errstr != NULL)
+				goto bad_key;
+			entry->has_squeeze_offset = true;
+			entry->squeeze.offset	  = (int)v;
+		} else if (strcmp(key, "titlebar.squeeze.min_width") == 0) {
+			const char *errstr;
+			long long   v = strtonum(val, 0, 32767, &errstr);
+			if (errstr != NULL)
+				goto bad_key;
+			entry->has_squeeze_min_width = true;
+			entry->squeeze.min_width     = (int)v;
 		} else {
 		bad_key:
 			cmdq_error(cmdq, "rule: unknown key: %s", key);

@@ -133,6 +133,20 @@ struct cow_titlebar_squeeze {
 };
 
 /*
+ * Parse a squeeze mode token ("none"/"natural"/"fixed") into 'out'.
+ * Returns true on success; false (and leaves 'out' untouched) on any
+ * other input.
+ */
+bool cow_parse_squeeze_mode(const char *s, enum cow_squeeze_mode *out);
+
+/*
+ * Parse a squeeze justify token ("left"/"centre"/"center"/"right")
+ * into 'out'.  Returns true on success; false (and leaves 'out'
+ * untouched) on any other input.
+ */
+bool cow_parse_squeeze_just(const char *s, enum cow_squeeze_just *out);
+
+/*
  * Titlebar button config.
  */
 struct cow_titlebar_button_config {
