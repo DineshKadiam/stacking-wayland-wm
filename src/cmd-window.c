@@ -203,7 +203,7 @@ cmd_window_shade_exec(struct cmd *self, struct cmd_q *cmdq)
 	struct cow_view *view = cmd_ctx_target_window(cmdq);
 
 	if (view == NULL || view->closed) {
-		cmdq_error(cmdq, "window-maximize: no target window");
+		cmdq_error(cmdq, "window-shade: no target window");
 		return (CMD_RETURN_ERROR);
 	}
 
