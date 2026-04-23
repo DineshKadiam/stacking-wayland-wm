@@ -312,7 +312,6 @@ cow_ipc_load_config(const char *path)
 	cmdq_continue(cmdq);
 	cmdq_free(cmdq);
 
-
 	cow_ipc.startup_mode = false;
 
 	/* Report any errors */
@@ -362,20 +361,27 @@ ipc_remove_client(int idx)
 	cow_ipc.clients[idx] = cow_ipc.clients[--cow_ipc.num_clients];
 }
 
-static void
+/*
+ * Handle a POLLIN event on client 'idx'.  Returns true if the client
+ * was removed (either because the read reached EOF/error or because
+ * the dispatched command completed and we closed the connection);
+ * the caller must then NOT advance past this slot, since the last
+ * client was swapped into it by ipc_remove_client().
+ */
+static bool
 ipc_handle_client_data(int idx)
 {
 	struct cow_ipc_client *client = &cow_ipc.clients[idx];
 	int		       avail  = COW_IPC_BUF_SIZE - client->buf_len - 1;
 	if (avail <= 0) {
 		client->buf_len = 0;
-		return;
+		return false;
 	}
 
 	int n = read(client->fd, client->buf + client->buf_len, avail);
 	if (n <= 0) {
 		ipc_remove_client(idx);
-		return;
+		return true;
 	}
 	client->buf_len += n;
 	client->buf[client->buf_len] = '\0';
@@ -390,7 +396,7 @@ ipc_handle_client_data(int idx)
 		/* Close after each command: moocow sends one command and
 		 * reads until EOF, so closing here unblocks it. */
 		ipc_remove_client(idx);
-		return;
+		return true;
 	}
 
 	/* Shift remaining data to front */
@@ -398,6 +404,7 @@ ipc_handle_client_data(int idx)
 	if (remaining > 0 && start != client->buf)
 		memmove(client->buf, start, remaining);
 	client->buf_len = remaining;
+	return false;
 }
 
 void
@@ -415,13 +422,23 @@ cow_ipc_process_events(struct pollfd *fds, int nfds)
 		idx++;
 	}
 
-	/* Remaining fds are clients */
-	for (int i = 0; i < cow_ipc.num_clients && idx < nfds; i++, idx++) {
-		if (fds[idx].revents & (POLLIN | POLLHUP | POLLERR)) {
-			if (fds[idx].revents & POLLIN)
-				ipc_handle_client_data(i);
-			else
-				ipc_remove_client(i--);
+	/*
+	 * Remaining fds are clients.  Walk the original pollfd array --
+	 * both ipc_handle_client_data() and the POLLHUP/POLLERR branch
+	 * may call ipc_remove_client(), which swaps the last client into
+	 * slot i and decrements num_clients.  When that happens we must
+	 * re-examine slot i instead of advancing, but we still move on
+	 * in the pollfd array since those revents were already consumed.
+	 */
+	for (int i = 0; i < cow_ipc.num_clients && idx < nfds; idx++) {
+		short rev = fds[idx].revents;
+		if (rev & POLLIN) {
+			if (ipc_handle_client_data(i))
+				continue; /* slot refilled; re-examine */
+		} else if (rev & (POLLHUP | POLLERR)) {
+			ipc_remove_client(i);
+			continue; /* slot refilled; re-examine */
 		}
+		i++;
 	}
 }

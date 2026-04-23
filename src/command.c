@@ -75,24 +75,31 @@ find_xwayland_display(void)
 void
 cow_command_execute(const char *cmd)
 {
-	pid_t child;
+	pid_t outer, inner;
 	int   status;
 
-	child = fork();
-	if (child == 0) {
-		child = fork();
-		if (child == 0) {
+	/*
+	 * Double-fork so the grandchild is reparented to init and we don't
+	 * leave a zombie.  The outer child exits immediately after forking
+	 * the inner one; we reap it below.
+	 */
+	outer = fork();
+	if (outer < 0) {
+		fprintf(stderr, "cow_command_execute: fork: %s\n",
+		    strerror(errno));
+		return;
+	}
+	if (outer == 0) {
+		inner = fork();
+		if (inner < 0)
+			_exit(127);
+		if (inner == 0) {
 			setsid();
 
 			/*
-			 * Ensure WAYLAND_DISPLAY is set for Wayland-native
-			 * apps. It should already be inherited, but be
-			 * explicit.
-			 */
-
-			/*
 			 * If DISPLAY is not set, try to find an active XWayland
-			 * display for X11 apps like xterm.
+			 * display for X11 apps like xterm.  WAYLAND_DISPLAY is
+			 * inherited from the parent environment.
 			 */
 			if (getenv("DISPLAY") == NULL) {
 				const char *xdisplay = find_xwayland_display();
@@ -100,17 +107,18 @@ cow_command_execute(const char *cmd)
 					setenv("DISPLAY", xdisplay, 0);
 			}
 
-			execl("/bin/sh", "/bin/sh", "-c", cmd, NULL);
+			execl("/bin/sh", "/bin/sh", "-c", cmd, (char *)NULL);
+			_exit(127); /* exec failed */
 		}
-		_exit(child == -1);
+		_exit(0);
 	}
 
+	/* Reap the outer child; the grandchild is reparented to init. */
 	for (;;) {
-		waitpid(child, &status, 0);
-		if (errno == EINTR) {
-			continue;
-		} else {
-			return;
+		if (waitpid(outer, &status, 0) < 0) {
+			if (errno == EINTR)
+				continue;
 		}
+		return;
 	}
 }

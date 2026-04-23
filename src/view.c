@@ -301,6 +301,7 @@ cow_view_destroy(struct cow_view *view)
 	if (view->container_member != NULL) {
 		struct cow_container_member *m = view->container_member;
 		struct cow_container	    *c = m->container;
+		bool			     was_active = (c->active == m);
 		wl_list_remove(&m->link);
 		c->n_members--;
 		view->container_member = NULL;
@@ -308,7 +309,7 @@ cow_view_destroy(struct cow_view *view)
 		if (c->n_members == 0) {
 			wl_list_remove(&c->wm_link);
 			xfree(c);
-		} else if (c->active == m) {
+		} else if (was_active) {
 			c->active = wl_container_of(c->members.next, c->active,
 			    link);
 			c->active->view->use_ssd   = true;

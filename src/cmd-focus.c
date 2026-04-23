@@ -103,37 +103,44 @@ defer_focus(struct cow_view *view)
 	cow_wm.needs_manage_dirty = true;
 }
 
+/*
+ * Find the first focusable view relative to 'focused' in the given
+ * direction.  If focused is NULL, search from the start/end of the
+ * list.  Returns NULL if none is found.
+ */
+static struct cow_view *
+find_focusable(struct cow_view *focused, bool forward)
+{
+	if (wl_list_empty(&cow_wm.views))
+		return NULL;
+
+	if (focused == NULL) {
+		struct cow_view *v;
+		if (forward) {
+			wl_list_for_each(v, &cow_wm.views, wm_link)
+			{
+				if (cow_view_focusable(v))
+					return v;
+			}
+		} else {
+			wl_list_for_each_reverse(v, &cow_wm.views, wm_link)
+			{
+				if (cow_view_focusable(v))
+					return v;
+			}
+		}
+		return NULL;
+	}
+
+	return cow_view_walk(focused, forward, cow_view_focusable);
+}
+
 /* focus -n */
 static void
 do_next(void)
 {
 	struct cow_view *focused = cow_wm.focused_view;
-
-	if (wl_list_empty(&cow_wm.views))
-		return;
-
-	struct cow_view *next = NULL;
-	if (focused == NULL) {
-		wl_list_for_each(next, &cow_wm.views, wm_link)
-		{
-			if (cow_view_focusable(next))
-				break;
-		}
-	} else {
-		struct wl_list *start = focused->wm_link.next;
-		struct wl_list *pos   = start;
-		do {
-			if (pos == &cow_wm.views) {
-				pos = pos->next;
-				continue;
-			}
-			next = wl_container_of(pos, next, wm_link);
-			if (cow_view_focusable(next))
-				break;
-			next = NULL;
-			pos  = pos->next;
-		} while (pos != start);
-	}
+	struct cow_view *next	 = find_focusable(focused, true);
 
 	if (next != NULL && next != focused)
 		defer_focus(next);
@@ -144,35 +151,7 @@ static void
 do_prev(void)
 {
 	struct cow_view *focused = cow_wm.focused_view;
-
-	if (wl_list_empty(&cow_wm.views))
-		return;
-
-	struct cow_view *prev = NULL;
-	if (focused == NULL) {
-		struct cow_view *v;
-		wl_list_for_each_reverse(v, &cow_wm.views, wm_link)
-		{
-			if (cow_view_focusable(v)) {
-				prev = v;
-				break;
-			}
-		}
-	} else {
-		struct wl_list *start = focused->wm_link.prev;
-		struct wl_list *pos   = start;
-		do {
-			if (pos == &cow_wm.views) {
-				pos = pos->prev;
-				continue;
-			}
-			prev = wl_container_of(pos, prev, wm_link);
-			if (cow_view_focusable(prev))
-				break;
-			prev = NULL;
-			pos  = pos->prev;
-		} while (pos != start);
-	}
+	struct cow_view *prev	 = find_focusable(focused, false);
 
 	if (prev != NULL && prev != focused)
 		defer_focus(prev);
