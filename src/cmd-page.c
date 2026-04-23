@@ -144,7 +144,7 @@ cmd_page_exec(struct cmd *self, struct cmd_q *cmdq)
 			return (CMD_RETURN_ERROR);
 		}
 	} else {
-		cmdq_error(cmdq, cmd_page_entry.usage);
+		cmdq_error(cmdq, "%s", cmd_page_entry.usage);
 		return (CMD_RETURN_ERROR);
 	}
 
