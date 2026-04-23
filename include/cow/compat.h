@@ -16,22 +16,79 @@
 #if !defined(COW_COMPAT_H)
 #define COW_COMPAT_H
 
-#if !defined(__linux)
+/*
+ * Portability shim.  All platform feature-detection lives in the meson
+ * build system, which writes the results into build_config.h (one
+ * HAVE_<THING> = 0|1 per probe).  This header then picks the right
+ * native or bsd/-prefixed include, and provides inline fallbacks for
+ * the handful of libc functions that are still missing.
+ */
+
+#include "build_config.h"
+
 #include <stdlib.h>
 #include <string.h>
+
+/*
+ * sys/queue.h.  Prefer the native header when it ships the full BSD
+ * API (TAILQ_FOREACH_SAFE etc.).  Glibc's stub does not, so on Linux
+ * with libbsd installed we fall back to <bsd/sys/queue.h>.
+ */
+#if HAVE_SYS_QUEUE_H && HAVE_TAILQ_FOREACH_SAFE
 #include <sys/queue.h>
-#include <sys/tree.h>
-#include <libutil.h>
-#include <dev/evdev/input-event-codes.h>
-#else
-#include <bsd/libutil.h>
-#include <bsd/stdlib.h>
+#elif HAVE_BSD_SYS_QUEUE_H
 #include <bsd/sys/queue.h>
-#include <bsd/sys/tree.h>
-#include <bsd/string.h>
-#include <linux/input-event-codes.h>
+#elif HAVE_SYS_QUEUE_H
+#include <sys/queue.h>
+#error "<sys/queue.h> is missing TAILQ_FOREACH_SAFE; install libbsd"
+#else
+#error "no sys/queue.h found -- install libbsd (Linux) or a BSD libc"
 #endif
 
+/* sys/tree.h -- native path on BSDs, bsd/ fallback via libbsd. */
+#if HAVE_SYS_TREE_H
+#include <sys/tree.h>
+#elif HAVE_BSD_SYS_TREE_H
+#include <bsd/sys/tree.h>
+#else
+#error "no sys/tree.h found -- install libbsd (Linux) or a BSD libc"
+#endif
+
+/* libutil.h -- for fparseln(). */
+#if HAVE_LIBUTIL_H
+#include <libutil.h>
+#elif HAVE_BSD_LIBUTIL_H
+#include <bsd/libutil.h>
+#else
+#error "no libutil.h found -- install libbsd (Linux) or libutil (BSD)"
+#endif
+
+/*
+ * bsd/ overlays for string.h / stdlib.h.  On a BSD host these are
+ * already declared by the native <string.h>/<stdlib.h> above; on
+ * Linux we pick them up from the libbsd headers here.  We include
+ * both unconditionally when libbsd is available because its headers
+ * guard against collision with a native declaration.
+ */
+#if HAVE_BSD_STRING_H
+#include <bsd/string.h>
+#endif
+#if HAVE_BSD_STDLIB_H
+#include <bsd/stdlib.h>
+#endif
+
+/* Input event codes (BTN_*, KEY_*). */
+#if HAVE_LINUX_INPUT_EVENT_CODES_H
+#include <linux/input-event-codes.h>
+#elif HAVE_DEV_EVDEV_INPUT_EVENT_CODES_H
+#include <dev/evdev/input-event-codes.h>
+#else
+#error "no input-event-codes.h found -- install evdev-proto (FreeBSD)"
+#endif
+
+/*
+ * Attribute macros.
+ */
 #ifndef __unused
 #define __unused __attribute__((__unused__))
 #endif

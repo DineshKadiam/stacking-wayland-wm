@@ -43,10 +43,10 @@ create_shm_file(size_t size)
 {
 	int fd = -1;
 
-#ifdef __linux__
+#if HAVE_MEMFD_CREATE
 	fd = memfd_create("cow-shm", MFD_CLOEXEC);
 #else
-	/* Fallback for non-Linux: use shm_open */
+	/* POSIX fallback for systems without memfd_create. */
 	char name[64];
 	snprintf(name, sizeof(name), "/cow-shm-%d", getpid());
 	fd = shm_open(name, O_RDWR | O_CREAT | O_EXCL, 0600);

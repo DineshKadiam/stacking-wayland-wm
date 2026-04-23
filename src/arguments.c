@@ -86,14 +86,13 @@ args_parse(const char *template, int argc, char **argv)
 	args = xcalloc(1, sizeof *args);
 
 	if (template[0] != '\0') {
-#if defined(__linux__)
-		optind = 0;
-#else
-		/* On BSD this must be set to avoid parsing errors. */
+		/*
+		 * Reset getopt state.  BSDs expose optreset; glibc accepts
+		 * optind=0 as a reset marker.  Using optind=1 + optreset=1
+		 * is portable across both.
+		 */
 		optind = 1;
-#endif
-
-#ifdef HAVE_OPTRESET
+#if HAVE_OPTRESET
 		optreset = 1;
 #endif
 

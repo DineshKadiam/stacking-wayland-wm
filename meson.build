@@ -11,6 +11,19 @@ project(
 
 hostsys = host_machine.system()
 
+# ----------------------------------------------------------------------
+# Portability probes
+#
+# Rather than branching on host_machine.system(), probe for what we
+# actually need (headers + functions) and record the results in a
+# generated include/cow/build_config.h that is consumed by
+# cow/compat.h.  This lets Linux-without-libbsd, FreeBSD, and any
+# other BSD-like system find their own natural set of headers
+# without the source hard-coding the distinction.
+# ----------------------------------------------------------------------
+
+conf = configuration_data()
+
 srcs = [
     'src/arguments.c',
     'src/border.c',
@@ -82,10 +95,117 @@ if hostsys == 'linux'
     add_project_arguments('-D_POSIX_C_SOURCE=200809L', language: 'c')
 endif
 
-# getopts on BSD needs optreset handling.
-if cc.has_header_symbol('unistd.h', 'optreset')
-    add_project_arguments('-DHAVE_OPTRESET', language: 'c')
+# ----------------------------------------------------------------------
+# Feature probes -> include/cow/build_config.h
+# ----------------------------------------------------------------------
+
+# libbsd provides bsd/*.h on Linux (strlcpy, strtonum, fparseln, queue.h,
+# tree.h, libutil.h, etc.).  Optional: a BSD host provides these natively.
+libbsd = dependency('libbsd', required: false)
+conf.set10('HAVE_LIBBSD', libbsd.found())
+
+# Header probes.  For each, prefer the native header; fall back to the
+# libbsd overlay header (which includes the -I bsd/ path when libbsd is
+# linked).  compat.h picks the right include based on these.
+foreach pair : [
+    ['sys/queue.h',  'HAVE_SYS_QUEUE_H'],
+    ['sys/tree.h',   'HAVE_SYS_TREE_H'],
+    ['libutil.h',    'HAVE_LIBUTIL_H'],
+]
+    conf.set10(pair[1], cc.has_header(pair[0]))
+endforeach
+
+# glibc's <sys/queue.h> is a skinny subset that lacks macros like
+# TAILQ_FOREACH_SAFE which the code relies on.  Probe specifically so
+# compat.h can prefer <bsd/sys/queue.h> on those systems.
+conf.set10('HAVE_TAILQ_FOREACH_SAFE',
+    cc.has_header_symbol('sys/queue.h', 'TAILQ_FOREACH_SAFE'))
+
+# libbsd ships parallel headers under bsd/.  Probe independently so a
+# system with partial libbsd (e.g. only bsd/string.h installed) still
+# works.
+foreach pair : [
+    ['bsd/sys/queue.h', 'HAVE_BSD_SYS_QUEUE_H'],
+    ['bsd/sys/tree.h',  'HAVE_BSD_SYS_TREE_H'],
+    ['bsd/libutil.h',   'HAVE_BSD_LIBUTIL_H'],
+    ['bsd/string.h',    'HAVE_BSD_STRING_H'],
+    ['bsd/stdlib.h',    'HAVE_BSD_STDLIB_H'],
+]
+    conf.set10(pair[1], cc.has_header(pair[0], dependencies: libbsd))
+endforeach
+
+# Linux kernel input codes vs. FreeBSD evdev port.  We need exactly
+# one of these to get BTN_LEFT / KEY_Return / etc.
+have_linux_input = cc.has_header('linux/input-event-codes.h')
+have_bsd_input   = cc.has_header('dev/evdev/input-event-codes.h')
+conf.set10('HAVE_LINUX_INPUT_EVENT_CODES_H', have_linux_input)
+conf.set10('HAVE_DEV_EVDEV_INPUT_EVENT_CODES_H', have_bsd_input)
+if not (have_linux_input or have_bsd_input)
+    error(
+        'Neither <linux/input-event-codes.h> nor '
+        + '<dev/evdev/input-event-codes.h> was found.  '
+        + 'cow needs one of them for BTN_*/KEY_* constants.  '
+        + 'On FreeBSD install devel/evdev-proto.'
+    )
 endif
+
+# Function probes.  The same function may live in libc (BSDs), in
+# libbsd under a bsd/ prefix (Linux with libbsd installed, non-overlay
+# variant) or in libutil (fparseln, below).  Probe against the native
+# header first, then against the bsd/-prefixed header if libbsd is
+# available, and record whichever succeeds.
+foreach sym : [
+    ['strlcpy',      'HAVE_STRLCPY',      'string.h'],
+    ['strlcat',      'HAVE_STRLCAT',      'string.h'],
+    ['strtonum',     'HAVE_STRTONUM',     'stdlib.h'],
+    ['reallocarray', 'HAVE_REALLOCARRAY', 'stdlib.h'],
+]
+    found = cc.has_function(sym[0],
+        prefix: '#include <' + sym[2] + '>')
+    if not found and libbsd.found()
+        found = cc.has_function(sym[0],
+            prefix: '#include <bsd/' + sym[2] + '>',
+            dependencies: libbsd)
+    endif
+    conf.set10(sym[1], found)
+endforeach
+
+# memfd_create is Linux-only; shm_open is POSIX.  shm.c picks the
+# memfd path when available and falls back to shm_open+unlink otherwise.
+conf.set10('HAVE_MEMFD_CREATE',
+    cc.has_function('memfd_create',
+        prefix: '#define _GNU_SOURCE\n#include <sys/mman.h>'))
+
+# fparseln is declared in <libutil.h> (BSDs) or <bsd/libutil.h>
+# (Linux with libbsd).  On FreeBSD it lives in /usr/lib/libutil.so
+# from the base system; on Linux the libbsd build supplies it.
+#
+# A compile-time cc.has_function() probe is unreliable here: on
+# FreeBSD the declaration in <libutil.h> is not always visible in
+# the probe TU that meson generates, even though the linker
+# resolves fparseln from -lutil without issue at build time.  Stop
+# probing for the function and treat the presence of a providing
+# library (libutil on BSDs, libbsd on Linux) as sufficient.
+libutil = cc.find_library('util', required: false)
+have_fparseln = libutil.found() or libbsd.found()
+conf.set10('HAVE_FPARSELN', have_fparseln)
+if not have_fparseln
+    error(
+        'fparseln() is required but neither libutil nor libbsd '
+        + 'was found.  Install libbsd (Linux) or ensure libutil '
+        + '(BSD base system) is available.'
+    )
+endif
+
+# getopts on BSD needs optreset handling.
+conf.set10('HAVE_OPTRESET',
+    cc.has_header_symbol('unistd.h', 'optreset'))
+
+build_config_h = configure_file(
+    output: 'build_config.h',
+    configuration: conf,
+    install: false,
+)
 
 if get_option('cow_debug')
     add_project_arguments(['-g', '-O0', '-fsanitize=address'], language: 'c')
@@ -101,11 +221,6 @@ xkbcommon      = dependency('xkbcommon')
 pangocairo     = dependency('pangocairo')
 cairo          = dependency('cairo')
 
-libbsd = dependency('libbsd', required: false)
-if libbsd.found()
-    add_project_arguments('-DHAVE_LIBBSD', language: 'c')
-endif
-
 all_deps = [
     wayland_client,
     xkbcommon,
@@ -115,13 +230,12 @@ all_deps = [
 if libbsd.found()
     all_deps += libbsd
 endif
+if libutil.found()
+    all_deps += libutil
+endif
 
 if m_dep.found()
     all_deps += m_dep
-endif
-
-if hostsys == 'freebsd'
-    add_project_link_arguments('-lutil', language: 'c')
 endif
 
 # Protocol header/code generation using Meson's wayland module.
@@ -145,6 +259,8 @@ generated = wl_mod.scan_xml(
 )
 
 include_dirs = [
+    # include_directories('.') covers both the source root and the
+    # build root, so the generated build_config.h is found here.
     include_directories('.'),
     include_directories('include'),
     include_directories('vendor'),

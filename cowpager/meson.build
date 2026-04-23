@@ -11,10 +11,6 @@ pager_deps = [
     dependency('threads'),
 ]
 
-if libbsd.found()
-    pager_deps += libbsd
-endif
-
 executable('cowpager',
     ['src/cowpager.c'] + pager_generated,
     '../vendor/cJSON.c',
