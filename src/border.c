@@ -381,18 +381,28 @@ draw_relief_rings(uint32_t *pixels, int stride, int fw_s, int fh_s,
 
 static void
 overdraw_explicit_corners(uint32_t *pixels, int stride, int fw_s, int fh_s,
-    int cls, const int w[7], const struct cow_border_colour *colors,
+    int bws, int cls, const int w[7], const struct cow_border_colour *colors,
     int top_left_x, int top_right_x)
 {
 	/*
 	 * NW and NE corners relocate to the clipped top strip's ends
 	 * when the caller requested squeeze; SW and SE stay at the
 	 * frame's bottom corners.
+	 *
+	 * The relocated NW/NE markers sit inside the top border only,
+	 * not the full cls-thick decoration area, because the titlebar
+	 * itself occupies the vertical range below bws on the other
+	 * side.  We scale nh down to the top-border thickness so the
+	 * relocated marker looks like a small corner handle instead of
+	 * a tall block overhanging the titlebar.
 	 */
 	int nw_x = top_left_x;
 	int ne_x = top_right_x - cls;
 	if (ne_x < nw_x + cls)
 		ne_x = nw_x + cls;
+
+	bool squeezed	  = (top_left_x > 0 || top_right_x < fw_s);
+	int  top_marker_h = squeezed ? bws : cls;
 
 	struct {
 		bool	     has;
@@ -400,14 +410,14 @@ overdraw_explicit_corners(uint32_t *pixels, int stride, int fw_s, int fh_s,
 		int	     cx, cy, cw, ch;
 		bool	     ul_vert, ul_horiz, br_horiz, br_vert;
 	} corners[4] = {
-		{ colors->has_nw, colors->nw, nw_x,	    0,	       cls, cls, true,  true,
-		    false,									     false },
-		{ colors->has_ne, colors->ne, ne_x,	    0,	       cls, cls, false, true,
-		    false,									     true	},
-		{ colors->has_sw, colors->sw, 0,		 fh_s - cls, cls, cls, true,
-		    false,								       true, false },
+		{ colors->has_nw, colors->nw, nw_x,	    0,	       cls, top_marker_h, true,
+		    true,										 false, false },
+		{ colors->has_ne, colors->ne, ne_x,	    0,	       cls, top_marker_h, false,
+		    true,										 false, true  },
+		{ colors->has_sw, colors->sw, 0,		 fh_s - cls, cls, cls,	       true,
+		    false,										true,	 false },
 		{ colors->has_se, colors->se, fw_s - cls, fh_s - cls, cls, cls,
-		    false,								false, true, true  },
+		    false,									 false, true,	true  },
 	};
 
 	for (int ci = 0; ci < 4; ci++) {
@@ -649,7 +659,7 @@ cow_border_style_render(uint32_t *pixels, int stride_px, int frame_w,
 	if (corners_enabled) {
 		/* Overdraw corners with explicit colors */
 		overdraw_explicit_corners(pixels, stride_px, frame_w, frame_h,
-		    cls, w, colors, top_left_x, top_right_x);
+		    bws, cls, w, colors, top_left_x, top_right_x);
 
 		/* Draw handle marks on all 8 frame parts */
 		draw_handle_marks(pixels, stride_px, frame_w, frame_h, bws, cls,
