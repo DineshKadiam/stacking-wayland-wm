@@ -87,13 +87,24 @@ args_parse(const char *template, int argc, char **argv)
 
 	if (template[0] != '\0') {
 		/*
-		 * Reset getopt state.  BSDs expose optreset; glibc accepts
-		 * optind=0 as a reset marker.  Using optind=1 + optreset=1
-		 * is portable across both.
+		 * Reset getopt's internal state between calls.
+		 *
+		 * BSDs (and any libc with optreset) want optind=1 plus
+		 * optreset=1 -- optind=1 skips argv[0] (which we pass as
+		 * the command name), optreset forces a fresh scan.
+		 *
+		 * glibc has no optreset.  Its documented reset marker is
+		 * optind=0 (which triggers a full state reset and also
+		 * re-reads argv[0]/POSIXLY_CORRECT); optind=1 does NOT
+		 * reset state, so repeated calls see stale flags and
+		 * misparse argv, producing the 'keybinding only fires
+		 * every few presses' symptom.
 		 */
-		optind = 1;
 #if HAVE_OPTRESET
+		optind	 = 1;
 		optreset = 1;
+#else
+		optind = 0;
 #endif
 
 		while ((opt = getopt(argc, argv, template)) != -1) {

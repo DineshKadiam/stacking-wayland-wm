@@ -24,7 +24,9 @@
 #include "cow/colour.h"
 #include "cow/compat.h"
 #include "cow/config.h"
+#include "cow/decoration.h"
 #include "cow/font.h"
+#include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/vector.h"
 #include "cow/view.h"
@@ -173,21 +175,28 @@ cow_titlebar_squeezed_rect(const struct cow_view *view)
 		want = sq.width > 0 ? sq.width : 1;
 	} else { /* NATURAL */
 		/*
-		 * Approximate: title text + button run (3 buttons, each
-		 * button_width == title_thickness) + inner padding.  We
-		 * cannot call pango from here without a font handle, so
-		 * use a rough character-based estimate from tt.
-		 *
-		 * The renderer will do the exact measurement when it has
-		 * the font; squeeze geometry in that path recomputes.
-		 * Until then, fall back to a min_width-derived estimate
-		 * so hit-testing has something sensible to use.
+		 * Use pango to measure the actual rendered width of the
+		 * display title, plus the fixed button run (3 buttons
+		 * each of width tt), plus internal padding that matches
+		 * the text_inset + right_pad used by cow_titlebar_render.
 		 */
-		int btn_run = tt * COW_TITLEBAR_NUM_BUTTONS;
-		int text    = 0;
-		if (view->title != NULL)
-			text = (int)strlen(view->title) * (tt / 2);
-		want = btn_run + text + 2 * COW_TITLEBAR_PADDING;
+		int   btn_run	    = tt * COW_TITLEBAR_NUM_BUTTONS;
+		int   text	    = 0;
+		char *display_title = cow_decoration_display_title(view);
+		if (display_title != NULL && display_title[0] != '\0') {
+			struct cow_font *font = cow_decoration_titlebar_font();
+			text = cow_font_text_width(font, display_title);
+		}
+		xfree(display_title);
+		/*
+		 * The renderer reserves 2 + PADDING at the left of the
+		 * text and a COW_TITLEBAR_PADDING + 1 margin to the right
+		 * button, plus a further PADDING.  Mirror that here so
+		 * the rect hugs the text+buttons flush.
+		 */
+		int text_inset = 2 + COW_TITLEBAR_PADDING;
+		int text_pad = COW_TITLEBAR_PADDING + 1 + COW_TITLEBAR_PADDING;
+		want	     = btn_run + text + text_inset + text_pad;
 		if (sq.min_width > 0 && want < sq.min_width)
 			want = sq.min_width;
 	}

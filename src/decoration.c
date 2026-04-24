@@ -106,6 +106,265 @@ make_display_title(const struct cow_view *view)
 	return out;
 }
 
+struct cow_font *
+cow_decoration_titlebar_font(void)
+{
+	return get_titlebar_font();
+}
+
+char *
+cow_decoration_display_title(const struct cow_view *view)
+{
+	return make_display_title(view);
+}
+
+/*
+ * Shared post-processing for one side of a squeezed titlebar.
+ *
+ * 'left_side' is true when we're painting the titlebar's LEFT edge
+ * (the relocated NW) and false for the titlebar's RIGHT edge (the
+ * relocated NE).  LEFT-justify calls this once with left_side=false,
+ * RIGHT-justify once with left_side=true, and CENTRE calls both.
+ */
+static void
+squeeze_paint_side(uint32_t *buf, int stride_px, int frame_w, int frame_h,
+    int bw, int cl, int tt, int top_band, int marker_w,
+    int	 tbr_near_x, /* titlebar's near-edge x for this side */
+    bool left_side, const float *corner_colour,
+    const struct cow_border_colour *bc, const uint32_t *scratch)
+{
+	/*
+	 * Geometry per side:
+	 *
+	 *   RIGHT side (left_side=false, e.g. LEFT/CENTRE justify):
+	 *     corner apex at tbr_near_x (= tbr.x + tbr.width).
+	 *     L opens to the right (┐), side arm flush at apex.
+	 *     Stepped N border at y ∈ [tt, tt+bw), x ∈ [apex+bw, frame_w).
+	 *
+	 *   LEFT side  (left_side=true, e.g. RIGHT/CENTRE justify):
+	 *     corner apex at tbr_near_x (= tbr.x).
+	 *     L opens to the left  (┌), side arm flush at apex.
+	 *     Stepped N border at y ∈ [tt, tt+bw), x ∈ [0, apex-bw).
+	 */
+
+	int seg_x0, seg_x1;
+	int mx;
+	int clr_x0, clr_x1;
+	if (!left_side) {
+		mx     = tbr_near_x + bw - marker_w;
+		seg_x0 = mx + marker_w;
+		seg_x1 = frame_w;
+		clr_x0 = tbr_near_x;
+		clr_x1 = frame_w;
+	} else {
+		mx     = tbr_near_x - bw;
+		seg_x0 = 0;
+		seg_x1 = mx;
+		clr_x0 = 0;
+		clr_x1 = tbr_near_x;
+	}
+
+	/* Clear the top-border strip past the titlebar edge. */
+	for (int y = 0; y < bw && y < frame_h; y++) {
+		for (int x = clr_x0; x < clr_x1 && x < frame_w; x++) {
+			if (x < 0)
+				continue;
+			buf[y * stride_px + x] = 0;
+		}
+	}
+
+	/*
+	 * Erase the frame's original NW/NE corner L-shape so it doesn't
+	 * peek up above the stepped-down border.  Only wipe the two
+	 * arm-strips of the L (the top-strip at y<bw and the side-strip
+	 * at x<bw or x>=frame_w-bw), NOT the whole cl x cl bounding
+	 * box -- the interior of that box is content owned by the
+	 * titlebar (e.g. its left/right-most button when the squeeze
+	 * places the titlebar close to the frame edge) and wiping it
+	 * would erase buttons rendered by cow_titlebar_render.
+	 */
+	if (cl > 0) {
+		int side_x0 = !left_side ? (frame_w - bw) : 0;
+		int side_x1 = !left_side ? frame_w : bw;
+		int top_x0  = !left_side ? (frame_w - cl) : 0;
+		int top_x1  = !left_side ? frame_w : cl;
+		/* Side strip of the L (x-column(s) at the frame edge). */
+		for (int y = 0; y < cl && y < frame_h; y++) {
+			for (int x = side_x0; x < side_x1 && x < frame_w; x++) {
+				if (x < 0)
+					continue;
+				buf[y * stride_px + x] = 0;
+			}
+		}
+		/* Top strip of the L (at y < bw). */
+		for (int y = 0; y < bw && y < frame_h; y++) {
+			for (int x = top_x0; x < top_x1 && x < frame_w; x++) {
+				if (x < 0)
+					continue;
+				buf[y * stride_px + x] = 0;
+			}
+		}
+	}
+
+	/*
+	 * Render a mini scratch frame with the corner colour stuffed
+	 * into NE (right-side) or NW (left-side) slot, then blit just
+	 * the L-shape (top arm + side arm).
+	 */
+	/*
+	 * Mirror the caller's has_nw / has_ne.  When the user has NOT
+	 * set an explicit corner colour, we leave has_* false so the
+	 * mini-frame renders the corner with edge gradients (matching
+	 * the rest of the border).  Otherwise fill the slot with the
+	 * user's explicit colour and set has_* so the mini paints a
+	 * solid corner swatch matching the frame's fixed corners.
+	 */
+	struct cow_border_colour cm_bc;
+	memset(&cm_bc, 0, sizeof(cm_bc));
+	memcpy(cm_bc.n, bc->n, sizeof(cm_bc.n));
+	memcpy(cm_bc.s, bc->s, sizeof(cm_bc.s));
+	memcpy(cm_bc.e, bc->e, sizeof(cm_bc.e));
+	memcpy(cm_bc.w, bc->w, sizeof(cm_bc.w));
+	if (!left_side) {
+		if (bc->has_ne) {
+			memcpy(cm_bc.ne, corner_colour, sizeof(cm_bc.ne));
+			cm_bc.has_ne = true;
+		}
+	} else {
+		if (bc->has_nw) {
+			memcpy(cm_bc.nw, corner_colour, sizeof(cm_bc.nw));
+			cm_bc.has_nw = true;
+		}
+	}
+
+	int	  mw	   = marker_w;
+	int	  mh	   = top_band;
+	int	  mini_w   = mw * 4;
+	int	  mini_h   = mh * 4;
+	int	  mini_str = mini_w;
+	uint32_t *mini = xcalloc((size_t)mini_str * mini_h, sizeof(uint32_t));
+	cow_border_style_render(mini, mini_str, mini_w, mini_h, &cm_bc, bw, cl,
+	    cow_config->border_style);
+
+	int src_x0 = !left_side ? (mini_w - mw) : 0;
+
+	/* Top arm: bw rows along the top. */
+	for (int row = 0; row < bw && row < mh; row++) {
+		for (int col = 0; col < mw; col++) {
+			int dx = mx + col;
+			if (dx < 0 || dx >= frame_w)
+				continue;
+			uint32_t src = mini[row * mini_str + (src_x0 + col)];
+			if ((src >> 24) == 0)
+				continue;
+			buf[row * stride_px + dx] = src;
+		}
+	}
+	/* Side arm: bw cols at the apex side. */
+	int arm_col = !left_side ? (mw - bw) : 0;
+	for (int col = arm_col; col < arm_col + bw; col++) {
+		for (int row = bw; row < mh; row++) {
+			int dx = mx + col;
+			if (dx < 0 || dx >= frame_w)
+				continue;
+			if (row >= frame_h)
+				break;
+			uint32_t src = mini[row * mini_str + (src_x0 + col)];
+			if ((src >> 24) == 0)
+				continue;
+			buf[row * stride_px + dx] = src;
+		}
+	}
+	xfree(mini);
+
+	/*
+	 * draw_handle_marks() draws the NE corner's ym mark at the
+	 * corner's top-left in a *lightened* shade (ym_shadow=false
+	 * on the NE row of the cm[] table) WHEN has_explicit is true.
+	 * On a saturated explicit colour like magenta the lightened
+	 * variant is nearly invisible, so the handle looks missing
+	 * compared to the shadow-coloured marks on NW/SW/SE.  For
+	 * that case only, repaint the mark in the shadow (darkened)
+	 * variant so the handle reads cleanly.
+	 *
+	 * When bc->has_ne is false the mini-frame already drew the
+	 * default mark (ec->n[1]) which is the right shade for the
+	 * border's base colour, and overriding it here would change
+	 * the handle's appearance on inactive windows where the user
+	 * hasn't set colour.inactive.ne (the corner falls back to the
+	 * N-edge colour and should use the matching default handle).
+	 */
+	if (!left_side && bc->has_ne) {
+		int w_dout = (cow_config->border_style ==
+				 COW_BORDER_STYLE_MWM) ?
+		    0 :
+		    1;
+		/* inset = (w[5]>0 || w[6]>0) ? 1 : 0 -- is 1 for both
+		 * FVWM (w[5]=w[6]=1) and MWM (w[5]=1) with default bws. */
+		int inset    = 1;
+		int mark_len = bw - w_dout - inset;
+		int mark_thk = (cow_config->border_style ==
+				   COW_BORDER_STYLE_MWM) ?
+		    1 :
+		    2;
+		if (mark_len > 0) {
+			float dk[4];
+			cow_colour_darken(dk, corner_colour);
+			uint32_t px_dk = cow_colour_to_pixel(dk);
+			for (int k = 0; k < mark_thk; k++) {
+				int len = mark_len - k;
+				if (len <= 0)
+					break;
+				int x1 = mx + k;
+				int y1 = w_dout;
+				for (int y = y1; y < y1 + len; y++) {
+					if (y < 0 || y >= frame_h)
+						continue;
+					if (x1 < 0 || x1 >= frame_w)
+						continue;
+					buf[y * stride_px + x1] = px_dk;
+				}
+			}
+		}
+	}
+
+	/*
+	 * Stepped-down N border: copy y=[0, bw) of the scratch render
+	 * down to y=[tt, tt+bw).
+	 */
+	for (int row = 0; row < bw; row++) {
+		int dy = tt + row;
+		if (dy >= frame_h)
+			break;
+		for (int x = seg_x0; x < seg_x1 && x < frame_w; x++) {
+			if (x < 0)
+				continue;
+			buf[dy * stride_px + x] = scratch[row * stride_px + x];
+		}
+	}
+
+	/*
+	 * Relocate the frame's far corner (NE for right-side, NW for
+	 * left-side) down by tt pixels, so its vertical return into the
+	 * east/west border lands at y=[tt, tt+cls) instead of [0, cls).
+	 */
+	if (cl > 0) {
+		int cb_x0 = !left_side ? (frame_w - cl) : 0;
+		int cb_x1 = !left_side ? frame_w : cl;
+		for (int row = bw; row < cl; row++) {
+			int dy = tt + row;
+			if (dy >= frame_h)
+				break;
+			for (int x = cb_x0; x < cb_x1 && x < frame_w; x++) {
+				if (x < 0)
+					continue;
+				buf[dy * stride_px + x] =
+				    scratch[row * stride_px + x];
+			}
+		}
+	}
+}
+
 void
 cow_decoration_init(struct cow_view_decoration *dec)
 {
@@ -285,36 +544,8 @@ cow_decoration_update(struct cow_view *view, bool active)
 			bc				= &drop_bc;
 		}
 
-		/*
-		 * Compute the top-border x-range.  When the titlebar is
-		 * squeezed it restricts the top strip so the NW / NE
-		 * corner markers relocate to hug the titlebar's edges
-		 * (CTWM SqueezeTitle look); outside the strip the side
-		 * borders still reach all the way up to y=0.
-		 *
-		 *   LEFT justify   -- top strip runs from tbr's right
-		 *                     edge to frame_w.
-		 *   RIGHT justify  -- mirror.
-		 *   CENTRE justify -- full-width top strip.
-		 */
-		int top_left_x	= 0;
-		int top_right_x = frame_w;
-		if (tt > 0 && bw > 0) {
-			struct cow_titlebar_squeeze sq;
-			cow_titlebar_effective_squeeze(view, &sq);
-			if (sq.mode != COW_SQUEEZE_NONE) {
-				struct cow_box tbr = cow_titlebar_squeezed_rect(
-				    view);
-				if (sq.justify == COW_JUST_LEFT)
-					top_left_x = tbr.x + tbr.width;
-				else if (sq.justify == COW_JUST_RIGHT)
-					top_right_x = tbr.x;
-			}
-		}
-
 		cow_border_style_render(dec->buffer->data, stride_px, frame_w,
-		    frame_h, bc, bw, cl, cow_config->border_style, top_left_x,
-		    top_right_x);
+		    frame_h, bc, bw, cl, cow_config->border_style);
 
 		/* Render titlebar if enabled */
 		if (tt > 0) {
@@ -390,6 +621,110 @@ cow_decoration_update(struct cow_view *view, bool active)
 			xfree(display_title);
 			xfree(tab_titles);
 		}
+
+		/*
+		 * CTWM-style squeezed titlebar re-shaping.  Runs AFTER the
+		 * titlebar render so it overwrites the titlebar's own
+		 * strip-clear.
+		 *
+		 * Geometry:
+		 *   - North border above the titlebar stays where it is
+		 *     (bc->nw covers the frame's top-left corner; drawn
+		 *     by cow_border_style_render).
+		 *   - A relocated NE corner is painted at the titlebar's
+		 *     outer edge, spanning the full top_band (bw + tt)
+		 *     height.  Colour: bc->ne if set, else the plain N
+		 *     border colour.
+		 *   - Past the corner, the north border continues one
+		 *     titlebar-height lower (y ∈ [tt, tt+bw)) and meets
+		 *     the east border using the *unconfigured* default
+		 *     corner join (no explicit NE swatch).
+		 *
+		 * The continued segment's relief is borrowed from a
+		 * scratch render that has no explicit NW/NE colours, so
+		 * the highlight/shadow pattern at the frame's top-right
+		 * corner matches what an un-squeezed frame would produce.
+		 *
+		 *   LEFT justify  -- relocated NE at tbr.x + tbr.width.
+		 *   RIGHT justify -- mirror (NW marker): relocated at
+		 *                    tbr.x - cl.
+		 *   CENTRE        -- not stepped: titlebar sits centred
+		 *                    beneath an unbroken north border.
+		 */
+		if (tt > 0 && bw > 0 && !shaded) {
+			/*
+			 * Shaded windows collapse their content height to
+			 * zero, leaving frame_h barely larger than the
+			 * top_band (= bw + tt).  The stepped-N-border and
+			 * frame-corner-relocation writes would spill past
+			 * the bottom border, corrupting the decoration.
+			 * Skip the squeeze post-pass while shaded.
+			 */
+			struct cow_titlebar_squeeze sq;
+			cow_titlebar_effective_squeeze(view, &sq);
+			if (sq.mode != COW_SQUEEZE_NONE) {
+				struct cow_box tbr = cow_titlebar_squeezed_rect(
+				    view);
+				int marker_w = cl > 0 ? cl : bw;
+				int top_band = bw + tt;
+
+				/*
+				 * Scratch render with no explicit NW/NE and
+				 * corner_length=0 -- gives default 3D relief
+				 * without drawing handle-mark dashes at the
+				 * relocated corner positions (confusing,
+				 * since the corners have moved).
+				 */
+				struct cow_border_colour plain = *bc;
+				plain.has_nw		       = false;
+				plain.has_ne		       = false;
+				size_t nbytes = (size_t)stride_px *
+				    (size_t)frame_h * 4;
+				uint32_t *scratch = xmalloc(nbytes);
+				cow_border_style_render(scratch, stride_px,
+				    frame_w, frame_h, &plain, bw,
+				    /* cl = */ 0, cow_config->border_style);
+
+				/* Corner colours (fall back to plain N if
+				 * not explicitly configured). */
+				const float *n_colour  = active ?
+				     cow_config->border_active.n :
+				     cow_config->border_inactive.n;
+				const float *ne_colour = bc->has_ne ? bc->ne :
+								      n_colour;
+				const float *nw_colour = bc->has_nw ? bc->nw :
+								      n_colour;
+
+				/*
+				 * LEFT  -- paint right side only (NE at
+				 *          tbr's right edge).
+				 * RIGHT -- paint left side only (NW at
+				 *          tbr's left edge).
+				 * CENTRE -- paint both (NW at left edge,
+				 *          NE at right edge); top border
+				 *          steps down on both flanks.
+				 */
+				if (sq.justify == COW_JUST_LEFT ||
+				    sq.justify == COW_JUST_CENTRE) {
+					squeeze_paint_side(dec->buffer->data,
+					    stride_px, frame_w, frame_h, bw, cl,
+					    tt, top_band, marker_w,
+					    tbr.x + tbr.width,
+					    /* left_side = */ false, ne_colour,
+					    bc, scratch);
+				}
+				if (sq.justify == COW_JUST_RIGHT ||
+				    sq.justify == COW_JUST_CENTRE) {
+					squeeze_paint_side(dec->buffer->data,
+					    stride_px, frame_w, frame_h, bw, cl,
+					    tt, top_band, marker_w, tbr.x,
+					    /* left_side = */ true, nw_colour,
+					    bc, scratch);
+				}
+
+				xfree(scratch);
+			}
+		}
 	}
 
 	dec->frame_width	 = frame_w;
@@ -431,68 +766,22 @@ commit:
 	struct wl_region *region = wl_compositor_create_region(
 	    cow_wm.compositor);
 	if (region != NULL) {
-		/*
-		 * Top border.  Normally this is a full-width strip; when
-		 * the titlebar is squeezed the strip is interrupted to
-		 * match the renderer (see the clear block above):
-		 *   LEFT   -- only the segment right of the titlebar.
-		 *   RIGHT  -- only the segment left of the titlebar.
-		 *   CENTRE -- two segments, one on each flank.
-		 */
-		if (bw > 0) {
-			struct cow_titlebar_squeeze sq = {
-				.mode = COW_SQUEEZE_NONE
-			};
-			if (tt > 0)
-				cow_titlebar_effective_squeeze(view, &sq);
-			if (sq.mode == COW_SQUEEZE_NONE) {
-				wl_region_add(region, 0, 0, frame_w, bw);
-			} else {
-				struct cow_box tbr = cow_titlebar_squeezed_rect(
-				    view);
-				int left_end  = tbr.x;
-				int right_beg = tbr.x + tbr.width;
-				if (sq.justify == COW_JUST_LEFT)
-					left_end = 0;
-				else if (sq.justify == COW_JUST_RIGHT)
-					right_beg = frame_w;
-				if (left_end > 0)
-					wl_region_add(region, 0, 0, left_end,
-					    bw);
-				if (right_beg < frame_w)
-					wl_region_add(region, right_beg, 0,
-					    frame_w - right_beg, bw);
-			}
-		}
-		/* Titlebar: the squeezed rectangle only. */
+		/* Top border spans the full frame width. */
+		if (bw > 0)
+			wl_region_add(region, 0, 0, frame_w, bw);
+		/* Titlebar: the (possibly squeezed) rectangle only. */
 		if (tt > 0) {
 			struct cow_box tbr = cow_titlebar_squeezed_rect(view);
 			if (tbr.width > 0 && tbr.height > 0)
 				wl_region_add(region, tbr.x, tbr.y, tbr.width,
 				    tbr.height);
 		}
-		/*
-		 * Left/right side borders next to content.  With a
-		 * squeezed titlebar the side borders continue up to y=0
-		 * (the renderer extends the west/east colours through
-		 * the would-be NW/NE corner cells), so the input region
-		 * starts at y=0 on those sides.
-		 */
+		/* Left/right side borders next to content. */
 		if (bw > 0) {
-			struct cow_titlebar_squeeze sq_i = {
-				.mode = COW_SQUEEZE_NONE,
-			};
-			if (tt > 0)
-				cow_titlebar_effective_squeeze(view, &sq_i);
-			int side_y = (sq_i.mode == COW_SQUEEZE_NONE) ?
-			    top_border :
-			    0;
-			int side_h = frame_h - side_y - bw;
-			if (side_h > 0) {
-				wl_region_add(region, 0, side_y, bw, side_h);
-				wl_region_add(region, frame_w - bw, side_y, bw,
-				    side_h);
-			}
+			wl_region_add(region, 0, top_border, bw,
+			    frame_h - top_border - bw);
+			wl_region_add(region, frame_w - bw, top_border, bw,
+			    frame_h - top_border - bw);
 		}
 		/* Bottom border. */
 		if (bw > 0)

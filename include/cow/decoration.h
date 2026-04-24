@@ -21,6 +21,7 @@
 
 struct cow_view;
 struct cow_shm_buffer;
+struct cow_font;
 
 /*
  * Per-view decoration state.
@@ -68,5 +69,20 @@ void cow_decoration_fini(struct cow_view_decoration *dec);
  * `active` selects active or inactive border/titlebar colors.
  */
 void cow_decoration_update(struct cow_view *view, bool active);
+
+/*
+ * Return the shared titlebar font (lazily initialised from
+ * cow_config->font_name).  Reused across decoration renders so pango
+ * doesn't need to rebuild the font description each frame.
+ */
+struct cow_font *cow_decoration_titlebar_font(void);
+
+/*
+ * Build the display title for 'view' ("[<short-id>] <title>").
+ * The id prefix grows until it is unique among live views; falls
+ * back to view->title if the view has no identifier.  Caller must
+ * xfree() the returned string.
+ */
+char *cow_decoration_display_title(const struct cow_view *view);
 
 #endif

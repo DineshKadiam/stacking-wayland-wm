@@ -260,15 +260,8 @@ compute_layer_widths(int w[7], int bws, int style)
 static void
 fill_border_base(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
     int cls, const struct edge_colours *ec,
-    const struct cow_border_colour *colors, int top_left_x, int top_right_x)
+    const struct cow_border_colour *colors)
 {
-	/*
-	 * NW/NE corner cells are computed relative to the top strip's
-	 * near ends (top_left_x / top_right_x) rather than the frame's
-	 * absolute (0 / fw_s) corners.  Outside the top strip the cells
-	 * fall back to the left/right edge colour so the side borders
-	 * reach all the way up to y=0 (needed by squeezed titlebars).
-	 */
 	for (int y = 0; y < fh_s; y++) {
 		for (int x = 0; x < fw_s; x++) {
 			int dt = y, db = fh_s - 1 - y, dl = x,
@@ -283,34 +276,18 @@ fill_border_base(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
 			if (dmin >= bws)
 				continue;
 
-			bool in_top_strip = (x >= top_left_x &&
-			    x < top_right_x);
-
-			/*
-			 * Distances to the NW / NE corners of the (possibly
-			 * clipped) top strip.  When top_left_x == 0 and
-			 * top_right_x == fw_s these coincide with dl / dr.
-			 */
-			int  dl_tb   = x - top_left_x;
-			int  dr_tb   = (top_right_x - 1) - x;
-			bool near_nw = in_top_strip && dt < cls &&
-			    dl_tb < cls && dl_tb >= 0;
-			bool near_ne = in_top_strip && dt < cls &&
-			    dr_tb < cls && dr_tb >= 0;
-
-			bool	 in_bot	  = (db < cls);
-			bool	 in_left  = (dl < cls);
-			bool	 in_right = (dr < cls);
+			bool	 in_top = (dt < cls), in_bot = (db < cls);
+			bool	 in_left = (dl < cls), in_right = (dr < cls);
 			uint32_t px;
 
-			if (near_nw) {
+			if (in_top && in_left) {
 				px = colors->has_nw ?
 				    cow_colour_to_pixel(colors->nw) :
-				    ((dt <= dl_tb) ? ec->n[2] : ec->w[2]);
-			} else if (near_ne) {
+				    ((dt <= dl) ? ec->n[2] : ec->w[2]);
+			} else if (in_top && in_right) {
 				px = colors->has_ne ?
 				    cow_colour_to_pixel(colors->ne) :
-				    ((dt <= dr_tb) ? ec->n[2] : ec->e[2]);
+				    ((dt <= dr) ? ec->n[2] : ec->e[2]);
 			} else if (in_bot && in_left) {
 				px = colors->has_sw ?
 				    cow_colour_to_pixel(colors->sw) :
@@ -319,21 +296,14 @@ fill_border_base(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
 				px = colors->has_se ?
 				    cow_colour_to_pixel(colors->se) :
 				    ((db <= dr) ? ec->s[2] : ec->e[2]);
-			} else if (dt == dmin && in_top_strip) {
+			} else if (dt == dmin) {
 				px = ec->n[2];
 			} else if (db == dmin) {
 				px = ec->s[2];
 			} else if (dl == dmin) {
 				px = ec->w[2];
-			} else if (dr == dmin) {
-				px = ec->e[2];
 			} else {
-				/*
-				 * dt == dmin but outside the top strip --
-				 * the titlebar will paint this area, or it
-				 * should fall through.  Leave transparent.
-				 */
-				continue;
+				px = ec->e[2];
 			}
 			pixels[y * stride + x] = px;
 		}
@@ -381,43 +351,22 @@ draw_relief_rings(uint32_t *pixels, int stride, int fw_s, int fh_s,
 
 static void
 overdraw_explicit_corners(uint32_t *pixels, int stride, int fw_s, int fh_s,
-    int bws, int cls, const int w[7], const struct cow_border_colour *colors,
-    int top_left_x, int top_right_x)
+    int cls, const int w[7], const struct cow_border_colour *colors)
 {
-	/*
-	 * NW and NE corners relocate to the clipped top strip's ends
-	 * when the caller requested squeeze; SW and SE stay at the
-	 * frame's bottom corners.
-	 *
-	 * The relocated NW/NE markers sit inside the top border only,
-	 * not the full cls-thick decoration area, because the titlebar
-	 * itself occupies the vertical range below bws on the other
-	 * side.  We scale nh down to the top-border thickness so the
-	 * relocated marker looks like a small corner handle instead of
-	 * a tall block overhanging the titlebar.
-	 */
-	int nw_x = top_left_x;
-	int ne_x = top_right_x - cls;
-	if (ne_x < nw_x + cls)
-		ne_x = nw_x + cls;
-
-	bool squeezed	  = (top_left_x > 0 || top_right_x < fw_s);
-	int  top_marker_h = squeezed ? bws : cls;
-
 	struct {
 		bool	     has;
 		const float *colour;
 		int	     cx, cy, cw, ch;
 		bool	     ul_vert, ul_horiz, br_horiz, br_vert;
 	} corners[4] = {
-		{ colors->has_nw, colors->nw, nw_x,	    0,	       cls, top_marker_h, true,
-		    true,										 false, false },
-		{ colors->has_ne, colors->ne, ne_x,	    0,	       cls, top_marker_h, false,
-		    true,										 false, true  },
-		{ colors->has_sw, colors->sw, 0,		 fh_s - cls, cls, cls,	       true,
-		    false,										true,	 false },
+		{ colors->has_nw, colors->nw, 0,		 0,	    cls, cls, true,  true,  false,
+		    false										     },
+		{ colors->has_ne, colors->ne, fw_s - cls, 0,	     cls, cls, false,
+		    true,									false, true  },
+		{ colors->has_sw, colors->sw, 0,		 fh_s - cls, cls, cls, true,
+		    false,								       true,	 false },
 		{ colors->has_se, colors->se, fw_s - cls, fh_s - cls, cls, cls,
-		    false,									 false, true,	true  },
+		    false,								false, true,	true  },
 	};
 
 	for (int ci = 0; ci < 4; ci++) {
@@ -615,7 +564,7 @@ draw_handle_marks(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
 void
 cow_border_style_render(uint32_t *pixels, int stride_px, int frame_w,
     int frame_h, const struct cow_border_colour *colors, int border_width,
-    int corner_length, int style, int top_left_x, int top_right_x)
+    int corner_length, int style)
 {
 	if (frame_w < 2 || frame_h < 2 || border_width < 1)
 		return;
@@ -626,14 +575,6 @@ cow_border_style_render(uint32_t *pixels, int stride_px, int frame_w,
 	if (cls < bws)
 		cls = bws;
 
-	/* Clamp the top-strip range. */
-	if (top_left_x < 0)
-		top_left_x = 0;
-	if (top_right_x > frame_w)
-		top_right_x = frame_w;
-	if (top_right_x < top_left_x)
-		top_right_x = top_left_x;
-
 	/* Clear to transparent */
 	memset(pixels, 0, (size_t)stride_px * frame_h * 4);
 
@@ -643,7 +584,7 @@ cow_border_style_render(uint32_t *pixels, int stride_px, int frame_w,
 	/* Fill base colors for the border ring.
 	 * When corners are disabled, use cls=0 to skip diagonal splits. */
 	fill_border_base(pixels, stride_px, frame_w, frame_h, bws,
-	    corners_enabled ? cls : 0, &ec, colors, top_left_x, top_right_x);
+	    corners_enabled ? cls : 0, &ec, colors);
 
 	/* NONE = flat fill only, no 3D relief */
 	if (style == COW_BORDER_STYLE_NONE)
@@ -659,29 +600,10 @@ cow_border_style_render(uint32_t *pixels, int stride_px, int frame_w,
 	if (corners_enabled) {
 		/* Overdraw corners with explicit colors */
 		overdraw_explicit_corners(pixels, stride_px, frame_w, frame_h,
-		    bws, cls, w, colors, top_left_x, top_right_x);
+		    cls, w, colors);
 
 		/* Draw handle marks on all 8 frame parts */
 		draw_handle_marks(pixels, stride_px, frame_w, frame_h, bws, cls,
 		    w, style, &ec, colors);
-	}
-
-	/*
-	 * Post-process: if the top-border strip has been clipped
-	 * (squeezed titlebar), wipe any pixels the relief / corner
-	 * overdraw passes wrote outside the strip's x-range in the
-	 * top bws rows.  Side borders (x < bws or x >= fw_s - bws)
-	 * are preserved so they still reach up to y=0.
-	 */
-	if (top_left_x > 0 || top_right_x < frame_w) {
-		for (int y = 0; y < bws; y++) {
-			for (int x = 0; x < frame_w; x++) {
-				if (x >= top_left_x && x < top_right_x)
-					continue;
-				if (x < bws || x >= frame_w - bws)
-					continue; /* keep side-border cap */
-				pixels[y * stride_px + x] = 0;
-			}
-		}
 	}
 }
