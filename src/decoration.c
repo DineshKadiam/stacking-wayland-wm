@@ -22,6 +22,7 @@
 #include <wayland-client.h>
 
 #include "cow/border.h"
+#include "cow/colour.h"
 #include "cow/config.h"
 #include "cow/font.h"
 #include "cow/memory.h"
@@ -287,6 +288,96 @@ cow_decoration_update(struct cow_view *view, bool active)
 		cow_border_style_render(dec->buffer->data, stride_px, frame_w,
 		    frame_h, bc, bw, cl, cow_config->border_style);
 
+		/*
+		 * When the titlebar is squeezed, erase part of the top
+		 * border strip so the titlebar sits flush against the
+		 * adjacent frame edge (CTWM SqueezeTitle look):
+		 *
+		 *   LEFT justify   -- clear from x=0 to the right edge of
+		 *                     the titlebar.  A new corner marker
+		 *                     is painted at the titlebar's right
+		 *                     edge (colors->nw, if set) so the
+		 *                     top border visibly starts there.
+		 *   RIGHT justify  -- mirror of LEFT: clear from tbr.x to
+		 *                     frame_w, marker painted at tbr.x
+		 *                     (colors->ne, if set).
+		 *   CENTRE justify -- clear only over the titlebar's own
+		 *                     x range; the top border continues
+		 *                     on both flanks with the frame's own
+		 *                     corner markers intact.
+		 *
+		 * The titlebar renderer itself has already cleared the
+		 * inner strip at y ∈ [bw, bw+tt) outside the squeezed rect.
+		 */
+		if (tt > 0 && bw > 0) {
+			struct cow_titlebar_squeeze sq;
+			cow_titlebar_effective_squeeze(view, &sq);
+			if (sq.mode != COW_SQUEEZE_NONE) {
+				struct cow_box tbr = cow_titlebar_squeezed_rect(
+				    view);
+				int clear_x0 = tbr.x;
+				int clear_x1 = tbr.x + tbr.width;
+				if (sq.justify == COW_JUST_LEFT)
+					clear_x0 = 0;
+				else if (sq.justify == COW_JUST_RIGHT)
+					clear_x1 = frame_w;
+				for (int y = 0; y < bw; y++) {
+					for (int x = clear_x0; x < clear_x1;
+					    x++) {
+						if (x < 0 || x >= frame_w)
+							continue;
+						dec->buffer
+						    ->data[y * stride_px + x] =
+						    0;
+					}
+				}
+
+				/*
+				 * Paint a corner marker at the near end of the
+				 * remaining top-border strip, using the
+				 * corresponding corner colour if the user set
+				 * one.  Markers are rectangles 'cl' wide (or
+				 * cls from the renderer if cl is 0) by 'bw'
+				 * tall.
+				 */
+				int marker_len = cl > 0 ? cl : bw;
+				if (sq.justify == COW_JUST_LEFT && bc->has_nw) {
+					uint32_t px = cow_colour_to_pixel(
+					    bc->nw);
+					int mx = tbr.x + tbr.width;
+					for (int y = 0; y < bw; y++) {
+						for (int k = 0; k < marker_len;
+						    k++) {
+							int x = mx + k;
+							if (x < 0 ||
+							    x >= frame_w)
+								continue;
+							dec->buffer->data[y *
+								stride_px +
+							    x] = px;
+						}
+					}
+				} else if (sq.justify == COW_JUST_RIGHT &&
+				    bc->has_ne) {
+					uint32_t px = cow_colour_to_pixel(
+					    bc->ne);
+					int mx = tbr.x;
+					for (int y = 0; y < bw; y++) {
+						for (int k = 0; k < marker_len;
+						    k++) {
+							int x = mx - 1 - k;
+							if (x < 0 ||
+							    x >= frame_w)
+								continue;
+							dec->buffer->data[y *
+								stride_px +
+							    x] = px;
+						}
+					}
+				}
+			}
+		}
+
 		/* Render titlebar if enabled */
 		if (tt > 0) {
 			struct cow_font *font = get_titlebar_font();
@@ -402,9 +493,39 @@ commit:
 	struct wl_region *region = wl_compositor_create_region(
 	    cow_wm.compositor);
 	if (region != NULL) {
-		/* Top border (full-width strip above the titlebar). */
-		if (bw > 0)
-			wl_region_add(region, 0, 0, frame_w, bw);
+		/*
+		 * Top border.  Normally this is a full-width strip; when
+		 * the titlebar is squeezed the strip is interrupted to
+		 * match the renderer (see the clear block above):
+		 *   LEFT   -- only the segment right of the titlebar.
+		 *   RIGHT  -- only the segment left of the titlebar.
+		 *   CENTRE -- two segments, one on each flank.
+		 */
+		if (bw > 0) {
+			struct cow_titlebar_squeeze sq = {
+				.mode = COW_SQUEEZE_NONE
+			};
+			if (tt > 0)
+				cow_titlebar_effective_squeeze(view, &sq);
+			if (sq.mode == COW_SQUEEZE_NONE) {
+				wl_region_add(region, 0, 0, frame_w, bw);
+			} else {
+				struct cow_box tbr = cow_titlebar_squeezed_rect(
+				    view);
+				int left_end  = tbr.x;
+				int right_beg = tbr.x + tbr.width;
+				if (sq.justify == COW_JUST_LEFT)
+					left_end = 0;
+				else if (sq.justify == COW_JUST_RIGHT)
+					right_beg = frame_w;
+				if (left_end > 0)
+					wl_region_add(region, 0, 0, left_end,
+					    bw);
+				if (right_beg < frame_w)
+					wl_region_add(region, right_beg, 0,
+					    frame_w - right_beg, bw);
+			}
+		}
 		/* Titlebar: the squeezed rectangle only. */
 		if (tt > 0) {
 			struct cow_box tbr = cow_titlebar_squeezed_rect(view);
