@@ -285,98 +285,36 @@ cow_decoration_update(struct cow_view *view, bool active)
 			bc				= &drop_bc;
 		}
 
-		cow_border_style_render(dec->buffer->data, stride_px, frame_w,
-		    frame_h, bc, bw, cl, cow_config->border_style);
-
 		/*
-		 * When the titlebar is squeezed, erase part of the top
-		 * border strip so the titlebar sits flush against the
-		 * adjacent frame edge (CTWM SqueezeTitle look):
+		 * Compute the top-border x-range.  When the titlebar is
+		 * squeezed it restricts the top strip so the NW / NE
+		 * corner markers relocate to hug the titlebar's edges
+		 * (CTWM SqueezeTitle look); outside the strip the side
+		 * borders still reach all the way up to y=0.
 		 *
-		 *   LEFT justify   -- clear from x=0 to the right edge of
-		 *                     the titlebar.  A new corner marker
-		 *                     is painted at the titlebar's right
-		 *                     edge (colors->nw, if set) so the
-		 *                     top border visibly starts there.
-		 *   RIGHT justify  -- mirror of LEFT: clear from tbr.x to
-		 *                     frame_w, marker painted at tbr.x
-		 *                     (colors->ne, if set).
-		 *   CENTRE justify -- clear only over the titlebar's own
-		 *                     x range; the top border continues
-		 *                     on both flanks with the frame's own
-		 *                     corner markers intact.
-		 *
-		 * The titlebar renderer itself has already cleared the
-		 * inner strip at y ∈ [bw, bw+tt) outside the squeezed rect.
+		 *   LEFT justify   -- top strip runs from tbr's right
+		 *                     edge to frame_w.
+		 *   RIGHT justify  -- mirror.
+		 *   CENTRE justify -- full-width top strip.
 		 */
+		int top_left_x	= 0;
+		int top_right_x = frame_w;
 		if (tt > 0 && bw > 0) {
 			struct cow_titlebar_squeeze sq;
 			cow_titlebar_effective_squeeze(view, &sq);
 			if (sq.mode != COW_SQUEEZE_NONE) {
 				struct cow_box tbr = cow_titlebar_squeezed_rect(
 				    view);
-				int clear_x0 = tbr.x;
-				int clear_x1 = tbr.x + tbr.width;
 				if (sq.justify == COW_JUST_LEFT)
-					clear_x0 = 0;
+					top_left_x = tbr.x + tbr.width;
 				else if (sq.justify == COW_JUST_RIGHT)
-					clear_x1 = frame_w;
-				for (int y = 0; y < bw; y++) {
-					for (int x = clear_x0; x < clear_x1;
-					    x++) {
-						if (x < 0 || x >= frame_w)
-							continue;
-						dec->buffer
-						    ->data[y * stride_px + x] =
-						    0;
-					}
-				}
-
-				/*
-				 * Paint a corner marker at the near end of the
-				 * remaining top-border strip, using the
-				 * corresponding corner colour if the user set
-				 * one.  Markers are rectangles 'cl' wide (or
-				 * cls from the renderer if cl is 0) by 'bw'
-				 * tall.
-				 */
-				int marker_len = cl > 0 ? cl : bw;
-				if (sq.justify == COW_JUST_LEFT && bc->has_nw) {
-					uint32_t px = cow_colour_to_pixel(
-					    bc->nw);
-					int mx = tbr.x + tbr.width;
-					for (int y = 0; y < bw; y++) {
-						for (int k = 0; k < marker_len;
-						    k++) {
-							int x = mx + k;
-							if (x < 0 ||
-							    x >= frame_w)
-								continue;
-							dec->buffer->data[y *
-								stride_px +
-							    x] = px;
-						}
-					}
-				} else if (sq.justify == COW_JUST_RIGHT &&
-				    bc->has_ne) {
-					uint32_t px = cow_colour_to_pixel(
-					    bc->ne);
-					int mx = tbr.x;
-					for (int y = 0; y < bw; y++) {
-						for (int k = 0; k < marker_len;
-						    k++) {
-							int x = mx - 1 - k;
-							if (x < 0 ||
-							    x >= frame_w)
-								continue;
-							dec->buffer->data[y *
-								stride_px +
-							    x] = px;
-						}
-					}
-				}
+					top_right_x = tbr.x;
 			}
 		}
+
+		cow_border_style_render(dec->buffer->data, stride_px, frame_w,
+		    frame_h, bc, bw, cl, cow_config->border_style, top_left_x,
+		    top_right_x);
 
 		/* Render titlebar if enabled */
 		if (tt > 0) {
@@ -533,12 +471,28 @@ commit:
 				wl_region_add(region, tbr.x, tbr.y, tbr.width,
 				    tbr.height);
 		}
-		/* Left/right side borders next to content. */
+		/*
+		 * Left/right side borders next to content.  With a
+		 * squeezed titlebar the side borders continue up to y=0
+		 * (the renderer extends the west/east colours through
+		 * the would-be NW/NE corner cells), so the input region
+		 * starts at y=0 on those sides.
+		 */
 		if (bw > 0) {
-			wl_region_add(region, 0, top_border, bw,
-			    frame_h - top_border - bw);
-			wl_region_add(region, frame_w - bw, top_border, bw,
-			    frame_h - top_border - bw);
+			struct cow_titlebar_squeeze sq_i = {
+				.mode = COW_SQUEEZE_NONE,
+			};
+			if (tt > 0)
+				cow_titlebar_effective_squeeze(view, &sq_i);
+			int side_y = (sq_i.mode == COW_SQUEEZE_NONE) ?
+			    top_border :
+			    0;
+			int side_h = frame_h - side_y - bw;
+			if (side_h > 0) {
+				wl_region_add(region, 0, side_y, bw, side_h);
+				wl_region_add(region, frame_w - bw, side_y, bw,
+				    side_h);
+			}
 		}
 		/* Bottom border. */
 		if (bw > 0)
