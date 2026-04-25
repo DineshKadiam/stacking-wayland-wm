@@ -298,6 +298,35 @@ cow_view_destroy(struct cow_view *view)
 	if (cow_wm.drag_drop_source == view)
 		cow_wm.drag_drop_source = NULL;
 
+	/* Clear pending-focus reference if it was pointing at us. */
+	if (cow_wm.pending_focus == view)
+		cow_wm.pending_focus = NULL;
+
+	/*
+	 * Clear all per-seat view pointers.  Without this, any seat
+	 * that had pointer/keyboard focus on the about-to-die view
+	 * keeps a dangling pointer.  When cow's render loop next
+	 * dereferences interacted_view / pressed_view / etc. the UB
+	 * cascades into spurious requests on already-destroyed river
+	 * window objects, which panics river inside Window.destroy.
+	 */
+	{
+		struct cow_seat *s;
+		wl_list_for_each(s, &cow_wm.seats, wm_link)
+		{
+			if (s->interacted_view == view)
+				s->interacted_view = NULL;
+			if (s->sloppy_focus_view == view)
+				s->sloppy_focus_view = NULL;
+			if (s->last_click_view == view)
+				s->last_click_view = NULL;
+			if (s->pressed_view == view)
+				s->pressed_view = NULL;
+			if (s->op.view == view)
+				s->op.view = NULL;
+		}
+	}
+
 	/* Detach from container without cascade (WM is shutting down) */
 	if (view->container_member != NULL) {
 		struct cow_container_member *m = view->container_member;

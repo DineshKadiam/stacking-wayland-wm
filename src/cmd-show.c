@@ -205,6 +205,9 @@ do_show_config(const char *ckey, int fd, struct cmd_q *cmdq)
 		val = cJSON_CreateString(
 		    cow_config->focus_mode == COW_FOCUS_MODE_SLOPPY ? "sloppy" :
 								      "click");
+	else if (strcmp(ckey, "font") == 0)
+		val = cJSON_CreateString(
+		    cow_config->font_name ? cow_config->font_name : "");
 	else {
 		cow_ipc_respond_error(fd, "show: unknown config key");
 		cmdq_error(cmdq, "show: unknown config key: %s", ckey);

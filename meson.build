@@ -279,6 +279,7 @@ executable('moocow',
 )
 
 subdir('cowbar')
+subdir('cowident')
 subdir('cowpager')
 
 install_data(
@@ -304,7 +305,7 @@ man_conf.set('VERSION', meson.project_version())
 scdoc = dependency('scdoc', native: true, required: false)
 if scdoc.found()
     scdoc_prog = find_program(scdoc.get_variable(pkgconfig: 'scdoc'), native: true)
-    foreach page : [['cow', '1'], ['moocow', '1'], ['cowbar', '1'], ['cowpager', '1']]
+    foreach page : [['cow', '1'], ['moocow', '1'], ['cowbar', '1'], ['cowident', '1'], ['cowpager', '1']]
         name    = page[0]
         section = page[1]
         scd = configure_file(
