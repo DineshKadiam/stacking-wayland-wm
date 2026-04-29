@@ -314,6 +314,18 @@ cow_view_destroy(struct cow_view *view)
 		struct cow_seat *s;
 		wl_list_for_each(s, &cow_wm.seats, wm_link)
 		{
+			/*
+			 * If this seat had keyboard focus on the view being
+			 * destroyed, tell river to clear focus.  Without
+			 * this, river's Window.destroy asserts that no seat
+			 * has focused.window == window.
+			 */
+			if (s->focused_view == view) {
+				river_seat_v1_clear_focus(s->river_seat);
+				s->focused_view = NULL;
+			}
+			if (s->pointer_entered_view == view)
+				s->pointer_entered_view = NULL;
 			if (s->interacted_view == view)
 				s->interacted_view = NULL;
 			if (s->sloppy_focus_view == view)
