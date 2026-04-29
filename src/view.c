@@ -269,6 +269,9 @@ cow_view_create(struct river_window_v1 *rw)
 	view->pressed_button	   = -1;
 	view->icon_inverted_button = -1;
 
+	/* New windows start on top of the stack. */
+	view->raise_seq = ++cow_wm.raise_seq_counter;
+
 	cow_decoration_init(&view->dec);
 
 	/* Assign to the current output and its active sheet */
@@ -668,6 +671,7 @@ cow_view_apply_render(struct cow_view *view)
 	/* Raise if requested (from focus change) */
 	if (view->needs_raise && view->node != NULL) {
 		river_node_v1_place_top(view->node);
+		view->raise_seq	  = ++cow_wm.raise_seq_counter;
 		view->needs_raise = false;
 	}
 

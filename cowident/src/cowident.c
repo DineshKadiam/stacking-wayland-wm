@@ -65,24 +65,25 @@ struct out {
 };
 
 struct view_info {
-	char id[ID_LEN];
-	char app_id[NAME_LEN];
-	char title[NAME_LEN];
-	char output[NAME_LEN];
-	int  desk;
-	int  x, y;
-	int  vx, vy;
-	int  width, height;
-	bool focused;
-	bool maximized;
-	bool shaded;
-	bool iconified;
-	bool use_ssd;
-	int  title_thickness;
-	int  border_width;
-	char squeeze_mode[16];
-	char squeeze_justify[16];
-	int  frame_x, frame_y, frame_w, frame_h;
+	char	 id[ID_LEN];
+	char	 app_id[NAME_LEN];
+	char	 title[NAME_LEN];
+	char	 output[NAME_LEN];
+	int	 desk;
+	int	 x, y;
+	int	 vx, vy;
+	int	 width, height;
+	bool	 focused;
+	bool	 maximized;
+	bool	 shaded;
+	bool	 iconified;
+	bool	 use_ssd;
+	int	 title_thickness;
+	int	 border_width;
+	uint64_t raise_seq;
+	char	 squeeze_mode[16];
+	char	 squeeze_justify[16];
+	int	 frame_x, frame_y, frame_w, frame_h;
 };
 
 static struct wl_display		 *display;
@@ -309,6 +310,7 @@ fetch_views(void)
 		v->use_ssd	   = get_jbool(w, "use_ssd");
 		v->title_thickness = get_jnum(w, "title_thickness", 0);
 		v->border_width	   = get_jnum(w, "border_width", 0);
+		v->raise_seq	   = (uint64_t)get_jnum(w, "raise_seq", 0);
 
 		cJSON *sq = cJSON_GetObjectItem(w, "squeeze");
 		copy_jstr(v->squeeze_mode, sizeof(v->squeeze_mode), sq, "mode");
@@ -405,14 +407,14 @@ static int
 hit_test(int gx, int gy)
 {
 	/*
-	 * Iterate front-to-back.  cow's 'show windows' returns views in
-	 * stacking order (most recently focused last in our list since
-	 * wl_list_for_each walks head-to-tail).  Without explicit
-	 * stack-order info we approximate by preferring focused, then
-	 * non-iconified hits.  In practice the right strategy for an
-	 * identifier is "topmost window at the click point."
+	 * Return the topmost window at (gx, gy).  Topmost = the matching
+	 * view with the highest raise_seq.  cow increments raise_seq
+	 * every time a view is raised to top, so this correctly reflects
+	 * stacking order regardless of the order 'show windows' returns
+	 * views in.
 	 */
-	int best = -1;
+	int	 best	 = -1;
+	uint64_t best_rs = 0;
 	for (int i = 0; i < n_views; i++) {
 		struct view_info *v = &views[i];
 		if (v->iconified || v->shaded)
@@ -422,10 +424,10 @@ hit_test(int gx, int gy)
 		if (gx >= v->frame_x + v->frame_w ||
 		    gy >= v->frame_y + v->frame_h)
 			continue;
-		/* Prefer focused; otherwise take the last match. */
-		if (v->focused)
-			return i;
-		best = i;
+		if (best < 0 || v->raise_seq >= best_rs) {
+			best	= i;
+			best_rs = v->raise_seq;
+		}
 	}
 	return best;
 }

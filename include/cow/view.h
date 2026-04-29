@@ -180,6 +180,14 @@ struct cow_view {
 	bool maximized;
 	bool needs_raise; /* set during manage, applied in render */
 
+	/*
+	 * Monotonic z-order counter: incremented from cow_wm.raise_seq
+	 * each time the view is raised to top.  Higher = on top.
+	 * Exposed via 'show windows' for clients that need to pick the
+	 * topmost window at a point (e.g. cowident).
+	 */
+	uint64_t raise_seq;
+
 	/* Window shade state */
 	enum shade_direction sd;
 	int shade_saved_width; /* content dimensions before shading */

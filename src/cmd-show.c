@@ -112,6 +112,8 @@ do_show_windows(int fd)
 		cJSON_AddBoolToObject(w, "shaded", view->sd != COW_SHADE_NONE);
 		cJSON_AddBoolToObject(w, "iconified",
 		    cow_view_is_iconified(view));
+		cJSON_AddNumberToObject(w, "raise_seq",
+		    (double)view->raise_seq);
 
 		/* Decoration / squeeze diagnostics. */
 		cJSON_AddBoolToObject(w, "use_ssd", view->use_ssd);

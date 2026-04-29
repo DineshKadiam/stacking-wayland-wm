@@ -92,6 +92,9 @@ struct cow_wm {
 	struct cow_output *current_output;
 	struct cow_view	  *focused_view;
 
+	/* Monotonic counter assigned to a view's raise_seq on each raise. */
+	uint64_t raise_seq_counter;
+
 	/* Pending state changes accumulated between manage sequences */
 	struct wl_list new_views;    /* views created this sequence */
 	struct wl_list closed_views; /* views closed this sequence */
