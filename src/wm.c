@@ -748,11 +748,10 @@ handle_wm_manage_start(__unused void *data,
 
 	/* Restore saved state on the first manage cycle.  Must happen before
 	 * the pending_resize loop below so restored geometry is applied in
-	 * the same cycle via propose_dimensions. */
-	if (cow_wm.exec_pending && !cow_wm.state_restored) {
-		cow_wm.state_restored = true;
-		cow_state_restore();
-	}
+	 * the same cycle via propose_dimensions.
+	 */
+	if (cow_wm.exec_pending && !cow_wm.state_restored)
+			cow_state_restore();
 
 	/* Apply deferred geometry changes from IPC commands and
 	 * keybinding-invoked commands.  propose_dimensions is only

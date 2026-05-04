@@ -49,6 +49,8 @@ struct cow_pointer_op {
 	/* Initial position of the view when the op started */
 	int start_x, start_y;
 
+	int move_offset_x, move_offset_y;
+
 	/* Initial dimensions when the op started */
 	int start_width, start_height;
 

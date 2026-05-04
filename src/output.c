@@ -30,6 +30,7 @@
 #include "cow/desk_ops.h"
 #include "cow/pan_frames.h"
 #include "cow/seat.h"
+#include "cow/view.h"
 
 #include "river-window-management-v1-client-protocol.h"
 
@@ -379,9 +380,241 @@ cow_output_update_current(void)
 	}
 }
 
-/* -----------------------------------------------------------------------
- * Edge scroll: proximity-based detection without layer surfaces.
- * ----------------------------------------------------------------------- */
+static long
+mono_ms(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+}
+
+static int
+pan_dwell_delay(const struct cow_output *output, long now_ms)
+{
+	int delay = cow_config->edge_scroll_delay_ms > 0 ?
+	    cow_config->edge_scroll_delay_ms : 300;
+	if (output->pan_last_fire_ms != 0 &&
+	    now_ms - output->pan_last_fire_ms < (long)delay) {
+		int rapid = delay / 5;
+		if (rapid < 60)
+			rapid = 60;
+		delay = rapid;
+	}
+	return delay;
+}
+
+/* Find the view being dragged (if any).  Used to consider view-edge
+ * arming during a drag. */
+static struct cow_view *
+pan_find_drag_view(void)
+{
+	struct cow_seat *s;
+	wl_list_for_each(s, &cow_wm.seats, wm_link)
+	{
+		if (s->op_in_progress && s->op.type == COW_POINTER_OP_MOVE &&
+		    s->op.view != NULL && !s->op.view->closed)
+			return s->op.view;
+	}
+	return NULL;
+}
+
+static bool
+pan_pointer_position(int *out_x, int *out_y)
+{
+	struct cow_seat *s;
+	wl_list_for_each(s, &cow_wm.seats, wm_link)
+	{
+		if (s->has_pointer_position) {
+			*out_x = s->pointer_x;
+			*out_y = s->pointer_y;
+			return true;
+		}
+	}
+	return false;
+}
+
+/* Compute view's frame edges (incl. border + titlebar) in global coords. */
+static void
+pan_view_frame(const struct cow_view *v, int *l, int *t, int *r, int *b)
+{
+	int bw = v->dec.border_width;
+	int tt = v->dec.title_thickness;
+	*l     = v->x - bw;
+	*t     = v->y - bw - tt;
+	*r     = v->x + v->content_width + bw;
+	*b     = v->y + v->content_height + bw;
+}
+
+/* Figure out which edge of 'output' the pointer (or, during a drag, the
+ * view's frame) is touching.  Returns -1 for none, 0=top 1=bottom 2=left
+ * 3=right. 'view_edge_ok' lets the caller suppress view-edge arming
+ * (used during the post-page cooldown).
+ *
+ * FIXME: Use an enum for return value
+ */
+static int
+pan_edge_for_pointer(const struct cow_output *output, int px, int py,
+    const struct cow_view *drag, bool view_edge_ok, int strip)
+{
+	int cols    = cow_config->page_cols;
+	int rows    = cow_config->page_rows;
+	int cur_col = cow_page_col(output);
+	int cur_row = cow_page_row(output);
+
+	int v_l = px, v_r = px, v_t = py, v_b = py;
+	if (drag != NULL && drag->output == output)
+		pan_view_frame(drag, &v_l, &v_t, &v_r, &v_b);
+	if (rows <= 0 || cols <= 0)
+		return (-1);
+
+	if (cur_row > 0 &&
+	    (py <= output->y + strip ||
+		(view_edge_ok && v_t <= output->y + strip)))
+		return 0;
+	if (cur_row < rows - 1 &&
+	    (py >= output->y + output->height - strip ||
+		(view_edge_ok &&
+		    v_b >= output->y + output->height - strip)))
+		return 1;
+	if (cur_col > 0 &&
+	    (px <= output->x + strip ||
+		(view_edge_ok && v_l <= output->x + strip)))
+		return 2;
+	if (cur_col < cols - 1 &&
+	    (px >= output->x + output->width - strip ||
+		(view_edge_ok &&
+		    v_r >= output->x + output->width - strip)))
+		return 3;
+
+	return -1;
+}
+
+/* Clear all four pan-frame orange indicators on this output.  Used when
+ * we know none of them should be armed (cursor left the output, or we
+ * just fired a page). */
+static void
+pan_clear_orange(struct cow_output *output)
+{
+	for (int e = 0; e < 4; e++) {
+		if (output->pan_entered[e])
+			pan_frame_set_orange(output, e, false);
+	}
+}
+
+/* Direction tables for the four pan edges.  Indexed by edge value. */
+static const struct {
+	int dcol; /* delta col on page-switch */
+	int drow; /* delta row on page-switch */
+} pan_edge_dir[4] = {
+	{ 0,  -1 }, /* 0 = TOP    */
+	{ 0,  +1 }, /* 1 = BOTTOM */
+	{ -1, 0	}, /* 2 = LEFT   */
+	{ +1, 0	}, /* 3 = RIGHT  */
+};
+
+/*
+ * Compute the warp target for landing on the new page after firing 'edge'.
+ *
+ * Without a drag, the cursor jumps to a fixed margin from the new page's
+ * leading edge (the edge opposite the one the user crossed) so it doesn't
+ * immediately re-trigger the strip we just fired from.
+ *
+ * With an active MOVE drag, we additionally pick the cursor position so
+ * the dragged view's leading edge sits one base-margin inside the new
+ * page's leading edge -- this means the whole window is on-screen as
+ * soon as the page change completes, rather than only revealing as the
+ * cursor moves further.
+ *
+ * The cursor target is also kept inside the usable area so the cursor
+ * doesn't end up off-screen for very tall/wide windows; in that case the
+ * view simply extends past the trailing edge as it would naturally.
+ */
+static void
+pan_warp_target(const struct cow_output *output, int edge, int ptr_x, int ptr_y,
+    const struct cow_view *drag, int *out_x, int *out_y)
+{
+	const int margin = 64;
+	int	  ua_top = output->usable_area.y;
+	int	  ua_bot = output->usable_area.y + output->usable_area.height;
+	int	  ua_lft = output->usable_area.x;
+	int	  ua_rgt = output->usable_area.x + output->usable_area.width;
+
+	*out_x = ptr_x;
+	*out_y = ptr_y;
+
+	int  v_l = 0, v_t = 0, v_r = 0, v_b = 0;
+	bool have_view = drag != NULL && drag->output == output;
+	if (have_view)
+		pan_view_frame(drag, &v_l, &v_t, &v_r, &v_b);
+
+	switch (edge) {
+	case 0: /* UP -> land near bottom of new page */
+		if (have_view) {
+			/* Want: v_b_new = ua_bot - margin
+			 * v_b = ptr_y + (v_b - ptr_y), so warp ptr to:
+			 * warp_y = (ua_bot - margin) - (v_b - ptr_y) */
+			*out_y = (ua_bot - margin) - (v_b - ptr_y);
+		} else {
+			*out_y = ua_bot - margin;
+		}
+		break;
+	case 1: /* DOWN -> land near top of new page */
+		if (have_view)
+			*out_y = (ua_top + margin) + (ptr_y - v_t);
+		else
+			*out_y = ua_top + margin;
+		break;
+	case 2: /* LEFT -> land near right of new page */
+		if (have_view)
+			*out_x = (ua_rgt - margin) - (v_r - ptr_x);
+		else
+			*out_x = ua_rgt - margin;
+		break;
+	case 3: /* RIGHT -> land near left of new page */
+		if (have_view)
+			*out_x = (ua_lft + margin) + (ptr_x - v_l);
+		else
+			*out_x = ua_lft + margin;
+		break;
+	}
+
+	/* Clamp warp to the usable area so the cursor itself stays
+	 * on-screen and inside the page (we'd rather have the view
+	 * extend past the trailing edge than land cursor off-screen). */
+	if (*out_x < ua_lft + margin)
+		*out_x = ua_lft + margin;
+	if (*out_x > ua_rgt - margin)
+		*out_x = ua_rgt - margin;
+	if (*out_y < ua_top + margin)
+		*out_y = ua_top + margin;
+	if (*out_y > ua_bot - margin)
+		*out_y = ua_bot - margin;
+}
+
+/*
+ * After a page change during a drag, the dragged view should follow the
+ * (warped) cursor.  Our MOVE formula is view->x = cursor + offset, so
+ * once seat->pointer_x is updated to the warp target (handled by the
+ * caller), cow_pointer_op_process naturally repositions the view.
+ */
+static void
+pan_adjust_drags(struct cow_output *output, int warp_dx, int warp_dy)
+{
+	if (warp_dx == 0 && warp_dy == 0)
+		return;
+	struct cow_seat *s;
+	wl_list_for_each(s, &cow_wm.seats, wm_link)
+	{
+		if (!s->op_in_progress || s->op.type != COW_POINTER_OP_MOVE)
+			continue;
+		struct cow_view *view = s->op.view;
+		if (view == NULL || view->closed || view->output != output)
+			continue;
+
+		s->op.start_x += warp_dx;
+		s->op.start_y += warp_dy;
+	}
+}
 
 void
 cow_output_pan_frame_tick(struct cow_output *output)
@@ -391,17 +624,12 @@ cow_output_pan_frame_tick(struct cow_output *output)
 	if (output->pan_edge < 0)
 		return;
 
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	long now_ms = ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
-
-	int  delay   = cow_config->edge_scroll_delay_ms > 0 ?
-	       cow_config->edge_scroll_delay_ms :
-	       300;
+	long now_ms  = mono_ms();
+	int  delay   = pan_dwell_delay(output, now_ms);
 	long elapsed = now_ms - output->pan_enter_ms;
 
-	/* Paint orange after 1/3 of the dwell delay (min 100ms) so that
-	 * fast cursor sweeps across the strip don't cause a visible flash. */
+	/* Paint orange after 1/3 of the dwell (min 100ms) so a fast
+	 * cursor sweep across the strip doesn't cause a visible flash. */
 	int paint_threshold = delay / 3;
 	if (paint_threshold < 100)
 		paint_threshold = 100;
@@ -412,27 +640,19 @@ cow_output_pan_frame_tick(struct cow_output *output)
 	if (elapsed < delay)
 		return;
 
-	int edge	 = output->pan_edge;
-	int cur_col	 = cow_page_col(output);
-	int cur_row	 = cow_page_row(output);
-	output->pan_edge = -1;
+	output->pan_last_fire_ms = now_ms;
+	int edge		 = output->pan_edge;
+	int cur_col		 = cow_page_col(output);
+	int cur_row		 = cow_page_row(output);
+	output->pan_edge	 = -1;
 
-	/* Get current pointer position to preserve the perpendicular axis.
-	 * Clamp to this output's bounds so we never warp onto a neighbour. */
+	if (output->pan_entered[edge])
+		pan_frame_set_orange(output, edge, false);
+
 	int ptr_x = output->x + output->width / 2;
 	int ptr_y = output->y + output->height / 2;
-	{
-		struct cow_seat *ps;
-		wl_list_for_each(ps, &cow_wm.seats, wm_link)
-		{
-			if (ps->has_pointer_position) {
-				ptr_x = ps->pointer_x;
-				ptr_y = ps->pointer_y;
-			}
-			break;
-		}
-	}
-	/* Clamp perpendicular coords to this output's area */
+	pan_pointer_position(&ptr_x, &ptr_y);
+	/* clamp perpendicular coords to this output */
 	if (ptr_x < output->x)
 		ptr_x = output->x;
 	if (ptr_x >= output->x + output->width)
@@ -442,52 +662,39 @@ cow_output_pan_frame_tick(struct cow_output *output)
 	if (ptr_y >= output->y + output->height)
 		ptr_y = output->y + output->height - 1;
 
-	/* Margin: land well past the opposite pan frame so we don't
-	 * immediately re-enter that strip and trigger another switch.
-	 * Also account for the usable area offset (e.g. waybar at top).
-	 * Must be meaningfully larger than PAN_FRAME_SIZE (32). */
-	const int margin = 64;
-	int	  ua_top = output->usable_area.y;
-	int	  ua_bot = output->usable_area.y + output->usable_area.height;
-	int	  ua_lft = output->usable_area.x;
-	int	  ua_rgt = output->usable_area.x + output->usable_area.width;
+	struct cow_view *drag = pan_find_drag_view();
+	int		 warp_x, warp_y;
+	pan_warp_target(output, edge, ptr_x, ptr_y, drag, &warp_x, &warp_y);
 
-	switch (edge) {
-	case 0: /* scrolled UP → land near bottom of new page */
-		cow_page_switch(output, cur_col, cur_row - 1);
-		cow_wm.pending_warp = true;
-		cow_wm.warp_x	    = ptr_x;
-		cow_wm.warp_y	    = ua_bot - margin;
-		break;
-	case 1: /* scrolled DOWN → land near top of new page */
-		cow_page_switch(output, cur_col, cur_row + 1);
-		cow_wm.pending_warp = true;
-		cow_wm.warp_x	    = ptr_x;
-		cow_wm.warp_y	    = ua_top + margin;
-		break;
-	case 2: /* scrolled LEFT → land near right edge of new page */
-		cow_page_switch(output, cur_col - 1, cur_row);
-		cow_wm.pending_warp = true;
-		cow_wm.warp_x	    = ua_rgt - margin;
-		cow_wm.warp_y	    = ptr_y;
-		break;
-	case 3: /* scrolled RIGHT → land near left edge of new page */
-		cow_page_switch(output, cur_col + 1, cur_row);
-		cow_wm.pending_warp = true;
-		cow_wm.warp_x	    = ua_lft + margin;
-		cow_wm.warp_y	    = ptr_y;
-		break;
-	default:
-		/* unreachable: edge is constrained to 0..3 by callers */
-		break;
+	cow_page_switch(output, cur_col + pan_edge_dir[edge].dcol,
+	    cur_row + pan_edge_dir[edge].drow);
+
+	cow_wm.pending_warp = true;
+	cow_wm.warp_x	    = warp_x;
+	cow_wm.warp_y	    = warp_y;
+
+	/*
+	 * Optimistically pre-warp each seat's tracked pointer.  River
+	 * delivers the matching pointer_position event next manage cycle,
+	 * but cow_pointer_op_process runs LATER this cycle and needs the
+	 * post-warp position so the dragged view's (pointer + offset)
+	 * formula gives a consistent result.
+	 */
+	{
+		struct cow_seat *ws;
+		wl_list_for_each(ws, &cow_wm.seats, wm_link)
+		{
+			ws->pointer_x = warp_x;
+			ws->pointer_y = warp_y;
+		}
 	}
+
+	pan_adjust_drags(output, warp_x - ptr_x, warp_y - ptr_y);
 }
 
 void
 cow_output_pan_pointer_leave(int px, int py)
 {
-	/* Pan frames (zwlr_layer_shell) handle this directly via wl_pointer.
-	 * Only use the proximity fallback when layer shell is unavailable. */
 	if (cow_wm.wl_layer_shell != NULL)
 		return;
 	if (cow_config == NULL || !cow_config->edge_scroll)
@@ -495,55 +702,89 @@ cow_output_pan_pointer_leave(int px, int py)
 	if (cow_config->page_cols <= 1 && cow_config->page_rows <= 1)
 		return;
 
-	int cols = cow_config->page_cols;
-	int rows = cow_config->page_rows;
-
+	long		   now_ms = mono_ms();
 	struct cow_output *output;
 	wl_list_for_each(output, &cow_wm.outputs, wm_link)
 	{
-		int cur_col = cow_page_col(output);
-		int cur_row = cow_page_row(output);
-		int edge    = -1;
-
-		if (rows > 1) {
-			if (py <= output->y + 1 && cur_row > 0)
-				edge = 0;
-			else if (py >= output->y + output->height - 2 &&
-			    cur_row < rows - 1)
-				edge = 1;
-		}
-		if (cols > 1 && edge < 0) {
-			if (px <= output->x + 1 && cur_col > 0)
-				edge = 2;
-			else if (px >= output->x + output->width - 2 &&
-			    cur_col < cols - 1)
-				edge = 3;
-		}
-
+		int edge = pan_edge_for_pointer(output, px, py, NULL, true,
+		    /* strip */ 2);
 		if (edge >= 0) {
-			struct timespec ts;
-			clock_gettime(CLOCK_MONOTONIC, &ts);
 			output->pan_edge     = edge;
-			output->pan_enter_ms = ts.tv_sec * 1000L +
-			    ts.tv_nsec / 1000000L;
+			output->pan_enter_ms = now_ms;
 		} else {
 			output->pan_edge = -1;
 		}
 	}
-	/* Trigger render so indicator appears immediately */
 	cow_wm.needs_manage_dirty = true;
 }
 
 void
 cow_output_pan_pointer_enter(void)
 {
-	/* Pan frames handle cancel via pointer_leave on the layer surface.
-	 * Only needed for the proximity fallback path. */
+	/* Layer-shell-unavailable fallback only. */
 	if (cow_wm.wl_layer_shell != NULL)
 		return;
-	/* Pointer entered a window — cancel dwell */
 	struct cow_output *output;
 	wl_list_for_each(output, &cow_wm.outputs, wm_link)
 	    output->pan_edge	  = -1;
 	cow_wm.needs_manage_dirty = true;
+}
+
+void
+cow_output_pan_op_arm(int px, int py)
+{
+	if (cow_config == NULL || !cow_config->edge_scroll)
+		return;
+	if (cow_config->page_cols <= 1 && cow_config->page_rows <= 1)
+		return;
+
+	const int strip = 8;
+	const int	 cooldown = 600;
+	long		 now_ms	  = mono_ms();
+	struct cow_view *drag	  = pan_find_drag_view();
+
+	struct cow_output *output;
+	wl_list_for_each(output, &cow_wm.outputs, wm_link)
+	{
+		bool on_output = (px >= output->x &&
+		    px < output->x + output->width && py >= output->y &&
+		    py < output->y + output->height);
+		if (!on_output) {
+			/* Pointer is on a different output: disarm and
+			 * clear any orange paint we may have left here.
+			 * (River doesn't deliver pointer_leave to layer
+			 * surfaces during an op.) */
+			if (output->pan_edge >= 0)
+				output->pan_edge = -1;
+			pan_clear_orange(output);
+			continue;
+		}
+
+		bool view_edge_ok = (output->pan_last_fire_ms == 0) ||
+		    (now_ms - output->pan_last_fire_ms >= (long)cooldown);
+		int edge = pan_edge_for_pointer(output, px, py, drag,
+		    view_edge_ok, strip);
+
+		if (edge >= 0 && output->pan_edge != edge) {
+			/*
+			 * Newly armed (or armed edge changed).  Clear any
+			 * orange paint left on the previously-armed edge so
+			 * we don't leave a stale stripe behind.
+			 */
+			if (output->pan_edge >= 0 &&
+			    output->pan_entered[output->pan_edge])
+				pan_frame_set_orange(output, output->pan_edge,
+				    false);
+			output->pan_edge     = edge;
+			output->pan_enter_ms = now_ms;
+		} else if (edge < 0 && output->pan_edge >= 0) {
+			/* Pointer/view left the strip before dwell completed:
+			 * disarm and clear any orange paint that may have been
+			 * applied at the paint_threshold. */
+			if (output->pan_entered[output->pan_edge])
+				pan_frame_set_orange(output, output->pan_edge,
+				    false);
+			output->pan_edge = -1;
+		}
+	}
 }

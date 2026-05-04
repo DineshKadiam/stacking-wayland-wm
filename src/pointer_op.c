@@ -19,6 +19,7 @@
 
 #include "cow/compat.h"
 #include "cow/config.h"
+#include "cow/desk_ops.h"
 #include "cow/output.h"
 #include "cow/seat.h"
 #include "cow/status.h"
@@ -209,10 +210,25 @@ cow_pointer_op_start_move(struct cow_seat *seat, struct cow_view *view)
 	if (view == NULL || view->closed || seat->op_in_progress)
 		return;
 
-	seat->op.type	     = COW_POINTER_OP_MOVE;
-	seat->op.view	     = view;
-	seat->op.start_x     = view->x;
-	seat->op.start_y     = view->y;
+	seat->op.type	 = COW_POINTER_OP_MOVE;
+	seat->op.view	 = view;
+	seat->op.start_x = view->x;
+	seat->op.start_y = view->y;
+	/*
+	 * Capture the offset from the pointer to the view's top-left.
+	 * This stays constant for the duration of the move op (the
+	 * window follows the cursor rigidly), and lets us compute
+	 * view->x = pointer_x + offset_x without going through op_dx,
+	 * which can lag pointer_position by one manage cycle across a
+	 * server-initiated warp.
+	 */
+	if (seat->has_pointer_position) {
+		seat->op.move_offset_x = view->x - seat->pointer_x;
+		seat->op.move_offset_y = view->y - seat->pointer_y;
+	} else {
+		seat->op.move_offset_x = 0;
+		seat->op.move_offset_y = 0;
+	}
 	seat->op_in_progress = true;
 	seat->op_released    = false;
 	seat->op_dx	     = 0;
@@ -244,6 +260,51 @@ cow_pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
 	river_seat_v1_op_start_pointer(seat->river_seat);
 }
 
+/*
+ * Constrain (*new_x, *new_y) so the dragged view's frame doesn't slide off
+ * the screen edge when no further page exists in the direction of travel.
+ */
+static void
+clamp_drag_to_screen(const struct cow_view *view, int bw, int tt, int *new_x,
+    int *new_y)
+{
+	if (view->output == NULL || cow_config == NULL)
+		return;
+
+	int cols    = cow_config->page_cols;
+	int rows    = cow_config->page_rows;
+	int cur_col = cow_page_col(view->output);
+	int cur_row = cow_page_row(view->output);
+	int ox	    = view->output->x;
+	int oy	    = view->output->y;
+	int ow	    = view->output->width;
+	int oh	    = view->output->height;
+
+	int new_l = *new_x - bw;
+	int new_t = *new_y - bw - tt;
+	int new_r = *new_x + view->content_width + bw;
+	int new_b = *new_y + view->content_height + bw;
+
+	int cur_l = view->x - bw;
+	int cur_t = view->y - bw - tt;
+	int cur_r = view->x + view->content_width + bw;
+	int cur_b = view->y + view->content_height + bw;
+
+	bool can_left	= cols > 1 && cur_col > 0;
+	bool can_right	= cols > 1 && cur_col < cols - 1;
+	bool can_top	= rows > 1 && cur_row > 0;
+	bool can_bottom = rows > 1 && cur_row < rows - 1;
+
+	if (!can_left && new_l < cur_l && new_l < ox)
+		*new_x = ox + bw;
+	if (!can_right && new_r > cur_r && new_r > ox + ow)
+		*new_x = ox + ow - view->content_width - bw;
+	if (!can_top && new_t < cur_t && new_t < oy)
+		*new_y = oy + bw + tt;
+	if (!can_bottom && new_b > cur_b && new_b > oy + oh)
+		*new_y = oy + oh - view->content_height - bw;
+}
+
 void
 cow_pointer_op_process(struct cow_seat *seat)
 {
@@ -259,6 +320,16 @@ cow_pointer_op_process(struct cow_seat *seat)
 		return;
 	}
 
+	/*
+	 * Pan-frame edge detection during a drag/resize.  River does not
+	 * deliver pointer events to layer surfaces while a pointer-op is
+	 * in progress, so the layer-surface pointer_enter listener never
+	 * fires.  Use the seat's tracked pointer position to arm pan_edge
+	 * by proximity instead.
+	 */
+	if (seat->has_pointer_position)
+		cow_output_pan_op_arm(seat->pointer_x, seat->pointer_y);
+
 	int dx = seat->op_dx;
 	int dy = seat->op_dy;
 
@@ -267,8 +338,20 @@ cow_pointer_op_process(struct cow_seat *seat)
 		int bw = view->dec.border_width;
 		int tt = view->dec.title_thickness;
 
-		int cx = seat->op.start_x + dx;
-		int cy = seat->op.start_y + dy;
+		/*
+		 * Compute the view's new top-left from the cursor position
+		 * and the captured offset.  Falling back to start + op_d
+		 * when we don't yet have a pointer position (shouldn't
+		 * happen during an op, but defensive).
+		 */
+		int cx, cy;
+		if (seat->has_pointer_position) {
+			cx = seat->pointer_x + seat->op.move_offset_x;
+			cy = seat->pointer_y + seat->op.move_offset_y;
+		} else {
+			cx = seat->op.start_x + dx;
+			cy = seat->op.start_y + dy;
+		}
 		int fl = cx - bw;
 		int ft = cy - bw - tt;
 		int fr = cx + view->content_width + bw;
@@ -282,9 +365,33 @@ cow_pointer_op_process(struct cow_seat *seat)
 			cow_wm.drag_ghost_y = seat->pointer_y;
 		} else {
 			/* Normal move */
-			view->x = fl + bw;
-			view->y = ft + bw + tt;
-			cow_view_update_output(view);
+			int new_x = fl + bw;
+			int new_y = ft + bw + tt;
+
+			clamp_drag_to_screen(view, bw, tt, &new_x, &new_y);
+
+			view->x = new_x;
+			view->y = new_y;
+
+			/*
+			 * Use the cursor position (not the view centre) to
+			 * pick the output.  The cursor represents the user's
+			 * intent; the view geometry may straddle output
+			 * boundaries mid-drag (especially right after a
+			 * page-cross warp where the view is wider than the
+			 * warp margin), and reassigning by centre would flip
+			 * the view to a different output and remap its
+			 * vx/vy into a coordinate frame the user did not
+			 * intend.
+			 */
+			if (seat->has_pointer_position) {
+				struct cow_output *target = cow_output_at(
+				    seat->pointer_x, seat->pointer_y);
+				if (target != NULL && target != view->output)
+					cow_view_reassign_output(view, target);
+			} else {
+				cow_view_update_output(view);
+			}
 			cow_view_sync_vxy_from_global(view);
 			cow_view_sync_container_pos(view);
 		}

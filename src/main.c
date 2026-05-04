@@ -37,15 +37,15 @@
 #define COW_VERSION "unknown"
 #endif
 
-static const char *usage = "usage: cow [-hv] [-c config]\n";
+static const char *usage = "usage: cow [-hsv] [-c config]\n";
 
 int
 main(int argc, char *argv[])
 {
-	const char *config_path = NULL;
+	const char *config_path	       = NULL;
 	int	    ch;
 
-	while ((ch = getopt(argc, argv, "c:hv")) != -1) {
+	while ((ch = getopt(argc, argv, "c:hsv")) != -1) {
 		switch (ch) {
 		case 'c':
 			config_path = optarg;

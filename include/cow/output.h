@@ -111,17 +111,23 @@ struct cow_output {
 	 *
 	 * Primary path: zwlr_layer_shell pan frame surfaces (pan_frames.c).
 	 * Each edge has a thin input-capable layer surface; wl_pointer
-	 * enter/leave events arm/cancel the dwell timer and paint the frame
-	 * orange.
+	 * enter/leave events arm/cancel the dwell timer and paint the frame.
 	 *
 	 * Fallback path (no wl_layer_shell): proximity detection via the
 	 * pointer-position events River already delivers.
 	 *
-	 * pan_edge:     armed edge (-1 = none; 0=top 1=bottom 2=left 3=right)
-	 * pan_enter_ms: monotonic ms when dwell started.
+	 * pan_edge:         armed edge (-1 = none; 0=top 1=bottom 2=left
+	 * 3=right) pan_enter_ms:     monotonic ms when dwell started.
+	 * pan_last_fire_ms: monotonic ms of the last successful pan_tick
+	 *                   fire on this output.  Used to (a) shorten
+	 *                   the dwell on rapid consecutive paging and
+	 *                   (b) suppress view-edge-based arming for a
+	 *                   short cooldown so paging in one direction
+	 *                   doesn't immediately re-arm the opposite edge.
 	 */
 	int  pan_edge;
 	long pan_enter_ms;
+	long pan_last_fire_ms;
 
 	/*
 	 * Pan frame input surfaces (zwlr_layer_surface_v1).
@@ -203,6 +209,7 @@ void cow_output_pan_frame_tick(struct cow_output *output);
  */
 void cow_output_pan_pointer_leave(int pointer_x, int pointer_y);
 void cow_output_pan_pointer_enter(void);
+void cow_output_pan_op_arm(int pointer_x, int pointer_y);
 
 /*
  * Pan frame management API lives in cow/pan_frames.h.
