@@ -50,29 +50,46 @@ cow_view_visible(const struct cow_view *view, const struct cow_output *output)
 	if (view->desk == NULL)
 		return true;
 	if (view->desk == output->current_desk) {
-		/* On the correct desk: now check the page.  A view is on the
-		 * current page if its virtual frame rectangle intersects the
-		 * current viewport.  With a 1x1 grid (page_vx=page_vy=0 and
-		 * viewport == full output) this always passes. */
+		/* On the correct desk: now check the page. */
 		if (view->flags & COW_VIEW_STICKY_PAGE_FLAG)
-			return true; /* page-sticky: always visible on this desk
-				      */
+			return true; /* page-sticky: always visible */
 		if (cow_config != NULL &&
 		    (cow_config->page_cols > 1 || cow_config->page_rows > 1)) {
 			struct cow_desk *desk = output->current_desk;
 			int		 w    = output->usable_area.width;
 			int		 h    = output->usable_area.height;
-			/* A window lives on the page that contains its
-			 * top-left corner (vx, vy).  Using rectangle
-			 * intersection would make windows near a page
-			 * boundary appear on both pages, causing the
-			 * render position to fall inside an adjacent
-			 * physical monitor. */
-			int vpx = desk->page_vx;
-			int vpy = desk->page_vy;
-			if (view->vx < vpx || view->vx >= vpx + w ||
-			    view->vy < vpy || view->vy >= vpy + h)
-				return false;
+			int		 vpx  = desk->page_vx;
+			int		 vpy  = desk->page_vy;
+
+			if (cow_config->edge_scroll) {
+				/*
+				 * Page-strict mode: a view lives on the
+				 * page containing its top-left corner.
+				 * Used with edge_scroll because each
+				 * window fully transitions to a new page
+				 * on edge cross; we don't want both pages
+				 * to claim it during the transition.
+				 */
+				if (view->vx < vpx || view->vx >= vpx + w ||
+				    view->vy < vpy || view->vy >= vpy + h)
+					return false;
+			} else {
+				/*
+				 * FVWM-style overlap: a view is visible if
+				 * its virtual frame rectangle intersects
+				 * the current viewport.  Lets windows
+				 * straddle page boundaries.
+				 */
+				int vw = view->content_width +
+				    2 * view->dec.border_width;
+				int vh = view->content_height +
+				    2 * view->dec.border_width +
+				    view->dec.title_thickness;
+				if (view->vx + vw <= vpx ||
+				    view->vx >= vpx + w ||
+				    view->vy + vh <= vpy || view->vy >= vpy + h)
+					return false;
+			}
 		}
 		return true;
 	}
