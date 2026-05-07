@@ -17,13 +17,13 @@
         "format": "[AVG:{load}]"
     },
     "custom/cow-desks": {
-        "exec": "/home/n6tadam/.config/waybar/cow-desks.sh",
+        "exec": "cowbar -w desks -o $WAYBAR_OUTPUT_NAME",
         "return-type": "json",
         "format": "{}",
         "tooltip": true
     },
     "custom/cow-title": {
-        "exec": "/home/n6tadam/.config/waybar/cow-title.sh",
+        "exec": "cowbar -w title -o $WAYBAR_OUTPUT_NAME",
         "return-type": "json",
         "format": "{}",
         "tooltip": true,
