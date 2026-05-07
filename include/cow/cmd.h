@@ -47,6 +47,7 @@ struct cow_output;
 struct cow_desk;
 struct cow_view;
 struct cmd_q;
+struct cJSON;
 
 /*
  * Cardinal direction used by focus, move, resize, page, etc.
@@ -211,6 +212,73 @@ struct cow_output *cmd_ctx_target_output(struct cmd_q *cmdq);
  * Convenience: get the target desk, falling back to current.
  */
 struct cow_desk *cmd_ctx_target_desk(struct cmd_q *cmdq);
+
+/*
+ * Like cmd_require_target_window, but resolve from the source (-s)
+ * specifier rather than the target (-t).
+ */
+struct cow_view *cmd_require_source_window(struct cmd_q *cmdq,
+    const char						*cmd_name);
+
+/*
+ * Resolve the target output (or current) from cmdq.  Emits a canonical
+ * error and returns NULL when no usable output exists.
+ */
+struct cow_output *cmd_require_target_output(struct cmd_q *cmdq,
+    const char						  *cmd_name);
+
+/*
+ * Resolve the target desk (or current) from cmdq.  Emits a canonical
+ * error and returns NULL when no usable desk exists.
+ */
+struct cow_desk *cmd_require_target_desk(struct cmd_q *cmdq,
+    const char					      *cmd_name);
+
+/*
+ * Parse an integer in [lo, hi] from 'val'.  On success, *out is set
+ * and the function returns true.  On failure, emits a canonical
+ * "<cmd_name>: <field>: bad value: <val>" error via cmdq_error and
+ * returns false (leaving *out untouched).
+ */
+bool cmd_parse_int(struct cmd_q *cmdq, const char *cmd_name, const char *field,
+    const char *val, long long lo, long long hi, long long *out);
+
+/*
+ * Combined args lookup + integer parse.  If the flag is absent, returns
+ * false and leaves *out alone (caller can pre-seed with a default).
+ * If present but malformed, emits the canonical error and returns
+ * false.  On success, returns true.
+ */
+bool cmd_args_int(struct cmd_q *cmdq, const char *cmd_name, struct args *args,
+    u_char flag, long long lo, long long hi, long long *out);
+
+/*
+ * Resolve a direction-flag.  If 'required' is true and the flag is
+ * absent, emits the canonical error.  Returns COW_DIR_NONE on absence
+ * or parse failure (and emits an error in the failure case).
+ */
+enum cow_direction cmd_args_direction(struct cmd_q *cmdq, const char *cmd_name,
+    struct args *args, u_char flag, bool required);
+
+/*
+ * Mark a view as needing visual + manage refresh.  Combines
+ * "view->dec.dirty = true" with cow_wm.needs_manage_dirty = true so
+ * that the two flags don't drift apart.
+ */
+void cmd_view_dirty(struct cow_view *view);
+
+/*
+ * Send a JSON response for the cmdq's IPC client.  No-op if the cmdq
+ * has no client (config-file context, client_fd == -1).  Takes
+ * ownership of the cJSON object (it will be deleted after sending).
+ */
+void cmdq_respond_data(struct cmd_q *cmdq, struct cJSON *data);
+
+/*
+ * Send a textual error response for the cmdq's IPC client.  No-op if
+ * the cmdq has no client.
+ */
+void cmdq_respond_error(struct cmd_q *cmdq, const char *msg);
 
 extern struct cmd_entry *cmd_table[];
 

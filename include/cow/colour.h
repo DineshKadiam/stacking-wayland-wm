@@ -37,4 +37,26 @@ uint32_t cow_colour_to_pixel(const float colour[static 4]);
  */
 bool cow_colour_parse(const char *str, float out[static 4]);
 
+/*
+ * A "triple" of pre-packed pixels for a single base colour: the colour
+ * itself and its standard light/dark shades.  Used everywhere that
+ * draws a 3-D bevel from a single source colour.
+ */
+struct cow_colour_triple {
+	uint32_t base;
+	uint32_t lt;
+	uint32_t dk;
+};
+
+void cow_colour_make_triple(struct cow_colour_triple *out,
+    const float					      colour[static 4]);
+
+/*
+ * Theme constants used by drop-target highlighting.  These are kept in
+ * one place so that the various decoration / titlebar / border paths
+ * agree on the exact pixel values.
+ */
+extern const float COW_COLOUR_DROP_ORANGE[4];
+extern const float COW_COLOUR_WHITE[4];
+
 #endif

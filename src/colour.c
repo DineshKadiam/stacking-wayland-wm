@@ -264,3 +264,18 @@ cow_colour_darken(float dst[static 4], const float src[static 4])
 	dst[2] = (float)b / 65535.0f;
 	dst[3] = src[3];
 }
+
+void
+cow_colour_make_triple(struct cow_colour_triple *out,
+    const float					 colour[static 4])
+{
+	float lt[4], dk[4];
+	cow_colour_lighten(lt, colour);
+	cow_colour_darken(dk, colour);
+	out->base = cow_colour_to_pixel(colour);
+	out->lt	  = cow_colour_to_pixel(lt);
+	out->dk	  = cow_colour_to_pixel(dk);
+}
+
+const float COW_COLOUR_DROP_ORANGE[4] = { 1.0f, 0.53f, 0.0f, 1.0f };
+const float COW_COLOUR_WHITE[4]	      = { 1.0f, 1.0f, 1.0f, 1.0f };
