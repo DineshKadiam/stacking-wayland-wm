@@ -34,7 +34,7 @@ There's been an attempt at some documentation:
 
 More concretely though, have a look at:
 
-* [cow config file](./config/cow.conf) -- this is documented and should help
+* [cow config file](./config/cow/cow.conf) -- this is documented and should help
   you start making changes.  Copy it to `~/.config/cow` to get started making
   changes,
 * [waybar](./config/waybar/) -- this can be copied verbatim to `~/.config/` if
