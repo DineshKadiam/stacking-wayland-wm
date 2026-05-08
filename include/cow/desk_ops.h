@@ -39,12 +39,6 @@ void cow_desk_switch(struct cow_output *output, uint8_t desk_nr);
 void cow_view_assign_desk(struct cow_view *view, uint8_t desk_nr);
 
 /*
- * Check if a view should be visible on the given output's current desk.
- */
-int cow_view_visible_on_current(struct cow_view *view,
-    struct cow_output				*output);
-
-/*
  * Switch the current page on the given output to (col, row).
  * col must be in [0, page_cols-1]; row in [0, page_rows-1].
  * Clamped silently if out of range.

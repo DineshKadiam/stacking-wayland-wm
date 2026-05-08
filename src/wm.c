@@ -358,6 +358,16 @@ handle_wm_manage_start(__unused void *data,
 						    cow_config->titlebar
 							.buttons[bi]
 							.action;
+						/*
+						 * Direct global writes here
+						 * (rather than via
+						 * cow_seat_focus_view) are
+						 * deliberate: the seat already
+						 * has focus on pv; we just
+						 * keep the WM-wide pointers
+						 * in sync without re-emitting
+						 * focus_window or status.
+						 */
 						cow_wm.focused_view = pv;
 						if (pv->output != NULL)
 							cow_wm.current_output =
@@ -731,7 +741,11 @@ handle_wm_manage_start(__unused void *data,
 		}
 	seat_done:
 
-		/* Sloppy focus */
+		/*
+		 * Sloppy focus.  Inlined rather than calling
+		 * cow_seat_focus_view because we don't want hover focus
+		 * to raise the window (the helper sets needs_raise).
+		 */
 		if (s->sloppy_focus_view != NULL &&
 		    !s->sloppy_focus_view->closed &&
 		    s->sloppy_focus_view != s->focused_view) {

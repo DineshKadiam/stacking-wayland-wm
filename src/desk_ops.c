@@ -102,13 +102,6 @@ cow_view_visible(const struct cow_view *view, const struct cow_output *output)
 	return false;
 }
 
-/* Backward compat wrapper */
-int
-cow_view_visible_on_current(struct cow_view *view, struct cow_output *output)
-{
-	return cow_view_visible(view, output) ? 1 : 0;
-}
-
 /*
  * Switch a single output to a new desk (internal helper).
  */
@@ -417,7 +410,7 @@ cow_view_move_to_page(struct cow_view *view, int col, int row)
 	view->vx = col * w + within_x;
 	view->vy = row * h + within_y;
 
-	view->dec.dirty		  = true;
+	view->dec.dirty = true;
 	cow_wm_request_manage_dirty();
 }
 
@@ -503,9 +496,9 @@ cow_page_scroll_tick(struct cow_output *output)
 
 	if (elapsed >= dur) {
 		/* Animation complete: snap to target */
-		desk->page_vx		  = desk->scroll_to_vx;
-		desk->page_vy		  = desk->scroll_to_vy;
-		desk->scrolling		  = false;
+		desk->page_vx	= desk->scroll_to_vx;
+		desk->page_vy	= desk->scroll_to_vy;
+		desk->scrolling = false;
 		cow_wm_request_manage_dirty();
 		/* Update pan frames now that the final page position is
 		 * committed — scrollable edges may have changed. */

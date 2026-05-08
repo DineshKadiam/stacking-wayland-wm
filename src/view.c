@@ -641,8 +641,8 @@ cow_view_apply_render(struct cow_view *view)
 	 * For contained views, pin the node to the container's position.
 	 * propose_dimensions for out-of-sync members is handled by the
 	 * pending_resize mechanism in the manage sequence (via
-	 * view_sync_to_container → cow_view_set_pending_geometry), NOT here.
-	 * Calling river_window_v1_propose_dimensions from the render sequence
+	 * cow_view_set_pending_geometry), NOT here.  Calling
+	 * river_window_v1_propose_dimensions from the render sequence
 	 * is a sequence_order protocol violation.
 	 */
 	if (view->container_member != NULL) {
@@ -712,12 +712,9 @@ cow_view_update_output(struct cow_view *view)
 
 	/* Use the centre of the view's frame to determine which
 	 * output it belongs to. */
-	int bw = view->dec.border_width;
 	int tt = view->dec.title_thickness;
 	int cx = view->x + view->content_width / 2;
 	int cy = view->y - tt / 2 + view->content_height / 2;
-
-	(void)bw;
 
 	struct cow_output *target = cow_output_at(cx, cy);
 	cow_view_reassign_output(view, target);
@@ -1496,16 +1493,6 @@ view_drop_decoration(struct cow_view *view)
 	cow_decoration_init(&view->dec);
 }
 
-/*
- * Assign a view's geometry from its container and queue a pending resize.
- */
-static void
-view_sync_to_container(struct cow_view *view, struct cow_container *c)
-{
-	cow_view_set_pending_geometry(view, c->x, c->y, c->content_width,
-	    c->content_height);
-}
-
 struct cow_container *
 cow_container_create(struct cow_view *first, struct cow_view *second)
 {
@@ -1563,7 +1550,8 @@ cow_container_add(struct cow_container *c, struct cow_view *view)
 	}
 
 	/* Sync dimensions to container */
-	view_sync_to_container(view, c);
+	cow_view_set_pending_geometry(view, c->x, c->y, c->content_width,
+	    c->content_height);
 	return true;
 }
 
