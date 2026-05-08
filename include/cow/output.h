@@ -192,6 +192,14 @@ struct cow_output *cow_output_find(struct river_output_v1 *);
  */
 struct cow_output *cow_output_find_by_name(const char *);
 
+/*
+ * Return the largest (output->y + output->height) over all outputs,
+ * i.e. the bottom edge of the union bounding box of every output.
+ * Used by view-parking math that needs an off-screen y coordinate
+ * guaranteed not to land inside any physical monitor.
+ */
+int cow_outputs_max_bottom(void);
+
 void cow_output_update_current(void);
 
 /*

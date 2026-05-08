@@ -148,7 +148,7 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 				struct cow_output *out;
 				wl_list_for_each(out, &cow_wm.outputs, wm_link)
 				    cow_page_clamp_views(out);
-				cow_wm.needs_manage_dirty = true;
+				cow_wm_request_manage_dirty();
 				pan_frames_update_all();
 			}
 		}
@@ -609,7 +609,7 @@ do_set_desktop_config(const char *val, struct cmd_q *cmdq)
 		    "global|per-output|shared");
 		return;
 	}
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 	cow_status_emit();
 }
 

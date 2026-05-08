@@ -148,5 +148,5 @@ do_collect(struct cow_output *output, uint8_t nr)
 	}
 
 	cow_status_emit();
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }

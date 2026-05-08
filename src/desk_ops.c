@@ -17,12 +17,12 @@
 
 #include <stdbool.h>
 
-#include <time.h>
 #include "cow/config.h"
 #include "cow/output.h"
 #include "cow/pan_frames.h"
 #include "cow/seat.h"
 #include "cow/status.h"
+#include "cow/util.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
@@ -217,7 +217,7 @@ cow_desk_switch(struct cow_output *output, uint8_t desk_nr)
 	}
 
 	cow_status_emit();
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 void
@@ -247,7 +247,7 @@ cow_view_assign_desk(struct cow_view *view, uint8_t desk_nr)
 	view->dec.dirty = true;
 
 	/* Visibility recomputed in render callback */
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 /* -----------------------------------------------------------------------
@@ -285,15 +285,12 @@ switch_output_page(struct cow_output *output, int new_vx, int new_vy)
 		return;
 
 	if (cow_config != NULL && cow_config->page_scroll_animate) {
-		struct timespec ts;
-		clock_gettime(CLOCK_MONOTONIC, &ts);
 		desk->scroll_from_vx  = desk->page_vx;
 		desk->scroll_from_vy  = desk->page_vy;
 		desk->scroll_to_vx    = new_vx;
 		desk->scroll_to_vy    = new_vy;
-		desk->scroll_start_ms = ts.tv_sec * 1000L +
-		    ts.tv_nsec / 1000000L;
-		desk->scrolling = true;
+		desk->scroll_start_ms = cow_mono_ms();
+		desk->scrolling	      = true;
 	} else {
 		desk->page_vx	= new_vx;
 		desk->page_vy	= new_vy;
@@ -383,7 +380,7 @@ cow_page_switch(struct cow_output *output, int col, int row)
 	}
 
 	cow_status_emit();
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 	/* Scrollable edges change after a page switch */
 	pan_frames_update_all();
 }
@@ -421,7 +418,7 @@ cow_view_move_to_page(struct cow_view *view, int col, int row)
 	view->vy = row * h + within_y;
 
 	view->dec.dirty		  = true;
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 void
@@ -481,7 +478,7 @@ cow_page_clamp_views(struct cow_output *output)
 		}
 		view->dec.dirty = true;
 	}
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 /*
@@ -499,9 +496,7 @@ cow_page_scroll_tick(struct cow_output *output)
 	if (!desk->scrolling)
 		return false;
 
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	long now_ms  = ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+	long now_ms  = cow_mono_ms();
 	long elapsed = now_ms - desk->scroll_start_ms;
 	int  dur = cow_config->page_scroll_ms > 0 ? cow_config->page_scroll_ms :
 						    200;
@@ -511,7 +506,7 @@ cow_page_scroll_tick(struct cow_output *output)
 		desk->page_vx		  = desk->scroll_to_vx;
 		desk->page_vy		  = desk->scroll_to_vy;
 		desk->scrolling		  = false;
-		cow_wm.needs_manage_dirty = true;
+		cow_wm_request_manage_dirty();
 		/* Update pan frames now that the final page position is
 		 * committed — scrollable edges may have changed. */
 		pan_frames_update_all();
@@ -525,6 +520,6 @@ cow_page_scroll_tick(struct cow_output *output)
 	desk->page_vy = desk->scroll_from_vy +
 	    (int)(t * (desk->scroll_to_vy - desk->scroll_from_vy));
 
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 	return true;
 }

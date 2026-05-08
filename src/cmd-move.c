@@ -184,7 +184,7 @@ apply_move(struct cow_view *view)
 	cow_view_sync_vxy_from_global(view);
 	cow_view_sync_container_pos(view);
 	view->dec.dirty		  = true;
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 /*
@@ -446,10 +446,11 @@ do_snap(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
 	struct cow_box *ua	     = &view->output->usable_area;
 	int		bw	     = view->dec.border_width;
 	int		tt	     = view->dec.title_thickness;
-	int		frame_left   = view->x - bw;
-	int		frame_top    = view->y - bw - tt;
-	int		frame_right  = view->x + view->content_width + bw;
-	int		frame_bottom = view->y + view->content_height + bw;
+	struct cow_box	fb	     = cow_view_frame_box(view);
+	int		frame_left   = fb.x;
+	int		frame_top    = fb.y;
+	int		frame_right  = fb.x + fb.width;
+	int		frame_bottom = fb.y + fb.height;
 
 	unmax_if_needed(view);
 
@@ -590,5 +591,5 @@ do_desk(struct cow_view *view, uint8_t nr, struct cmd_q *cmdq)
 
 	cow_view_assign_desk(view, nr);
 
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }

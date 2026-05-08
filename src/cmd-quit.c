@@ -112,6 +112,6 @@ do_reload(struct cmd_q *cmdq)
 		output->bg_dirty = true;
 	}
 
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 	fprintf(stderr, "cow: configuration reloaded from %s\n", path);
 }

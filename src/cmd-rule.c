@@ -350,7 +350,7 @@ do_rule(struct cmd *self, struct cmd_q *cmdq)
 			view->dec.dirty = true;
 		}
 	}
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 static bool

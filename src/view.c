@@ -76,8 +76,8 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 	/* Mark decoration dirty if dimensions changed so the frame
 	 * gets redrawn on the next render cycle. */
 	if (view->content_width != width || view->content_height != height) {
-		view->dec.dirty		  = true;
-		cow_wm.needs_manage_dirty = true;
+		view->dec.dirty = true;
+		cow_wm_request_manage_dirty();
 	}
 
 	view->content_width  = width;
@@ -102,9 +102,9 @@ window_handle_title(void *data, __unused struct river_window_v1 *rw,
 	struct cow_view *view = data;
 
 	xfree(view->title);
-	view->title		  = title ? xstrdup(title) : NULL;
-	view->dec.dirty		  = true;
-	cow_wm.needs_manage_dirty = true;
+	view->title	= title ? xstrdup(title) : NULL;
+	view->dec.dirty = true;
+	cow_wm_request_manage_dirty();
 	cow_status_emit();
 }
 
@@ -316,30 +316,7 @@ cow_view_destroy(struct cow_view *view)
 	{
 		struct cow_seat *s;
 		wl_list_for_each(s, &cow_wm.seats, wm_link)
-		{
-			/*
-			 * If this seat had keyboard focus on the view being
-			 * destroyed, tell river to clear focus.  Without
-			 * this, river's Window.destroy asserts that no seat
-			 * has focused.window == window.
-			 */
-			if (s->focused_view == view) {
-				river_seat_v1_clear_focus(s->river_seat);
-				s->focused_view = NULL;
-			}
-			if (s->pointer_entered_view == view)
-				s->pointer_entered_view = NULL;
-			if (s->interacted_view == view)
-				s->interacted_view = NULL;
-			if (s->sloppy_focus_view == view)
-				s->sloppy_focus_view = NULL;
-			if (s->last_click_view == view)
-				s->last_click_view = NULL;
-			if (s->pressed_view == view)
-				s->pressed_view = NULL;
-			if (s->op.view == view)
-				s->op.view = NULL;
-		}
+		    cow_seat_forget_view(s, view);
 	}
 
 	/* Detach from container without cascade (WM is shutting down) */
@@ -439,9 +416,9 @@ cow_view_configure(struct cow_view *view)
 	view->configured = true;
 
 	/* Focus and raise new windows on the next manage cycle */
-	view->needs_raise	  = true;
-	view->needs_focus	  = true;
-	cow_wm.needs_manage_dirty = true;
+	view->needs_raise = true;
+	view->needs_focus = true;
+	cow_wm_request_manage_dirty();
 }
 
 void
@@ -476,16 +453,12 @@ cow_view_apply_render(struct cow_view *view)
 	if (!view->placed && view->output != NULL) {
 		/* Place on the output where the pointer is, not
 		 * necessarily the output that created the view. */
-		struct cow_seat *ps;
-		wl_list_for_each(ps, &cow_wm.seats, wm_link)
-		{
-			if (ps->has_pointer_position) {
-				struct cow_output *ptr_out =
-				    cow_output_at(ps->pointer_x, ps->pointer_y);
-				if (ptr_out != NULL)
-					cow_view_reassign_output(view, ptr_out);
-				break;
-			}
+		struct cow_seat *ps = cow_seat_first_with_pointer();
+		if (ps != NULL) {
+			struct cow_output *ptr_out =
+			    cow_output_at(ps->pointer_x, ps->pointer_y);
+			if (ptr_out != NULL)
+				cow_view_reassign_output(view, ptr_out);
 		}
 
 		struct cow_box *ua = &view->output->usable_area;
@@ -503,17 +476,9 @@ cow_view_apply_render(struct cow_view *view)
 			 * pointer_x/y are global compositor coords; convert
 			 * to within-output position, then add page offset so
 			 * the window lands on the current virtual page. */
-			struct cow_seat *seat;
-			int		 px = ua->x + ua->width / 2;
-			int		 py = ua->y + ua->height / 2;
-			wl_list_for_each(seat, &cow_wm.seats, wm_link)
-			{
-				if (seat->has_pointer_position) {
-					px = seat->pointer_x;
-					py = seat->pointer_y;
-					break;
-				}
-			}
+			int px = ua->x + ua->width / 2;
+			int py = ua->y + ua->height / 2;
+			cow_seat_get_pointer(&px, &py);
 			/* Use actual dimensions if known, else a sensible
 			 * default so the window is centred on the pointer
 			 * even before the first dimensions event arrives. */
@@ -653,17 +618,8 @@ cow_view_apply_render(struct cow_view *view)
 	int render_x = view->x;
 	int render_y = view->y;
 	if (view->output != NULL && !cow_view_visible(view, view->output)) {
-		/* Find bottom-right corner of the union of all outputs */
-		int		   park_y = 0;
-		struct cow_output *o;
-		wl_list_for_each(o, &cow_wm.outputs, wm_link)
-		{
-			int bot = o->y + o->height;
-			if (bot > park_y)
-				park_y = bot;
-		}
 		render_x = 0;
-		render_y = park_y + 1;
+		render_y = cow_outputs_max_bottom() + 1;
 	}
 
 	river_node_v1_set_position(view->node, render_x, render_y);
@@ -770,13 +726,13 @@ cow_view_update_output(struct cow_view *view)
 void
 cow_view_set_pending_geometry(struct cow_view *view, int x, int y, int w, int h)
 {
-	view->pending_resize	  = true;
-	view->pending_x		  = x;
-	view->pending_y		  = y;
-	view->pending_width	  = w;
-	view->pending_height	  = h;
-	view->dec.dirty		  = true;
-	cow_wm.needs_manage_dirty = true;
+	view->pending_resize = true;
+	view->pending_x	     = x;
+	view->pending_y	     = y;
+	view->pending_width  = w;
+	view->pending_height = h;
+	view->dec.dirty	     = true;
+	cow_wm_request_manage_dirty();
 }
 
 struct cow_view *
@@ -827,20 +783,20 @@ cow_view_save_geometry(struct cow_view *view)
 struct cow_box
 cow_view_frame_box(const struct cow_view *v)
 {
+	return cow_view_frame_box_at(v, v->x, v->y);
+}
+
+struct cow_box
+cow_view_frame_box_at(const struct cow_view *v, int x, int y)
+{
 	int bw = v->dec.border_width;
 	int tt = v->dec.title_thickness;
 	return (struct cow_box) {
-		.x	= v->x - bw,
-		.y	= v->y - bw - tt,
+		.x	= x - bw,
+		.y	= y - bw - tt,
 		.width	= v->content_width + 2 * bw,
 		.height = v->content_height + bw + tt + bw,
 	};
-}
-
-bool
-cow_view_is_iconified(const struct cow_view *view)
-{
-	return (view->flags & COW_VIEW_ICONIFIED_FLAG) != 0;
 }
 
 /* ================================================================
@@ -1018,12 +974,9 @@ cow_view_maximize(struct cow_view *view)
 	int		bw = view->dec.border_width;
 	int		tt = view->dec.title_thickness;
 
-	view->x	 = ua->x + bw;
-	view->y	 = ua->y + bw + tt;
-	view->vx = (view->x - view->output->x) +
-	    view->output->current_desk->page_vx;
-	view->vy = (view->y - view->output->y) +
-	    view->output->current_desk->page_vy;
+	view->x = ua->x + bw;
+	view->y = ua->y + bw + tt;
+	cow_view_sync_vxy_from_global(view);
 	int w = ua->width - 2 * bw;
 	int h = ua->height - 2 * bw - tt;
 	cow_clamp_dimensions(&w, &h);
@@ -1139,12 +1092,12 @@ cow_view_shade(struct cow_view *view, int direction)
 	/* Clip the window content to 1x1 pixel so it's effectively
 	 * invisible.  0x0 disables clipping per the protocol.
 	 * Applied during the render callback via pending_clip. */
-	view->pending_clip	  = true;
-	view->clip_x		  = 0;
-	view->clip_y		  = 0;
-	view->clip_w		  = 1;
-	view->clip_h		  = 1;
-	cow_wm.needs_manage_dirty = true;
+	view->pending_clip = true;
+	view->clip_x	   = 0;
+	view->clip_y	   = 0;
+	view->clip_w	   = 1;
+	view->clip_h	   = 1;
+	cow_wm_request_manage_dirty();
 
 	view->dec.dirty = true;
 }
@@ -1178,7 +1131,7 @@ cow_view_unshade(struct cow_view *view)
 		view->dec.buffer = NULL;
 	}
 
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 void
@@ -1226,10 +1179,12 @@ cow_view_exit_fullscreen(struct cow_view *view)
 	view->vx = view->saved_x;
 	view->vy = view->saved_y;
 	if (view->output != NULL) {
-		view->x = view->output->x +
-		    (view->vx - (view->desk ? view->desk->page_vx : 0));
-		view->y = view->output->y +
-		    (view->vy - (view->desk ? view->desk->page_vy : 0));
+		if (view->desk != NULL) {
+			cow_view_sync_global_from_vxy(view);
+		} else {
+			view->x = view->output->x + view->vx;
+			view->y = view->output->y + view->vy;
+		}
 	}
 	river_window_v1_propose_dimensions(view->river_window,
 	    view->saved_width, view->saved_height);
@@ -1487,7 +1442,7 @@ cow_view_iconify(struct cow_view *view)
 		cow_wm.pending_focus = next;
 	}
 
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 void
@@ -1506,9 +1461,9 @@ cow_view_deiconify(struct cow_view *view)
 		cow_output_layout_icons(view->output);
 
 	/* Focus the restored window */
-	view->needs_raise	  = true;
-	cow_wm.pending_focus	  = view;
-	cow_wm.needs_manage_dirty = true;
+	view->needs_raise    = true;
+	cow_wm.pending_focus = view;
+	cow_wm_request_manage_dirty();
 }
 
 struct cow_view *
@@ -1577,7 +1532,7 @@ cow_container_create(struct cow_view *first, struct cow_view *second)
 	/* first (the drop target) is the active tab */
 	c->active = wl_container_of(c->members.next, c->active, link);
 
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 	return c;
 }
 
@@ -1637,7 +1592,7 @@ cow_container_activate(struct cow_container *c,
 	member->view->dec.dirty	  = true;
 	member->view->needs_raise = true;
 	cow_wm.pending_focus	  = member->view;
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 static void
@@ -1645,7 +1600,7 @@ container_redraw(struct cow_container *c)
 {
 	if (c->active != NULL && c->active->view->use_ssd)
 		c->active->view->dec.dirty = true;
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 void
@@ -1787,7 +1742,7 @@ cow_container_remove_view(struct cow_view *view)
 		cow_container_activate(c, next);
 	}
 
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 void
@@ -1805,22 +1760,6 @@ cow_container_destroy(struct cow_container *c)
 	xfree(c);
 }
 
-struct cow_container *
-cow_view_container(const struct cow_view *view)
-{
-	if (view->container_member == NULL)
-		return NULL;
-	return view->container_member->container;
-}
-
-bool
-cow_view_is_active_tab(const struct cow_view *view)
-{
-	if (view->container_member == NULL)
-		return true; /* uncontained views are always "active" */
-	struct cow_container *c = view->container_member->container;
-	return c->active == view->container_member;
-}
 bool
 cow_view_is_drop_target(const struct cow_view *view)
 {
@@ -1887,10 +1826,8 @@ cow_view_warp_to_focused(void)
 		return;
 
 	cow_view_centre(v, &cx, &cy);
-	cow_wm.pending_warp	  = true;
-	cow_wm.warp_x		  = cx;
-	cow_wm.warp_y		  = cy;
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_pointer_warp(cx, cy);
+	cow_wm_request_manage_dirty();
 }
 
 void

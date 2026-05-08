@@ -78,7 +78,7 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 	/* Close -- deferred to manage callback */
 	if (args_has(args, 'c')) {
 		view->pending_close	  = true;
-		cow_wm.needs_manage_dirty = true;
+		cow_wm_request_manage_dirty();
 		return (CMD_RETURN_NORMAL);
 	}
 
@@ -97,7 +97,7 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 
 		view->flags ^= COW_VIEW_STICKY_DESK_FLAG;
 		view->dec.dirty		  = true;
-		cow_wm.needs_manage_dirty = true;
+		cow_wm_request_manage_dirty();
 
 		if (was_sticky) {
 			uint8_t target = (view->output != NULL) ?
@@ -112,7 +112,7 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 		 */
 		view->flags ^= COW_VIEW_STICKY_PAGE_FLAG;
 		view->dec.dirty		  = true;
-		cow_wm.needs_manage_dirty = true;
+		cow_wm_request_manage_dirty();
 	}
 
 	if (args_has(args, 'i'))
@@ -151,7 +151,7 @@ cmd_window_expand_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	do_expand(view, dir, toggle);
 
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 	view->dec.dirty		  = true;
 
 	return (CMD_RETURN_NORMAL);
@@ -183,7 +183,7 @@ cmd_window_maximize_exec(struct cmd *self, struct cmd_q *cmdq)
 	else
 		do_maximize(view, MAXIMIZE);
 
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 	view->dec.dirty		  = true;
 
 	return (CMD_RETURN_NORMAL);
@@ -221,14 +221,14 @@ static void
 do_raise(struct cow_view *view)
 {
 	view->needs_raise	  = true;
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 static void
 do_lower(struct cow_view *view)
 {
 	view->pending_lower	  = true;
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 static void
@@ -413,7 +413,7 @@ do_shade(struct cow_view *view, const char *dir_str)
 	enum shade_direction sd = resolve_shade_direction(dir_str);
 
 	cow_view_shade(view, sd);
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 static void

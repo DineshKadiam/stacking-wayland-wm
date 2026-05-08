@@ -14,7 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "cow/output.h"
-#include <time.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +25,7 @@
 #include "cow/layer_shell.h"
 #include "cow/memory.h"
 #include "cow/shm.h"
+#include "cow/util.h"
 #include "cow/wm.h"
 #include "cow/desk_ops.h"
 #include "cow/pan_frames.h"
@@ -353,6 +353,20 @@ cow_output_find_by_name(const char *name)
 	return NULL;
 }
 
+int
+cow_outputs_max_bottom(void)
+{
+	int		   max_bot = 0;
+	struct cow_output *output;
+	wl_list_for_each(output, &cow_wm.outputs, wm_link)
+	{
+		int bot = output->y + output->height;
+		if (bot > max_bot)
+			max_bot = bot;
+	}
+	return max_bot;
+}
+
 void
 cow_output_update_current(void)
 {
@@ -380,19 +394,12 @@ cow_output_update_current(void)
 	}
 }
 
-static long
-mono_ms(void)
-{
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	return ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
-}
-
 static int
 pan_dwell_delay(const struct cow_output *output, long now_ms)
 {
 	int delay = cow_config->edge_scroll_delay_ms > 0 ?
-	    cow_config->edge_scroll_delay_ms : 300;
+	    cow_config->edge_scroll_delay_ms :
+	    300;
 	if (output->pan_last_fire_ms != 0 &&
 	    now_ms - output->pan_last_fire_ms < (long)delay) {
 		int rapid = delay / 5;
@@ -418,31 +425,15 @@ pan_find_drag_view(void)
 	return NULL;
 }
 
-static bool
-pan_pointer_position(int *out_x, int *out_y)
-{
-	struct cow_seat *s;
-	wl_list_for_each(s, &cow_wm.seats, wm_link)
-	{
-		if (s->has_pointer_position) {
-			*out_x = s->pointer_x;
-			*out_y = s->pointer_y;
-			return true;
-		}
-	}
-	return false;
-}
-
 /* Compute view's frame edges (incl. border + titlebar) in global coords. */
 static void
 pan_view_frame(const struct cow_view *v, int *l, int *t, int *r, int *b)
 {
-	int bw = v->dec.border_width;
-	int tt = v->dec.title_thickness;
-	*l     = v->x - bw;
-	*t     = v->y - bw - tt;
-	*r     = v->x + v->content_width + bw;
-	*b     = v->y + v->content_height + bw;
+	struct cow_box fb = cow_view_frame_box(v);
+	*l		  = fb.x;
+	*t		  = fb.y;
+	*r		  = fb.x + fb.width;
+	*b		  = fb.y + fb.height;
 }
 
 /* Figure out which edge of 'output' the pointer (or, during a drag, the
@@ -473,8 +464,7 @@ pan_edge_for_pointer(const struct cow_output *output, int px, int py,
 		return 0;
 	if (cur_row < rows - 1 &&
 	    (py >= output->y + output->height - strip ||
-		(view_edge_ok &&
-		    v_b >= output->y + output->height - strip)))
+		(view_edge_ok && v_b >= output->y + output->height - strip)))
 		return 1;
 	if (cur_col > 0 &&
 	    (px <= output->x + strip ||
@@ -482,8 +472,7 @@ pan_edge_for_pointer(const struct cow_output *output, int px, int py,
 		return 2;
 	if (cur_col < cols - 1 &&
 	    (px >= output->x + output->width - strip ||
-		(view_edge_ok &&
-		    v_r >= output->x + output->width - strip)))
+		(view_edge_ok && v_r >= output->x + output->width - strip)))
 		return 3;
 
 	return -1;
@@ -624,7 +613,7 @@ cow_output_pan_frame_tick(struct cow_output *output)
 	if (output->pan_edge < 0)
 		return;
 
-	long now_ms  = mono_ms();
+	long now_ms  = cow_mono_ms();
 	int  delay   = pan_dwell_delay(output, now_ms);
 	long elapsed = now_ms - output->pan_enter_ms;
 
@@ -651,7 +640,7 @@ cow_output_pan_frame_tick(struct cow_output *output)
 
 	int ptr_x = output->x + output->width / 2;
 	int ptr_y = output->y + output->height / 2;
-	pan_pointer_position(&ptr_x, &ptr_y);
+	cow_seat_get_pointer(&ptr_x, &ptr_y);
 	/* clamp perpendicular coords to this output */
 	if (ptr_x < output->x)
 		ptr_x = output->x;
@@ -669,9 +658,7 @@ cow_output_pan_frame_tick(struct cow_output *output)
 	cow_page_switch(output, cur_col + pan_edge_dir[edge].dcol,
 	    cur_row + pan_edge_dir[edge].drow);
 
-	cow_wm.pending_warp = true;
-	cow_wm.warp_x	    = warp_x;
-	cow_wm.warp_y	    = warp_y;
+	cow_wm_request_pointer_warp(warp_x, warp_y);
 
 	/*
 	 * Optimistically pre-warp each seat's tracked pointer.  River
@@ -702,7 +689,7 @@ cow_output_pan_pointer_leave(int px, int py)
 	if (cow_config->page_cols <= 1 && cow_config->page_rows <= 1)
 		return;
 
-	long		   now_ms = mono_ms();
+	long		   now_ms = cow_mono_ms();
 	struct cow_output *output;
 	wl_list_for_each(output, &cow_wm.outputs, wm_link)
 	{
@@ -715,7 +702,7 @@ cow_output_pan_pointer_leave(int px, int py)
 			output->pan_edge = -1;
 		}
 	}
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 void
@@ -726,8 +713,8 @@ cow_output_pan_pointer_enter(void)
 		return;
 	struct cow_output *output;
 	wl_list_for_each(output, &cow_wm.outputs, wm_link)
-	    output->pan_edge	  = -1;
-	cow_wm.needs_manage_dirty = true;
+	    output->pan_edge = -1;
+	cow_wm_request_manage_dirty();
 }
 
 void
@@ -738,9 +725,9 @@ cow_output_pan_op_arm(int px, int py)
 	if (cow_config->page_cols <= 1 && cow_config->page_rows <= 1)
 		return;
 
-	const int strip = 8;
+	const int	 strip	  = 8;
 	const int	 cooldown = 600;
-	long		 now_ms	  = mono_ms();
+	long		 now_ms	  = cow_mono_ms();
 	struct cow_view *drag	  = pan_find_drag_view();
 
 	struct cow_output *output;

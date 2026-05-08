@@ -295,14 +295,46 @@ cow_seat_primary(void)
 bool
 cow_seat_get_pointer(int *x, int *y)
 {
+	struct cow_seat *seat = cow_seat_first_with_pointer();
+	if (seat != NULL) {
+		*x = seat->pointer_x;
+		*y = seat->pointer_y;
+		return true;
+	}
+	return false;
+}
+
+struct cow_seat *
+cow_seat_first_with_pointer(void)
+{
 	struct cow_seat *seat;
 	wl_list_for_each(seat, &cow_wm.seats, wm_link)
 	{
-		if (seat->has_pointer_position) {
-			*x = seat->pointer_x;
-			*y = seat->pointer_y;
-			return true;
-		}
+		if (seat->has_pointer_position)
+			return seat;
 	}
-	return false;
+	return NULL;
+}
+
+void
+cow_seat_forget_view(struct cow_seat *seat, struct cow_view *view)
+{
+	if (seat == NULL || view == NULL)
+		return;
+	if (seat->focused_view == view) {
+		river_seat_v1_clear_focus(seat->river_seat);
+		seat->focused_view = NULL;
+	}
+	if (seat->pointer_entered_view == view)
+		seat->pointer_entered_view = NULL;
+	if (seat->interacted_view == view)
+		seat->interacted_view = NULL;
+	if (seat->sloppy_focus_view == view)
+		seat->sloppy_focus_view = NULL;
+	if (seat->last_click_view == view)
+		seat->last_click_view = NULL;
+	if (seat->pressed_view == view)
+		seat->pressed_view = NULL;
+	if (seat->op.view == view)
+		seat->op.view = NULL;
 }

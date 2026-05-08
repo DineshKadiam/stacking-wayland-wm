@@ -175,6 +175,20 @@ void cow_wm_manage_dirty(void);
 void cow_drag_ghost_destroy(void);
 
 /*
+ * Set cow_wm.needs_manage_dirty so the run loop will issue a
+ * manage_dirty on its next pass.  Use this rather than poking the flag
+ * directly so dirty triggers stay greppable and uniform.
+ */
+void cow_wm_request_manage_dirty(void);
+
+/*
+ * Request that the pointer be warped to (x, y) at the next manage
+ * sequence boundary.  Centralises the three places that previously
+ * set pending_warp / warp_x / warp_y by hand.
+ */
+void cow_wm_request_pointer_warp(int x, int y);
+
+/*
  * Signal handler for SIGTERM/SIGINT -- triggers clean shutdown.
  */
 void cow_wm_signal_handler(int sig);

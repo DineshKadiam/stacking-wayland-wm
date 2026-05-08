@@ -322,6 +322,14 @@ void cow_view_set_pending_geometry(struct cow_view *view, int x, int y, int w,
 struct cow_box cow_view_frame_box(const struct cow_view *v);
 
 /*
+ * Like cow_view_frame_box, but assume the view's top-left content
+ * origin is at (x, y) instead of (view->x, view->y).  Used when
+ * computing a hypothetical post-move frame (e.g. clamp checks during
+ * a drag) without mutating view->x/y.
+ */
+struct cow_box cow_view_frame_box_at(const struct cow_view *v, int x, int y);
+
+/*
  * Walk the view list circularly from start, returning the first
  * view matching pred.  Returns NULL if none found.
  */
@@ -365,7 +373,11 @@ void cow_view_icon_render(struct cow_view *view);
  */
 void cow_output_layout_icons(struct cow_output *output);
 
-bool cow_view_is_iconified(const struct cow_view *view);
+static inline bool
+cow_view_is_iconified(const struct cow_view *view)
+{
+	return (view->flags & COW_VIEW_ICONIFIED_FLAG) != 0;
+}
 
 /*
  * Resolve the view's visual style from global config + matching rules.
@@ -422,12 +434,25 @@ void cow_container_swap_prev(struct cow_container *container);
 /*
  * Return the container that contains view, or NULL.
  */
-struct cow_container *cow_view_container(const struct cow_view *view);
+static inline struct cow_container *
+cow_view_container(const struct cow_view *view)
+{
+	if (view->container_member == NULL)
+		return NULL;
+	return view->container_member->container;
+}
 
 /*
  * Return true if view is the active tab in its container.
  */
-bool cow_view_is_active_tab(const struct cow_view *view);
+static inline bool
+cow_view_is_active_tab(const struct cow_view *view)
+{
+	if (view->container_member == NULL)
+		return true; /* uncontained views are always "active" */
+	return view->container_member->container->active ==
+	    view->container_member;
+}
 
 /*
  * Destroy a container and release all its members (detach, no cascade).

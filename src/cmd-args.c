@@ -119,8 +119,8 @@ cmd_view_dirty(struct cow_view *view)
 {
 	if (view == NULL)
 		return;
-	view->dec.dirty		  = true;
-	cow_wm.needs_manage_dirty = true;
+	view->dec.dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 void

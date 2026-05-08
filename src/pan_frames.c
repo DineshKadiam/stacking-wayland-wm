@@ -15,7 +15,6 @@
  */
 
 #include <string.h>
-#include <time.h>
 #include <wayland-client.h>
 
 #include "cow/config.h"
@@ -25,6 +24,7 @@
 #include "cow/pan_frames.h"
 #include "cow/shm.h"
 #include "cow/compat.h"
+#include "cow/util.h"
 #include "cow/wm.h"
 #include "pointer-constraints-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
@@ -85,10 +85,8 @@ pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 	 */
 
 	/* Arm dwell timer */
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
 	output->pan_edge     = edge;
-	output->pan_enter_ms = ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+	output->pan_enter_ms = cow_mono_ms();
 
 	/* Confine the pointer to this strip so it can't cross the monitor
 	 * boundary while the dwell timer is running.
@@ -102,7 +100,7 @@ pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 			ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_ONESHOT);
 	}
 
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 static void
@@ -125,7 +123,7 @@ pointer_leave(void *data, struct wl_pointer *pointer, uint32_t serial,
 	pan_confine_release(output, edge);
 	output->pan_edge = -1;
 
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 static void

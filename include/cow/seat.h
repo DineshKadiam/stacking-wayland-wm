@@ -130,4 +130,18 @@ struct cow_seat *cow_seat_primary(void);
  */
 bool cow_seat_get_pointer(int *x, int *y);
 
+/*
+ * Return the first seat with a known pointer position, or NULL.
+ */
+struct cow_seat *cow_seat_first_with_pointer(void);
+
+/*
+ * Clear all back-references to 'view' on this seat (focused, pressed,
+ * interacted, sloppy_focus, last_click, pointer_entered, op view).
+ * If the view was the seat's keyboard focus, also send a clear-focus
+ * to river so its Window.destroy assert (no seat focuses this window)
+ * can pass.
+ */
+void cow_seat_forget_view(struct cow_seat *seat, struct cow_view *view);
+
 #endif

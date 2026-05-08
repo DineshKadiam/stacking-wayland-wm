@@ -99,7 +99,7 @@ static void
 defer_focus(struct cow_view *view)
 {
 	cow_wm.pending_focus	  = view;
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 /*
@@ -332,8 +332,7 @@ do_screen(const char *name, struct cmd_q *cmdq)
 	if (ry > 1.0)
 		ry = 1.0;
 
-	cow_wm.pending_warp	  = true;
-	cow_wm.warp_x		  = target->x + (int)(rx * target->width);
-	cow_wm.warp_y		  = target->y + (int)(ry * target->height);
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_pointer_warp(target->x + (int)(rx * target->width),
+	    target->y + (int)(ry * target->height));
+	cow_wm_request_manage_dirty();
 }

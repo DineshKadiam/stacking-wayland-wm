@@ -39,6 +39,7 @@
 #include "cow/status.h"
 #include "cow/titlebar.h"
 #include "cow/shm.h"
+#include "cow/util.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
@@ -751,7 +752,7 @@ handle_wm_manage_start(__unused void *data,
 	 * the same cycle via propose_dimensions.
 	 */
 	if (cow_wm.exec_pending && !cow_wm.state_restored)
-			cow_state_restore();
+		cow_state_restore();
 
 	/* Apply deferred geometry changes from IPC commands and
 	 * keybinding-invoked commands.  propose_dimensions is only
@@ -785,12 +786,9 @@ handle_wm_manage_start(__unused void *data,
 
 	/* Apply deferred focus from IPC/keybinding commands. */
 	if (cow_wm.pending_focus != NULL && !cow_wm.pending_focus->closed) {
-		struct cow_seat *fs;
-		wl_list_for_each(fs, &cow_wm.seats, wm_link)
-		{
+		struct cow_seat *fs = cow_seat_primary();
+		if (fs != NULL)
 			cow_seat_focus_view(fs, cow_wm.pending_focus);
-			break;
-		}
 		cow_wm.pending_focus = NULL;
 	}
 
@@ -807,13 +805,10 @@ handle_wm_manage_start(__unused void *data,
 
 	/* Apply deferred pointer warp. */
 	if (cow_wm.pending_warp) {
-		struct cow_seat *ws;
-		wl_list_for_each(ws, &cow_wm.seats, wm_link)
-		{
+		struct cow_seat *ws = cow_seat_primary();
+		if (ws != NULL)
 			river_seat_v1_pointer_warp(ws->river_seat,
 			    cow_wm.warp_x, cow_wm.warp_y);
-			break;
-		}
 		cow_wm.pending_warp = false;
 	}
 
@@ -903,32 +898,16 @@ drag_ghost_create(__unused struct cow_view *src)
 	cow_wm.drag_ghost_committed = false;
 	/* Use the current pointer position so the circle appears under
 	 * the cursor immediately, not at the source window's origin. */
-	struct cow_seat *gs;
-	wl_list_for_each(gs, &cow_wm.seats, wm_link)
-	{
-		if (gs->has_pointer_position) {
-			cow_wm.drag_ghost_x = gs->pointer_x;
-			cow_wm.drag_ghost_y = gs->pointer_y;
-			break;
-		}
-	}
+	cow_seat_get_pointer(&cow_wm.drag_ghost_x, &cow_wm.drag_ghost_y);
 }
 
 void
 cow_drag_ghost_destroy(void)
 {
-	if (cow_wm.drag_ghost_node != NULL) {
-		river_node_v1_destroy(cow_wm.drag_ghost_node);
-		cow_wm.drag_ghost_node = NULL;
-	}
-	if (cow_wm.drag_ghost_shell != NULL) {
-		river_shell_surface_v1_destroy(cow_wm.drag_ghost_shell);
-		cow_wm.drag_ghost_shell = NULL;
-	}
-	if (cow_wm.drag_ghost_surface != NULL) {
-		wl_surface_destroy(cow_wm.drag_ghost_surface);
-		cow_wm.drag_ghost_surface = NULL;
-	}
+	COW_DESTROY_AND_NULL(cow_wm.drag_ghost_node, river_node_v1_destroy);
+	COW_DESTROY_AND_NULL(cow_wm.drag_ghost_shell,
+	    river_shell_surface_v1_destroy);
+	COW_DESTROY_AND_NULL(cow_wm.drag_ghost_surface, wl_surface_destroy);
 	cow_shm_buffer_destroy(cow_wm.drag_ghost_buffer);
 	cow_wm.drag_ghost_buffer    = NULL;
 	cow_wm.drag_ghost_committed = false;
@@ -1105,14 +1084,8 @@ cow_wm_init(void)
 	return true;
 
 fail:
-	if (cow_wm.registry != NULL) {
-		wl_registry_destroy(cow_wm.registry);
-		cow_wm.registry = NULL;
-	}
-	if (cow_wm.display != NULL) {
-		wl_display_disconnect(cow_wm.display);
-		cow_wm.display = NULL;
-	}
+	COW_DESTROY_AND_NULL(cow_wm.registry, wl_registry_destroy);
+	COW_DESTROY_AND_NULL(cow_wm.display, wl_display_disconnect);
 	return false;
 }
 
@@ -1123,34 +1096,27 @@ cow_wm_fini(void)
 	cow_status_fini();
 	cow_ipc_fini();
 
-	if (cow_wm.layer_shell != NULL)
-		river_layer_shell_v1_destroy(cow_wm.layer_shell);
-	if (cow_wm.xkb_bindings != NULL)
-		river_xkb_bindings_v1_destroy(cow_wm.xkb_bindings);
+	COW_DESTROY_AND_NULL(cow_wm.layer_shell, river_layer_shell_v1_destroy);
+	COW_DESTROY_AND_NULL(cow_wm.xkb_bindings,
+	    river_xkb_bindings_v1_destroy);
 	if (cow_wm.manager != NULL) {
 		river_window_manager_v1_stop(cow_wm.manager);
 		wl_display_roundtrip(cow_wm.display);
 		river_window_manager_v1_destroy(cow_wm.manager);
+		cow_wm.manager = NULL;
 	}
 	pan_frames_destroy_all();
 
-	if (cow_wm.wl_pointer_raw != NULL)
-		wl_pointer_destroy(cow_wm.wl_pointer_raw);
-	if (cow_wm.wl_seat_raw != NULL)
-		wl_seat_destroy(cow_wm.wl_seat_raw);
-	if (cow_wm.wl_pointer_constraints != NULL)
-		zwp_pointer_constraints_v1_destroy(
-		    cow_wm.wl_pointer_constraints);
-	if (cow_wm.wl_layer_shell != NULL)
-		zwlr_layer_shell_v1_destroy(cow_wm.wl_layer_shell);
-	if (cow_wm.compositor != NULL)
-		wl_compositor_destroy(cow_wm.compositor);
-	if (cow_wm.shm != NULL)
-		wl_shm_destroy(cow_wm.shm);
-	if (cow_wm.registry != NULL)
-		wl_registry_destroy(cow_wm.registry);
-	if (cow_wm.display != NULL)
-		wl_display_disconnect(cow_wm.display);
+	COW_DESTROY_AND_NULL(cow_wm.wl_pointer_raw, wl_pointer_destroy);
+	COW_DESTROY_AND_NULL(cow_wm.wl_seat_raw, wl_seat_destroy);
+	COW_DESTROY_AND_NULL(cow_wm.wl_pointer_constraints,
+	    zwp_pointer_constraints_v1_destroy);
+	COW_DESTROY_AND_NULL(cow_wm.wl_layer_shell,
+	    zwlr_layer_shell_v1_destroy);
+	COW_DESTROY_AND_NULL(cow_wm.compositor, wl_compositor_destroy);
+	COW_DESTROY_AND_NULL(cow_wm.shm, wl_shm_destroy);
+	COW_DESTROY_AND_NULL(cow_wm.registry, wl_registry_destroy);
+	COW_DESTROY_AND_NULL(cow_wm.display, wl_display_disconnect);
 }
 
 void
@@ -1229,7 +1195,7 @@ cow_wm_run(void)
 		/* Poll timeout with armed pan edge: kick a manage cycle so
 		 * cow_output_pan_frame_tick() can fire the page switch. */
 		if (ret == 0 && poll_timeout > 0)
-			cow_wm.needs_manage_dirty = true;
+			cow_wm_request_manage_dirty();
 
 		/* Handle IPC events */
 		if (ipc_nfds > 0)
@@ -1254,6 +1220,20 @@ cow_wm_manage_dirty(void)
 {
 	if (cow_wm.manager != NULL)
 		river_window_manager_v1_manage_dirty(cow_wm.manager);
+}
+
+void
+cow_wm_request_manage_dirty(void)
+{
+	cow_wm.needs_manage_dirty = true;
+}
+
+void
+cow_wm_request_pointer_warp(int x, int y)
+{
+	cow_wm.pending_warp = true;
+	cow_wm.warp_x	    = x;
+	cow_wm.warp_y	    = y;
 }
 
 void

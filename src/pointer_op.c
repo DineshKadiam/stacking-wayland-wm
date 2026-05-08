@@ -280,28 +280,23 @@ clamp_drag_to_screen(const struct cow_view *view, int bw, int tt, int *new_x,
 	int ow	    = view->output->width;
 	int oh	    = view->output->height;
 
-	int new_l = *new_x - bw;
-	int new_t = *new_y - bw - tt;
-	int new_r = *new_x + view->content_width + bw;
-	int new_b = *new_y + view->content_height + bw;
-
-	int cur_l = view->x - bw;
-	int cur_t = view->y - bw - tt;
-	int cur_r = view->x + view->content_width + bw;
-	int cur_b = view->y + view->content_height + bw;
+	struct cow_box nfb = cow_view_frame_box_at(view, *new_x, *new_y);
+	struct cow_box cfb = cow_view_frame_box(view);
 
 	bool can_left	= cols > 1 && cur_col > 0;
 	bool can_right	= cols > 1 && cur_col < cols - 1;
 	bool can_top	= rows > 1 && cur_row > 0;
 	bool can_bottom = rows > 1 && cur_row < rows - 1;
 
-	if (!can_left && new_l < cur_l && new_l < ox)
+	if (!can_left && nfb.x < cfb.x && nfb.x < ox)
 		*new_x = ox + bw;
-	if (!can_right && new_r > cur_r && new_r > ox + ow)
+	if (!can_right && (nfb.x + nfb.width) > (cfb.x + cfb.width) &&
+	    (nfb.x + nfb.width) > ox + ow)
 		*new_x = ox + ow - view->content_width - bw;
-	if (!can_top && new_t < cur_t && new_t < oy)
+	if (!can_top && nfb.y < cfb.y && nfb.y < oy)
 		*new_y = oy + bw + tt;
-	if (!can_bottom && new_b > cur_b && new_b > oy + oh)
+	if (!can_bottom && (nfb.y + nfb.height) > (cfb.y + cfb.height) &&
+	    (nfb.y + nfb.height) > oy + oh)
 		*new_y = oy + oh - view->content_height - bw;
 }
 
@@ -533,7 +528,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 			view->x		= seat->pointer_x - fw / 2 + bw;
 			view->y		= seat->pointer_y - fh / 2 + bw + tt;
 			view->dec.dirty = true;
-			cow_wm.needs_manage_dirty = true;
+			cow_wm_request_manage_dirty();
 		} else if (seat->container_drag &&
 		    seat->op.type == COW_POINTER_OP_MOVE &&
 		    cow_wm.drag_drop_target != NULL &&
