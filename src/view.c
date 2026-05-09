@@ -763,6 +763,22 @@ cow_view_set_pending_geometry(struct cow_view *view, int x, int y, int w, int h)
 }
 
 struct cow_view *
+cow_view_find_by_identifier(const char *identifier)
+{
+	if (identifier == NULL)
+		return NULL;
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (view->closed || view->identifier == NULL)
+			continue;
+		if (strcmp(view->identifier, identifier) == 0)
+			return view;
+	}
+	return NULL;
+}
+
+struct cow_view *
 cow_view_walk(struct cow_view *start, bool forward,
     bool (*pred)(const struct cow_view *))
 {

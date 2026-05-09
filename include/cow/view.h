@@ -330,6 +330,13 @@ struct cow_box cow_view_frame_box(const struct cow_view *v);
 struct cow_box cow_view_frame_box_at(const struct cow_view *v, int x, int y);
 
 /*
+ * Find a non-closed view by its persistent identifier string.
+ * Returns NULL if no match.  Used by IPC and state-restore lookup
+ * paths that previously open-coded the same loop.
+ */
+struct cow_view *cow_view_find_by_identifier(const char *identifier);
+
+/*
  * Walk the view list circularly from start, returning the first
  * view matching pred.  Returns NULL if none found.
  */

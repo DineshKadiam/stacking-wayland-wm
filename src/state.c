@@ -23,6 +23,7 @@
 
 #include "cow/compat.h"
 #include "cow/desk_ops.h"
+#include "cow/json_util.h"
 #include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/view.h"
@@ -238,23 +239,22 @@ cow_state_restore(void)
 		cJSON *out_obj;
 		cJSON_ArrayForEach(out_obj, outputs)
 		{
-			cJSON *ox = cJSON_GetObjectItem(out_obj, "x");
-			cJSON *oy = cJSON_GetObjectItem(out_obj, "y");
-			if (!cJSON_IsNumber(ox) || !cJSON_IsNumber(oy))
+			long long ox, oy;
+			if (!cow_json_get_int(out_obj, "x", &ox) ||
+			    !cow_json_get_int(out_obj, "y", &oy))
 				continue;
 
-			struct cow_output *output = find_output_by_position(
-			    (int)ox->valuedouble, (int)oy->valuedouble);
+			struct cow_output *output =
+			    find_output_by_position((int)ox, (int)oy);
 			if (output == NULL)
 				continue;
 
-			cJSON *cs = cJSON_GetObjectItem(out_obj,
-			    "current_desk");
-			if (cJSON_IsNumber(cs)) {
-				int nr = (int)cs->valuedouble;
-				if (nr >= 0 && nr < COW_NR_OF_DESKS)
+			long long cur_desk;
+			if (cow_json_get_int(out_obj, "current_desk",
+				&cur_desk)) {
+				if (cur_desk >= 0 && cur_desk < COW_NR_OF_DESKS)
 					output->current_desk =
-					    &output->desks[nr];
+					    &output->desks[cur_desk];
 			}
 			/* Restore page viewport for each desk */
 			cJSON *desk_pages = cJSON_GetObjectItem(out_obj,
@@ -268,16 +268,17 @@ cow_state_restore(void)
 				{
 					if (i >= COW_NR_OF_DESKS)
 						break;
-					cJSON *pc = cJSON_GetObjectItem(dp,
-					    "page_col");
-					cJSON *pr = cJSON_GetObjectItem(dp,
-					    "page_row");
-					if (cJSON_IsNumber(pc) && w > 0)
+					long long pc, pr;
+					if (cow_json_get_int(dp, "page_col",
+						&pc) &&
+					    w > 0)
 						output->desks[i].page_vx =
-						    (int)pc->valuedouble * w;
-					if (cJSON_IsNumber(pr) && h > 0)
+						    (int)pc * w;
+					if (cow_json_get_int(dp, "page_row",
+						&pr) &&
+					    h > 0)
 						output->desks[i].page_vy =
-						    (int)pr->valuedouble * h;
+						    (int)pr * h;
 					i++;
 				}
 			}
@@ -298,10 +299,9 @@ cow_state_restore(void)
 			cJSON *v_obj;
 			cJSON_ArrayForEach(v_obj, views_arr)
 			{
-				cJSON *vid = cJSON_GetObjectItem(v_obj, "id");
-				if (cJSON_IsString(vid) &&
-				    strcmp(vid->valuestring,
-					view->identifier) == 0) {
+				const char *vid;
+				if (cow_json_get_string(v_obj, "id", &vid) &&
+				    strcmp(vid, view->identifier) == 0) {
 					vs = v_obj;
 					break;
 				}
@@ -312,13 +312,12 @@ cow_state_restore(void)
 			/* Output matching — must happen before position
 			 * restore so that vx/vy are computed against the
 			 * correct output origin and page viewport. */
-			cJSON *out_x = cJSON_GetObjectItem(vs, "output_x");
-			cJSON *out_y = cJSON_GetObjectItem(vs, "output_y");
-			if (cJSON_IsNumber(out_x) && cJSON_IsNumber(out_y)) {
+			long long out_x, out_y;
+			if (cow_json_get_int(vs, "output_x", &out_x) &&
+			    cow_json_get_int(vs, "output_y", &out_y)) {
 				struct cow_output *target =
-				    find_output_by_position(
-					(int)out_x->valuedouble,
-					(int)out_y->valuedouble);
+				    find_output_by_position((int)out_x,
+					(int)out_y);
 				if (target != NULL && target != view->output) {
 					view->output = target;
 					if (view->desk != NULL) {
@@ -334,18 +333,19 @@ cow_state_restore(void)
 			}
 
 			/* Flags */
-			cJSON *vf = cJSON_GetObjectItem(vs, "flags");
-			if (cJSON_IsNumber(vf))
-				view->flags = (uint32_t)vf->valuedouble;
+			long long vf;
+			if (cow_json_get_int(vs, "flags", &vf))
+				view->flags = (uint32_t)vf;
 
 			/* Sheet assignment — must happen before position
 			 * restore so pending_x/y use the correct page_vx/vy. */
-			cJSON *vdesk = cJSON_GetObjectItem(vs, "desk");
-			if (cJSON_IsNumber(vdesk) && view->output != NULL) {
-				int nr = (int)vdesk->valuedouble;
-				if (nr >= 0 && nr < COW_NR_OF_DESKS) {
+			long long vdesk;
+			if (cow_json_get_int(vs, "desk", &vdesk) &&
+			    view->output != NULL) {
+				if (vdesk >= 0 && vdesk < COW_NR_OF_DESKS) {
 					wl_list_remove(&view->desk_views);
-					view->desk = &view->output->desks[nr];
+					view->desk =
+					    &view->output->desks[vdesk];
 					wl_list_insert(&view->desk->views,
 					    &view->desk_views);
 				}
@@ -354,38 +354,30 @@ cow_state_restore(void)
 			/* Position and dimensions — now that output and desk
 			 * are correct, compute pending_x/y from the saved
 			 * virtual position against the right page viewport. */
-			cJSON *vx_j = cJSON_GetObjectItem(vs, "vx");
-			cJSON *vy_j = cJSON_GetObjectItem(vs, "vy");
-			cJSON *vx   = cJSON_GetObjectItem(vs, "x");
-			cJSON *vy   = cJSON_GetObjectItem(vs, "y");
-			cJSON *vw   = cJSON_GetObjectItem(vs, "width");
-			cJSON *vh   = cJSON_GetObjectItem(vs, "height");
-			if (cJSON_IsNumber(vw) && cJSON_IsNumber(vh)) {
-				int w = (int)vw->valuedouble;
-				int h = (int)vh->valuedouble;
-
-				if (cJSON_IsNumber(vx_j))
-					view->vx = (int)vx_j->valuedouble;
-				else if (cJSON_IsNumber(vx) &&
-				    view->output != NULL && view->desk != NULL)
-					view->vx = ((int)vx->valuedouble -
-						       view->output->x) +
+			long long w, h, vx_j, vy_j, vx, vy;
+			bool	  have_w  = cow_json_get_int(vs, "width", &w);
+			bool	  have_h  = cow_json_get_int(vs, "height", &h);
+			bool	  have_vx = cow_json_get_int(vs, "vx", &vx_j);
+			bool	  have_vy = cow_json_get_int(vs, "vy", &vy_j);
+			bool	  have_x  = cow_json_get_int(vs, "x", &vx);
+			bool	  have_y  = cow_json_get_int(vs, "y", &vy);
+			if (have_w && have_h) {
+				if (have_vx)
+					view->vx = (int)vx_j;
+				else if (have_x && view->output != NULL &&
+				    view->desk != NULL)
+					view->vx = ((int)vx - view->output->x) +
 					    view->desk->page_vx;
-				else if (cJSON_IsNumber(vx) &&
-				    view->output != NULL)
-					view->vx = (int)vx->valuedouble -
-					    view->output->x;
-				if (cJSON_IsNumber(vy_j))
-					view->vy = (int)vy_j->valuedouble;
-				else if (cJSON_IsNumber(vy) &&
-				    view->output != NULL && view->desk != NULL)
-					view->vy = ((int)vy->valuedouble -
-						       view->output->y) +
+				else if (have_x && view->output != NULL)
+					view->vx = (int)vx - view->output->x;
+				if (have_vy)
+					view->vy = (int)vy_j;
+				else if (have_y && view->output != NULL &&
+				    view->desk != NULL)
+					view->vy = ((int)vy - view->output->y) +
 					    view->desk->page_vy;
-				else if (cJSON_IsNumber(vy) &&
-				    view->output != NULL)
-					view->vy = (int)vy->valuedouble -
-					    view->output->y;
+				else if (have_y && view->output != NULL)
+					view->vy = (int)vy - view->output->y;
 
 				if (w > 0 && h > 0 && view->output != NULL &&
 				    view->desk != NULL) {
@@ -394,50 +386,42 @@ cow_state_restore(void)
 					int py = view->output->y +
 					    (view->vy - view->desk->page_vy);
 					cow_view_set_pending_geometry(view, px,
-					    py, w, h);
+					    py, (int)w, (int)h);
 					view->placed = true;
 				}
 			}
 
 			/* Maximize state */
-			cJSON *vmax = cJSON_GetObjectItem(vs, "maximized");
-			if (cJSON_IsTrue(vmax)) {
-				cJSON *sx = cJSON_GetObjectItem(vs, "saved_x");
-				cJSON *sy = cJSON_GetObjectItem(vs, "saved_y");
-				cJSON *sw = cJSON_GetObjectItem(vs,
-				    "saved_width");
-				cJSON *sh = cJSON_GetObjectItem(vs,
-				    "saved_height");
-				if (cJSON_IsNumber(sx) && cJSON_IsNumber(sy) &&
-				    cJSON_IsNumber(sw) && cJSON_IsNumber(sh)) {
-					view->saved_x = (int)sx->valuedouble;
-					view->saved_y = (int)sy->valuedouble;
-					view->saved_width = (int)
-								sw->valuedouble;
-					view->saved_height =
-					    (int)sh->valuedouble;
-					view->maximized = true;
+			bool vmax = false;
+			if (cow_json_get_bool(vs, "maximized", &vmax) && vmax) {
+				long long sx, sy, sw, sh;
+				if (cow_json_get_int(vs, "saved_x", &sx) &&
+				    cow_json_get_int(vs, "saved_y", &sy) &&
+				    cow_json_get_int(vs, "saved_width", &sw) &&
+				    cow_json_get_int(vs, "saved_height", &sh)) {
+					view->saved_x	   = (int)sx;
+					view->saved_y	   = (int)sy;
+					view->saved_width  = (int)sw;
+					view->saved_height = (int)sh;
+					view->maximized	   = true;
 				}
 			}
 
 			/* Shade state */
-			cJSON *vshade = cJSON_GetObjectItem(vs,
-			    "shade_direction");
-			if (cJSON_IsNumber(vshade)) {
-				int dir = (int)vshade->valuedouble;
-				if (dir > COW_SHADE_NONE &&
-				    dir <= COW_SHADE_SE) {
-					cJSON *ssw = cJSON_GetObjectItem(vs,
-					    "shade_saved_width");
-					cJSON *ssh = cJSON_GetObjectItem(vs,
-					    "shade_saved_height");
-					if (cJSON_IsNumber(ssw) &&
-					    cJSON_IsNumber(ssh)) {
-						view->sd = dir;
-						view->shade_saved_width =
-						    (int)ssw->valuedouble;
-						view->shade_saved_height =
-						    (int)ssh->valuedouble;
+			long long vshade;
+			if (cow_json_get_int(vs, "shade_direction", &vshade)) {
+				if (vshade > COW_SHADE_NONE &&
+				    vshade <= COW_SHADE_SE) {
+					long long ssw, ssh;
+					if (cow_json_get_int(vs,
+						"shade_saved_width", &ssw) &&
+					    cow_json_get_int(vs,
+						"shade_saved_height", &ssh)) {
+						view->sd = (int)vshade;
+						view->shade_saved_width = (int)
+						    ssw;
+						view->shade_saved_height = (int)
+						    ssh;
 						river_window_v1_propose_dimensions(
 						    view->river_window, 1, 1);
 					}
@@ -511,18 +495,12 @@ cow_state_restore(void)
 	}
 
 	/* Restore focus */
-	cJSON *focused = cJSON_GetObjectItem(root, "focused");
-	if (cJSON_IsString(focused)) {
-		struct cow_view *view;
-		wl_list_for_each(view, &cow_wm.views, wm_link)
-		{
-			if (view->identifier != NULL && !view->closed &&
-			    strcmp(view->identifier, focused->valuestring) ==
-				0) {
-				cow_wm.focused_view = view;
-				view->needs_raise   = true;
-				break;
-			}
+	const char *focused_id = NULL;
+	if (cow_json_get_string(root, "focused", &focused_id)) {
+		struct cow_view *view = cow_view_find_by_identifier(focused_id);
+		if (view != NULL) {
+			cow_wm.focused_view = view;
+			view->needs_raise   = true;
 		}
 	}
 
