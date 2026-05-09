@@ -21,6 +21,7 @@
 #include "cow/config.h"
 #include "cow/desk_ops.h"
 #include "cow/output.h"
+#include "cow/pan_frames.h"
 #include "cow/seat.h"
 #include "cow/status.h"
 #include "cow/view.h"
@@ -35,6 +36,33 @@
  * frame_left/top/right/bottom are the frame edges of the window
  * being moved/resized.  We snap each edge independently.
  */
+/*
+ * Update (*best_d, *snap_pos) with 'candidate' if it is closer to
+ * 'edge_pos' than the current best.  Used by snap_edges below.
+ */
+static inline void
+try_snap(int edge_pos, int candidate, int *best_d, int *snap_pos)
+{
+	int d = abs(edge_pos - candidate);
+	if (d < *best_d) {
+		*best_d	  = d;
+		*snap_pos = candidate;
+	}
+}
+
+/* Try to snap each frame edge against one rectangle's left/top/right/
+ * bottom edges. */
+static inline void
+snap_edges_against_rect(int fl, int ft, int fr, int fb, int rl, int rt, int rr,
+    int rb, int *best_dl, int *best_dt, int *best_dr, int *best_db, int *snap_l,
+    int *snap_t, int *snap_r, int *snap_b)
+{
+	try_snap(fl, rl, best_dl, snap_l);
+	try_snap(fr, rr, best_dr, snap_r);
+	try_snap(ft, rt, best_dt, snap_t);
+	try_snap(fb, rb, best_db, snap_b);
+}
+
 static void
 snap_edges(struct cow_view *view, int *frame_left, int *frame_top,
     int *frame_right, int *frame_bottom, bool snap_size)
@@ -45,75 +73,34 @@ snap_edges(struct cow_view *view, int *frame_left, int *frame_top,
 
 	int fw = *frame_right - *frame_left;
 	int fh = *frame_bottom - *frame_top;
+	int fl = *frame_left, ft = *frame_top;
+	int fr = *frame_right, fb = *frame_bottom;
 
 	/* Collect snap candidates for each edge */
 	int best_dl = sd + 1, best_dr = sd + 1;
 	int best_dt = sd + 1, best_db = sd + 1;
-	int snap_l = *frame_left, snap_r = *frame_right;
-	int snap_t = *frame_top, snap_b = *frame_bottom;
+	int snap_l = fl, snap_r = fr;
+	int snap_t = ft, snap_b = fb;
 
 	/* Check all output boundaries and usable areas */
 	struct cow_output *out;
 	wl_list_for_each(out, &cow_wm.outputs, wm_link)
 	{
-		int ol	= out->x;
-		int ot	= out->y;
-		int or_ = out->x + out->width;
-		int ob	= out->y + out->height;
+		snap_edges_against_rect(fl, ft, fr, fb, out->x, out->y,
+		    out->x + out->width, out->y + out->height, &best_dl,
+		    &best_dt, &best_dr, &best_db, &snap_l, &snap_t, &snap_r,
+		    &snap_b);
 
-		/* Output edges */
-		int d;
-		d = abs(*frame_left - ol);
-		if (d < best_dl) {
-			best_dl = d;
-			snap_l	= ol;
-		}
-		d = abs(*frame_right - or_);
-		if (d < best_dr) {
-			best_dr = d;
-			snap_r	= or_;
-		}
-		d = abs(*frame_top - ot);
-		if (d < best_dt) {
-			best_dt = d;
-			snap_t	= ot;
-		}
-		d = abs(*frame_bottom - ob);
-		if (d < best_db) {
-			best_db = d;
-			snap_b	= ob;
-		}
-
-		/* Usable area edges */
 		struct cow_box *ua = &out->usable_area;
-		int		ul = ua->x;
-		int		ut = ua->y;
-		int		ur = ua->x + ua->width;
-		int		ub = ua->y + ua->height;
-
-		d = abs(*frame_left - ul);
-		if (d < best_dl) {
-			best_dl = d;
-			snap_l	= ul;
-		}
-		d = abs(*frame_right - ur);
-		if (d < best_dr) {
-			best_dr = d;
-			snap_r	= ur;
-		}
-		d = abs(*frame_top - ut);
-		if (d < best_dt) {
-			best_dt = d;
-			snap_t	= ut;
-		}
-		d = abs(*frame_bottom - ub);
-		if (d < best_db) {
-			best_db = d;
-			snap_b	= ub;
-		}
+		snap_edges_against_rect(fl, ft, fr, fb, ua->x, ua->y,
+		    ua->x + ua->width, ua->y + ua->height, &best_dl, &best_dt,
+		    &best_dr, &best_db, &snap_l, &snap_t, &snap_r, &snap_b);
 	}
 
-	/* Check other visible window edges */
+	/* Check other visible window edges.  In addition to per-edge
+	 * snapping, allow our left to snap to their right and our right
+	 * to their left (and top/bottom analogues), so windows align
+	 * touching their neighbours. */
 	struct cow_view *other;
 	wl_list_for_each(other, &cow_wm.views, wm_link)
 	{
@@ -128,50 +115,14 @@ snap_edges(struct cow_view *view, int *frame_left, int *frame_top,
 		int	       or_ = of.x + of.width;
 		int	       ob  = of.y + of.height;
 
-		int d;
-		/* Snap our left to their right, our right to their left */
-		d = abs(*frame_left - or_);
-		if (d < best_dl) {
-			best_dl = d;
-			snap_l	= or_;
-		}
-		d = abs(*frame_left - ol);
-		if (d < best_dl) {
-			best_dl = d;
-			snap_l	= ol;
-		}
-		d = abs(*frame_right - ol);
-		if (d < best_dr) {
-			best_dr = d;
-			snap_r	= ol;
-		}
-		d = abs(*frame_right - or_);
-		if (d < best_dr) {
-			best_dr = d;
-			snap_r	= or_;
-		}
-
-		/* Snap our top to their bottom, our bottom to their top */
-		d = abs(*frame_top - ob);
-		if (d < best_dt) {
-			best_dt = d;
-			snap_t	= ob;
-		}
-		d = abs(*frame_top - ot);
-		if (d < best_dt) {
-			best_dt = d;
-			snap_t	= ot;
-		}
-		d = abs(*frame_bottom - ot);
-		if (d < best_db) {
-			best_db = d;
-			snap_b	= ot;
-		}
-		d = abs(*frame_bottom - ob);
-		if (d < best_db) {
-			best_db = d;
-			snap_b	= ob;
-		}
+		try_snap(fl, or_, &best_dl, &snap_l);
+		try_snap(fl, ol, &best_dl, &snap_l);
+		try_snap(fr, ol, &best_dr, &snap_r);
+		try_snap(fr, or_, &best_dr, &snap_r);
+		try_snap(ft, ob, &best_dt, &snap_t);
+		try_snap(ft, ot, &best_dt, &snap_t);
+		try_snap(fb, ot, &best_db, &snap_b);
+		try_snap(fb, ob, &best_db, &snap_b);
 	}
 
 	/* Apply snaps */
@@ -283,10 +234,11 @@ clamp_drag_to_screen(const struct cow_view *view, int bw, int tt, int *new_x,
 	struct cow_box nfb = cow_view_frame_box_at(view, *new_x, *new_y);
 	struct cow_box cfb = cow_view_frame_box(view);
 
-	bool can_left	= cols > 1 && cur_col > 0;
-	bool can_right	= cols > 1 && cur_col < cols - 1;
-	bool can_top	= rows > 1 && cur_row > 0;
-	bool can_bottom = rows > 1 && cur_row < rows - 1;
+	unsigned mask	    = cow_pan_edge_mask(cur_col, cur_row, cols, rows);
+	bool	 can_left   = (mask & COW_PAN_EDGE_BIT(COW_PAN_LEFT)) != 0;
+	bool	 can_right  = (mask & COW_PAN_EDGE_BIT(COW_PAN_RIGHT)) != 0;
+	bool	 can_top    = (mask & COW_PAN_EDGE_BIT(COW_PAN_TOP)) != 0;
+	bool	 can_bottom = (mask & COW_PAN_EDGE_BIT(COW_PAN_BOTTOM)) != 0;
 
 	if (!can_left && nfb.x < cfb.x && nfb.x < ox)
 		*new_x = ox + bw;
@@ -298,6 +250,96 @@ clamp_drag_to_screen(const struct cow_view *view, int bw, int tt, int *new_x,
 	if (!can_bottom && (nfb.y + nfb.height) > (cfb.y + cfb.height) &&
 	    (nfb.y + nfb.height) > oy + oh)
 		*new_y = oy + oh - view->content_height - bw;
+}
+
+/*
+ * Finalise a pointer op when seat->op_released is set.  Handles
+ * resize-end notification, container-drag completion (uncontainerise,
+ * containerise, or plain drop), drag-ghost teardown, output reassignment,
+ * titlebar-press visuals, and the final river op_end + state reset.
+ *
+ * Split out of cow_pointer_op_process so the dispatcher reads as
+ * "process op delta; finalise if released".
+ */
+static void
+op_finalize(struct cow_seat *seat, struct cow_view *view)
+{
+	if (seat->op.type == COW_POINTER_OP_RESIZE)
+		river_window_v1_inform_resize_end(view->river_window);
+
+	/*
+	 * Container drag (-C) completion.
+	 *
+	 * Source already in a container: always detach, regardless of
+	 * where the pointer lands.  No target highlight needed.
+	 *
+	 * Source NOT in a container: group with whatever window is
+	 * under the pointer (if any).
+	 */
+	if (seat->container_drag && seat->op.type == COW_POINTER_OP_MOVE &&
+	    view->container_member != NULL) {
+		/* Uncontainerise: detach, restore pre-container size,
+		 * place at pointer */
+		if (cow_wm.drag_drop_target != NULL) {
+			cow_wm.drag_drop_target->dec.dirty = true;
+			cow_wm.drag_drop_target		   = NULL;
+		}
+		int bw = view->dec.border_width;
+		int tt = view->dec.title_thickness;
+		/* cow_container_remove_view restores pre-container
+		 * dimensions */
+		cow_container_remove_view(view);
+		/* Use restored (proposed) size for centring on pointer */
+		int fw = (view->proposed_width > 0 ? view->proposed_width :
+						     view->content_width) +
+		    2 * bw;
+		int fh = (view->proposed_height > 0 ? view->proposed_height :
+						      view->content_height) +
+		    bw + tt + bw;
+		view->x		= seat->pointer_x - fw / 2 + bw;
+		view->y		= seat->pointer_y - fh / 2 + bw + tt;
+		view->dec.dirty = true;
+		cow_wm_request_manage_dirty();
+	} else if (seat->container_drag &&
+	    seat->op.type == COW_POINTER_OP_MOVE &&
+	    cow_wm.drag_drop_target != NULL &&
+	    !cow_wm.drag_drop_target->closed &&
+	    cow_wm.drag_drop_target != view) {
+		/* Containerise: group source with target */
+		struct cow_view *target = cow_wm.drag_drop_target;
+		cow_wm.drag_drop_target = NULL;
+		target->dec.dirty	= true;
+		if (target->container_member != NULL)
+			cow_container_add(target->container_member->container,
+			    view);
+		else
+			cow_container_create(target, view);
+	} else if (cow_wm.drag_drop_target != NULL) {
+		/* Normal drop: clear any lingering indicator */
+		cow_wm.drag_drop_target->dec.dirty = true;
+		cow_wm.drag_drop_target		   = NULL;
+	}
+	seat->container_drag	= false;
+	cow_wm.drag_drop_source = NULL;
+	cow_drag_ghost_destroy();
+
+	/* After move/resize, update the view's output assignment based
+	 * on where the window ended up. */
+	cow_view_update_output(view);
+
+	/* Restore titlebar visuals if this was a title drag */
+	if (seat->titlebar_press == COW_TITLEBAR_PRESS_TITLE &&
+	    seat->pressed_view != NULL && !seat->pressed_view->closed) {
+		seat->pressed_view->title_pressed = false;
+		seat->pressed_view->dec.dirty	  = true;
+	}
+	seat->titlebar_press = COW_TITLEBAR_PRESS_NONE;
+	seat->pressed_view   = NULL;
+
+	river_seat_v1_op_end(seat->river_seat);
+	seat->op_in_progress = false;
+	seat->op_released    = false;
+	seat->op.type	     = COW_POINTER_OP_NONE;
 }
 
 void
@@ -486,90 +528,6 @@ cow_pointer_op_process(struct cow_seat *seat)
 		break;
 	}
 
-	/* End the op if the pointer was released */
-	if (seat->op_released) {
-		if (seat->op.type == COW_POINTER_OP_RESIZE) {
-			river_window_v1_inform_resize_end(view->river_window);
-		}
-
-		/*
-		 * Container drag (-C) completion.
-		 *
-		 * Source already in a container: always detach, regardless of
-		 * where the pointer lands.  No target highlight needed.
-		 *
-		 * Source NOT in a container: group with whatever window is
-		 * under the pointer (if any).
-		 */
-		if (seat->container_drag &&
-		    seat->op.type == COW_POINTER_OP_MOVE &&
-		    view->container_member != NULL) {
-			/* Uncontainerise: detach, restore pre-container size,
-			 * place at pointer */
-			if (cow_wm.drag_drop_target != NULL) {
-				cow_wm.drag_drop_target->dec.dirty = true;
-				cow_wm.drag_drop_target		   = NULL;
-			}
-			int bw = view->dec.border_width;
-			int tt = view->dec.title_thickness;
-			/* cow_container_remove_view restores pre-container
-			 * dimensions */
-			cow_container_remove_view(view);
-			/* Use restored (proposed) size for centring on pointer
-			 */
-			int fw = (view->proposed_width > 0 ?
-					 view->proposed_width :
-					 view->content_width) +
-			    2 * bw;
-			int fh = (view->proposed_height > 0 ?
-					 view->proposed_height :
-					 view->content_height) +
-			    bw + tt + bw;
-			view->x		= seat->pointer_x - fw / 2 + bw;
-			view->y		= seat->pointer_y - fh / 2 + bw + tt;
-			view->dec.dirty = true;
-			cow_wm_request_manage_dirty();
-		} else if (seat->container_drag &&
-		    seat->op.type == COW_POINTER_OP_MOVE &&
-		    cow_wm.drag_drop_target != NULL &&
-		    !cow_wm.drag_drop_target->closed &&
-		    cow_wm.drag_drop_target != view) {
-			/* Containerise: group source with target */
-			struct cow_view *target = cow_wm.drag_drop_target;
-			cow_wm.drag_drop_target = NULL;
-			target->dec.dirty	= true;
-			if (target->container_member != NULL)
-				cow_container_add(
-				    target->container_member->container, view);
-			else
-				cow_container_create(target, view);
-		} else {
-			/* Normal drop: clear any lingering indicator */
-			if (cow_wm.drag_drop_target != NULL) {
-				cow_wm.drag_drop_target->dec.dirty = true;
-				cow_wm.drag_drop_target		   = NULL;
-			}
-		}
-		seat->container_drag	= false;
-		cow_wm.drag_drop_source = NULL;
-		cow_drag_ghost_destroy();
-
-		/* After move/resize, update the view's output assignment
-		 * based on where the window ended up. */
-		cow_view_update_output(view);
-
-		/* Restore titlebar visuals if this was a title drag */
-		if (seat->titlebar_press == COW_TITLEBAR_PRESS_TITLE &&
-		    seat->pressed_view != NULL && !seat->pressed_view->closed) {
-			seat->pressed_view->title_pressed = false;
-			seat->pressed_view->dec.dirty	  = true;
-		}
-		seat->titlebar_press = COW_TITLEBAR_PRESS_NONE;
-		seat->pressed_view   = NULL;
-
-		river_seat_v1_op_end(seat->river_seat);
-		seat->op_in_progress = false;
-		seat->op_released    = false;
-		seat->op.type	     = COW_POINTER_OP_NONE;
-	}
+	if (seat->op_released)
+		op_finalize(seat, view);
 }

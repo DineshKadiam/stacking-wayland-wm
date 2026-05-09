@@ -203,23 +203,6 @@ int cow_outputs_max_bottom(void);
 void cow_output_update_current(void);
 
 /*
- * Called from the manage cycle when edge_scroll is enabled.
- * Fires a page switch if the pointer has dwelt at an edge long enough.
- * pan_edge is set either by the pan frame wl_pointer listener (primary)
- * or by cow_output_pan_pointer_leave (fallback when no wl_layer_shell).
- */
-void cow_output_pan_frame_tick(struct cow_output *output);
-
-/*
- * Fallback proximity-based edge detection — only active when
- * wl_layer_shell is unavailable (pan frames cannot be created).
- * Called on River pointer_leave/enter events from seat.c.
- */
-void cow_output_pan_pointer_leave(int pointer_x, int pointer_y);
-void cow_output_pan_pointer_enter(void);
-void cow_output_pan_op_arm(int pointer_x, int pointer_y);
-
-/*
  * Pan frame management API lives in cow/pan_frames.h.
  */
 

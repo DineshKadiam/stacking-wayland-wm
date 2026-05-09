@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "cow/output.h"
+#include "cow/pan_frames.h"
 #include "cow/seat.h"
 
 #include <stdio.h>
