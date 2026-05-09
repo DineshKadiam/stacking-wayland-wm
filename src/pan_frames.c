@@ -622,8 +622,17 @@ pan_edge_for_pointer(const struct cow_output *output, int px, int py,
 	int cur_col = cow_page_col(output);
 	int cur_row = cow_page_row(output);
 
-	int v_l = px, v_r = px, v_t = py, v_b = py;
-	if (drag != NULL && drag->output == output)
+	/*
+	 * For a maximised (or fullscreen / shaded) view, the frame
+	 * already spans the usable area by definition; using its edges
+	 * for view-edge arming would arm a pan strip every manage cycle
+	 * regardless of user intent.  Fall back to cursor-only arming
+	 * for those cases.
+	 */
+	int  v_l = px, v_r = px, v_t = py, v_b = py;
+	bool consider_view = drag != NULL && drag->output == output &&
+	    !drag->maximized && !drag->fullscreen && drag->sd == COW_SHADE_NONE;
+	if (consider_view)
 		pan_view_frame(drag, &v_l, &v_t, &v_r, &v_b);
 	if (rows <= 0 || cols <= 0)
 		return (-1);
