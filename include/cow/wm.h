@@ -190,17 +190,17 @@ void cow_wm_request_manage_dirty(void);
  * sequence boundary.  Centralises the three places that previously
  * set pending_warp / warp_x / warp_y by hand.
  */
-void cow_wm_request_pointer_warp(int x, int y);
+void cow_wm_request_pointer_warp(int, int);
 
 /*
  * Signal handler for SIGTERM/SIGINT -- triggers clean shutdown.
  */
-void cow_wm_signal_handler(int sig);
+void cow_wm_signal_handler(int);
 
 /*
  * Signal handler for SIGUSR1 -- triggers a clean restart via execv().
  */
-void cow_wm_restart_handler(int sig);
+void cow_wm_restart_handler(int);
 
 /*
  * Set by SIGTERM/SIGINT handler; checked in the event loop.  When true,
@@ -218,6 +218,6 @@ extern volatile sig_atomic_t cow_wm_restart_requested;
  * Save state, release sockets, and execvp() the new cow process.
  * Does NOT tear down the River session.
  */
-void cow_wm_restart(char **argv);
+void cow_wm_restart(char **);
 
 #endif

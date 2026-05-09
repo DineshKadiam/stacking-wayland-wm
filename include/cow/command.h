@@ -16,6 +16,6 @@
 #if !defined(COW_COMMAND_H)
 #define COW_COMMAND_H
 
-void cow_command_execute(const char *cmd);
+void cow_command_execute(const char *);
 
 #endif

@@ -28,9 +28,9 @@
  * otherwise; *out is left untouched on the false path so the caller can
  * pre-seed it with a default.
  */
-bool cow_json_get_int(const cJSON *obj, const char *key, long long *out);
-bool cow_json_get_double(const cJSON *obj, const char *key, double *out);
-bool cow_json_get_bool(const cJSON *obj, const char *key, bool *out);
-bool cow_json_get_string(const cJSON *obj, const char *key, const char **out);
+bool cow_json_get_int(const cJSON *, const char *, long long *);
+bool cow_json_get_double(const cJSON *, const char *, double *);
+bool cow_json_get_bool(const cJSON *, const char *, bool *);
+bool cow_json_get_string(const cJSON *, const char *, const char **);
 
 #endif /* COW_JSON_UTIL_H */

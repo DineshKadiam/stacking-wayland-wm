@@ -45,24 +45,24 @@ struct cow_layer_shell_seat {
  * Initialize layer shell bindings for an output.
  * Binds river_layer_shell_v1.get_output to receive non_exclusive_area events.
  */
-void cow_layer_shell_init_output(struct cow_output *output);
+void cow_layer_shell_init_output(struct cow_output *);
 
 /*
  * Tear down the per-output layer-shell state and free the backing struct.
  * Safe to call on an output with no layer-shell state.
  */
-void cow_layer_shell_fini_output(struct cow_output *output);
+void cow_layer_shell_fini_output(struct cow_output *);
 
 /*
  * Initialize layer shell bindings for a seat.
  * Binds river_layer_shell_v1.get_seat to receive focus events.
  */
-void cow_layer_shell_init_seat(struct cow_seat *seat);
+void cow_layer_shell_init_seat(struct cow_seat *);
 
 /*
  * Tear down the per-seat layer-shell state and free the backing struct.
  * Safe to call on a seat with no layer-shell state.
  */
-void cow_layer_shell_fini_seat(struct cow_seat *seat);
+void cow_layer_shell_fini_seat(struct cow_seat *);
 
 #endif

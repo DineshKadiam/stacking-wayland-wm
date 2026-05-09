@@ -28,13 +28,12 @@ struct cow_box {
 	int width, height;
 };
 
-bool cow_box_contains_point(const struct cow_box *box, double px, double py);
-void cow_box_intersection(const struct cow_box *a, const struct cow_box *b,
-    struct cow_box *dest);
+bool cow_box_contains_point(const struct cow_box *, double, double);
+void cow_box_intersection(const struct cow_box *, const struct cow_box *, struct cow_box *);
 
 /*
  * Add {x, y, width, height} number fields for 'box' to 'obj'.
  */
-void cow_box_json_add(cJSON *obj, const struct cow_box *box);
+void cow_box_json_add(cJSON *, const struct cow_box *);
 
 #endif

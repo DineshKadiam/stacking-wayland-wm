@@ -29,7 +29,7 @@ struct cow_view;
 /*
  * Action callback.
  */
-typedef void (*cow_action_fn)(void *arg);
+typedef void (*cow_action_fn)(void *);
 
 /*
  * A key binding registered with river.
@@ -72,44 +72,41 @@ struct cow_pointer_binding {
 /*
  * Create a key binding for the given seat.
  */
-struct cow_keybinding *cow_keybinding_create(struct cow_seat *seat,
-    xkb_keysym_t keysym, uint32_t modifiers, cow_action_fn action,
-    void *action_arg);
+struct cow_keybinding *cow_keybinding_create(struct cow_seat *, xkb_keysym_t,
+    uint32_t, cow_action_fn, void *);
 
 /*
  * Create a pointer binding for the given seat.
  */
-struct cow_pointer_binding *cow_pointer_binding_create(struct cow_seat *seat,
-    uint32_t button, uint32_t modifiers, cow_action_fn action,
-    void *action_arg);
+struct cow_pointer_binding *cow_pointer_binding_create(struct cow_seat *,
+    uint32_t, uint32_t, cow_action_fn, void *);
 
 /*
  * Enable all keybindings and pointer bindings for a seat.
  * Must be called during a manage sequence.
  */
-void cow_seat_enable_all_bindings(struct cow_seat *seat);
+void cow_seat_enable_all_bindings(struct cow_seat *);
 
 /*
  * Process pending binding events during a manage sequence.
  */
-void cow_seat_process_bindings(struct cow_seat *seat);
+void cow_seat_process_bindings(struct cow_seat *);
 
 /*
  * Register the default set of keybindings for a seat.
  */
-void cow_seat_register_default_bindings(struct cow_seat *seat);
+void cow_seat_register_default_bindings(struct cow_seat *);
 
 /*
  * Resolve an action name string to a function pointer + argument.
  * Returns true if the action was found.
  */
-bool cow_resolve_action(const char *action_str, cow_action_fn *fn_out,
-    void **arg_out);
+bool cow_resolve_action(const char *, cow_action_fn *, void **);
 
 /*
  * Destroy all keybindings and pointer bindings for a seat.
  */
-void cow_seat_destroy_bindings(struct cow_seat *seat);
+void cow_seat_destroy_bindings(struct cow_seat *);
 
 /*
  * Teardown and re-register bindings on all seats from config.

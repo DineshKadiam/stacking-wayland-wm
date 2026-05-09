@@ -36,7 +36,7 @@ struct cow_view;
 /*
  * Compute titlebar thickness from a font.
  */
-int cow_titlebar_compute_thickness(struct cow_font *font);
+int cow_titlebar_compute_thickness(struct cow_font *);
 
 /*
  * Resolve the effective squeeze configuration for 'view'.
@@ -46,8 +46,7 @@ int cow_titlebar_compute_thickness(struct cow_font *font);
  * always resolve to COW_SQUEEZE_NONE -- squeeze and tab strips do
  * not compose cleanly.  Output is written into '*out'.
  */
-void cow_titlebar_effective_squeeze(const struct cow_view *view,
-    struct cow_titlebar_squeeze				  *out);
+void cow_titlebar_effective_squeeze(const struct cow_view *, struct cow_titlebar_squeeze *);
 
 /*
  * Return the rectangle, in the view's decoration-buffer coordinate
@@ -59,7 +58,7 @@ void cow_titlebar_effective_squeeze(const struct cow_view *view,
  * Safe to call on any view with title_thickness > 0; returns a
  * zero-size box if the view has no titlebar.
  */
-struct cow_box cow_titlebar_squeezed_rect(const struct cow_view *view);
+struct cow_box cow_titlebar_squeezed_rect(const struct cow_view *);
 
 /*
  * True if the point (lx, ly), in view-relative coordinates (i.e.
@@ -69,7 +68,7 @@ struct cow_box cow_titlebar_squeezed_rect(const struct cow_view *view);
  * check so that hits in the cleared strip fall through as the
  * user expects.
  */
-bool cow_titlebar_hit(const struct cow_view *view, int lx, int ly);
+bool cow_titlebar_hit(const struct cow_view *, int, int);
 
 /*
  * Render the titlebar (background + relief + text + vector buttons) directly
@@ -99,11 +98,6 @@ bool cow_titlebar_hit(const struct cow_view *view, int lx, int ly);
  * drop_target: when true, draw a highlight border on the title strip
  *              to indicate this window is the current drop target.
  */
-void cow_titlebar_render(uint32_t *pixels, int stride_px, int frame_w,
-    int border_width, struct cow_box tb_rect, const char *title, bool active,
-    struct cow_font *font, int pressed_button, int icon_inverted_button,
-    bool title_pressed, const float *style_colour, const float *style_fg,
-    bool sticky, const char **tab_titles, int n_tabs, int active_tab,
-    bool drop_target);
+void cow_titlebar_render(uint32_t *, int, int, int, struct cow_box, const char *, bool, struct cow_font *, int, int, bool, const float *, const float *, bool, const char **, int, int, bool);
 
 #endif

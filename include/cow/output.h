@@ -179,7 +179,7 @@ void cow_output_render_background(struct cow_output *);
 /*
  * Find the output that contains the given global coordinate.
  */
-struct cow_output *cow_output_at(int x, int y);
+struct cow_output *cow_output_at(int, int);
 
 /*
  * Find an output by its river_output_v1 pointer.

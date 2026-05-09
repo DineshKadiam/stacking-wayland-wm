@@ -255,71 +255,69 @@ struct cow_view {
  * Create a new view wrapper for the given river_window_v1.
  * Adds listeners and inserts into cow_wm.views.
  */
-struct cow_view *cow_view_create(struct river_window_v1 *river_window);
+struct cow_view *cow_view_create(struct river_window_v1 *);
 
 /*
  * Destroy a view wrapper.
  */
-void cow_view_destroy(struct cow_view *view);
+void cow_view_destroy(struct cow_view *);
 
 /*
  * Configure a new view: propose dimensions, set SSD, assign to desk.
  * Called during a manage sequence for newly created views.
  */
-void cow_view_configure(struct cow_view *view);
+void cow_view_configure(struct cow_view *);
 
 /*
  * Apply rendering state for a view during a render sequence:
  * get node, set position, show/hide, set up decorations.
  */
-void cow_view_apply_render(struct cow_view *view);
+void cow_view_apply_render(struct cow_view *);
 
 /*
  * Find a view by its river_window_v1 pointer.
  */
-struct cow_view *cow_view_find(struct river_window_v1 *river_window);
+struct cow_view *cow_view_find(struct river_window_v1 *);
 
 /*
  * Reassign a view to a different output.  Moves the view to the
  * target output's current desk.  Does nothing if already on that output.
  */
-void cow_view_reassign_output(struct cow_view *view, struct cow_output *output);
+void cow_view_reassign_output(struct cow_view *, struct cow_output *);
 
 /*
  * Update a view's output assignment based on its current position.
  * Called after move/drag to ensure the view belongs to the correct output.
  */
-void cow_view_update_output(struct cow_view *view);
+void cow_view_update_output(struct cow_view *);
 
 /*
  * Is this view visible on the given output's current desk?
  * A view is visible if it's on the current desk (or sticky)
  * and not iconified.
  */
-bool cow_view_visible(const struct cow_view *view,
-    const struct cow_output		    *output);
+bool cow_view_visible(const struct cow_view *, const struct cow_output *);
 
 /*
  * Is this view a valid focus/interaction target?
  */
-bool cow_view_focusable(const struct cow_view *v);
+bool cow_view_focusable(const struct cow_view *);
 
 /*
  * Save current geometry for later restore (maximize/expand undo).
  */
-void cow_view_save_geometry(struct cow_view *view);
+void cow_view_save_geometry(struct cow_view *);
 
 /*
  * Set pending geometry change (deferred to manage callback).
  * Also marks decoration dirty and requests a manage cycle.
  */
-void cow_view_set_pending_geometry(struct cow_view *view, int x, int y, int w,
-    int h);
+void cow_view_set_pending_geometry(struct cow_view *, int, int, int, int);
 
 /*
  * Compute the frame bounding box (border + titlebar + content).
  */
-struct cow_box cow_view_frame_box(const struct cow_view *v);
+struct cow_box cow_view_frame_box(const struct cow_view *);
 
 /*
  * Like cow_view_frame_box, but assume the view's top-left content
@@ -327,70 +325,66 @@ struct cow_box cow_view_frame_box(const struct cow_view *v);
  * computing a hypothetical post-move frame (e.g. clamp checks during
  * a drag) without mutating view->x/y.
  */
-struct cow_box cow_view_frame_box_at(const struct cow_view *v, int x, int y);
+struct cow_box cow_view_frame_box_at(const struct cow_view *, int, int);
 
 /*
  * Find a non-closed view by its persistent identifier string.
  * Returns NULL if no match.  Used by IPC and state-restore lookup
  * paths that previously open-coded the same loop.
  */
-struct cow_view *cow_view_find_by_identifier(const char *identifier);
+struct cow_view *cow_view_find_by_identifier(const char *);
 
 /*
  * Walk the view list circularly from start, returning the first
  * view matching pred.  Returns NULL if none found.
  */
-struct cow_view *cow_view_walk(struct cow_view *start, bool forward,
-    bool (*pred)(const struct cow_view *));
+struct cow_view *cow_view_walk(struct cow_view *, bool,
+    bool (*)(const struct cow_view *));
 
 /*
  * Maximize/unmaximize a view.
  */
 int  cow_view_maximize_button_index(void);
-void cow_view_maximize(struct cow_view *view);
-void cow_view_unmaximize(struct cow_view *view);
+void cow_view_maximize(struct cow_view *);
+void cow_view_unmaximize(struct cow_view *);
 
 /*
  * Shade/unshade a view.
  */
-void cow_view_shade(struct cow_view *view, int direction);
-void cow_view_unshade(struct cow_view *view);
+void cow_view_shade(struct cow_view *, int);
+void cow_view_unshade(struct cow_view *);
 
 /*
  * Fullscreen/unfullscreen a view.
  */
-void cow_view_fullscreen(struct cow_view *view);
-void cow_view_exit_fullscreen(struct cow_view *view);
+void cow_view_fullscreen(struct cow_view *);
+void cow_view_exit_fullscreen(struct cow_view *);
 
 /*
  * Iconify (minimize) a view -- hide the window and show a small
  * icon on the desktop.  Clicking the icon deiconifies.
  */
-void cow_view_iconify(struct cow_view *view);
-void cow_view_deiconify(struct cow_view *view);
+void cow_view_iconify(struct cow_view *);
+void cow_view_deiconify(struct cow_view *);
 
 /*
  * Render the icon surface for an iconified view.
  * Called during the render sequence.
  */
-void cow_view_icon_render(struct cow_view *view);
+void cow_view_icon_render(struct cow_view *);
 
 /*
  * Recompute icon positions for all iconified views on an output.
  */
-void cow_view_layout_icons_on_output(struct cow_output *output);
+void cow_view_layout_icons_on_output(struct cow_output *);
 
-static inline bool
-cow_view_is_iconified(const struct cow_view *view)
-{
-	return (view->flags & COW_VIEW_ICONIFIED_FLAG) != 0;
-}
+bool cow_view_is_iconified(const struct cow_view *);
 
 /*
  * Resolve the view's visual style from global config + matching rules.
  * Called when the view is created and when rules/config change.
  */
-void cow_view_resolve_style(struct cow_view *view);
+void cow_view_resolve_style(struct cow_view *);
 
 /* -----------------------------------------------------------------------
  * Container API
@@ -400,14 +394,14 @@ void cow_view_resolve_style(struct cow_view *view);
  * Create a new container from two uncontained views.
  * first_view becomes the active (visible) member.
  */
-struct cow_container *cow_container_create(struct cow_view *first_view,
-    struct cow_view					   *second_view);
+struct cow_container *cow_container_create(struct cow_view *,
+    struct cow_view *);
 
 /*
  * Add a view to an existing container.  The view must not already be
  * in a container.  Returns false if the view is already a member.
  */
-bool cow_container_add(struct cow_container *container, struct cow_view *view);
+bool cow_container_add(struct cow_container *, struct cow_view *);
 
 /*
  * Remove a view from its container.  If the container drops to one
@@ -415,63 +409,50 @@ bool cow_container_add(struct cow_container *container, struct cow_view *view);
  * The detached view is given a cascade-offset position relative to the
  * container.
  */
-void cow_container_remove_view(struct cow_view *view);
+void cow_container_remove_view(struct cow_view *);
 
 /*
  * Make member the active (visible) tab.  Destroys the old active
  * member's decoration and marks the new one dirty.
  */
-void cow_container_activate(struct cow_container *container,
-    struct cow_container_member			 *member);
+void cow_container_activate(struct cow_container *,
+    struct cow_container_member *);
 
 /*
  * Activate the next or previous tab in the container.
  */
-void cow_container_activate_next(struct cow_container *container);
-void cow_container_activate_prev(struct cow_container *container);
+void cow_container_activate_next(struct cow_container *);
+void cow_container_activate_prev(struct cow_container *);
 
 /*
  * Move the active tab one position to the right (next) or left (prev)
  * within the container's tab strip.  The tab remains active after the
  * swap.  No-ops if the tab is already at the respective end.
  */
-void cow_container_swap_next(struct cow_container *container);
-void cow_container_swap_prev(struct cow_container *container);
+void cow_container_swap_next(struct cow_container *);
+void cow_container_swap_prev(struct cow_container *);
 
 /*
  * Return the container that contains view, or NULL.
  */
-static inline struct cow_container *
-cow_view_container(const struct cow_view *view)
-{
-	if (view->container_member == NULL)
-		return NULL;
-	return view->container_member->container;
-}
+struct cow_container *cow_view_container(const struct cow_view *);
 
 /*
  * Return true if view is the active tab in its container.
  */
-static inline bool
-cow_view_is_active_tab(const struct cow_view *view)
-{
-	if (view->container_member == NULL)
-		return true; /* uncontained views are always "active" */
-	return view->container_member->container->active ==
-	    view->container_member;
-}
+bool cow_view_is_active_tab(const struct cow_view *);
 
 /*
  * Destroy a container and release all its members (detach, no cascade).
  * Called during WM shutdown.
  */
-void cow_container_destroy(struct cow_container *container);
+void cow_container_destroy(struct cow_container *);
 
 /*
  * Return true if view is the drop indicator target for a container drag.
  * The view's decoration will draw a highlight when this is set.
  */
-bool cow_view_is_drop_target(const struct cow_view *view);
+bool cow_view_is_drop_target(const struct cow_view *);
 
 /*
  * If view is in a container, propagate view->x/view->y to the container
@@ -479,7 +460,7 @@ bool cow_view_is_drop_target(const struct cow_view *view);
  * Must be called after any operation that changes a container member's
  * position (move, snap, centre, etc.).
  */
-void cow_view_sync_container_pos(struct cow_view *view);
+void cow_view_sync_container_pos(struct cow_view *);
 
 /*
  * Sync the container's full geometry (position AND dimensions) from the
@@ -488,8 +469,7 @@ void cow_view_sync_container_pos(struct cow_view *view);
  * so view->content_width/height are not yet updated.
  * Also queues pending_resize for all non-active members.
  */
-void cow_view_sync_container_geometry(struct cow_view *view, int x, int y,
-    int w, int h);
+void cow_view_sync_container_geometry(struct cow_view *, int, int, int, int);
 
 void cow_view_warp_to_focused(void);
 void cow_view_centre(const struct cow_view *, int *, int *);
@@ -497,14 +477,7 @@ void cow_view_centre(const struct cow_view *, int *, int *);
 /* Minimum content width/height for resize/clamp operations. */
 #define COW_MIN_WINDOW_DIM 50
 
-static inline void
-cow_clamp_dimensions(int *w, int *h)
-{
-	if (*w < COW_MIN_WINDOW_DIM)
-		*w = COW_MIN_WINDOW_DIM;
-	if (*h < COW_MIN_WINDOW_DIM)
-		*h = COW_MIN_WINDOW_DIM;
-}
+void cow_clamp_dimensions(int *, int *);
 
 /*
  * True if 'other' should be skipped during a snap/expand edge search
@@ -512,27 +485,20 @@ cow_clamp_dimensions(int *w, int *h)
  * same output.  Callers that also require the window to have received
  * dimensions should check !other->has_dimensions separately.
  */
-static inline bool
-cow_view_skip_for_expand(const struct cow_view *other,
-    const struct cow_view		       *self)
-{
-	return other == self || other->closed ||
-	    (other->flags & COW_VIEW_ICONIFIED_FLAG) ||
-	    other->output != self->output;
-}
+bool cow_view_skip_for_expand(const struct cow_view *, const struct cow_view *);
 
 /*
  * Synchronise view->vx/vy (virtual/page-relative) from view->x/y
  * (global compositor coordinates), using the view's output and desk
  * page viewport offset.  No-op if view->output or view->desk is NULL.
  */
-void cow_view_sync_vxy_from_global(struct cow_view *view);
+void cow_view_sync_vxy_from_global(struct cow_view *);
 
 /*
  * The inverse: compute view->x/y from view->vx/vy and the current
  * page viewport offset.  No-op if view->output or view->desk is NULL.
  */
-void cow_view_sync_global_from_vxy(struct cow_view *view);
+void cow_view_sync_global_from_vxy(struct cow_view *);
 
 /*
  * Restore a view to its saved (pre-maximise/pre-expand) geometry.
@@ -540,7 +506,7 @@ void cow_view_sync_global_from_vxy(struct cow_view *view);
  * coords, issues a pending-resize to saved_width/height, and clears
  * the maximized flag and the icon inverted-button indicator.
  */
-void cow_view_restore_saved_geometry(struct cow_view *view);
+void cow_view_restore_saved_geometry(struct cow_view *);
 
 /*
  * JSON serialisation helpers for view metadata.
@@ -551,8 +517,7 @@ void cow_view_restore_saved_geometry(struct cow_view *view);
  * _placement adds: desk, output
  */
 struct cJSON;
-void cow_view_json_add_identity(struct cJSON *obj, const struct cow_view *view);
-void cow_view_json_add_placement(struct cJSON *obj,
-    const struct cow_view		      *view);
+void cow_view_json_add_identity(struct cJSON *, const struct cow_view *);
+void cow_view_json_add_placement(struct cJSON *, const struct cow_view *);
 
 #endif

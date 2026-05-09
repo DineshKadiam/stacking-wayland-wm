@@ -41,8 +41,7 @@ long cow_mono_ms(void);
  *   path_cap size of path_out in bytes; must be >= sizeof(sockaddr_un.sun_path)
  *   backlog  listen() backlog (e.g. 16)
  */
-int cow_unix_listen(const char *name, char *path_out, size_t path_cap,
-    int backlog);
+int cow_unix_listen(const char *, char *, size_t, int);
 
 /*
  * Convenience macro: if 'p' is non-NULL, call 'fn(p)' and set p = NULL.

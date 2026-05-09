@@ -55,12 +55,12 @@ struct cow_view_decoration {
 /*
  * Initialize a view's decoration state.
  */
-void cow_decoration_init(struct cow_view_decoration *dec);
+void cow_decoration_init(struct cow_view_decoration *);
 
 /*
  * Free all decoration resources.
  */
-void cow_decoration_fini(struct cow_view_decoration *dec);
+void cow_decoration_fini(struct cow_view_decoration *);
 
 /*
  * Ensure the decoration surface exists, render the frame if dirty,
@@ -68,7 +68,7 @@ void cow_decoration_fini(struct cow_view_decoration *dec);
  *
  * `active` selects active or inactive border/titlebar colors.
  */
-void cow_decoration_update(struct cow_view *view, bool active);
+void cow_decoration_update(struct cow_view *, bool);
 
 /*
  * Return the shared titlebar font (lazily initialised from
@@ -83,6 +83,6 @@ struct cow_font *cow_decoration_titlebar_font(void);
  * back to view->title if the view has no identifier.  Caller must
  * xfree() the returned string.
  */
-char *cow_decoration_display_title(const struct cow_view *view);
+char *cow_decoration_display_title(const struct cow_view *);
 
 #endif

@@ -46,11 +46,11 @@ struct cow_shm_buffer {
  * Allocate an ARGB8888 shm buffer of the given dimensions.
  * Returns NULL on failure.
  */
-struct cow_shm_buffer *cow_shm_buffer_create(int width, int height);
+struct cow_shm_buffer *cow_shm_buffer_create(int, int);
 
 /*
  * Free the shm buffer and all associated resources.
  */
-void cow_shm_buffer_destroy(struct cow_shm_buffer *buf);
+void cow_shm_buffer_destroy(struct cow_shm_buffer *);
 
 #endif

@@ -19,23 +19,23 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-void cow_colour_convert(float dst[static 4], uint32_t colour);
+void cow_colour_convert(float[static 4], uint32_t);
 
-void cow_colour_lighten(float dst[static 4], const float src[static 4]);
+void cow_colour_lighten(float[static 4], const float[static 4]);
 
-void cow_colour_darken(float dst[static 4], const float src[static 4]);
+void cow_colour_darken(float[static 4], const float[static 4]);
 
 /*
  * Pack a float[4] RGBA colour to a uint32_t ARGB8888 pixel.
  */
-uint32_t cow_colour_to_pixel(const float colour[static 4]);
+uint32_t cow_colour_to_pixel(const float[static 4]);
 
 /*
  * Parse a colour literal (decimal, 0-prefixed octal or 0x-prefixed hex)
  * and store the unpacked RGBA components in out.  Returns true on
  * success, false if str contains no parseable digits.
  */
-bool cow_colour_parse(const char *str, float out[static 4]);
+bool cow_colour_parse(const char *, float[static 4]);
 
 /*
  * A "triple" of pre-packed pixels for a single base colour: the colour
@@ -48,8 +48,7 @@ struct cow_colour_triple {
 	uint32_t dk;
 };
 
-void cow_colour_make_triple(struct cow_colour_triple *out,
-    const float					      colour[static 4]);
+void cow_colour_make_triple(struct cow_colour_triple *, const float[static 4]);
 
 /*
  * Theme constants used by drop-target highlighting.  These are kept in

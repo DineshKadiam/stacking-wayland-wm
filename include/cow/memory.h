@@ -40,6 +40,6 @@ void log_fatal(const char *, ...) __attribute__((noreturn));
  * EAGAIN/EWOULDBLOCK are treated as errors -- callers using
  * non-blocking sockets must handle short writes themselves.
  */
-ssize_t cow_write_all(int fd, const void *buf, size_t len);
+ssize_t cow_write_all(int, const void *, size_t);
 
 #endif

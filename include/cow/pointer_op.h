@@ -62,19 +62,18 @@ struct cow_pointer_op {
  * Begin an interactive move of the given view.
  * Must be called during a manage sequence.
  */
-void cow_pointer_op_start_move(struct cow_seat *seat, struct cow_view *view);
+void cow_pointer_op_start_move(struct cow_seat *, struct cow_view *);
 
 /*
  * Begin an interactive resize of the given view.
  * Must be called during a manage sequence.
  */
-void cow_pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
-    uint32_t edges);
+void cow_pointer_op_start_resize(struct cow_seat *, struct cow_view *, uint32_t);
 
 /*
  * Process pointer operation state during a manage sequence.
  * Applies op_delta to the view's position/dimensions.
  */
-void cow_pointer_op_process(struct cow_seat *seat);
+void cow_pointer_op_process(struct cow_seat *);
 
 #endif

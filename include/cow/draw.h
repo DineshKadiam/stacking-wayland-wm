@@ -38,19 +38,16 @@ struct cow_pixbuf {
 #define COW_DRAW_TRANSPARENT_PX 0xFFFFFFFFu
 
 /* Horizontal line of 'colour' at row y, columns [x1, x2] inclusive. */
-void cow_draw_hline(struct cow_pixbuf *p, int x1, int x2, int y,
-    uint32_t colour);
+void cow_draw_hline(struct cow_pixbuf *, int, int, int, uint32_t);
 
 /* Vertical line of 'colour' at column x, rows [y1, y2] inclusive. */
-void cow_draw_vline(struct cow_pixbuf *p, int x, int y1, int y2,
-    uint32_t colour);
+void cow_draw_vline(struct cow_pixbuf *, int, int, int, uint32_t);
 
 /* Solid fill of [x, x+w) x [y, y+h). */
-void cow_draw_fill_rect(struct cow_pixbuf *p, int x, int y, int w, int h,
-    uint32_t colour);
+void cow_draw_fill_rect(struct cow_pixbuf *, int, int, int, int, uint32_t);
 
 /* Equivalent to cow_draw_fill_rect with colour=0 (transparent). */
-void cow_draw_clear_rect(struct cow_pixbuf *p, int x, int y, int w, int h);
+void cow_draw_clear_rect(struct cow_pixbuf *, int, int, int, int);
 
 /*
  * Per-edge bevel.  Draws a 'line_width' rectangular ring around
@@ -61,17 +58,13 @@ void cow_draw_clear_rect(struct cow_pixbuf *p, int x, int y, int w, int h);
  * corners are owned by ul_left/ul_top and the lower-right corners by
  * br_bot/br_right -- this matches FVWM-style relief.
  */
-void cow_draw_relieve_rect(struct cow_pixbuf *p, int x, int y, int w, int h,
-    int line_width, uint32_t ul_left, uint32_t ul_top, uint32_t br_bot,
-    uint32_t br_right);
+void cow_draw_relieve_rect(struct cow_pixbuf *, int, int, int, int, int, uint32_t, uint32_t, uint32_t, uint32_t);
 
 /*
  * Copy 'w' x 'h' pixels from src (with its own stride in pixels)
  * starting at (sx, sy) into dst at (dx, dy).  Pixels in src equal to
  * 'skip_px' are not written (used for the title-text composite).
  */
-void cow_draw_blit_skip(struct cow_pixbuf *dst, int dx, int dy,
-    const uint32_t *src, int src_stride_px, int sx, int sy, int w, int h,
-    uint32_t skip_px);
+void cow_draw_blit_skip(struct cow_pixbuf *, int, int, const uint32_t *, int, int, int, int, int, uint32_t);
 
 #endif /* COW_DRAW_H */

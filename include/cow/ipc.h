@@ -55,14 +55,14 @@ void cow_ipc_fini(void);
  * Add the IPC server and client fds to a poll array.
  * Returns the number of fds added.
  */
-int cow_ipc_fill_pollfds(struct pollfd *fds);
+int cow_ipc_fill_pollfds(struct pollfd *);
 
 /*
  * Process IPC events from poll results.
  * fds points to the IPC portion of the poll array (after the Wayland fd).
  * nfds is the count returned by cow_ipc_fill_pollfds.
  */
-void cow_ipc_process_events(struct pollfd *fds, int nfds);
+void cow_ipc_process_events(struct pollfd *, int);
 
 /*
  * Dispatch a single command line.
@@ -70,14 +70,14 @@ void cow_ipc_process_events(struct pollfd *fds, int nfds);
  * If client_fd < 0 (config file mode), log errors to stderr.
  * Returns true if the command was recognized.
  */
-bool cow_ipc_dispatch(const char *line, int client_fd);
+bool cow_ipc_dispatch(const char *, int);
 
 /*
  * Load a line-based config file by dispatching each line as a command.
  * Exec commands are deferred until cow_exec_run_deferred() is called.
  * Returns true on success.
  */
-bool cow_ipc_load_config(const char *path);
+bool cow_ipc_load_config(const char *);
 
 /*
  * Look up a command by name.  Returns NULL if not found.
@@ -87,8 +87,8 @@ bool cow_ipc_load_config(const char *path);
  */
 struct cJSON;
 
-void cow_ipc_respond(int fd, const char *json);
-void cow_ipc_respond_error(int fd, const char *msg);
-void cow_ipc_respond_data(int fd, struct cJSON *data);
+void cow_ipc_respond(int, const char *);
+void cow_ipc_respond_error(int, const char *);
+void cow_ipc_respond_data(int, struct cJSON *);
 
 #endif

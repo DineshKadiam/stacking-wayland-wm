@@ -101,23 +101,23 @@ struct cow_seat {
 /*
  * Create a new seat wrapper for the given river_seat_v1.
  */
-struct cow_seat *cow_seat_create(struct river_seat_v1 *river_seat);
+struct cow_seat *cow_seat_create(struct river_seat_v1 *);
 
 /*
  * Destroy a seat wrapper.
  */
-void cow_seat_destroy(struct cow_seat *seat);
+void cow_seat_destroy(struct cow_seat *);
 
 /*
  * Focus a window from this seat.
  * Must be called during a manage sequence.
  */
-void cow_seat_focus_view(struct cow_seat *seat, struct cow_view *view);
+void cow_seat_focus_view(struct cow_seat *, struct cow_view *);
 
 /*
  * Find a seat by its river_seat_v1 pointer.
  */
-struct cow_seat *cow_seat_find(struct river_seat_v1 *river_seat);
+struct cow_seat *cow_seat_find(struct river_seat_v1 *);
 
 /*
  * Return the first (primary) seat, or NULL if none.
@@ -128,7 +128,7 @@ struct cow_seat *cow_seat_primary(void);
  * Get the current pointer position from the first seat that has one.
  * Returns true if a position was found.
  */
-bool cow_seat_get_pointer(int *x, int *y);
+bool cow_seat_get_pointer(int *, int *);
 
 /*
  * Return the first seat with a known pointer position, or NULL.
@@ -142,6 +142,6 @@ struct cow_seat *cow_seat_first_with_pointer(void);
  * to river so its Window.destroy assert (no seat focuses this window)
  * can pass.
  */
-void cow_seat_forget_view(struct cow_seat *seat, struct cow_view *view);
+void cow_seat_forget_view(struct cow_seat *, struct cow_view *);
 
 #endif

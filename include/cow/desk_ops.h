@@ -29,14 +29,14 @@ struct cow_view;
  * Views on the current desk are hidden; views on the target desk
  * (and views with the STICKY flag) are shown.
  */
-void cow_desk_switch(struct cow_output *output, uint8_t desk_nr);
+void cow_desk_switch(struct cow_output *, uint8_t);
 
 /*
  * Assign the focused view to the given desk number.
  * The view is moved from its current desk to the target desk.
  * If the target desk is not the current desk, the view is hidden.
  */
-void cow_view_assign_desk(struct cow_view *view, uint8_t desk_nr);
+void cow_view_assign_desk(struct cow_view *, uint8_t);
 
 /*
  * Switch the current page on the given output to (col, row).
@@ -44,32 +44,32 @@ void cow_view_assign_desk(struct cow_view *view, uint8_t desk_nr);
  * Clamped silently if out of range.
  * Triggers a manage cycle; smooth animation is applied if configured.
  */
-void cow_page_switch(struct cow_output *output, int col, int row);
+void cow_page_switch(struct cow_output *, int, int);
 
 /*
  * Return the current page column/row for the given output's current desk.
  */
-int cow_page_col(const struct cow_output *output);
-int cow_page_row(const struct cow_output *output);
+int cow_page_col(const struct cow_output *);
+int cow_page_row(const struct cow_output *);
 
 /*
  * Move view->vx/vy so the window lives on page (col, row) of its output,
  * preserving its within-page position.
  * Triggers a manage cycle and re-renders the view.
  */
-void cow_view_move_to_page(struct cow_view *view, int col, int row);
+void cow_view_move_to_page(struct cow_view *, int, int);
 
 /*
  * Clamp any views whose vx/vy fall outside the current page grid.
  * Called after desktop_size is reduced.
  */
-void cow_page_clamp_views(struct cow_output *output);
+void cow_page_clamp_views(struct cow_output *);
 
 /*
  * Advance the smooth page scroll animation for one output.
  * Returns true while the animation is in progress; the caller should
  * keep the manage cycle running until this returns false.
  */
-bool cow_page_scroll_tick(struct cow_output *output);
+bool cow_page_scroll_tick(struct cow_output *);
 
 #endif

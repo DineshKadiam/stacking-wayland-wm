@@ -137,14 +137,14 @@ struct cow_titlebar_squeeze {
  * Returns true on success; false (and leaves 'out' untouched) on any
  * other input.
  */
-bool cow_parse_squeeze_mode(const char *s, enum cow_squeeze_mode *out);
+bool cow_parse_squeeze_mode(const char *, enum cow_squeeze_mode *);
 
 /*
  * Parse a squeeze justify token ("left"/"centre"/"center"/"right")
  * into 'out'.  Returns true on success; false (and leaves 'out'
  * untouched) on any other input.
  */
-bool cow_parse_squeeze_just(const char *s, enum cow_squeeze_just *out);
+bool cow_parse_squeeze_just(const char *, enum cow_squeeze_just *);
 
 /*
  * Titlebar button config.
@@ -342,8 +342,7 @@ extern struct cow_config *cow_config;
  * Parse a vector button definition string.
  * Format: "N x1xy1@c1 x2xy2@c2 ..."
  */
-bool cow_parse_vector_button_string(struct cow_vector_button *vb,
-    const char						     *str);
+bool cow_parse_vector_button_string(struct cow_vector_button *, const char *);
 
 /*
  * Allocate and initialize a config with defaults.
@@ -353,7 +352,7 @@ struct cow_config *cow_config_create(void);
 /*
  * Free a config and all its lists.
  */
-void cow_config_destroy(struct cow_config *config);
+void cow_config_destroy(struct cow_config *);
 
 /*
  * Resolve the default config file path.
@@ -365,13 +364,11 @@ const char *cow_config_default_path(void);
 /*
  * Find a view config entry by app_id. Returns NULL if not found.
  */
-struct cow_view_config_entry *cow_config_find_view(struct cow_config *config,
-    const char *app_id, const char *title, struct cow_output *output,
-    struct cow_desk *desk);
+struct cow_view_config_entry *cow_config_find_view(struct cow_config *, const char *, const char *, struct cow_output *, struct cow_desk *);
 
 /*
  * Find an action entry by name. Returns the command string, or NULL.
  */
-const char *cow_config_find_action(struct cow_config *config, const char *name);
+const char *cow_config_find_action(struct cow_config *, const char *);
 
 #endif

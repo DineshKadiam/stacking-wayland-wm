@@ -1791,9 +1791,50 @@ cow_container_destroy(struct cow_container *c)
 }
 
 bool
+cow_view_is_iconified(const struct cow_view *view)
+{
+	return (view->flags & COW_VIEW_ICONIFIED_FLAG) != 0;
+}
+
+struct cow_container *
+cow_view_container(const struct cow_view *view)
+{
+	if (view->container_member == NULL)
+		return NULL;
+	return view->container_member->container;
+}
+
+bool
+cow_view_is_active_tab(const struct cow_view *view)
+{
+	if (view->container_member == NULL)
+		return true; /* uncontained views are always "active" */
+	return view->container_member->container->active ==
+	    view->container_member;
+}
+
+bool
 cow_view_is_drop_target(const struct cow_view *view)
 {
 	return cow_wm.drag_drop_target == view;
+}
+
+void
+cow_clamp_dimensions(int *w, int *h)
+{
+	if (*w < COW_MIN_WINDOW_DIM)
+		*w = COW_MIN_WINDOW_DIM;
+	if (*h < COW_MIN_WINDOW_DIM)
+		*h = COW_MIN_WINDOW_DIM;
+}
+
+bool
+cow_view_skip_for_expand(const struct cow_view *other,
+    const struct cow_view		       *self)
+{
+	return other == self || other->closed ||
+	    (other->flags & COW_VIEW_ICONIFIED_FLAG) ||
+	    other->output != self->output;
 }
 
 void

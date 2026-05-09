@@ -65,7 +65,7 @@ enum cow_direction {
  * Parse a direction token ("up"/"down"/"left"/"right").
  * Returns COW_DIR_NONE on any other input (including NULL).
  */
-enum cow_direction cow_parse_direction(const char *s);
+enum cow_direction cow_parse_direction(const char *);
 
 /*
  * Parse a boolean from a config/command value.
@@ -74,7 +74,7 @@ enum cow_direction cow_parse_direction(const char *s);
  * Returns true on success; on any other input *out is untouched
  * and the return is false.  NULL input also returns false.
  */
-bool cmd_parse_bool(const char *s, bool *out);
+bool cmd_parse_bool(const char *, bool *);
 
 /*
  * Resolve the target window from cmdq or emit a canonical error.
@@ -82,8 +82,7 @@ bool cmd_parse_bool(const char *s, bool *out);
  * has already reported via cmdq_error) if there is no usable
  * target, which the caller should translate to CMD_RETURN_ERROR.
  */
-struct cow_view *cmd_require_target_window(struct cmd_q *cmdq,
-    const char						*cmd_name);
+struct cow_view *cmd_require_target_window(struct cmd_q *, const char *);
 
 /*
  * Resolved command context.  Produced by parsing a specifier string
@@ -120,7 +119,7 @@ struct cmd_ctx {
  *
  * Returns true on success.  On failure, sets *cause and returns false.
  */
-bool cmd_ctx_parse(const char *spec, struct cmd_ctx *ctx, char **cause);
+bool cmd_ctx_parse(const char *, struct cmd_ctx *, char **);
 
 /* Forward declarations. */
 struct cmd;
@@ -201,38 +200,35 @@ extern struct causelist cfg_causes;
  * Convenience: get the target window from a cmd_q, falling back
  * to the focused view if no -t was specified.
  */
-struct cow_view *cmd_ctx_target_window(struct cmd_q *cmdq);
+struct cow_view *cmd_ctx_target_window(struct cmd_q *);
 
 /*
  * Convenience: get the target output, falling back to current.
  */
-struct cow_output *cmd_ctx_target_output(struct cmd_q *cmdq);
+struct cow_output *cmd_ctx_target_output(struct cmd_q *);
 
 /*
  * Convenience: get the target desk, falling back to current.
  */
-struct cow_desk *cmd_ctx_target_desk(struct cmd_q *cmdq);
+struct cow_desk *cmd_ctx_target_desk(struct cmd_q *);
 
 /*
  * Like cmd_require_target_window, but resolve from the source (-s)
  * specifier rather than the target (-t).
  */
-struct cow_view *cmd_require_source_window(struct cmd_q *cmdq,
-    const char						*cmd_name);
+struct cow_view *cmd_require_source_window(struct cmd_q *, const char *);
 
 /*
  * Resolve the target output (or current) from cmdq.  Emits a canonical
  * error and returns NULL when no usable output exists.
  */
-struct cow_output *cmd_require_target_output(struct cmd_q *cmdq,
-    const char						  *cmd_name);
+struct cow_output *cmd_require_target_output(struct cmd_q *, const char *);
 
 /*
  * Resolve the target desk (or current) from cmdq.  Emits a canonical
  * error and returns NULL when no usable desk exists.
  */
-struct cow_desk *cmd_require_target_desk(struct cmd_q *cmdq,
-    const char					      *cmd_name);
+struct cow_desk *cmd_require_target_desk(struct cmd_q *, const char *);
 
 /*
  * Parse an integer in [lo, hi] from 'val'.  On success, *out is set
@@ -240,8 +236,7 @@ struct cow_desk *cmd_require_target_desk(struct cmd_q *cmdq,
  * "<cmd_name>: <field>: bad value: <val>" error via cmdq_error and
  * returns false (leaving *out untouched).
  */
-bool cmd_parse_int(struct cmd_q *cmdq, const char *cmd_name, const char *field,
-    const char *val, long long lo, long long hi, long long *out);
+bool cmd_parse_int(struct cmd_q *, const char *, const char *, const char *, long long, long long, long long *);
 
 /*
  * Combined args lookup + integer parse.  If the flag is absent, returns
@@ -249,36 +244,34 @@ bool cmd_parse_int(struct cmd_q *cmdq, const char *cmd_name, const char *field,
  * If present but malformed, emits the canonical error and returns
  * false.  On success, returns true.
  */
-bool cmd_args_int(struct cmd_q *cmdq, const char *cmd_name, struct args *args,
-    u_char flag, long long lo, long long hi, long long *out);
+bool cmd_args_int(struct cmd_q *, const char *, struct args *, u_char, long long, long long, long long *);
 
 /*
  * Resolve a direction-flag.  If 'required' is true and the flag is
  * absent, emits the canonical error.  Returns COW_DIR_NONE on absence
  * or parse failure (and emits an error in the failure case).
  */
-enum cow_direction cmd_args_direction(struct cmd_q *cmdq, const char *cmd_name,
-    struct args *args, u_char flag, bool required);
+enum cow_direction cmd_args_direction(struct cmd_q *, const char *, struct args *, u_char, bool);
 
 /*
  * Mark a view as needing visual + manage refresh.  Combines
  * "view->dec.dirty = true" with cow_wm.needs_manage_dirty = true so
  * that the two flags don't drift apart.
  */
-void cmd_view_dirty(struct cow_view *view);
+void cmd_view_dirty(struct cow_view *);
 
 /*
  * Send a JSON response for the cmdq's IPC client.  No-op if the cmdq
  * has no client (config-file context, client_fd == -1).  Takes
  * ownership of the cJSON object (it will be deleted after sending).
  */
-void cmdq_respond_data(struct cmd_q *cmdq, struct cJSON *data);
+void cmdq_respond_data(struct cmd_q *, struct cJSON *);
 
 /*
  * Send a textual error response for the cmdq's IPC client.  No-op if
  * the cmdq has no client.
  */
-void cmdq_respond_error(struct cmd_q *cmdq, const char *msg);
+void cmdq_respond_error(struct cmd_q *, const char *);
 
 extern struct cmd_entry *cmd_table[];
 

@@ -25,15 +25,15 @@ struct cow_font {
 	int character_width;
 };
 
-void cow_font_init(struct cow_font *font, const char *font_name);
+void cow_font_init(struct cow_font *, const char *);
 
-void cow_font_fini(struct cow_font *font);
+void cow_font_fini(struct cow_font *);
 
 /*
  * Return the pango-rendered pixel width of 'text' in 'font'.
  * Returns 0 if text is NULL or empty.
  */
-int cow_font_text_width(struct cow_font *font, const char *text);
+int cow_font_text_width(struct cow_font *, const char *);
 
 /*
  * Render 'text' centred (with end-ellipsis) inside a w x h temporary
@@ -49,8 +49,6 @@ int cow_font_text_width(struct cow_font *font, const char *text);
  * No-op if any of: dst NULL, font NULL, w <= 0, h <= 0, text NULL.
  */
 struct cow_pixbuf;
-void cow_font_render_label(struct cow_pixbuf *dst, int dx, int dy, int w, int h,
-    struct cow_font *font, const char *text, const float bg[4],
-    const float fg[4], int reserve_px, int *out_text_w);
+void cow_font_render_label(struct cow_pixbuf *, int, int, int, int, struct cow_font *, const char *, const float[4], const float[4], int, int *);
 
 #endif

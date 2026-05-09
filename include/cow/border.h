@@ -35,8 +35,6 @@ struct cow_border_colour;
  * The buffer is cleared to transparent and the full frame ring with
  * relief and handle marks is rendered.
  */
-void cow_border_style_render(uint32_t *pixels, int stride_px, int frame_w,
-    int frame_h, const struct cow_border_colour *colors, int border_width,
-    int corner_length, int style);
+void cow_border_style_render(uint32_t *, int, int, int, const struct cow_border_colour *, int, int, int);
 
 #endif
