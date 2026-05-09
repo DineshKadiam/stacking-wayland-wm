@@ -35,4 +35,22 @@ void cow_font_fini(struct cow_font *font);
  */
 int cow_font_text_width(struct cow_font *font, const char *text);
 
+/*
+ * Render 'text' centred (with end-ellipsis) inside a w x h temporary
+ * ARGB32 surface filled with 'bg', then composite the resulting glyphs
+ * into 'dst' starting at (dx, dy).  Pixels with alpha=0 in the
+ * intermediate surface are skipped, and the 'reserve_px' border of dst
+ * (where the bevel sits) is preserved.
+ *
+ * Sets *out_text_w (when non-NULL) to the pixel-width pango actually
+ * rendered, useful for callers that need to know how much horizontal
+ * space the glyphs occupied.
+ *
+ * No-op if any of: dst NULL, font NULL, w <= 0, h <= 0, text NULL.
+ */
+struct cow_pixbuf;
+void cow_font_render_label(struct cow_pixbuf *dst, int dx, int dy, int w, int h,
+    struct cow_font *font, const char *text, const float bg[4],
+    const float fg[4], int reserve_px, int *out_text_w);
+
 #endif

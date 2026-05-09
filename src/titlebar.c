@@ -16,6 +16,7 @@
 #include "cow/titlebar.h"
 
 #include <fnmatch.h>
+#include <limits.h>
 #include <string.h>
 
 #include <cairo.h>
@@ -25,6 +26,7 @@
 #include "cow/compat.h"
 #include "cow/config.h"
 #include "cow/decoration.h"
+#include "cow/draw.h"
 #include "cow/font.h"
 #include "cow/memory.h"
 #include "cow/output.h"
@@ -277,22 +279,32 @@ static void
 draw_fvwm_relief(uint32_t *pixels, int stride, int rx, int ry, int rw, int rh,
     uint32_t px_lt, uint32_t px_dk, bool sunken)
 {
+	/*
+	 * FVWM-style 2px bevel.  Note that the corner ownership rule
+	 * differs from cow_draw_relieve_rect: here the bottom edge
+	 * overdraws the upper-left ring at the bottom-left, and the
+	 * right edge overdraws at the top-right; effectively each ring
+	 * paints all four edges and corners go to whichever direction
+	 * is drawn last.  We paint via cow_pixbuf so off-canvas
+	 * coordinates are clipped consistently with the rest of the
+	 * decoration code.
+	 */
+	struct cow_pixbuf p = {
+		.pixels	   = pixels,
+		.stride_px = stride,
+		.width	   = INT_MAX,
+		.height	   = INT_MAX,
+	};
 	uint32_t ul = sunken ? px_dk : px_lt;
 	uint32_t br = sunken ? px_lt : px_dk;
 
 	for (int r = 0; r < 2 && r < rw / 2 && r < rh / 2; r++) {
-		/* Top edge */
-		for (int x = rx + r; x < rx + rw - r; x++)
-			pixels[(ry + r) * stride + x] = ul;
-		/* Left edge */
-		for (int y = ry + r; y < ry + rh - r; y++)
-			pixels[y * stride + (rx + r)] = ul;
-		/* Bottom edge */
-		for (int x = rx + r; x < rx + rw - r; x++)
-			pixels[(ry + rh - 1 - r) * stride + x] = br;
-		/* Right edge */
-		for (int y = ry + r; y < ry + rh - r; y++)
-			pixels[y * stride + (rx + rw - 1 - r)] = br;
+		cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + r, ul);
+		cow_draw_vline(&p, rx + r, ry + r, ry + rh - 1 - r, ul);
+		cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + rh - 1 - r,
+		    br);
+		cow_draw_vline(&p, rx + rw - 1 - r, ry + r, ry + rh - 1 - r,
+		    br);
 	}
 }
 
@@ -364,19 +376,16 @@ cow_titlebar_render(uint32_t *pixels, int stride_px, int frame_w,
 	if (tb_w <= 0 || strip_w <= 0)
 		return;
 
-	/* Clear the full-width strip to transparent ... */
-	for (int y = strip_y; y < strip_y + tb_h; y++) {
-		for (int x = strip_x; x < strip_x + strip_w; x++) {
-			pixels[y * stride_px + x] = 0;
-		}
-	}
-
-	/* ... then fill only the squeezed rect with the base colour. */
-	for (int y = tb_y; y < tb_y + tb_h; y++) {
-		for (int x = tb_x; x < tb_x + tb_w; x++) {
-			pixels[y * stride_px + x] = px_base;
-		}
-	}
+	/* Clear the full-width strip to transparent, then fill only the
+	 * squeezed rect with the base colour. */
+	struct cow_pixbuf strip_p = {
+		.pixels	   = pixels,
+		.stride_px = stride_px,
+		.width	   = INT_MAX,
+		.height	   = INT_MAX,
+	};
+	cow_draw_clear_rect(&strip_p, strip_x, strip_y, strip_w, tb_h);
+	cow_draw_fill_rect(&strip_p, tb_x, tb_y, tb_w, tb_h, px_base);
 
 	/* Button size = titlebar height */
 	int btn_s      = tb_h;
@@ -496,60 +505,14 @@ cow_titlebar_render(uint32_t *pixels, int stride_px, int frame_w,
 
 	/* Render title text with cairo/pango */
 	if (title != NULL && title_w > 4 && font != NULL) {
-		int text_inset = 2 + COW_TITLEBAR_PADDING;
-
-		cairo_surface_t *surface = cairo_image_surface_create(
-		    CAIRO_FORMAT_ARGB32, title_w, tb_h);
-		cairo_t *cr = cairo_create(surface);
-
-		/* Fill with base colour */
-		cairo_set_source_rgba(cr, base[0], base[1], base[2], base[3]);
-		cairo_paint(cr);
-
-		/* Render text */
-		PangoLayout *layout = pango_cairo_create_layout(cr);
-		pango_layout_set_font_description(layout, font->desc);
-		pango_layout_set_text(layout, title, -1);
-
-		int avail_w = title_w - 2 * text_inset;
-		if (avail_w > 0)
-			pango_layout_set_width(layout, avail_w * PANGO_SCALE);
-		pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
-		pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
-
-		int text_w, text_h;
-		pango_layout_get_pixel_size(layout, &text_w, &text_h);
-		rendered_text_w = text_w;
-		int text_y	= (tb_h - text_h) / 2;
-		if (text_y < 0)
-			text_y = 0;
-
-		cairo_move_to(cr, text_inset, text_y);
-		cairo_set_source_rgba(cr, fg[0], fg[1], fg[2], fg[3]);
-		pango_cairo_show_layout(cr, layout);
-
-		g_object_unref(layout);
-		cairo_surface_flush(surface);
-
-		/* Copy rendered text into the frame buffer, preserving 2px
-		 * relief */
-		unsigned char *sdata = cairo_image_surface_get_data(surface);
-		int sstride = cairo_image_surface_get_stride(surface) / 4;
-		int relief  = 2;
-
-		for (int py = relief; py < tb_h - relief; py++) {
-			for (int px = relief; px < title_w - relief; px++) {
-				uint32_t c = ((
-				    uint32_t *)sdata)[py * sstride + px];
-				if ((c & 0xFF000000) != 0) {
-					pixels[(tb_y + py) * stride_px +
-					    (title_x + px)] = c;
-				}
-			}
-		}
-
-		cairo_destroy(cr);
-		cairo_surface_destroy(surface);
+		struct cow_pixbuf dst = {
+			.pixels	   = pixels,
+			.stride_px = stride_px,
+			.width	   = INT_MAX,
+			.height	   = INT_MAX,
+		};
+		cow_font_render_label(&dst, title_x, tb_y, title_w, tb_h, font,
+		    title, base, fg, COW_TITLEBAR_PADDING, &rendered_text_w);
 	}
 
 	/* Draw stipple for sticky windows in the empty areas
@@ -652,17 +615,15 @@ cow_titlebar_render(uint32_t *pixels, int stride_px, int frame_w,
 		    sizeof(float) * 4);
 
 		/* Pre-compute bevel colours for active and inactive tabs */
-		float act_lt[4], act_dk[4], inact_lt[4], inact_dk[4];
-		cow_colour_lighten(act_lt, tab_active_f);
-		cow_colour_darken(act_dk, tab_active_f);
-		cow_colour_lighten(inact_lt, tab_inactive_f);
-		cow_colour_darken(inact_dk, tab_inactive_f);
-		uint32_t px_act	     = cow_colour_to_pixel(tab_active_f);
-		uint32_t px_inact    = cow_colour_to_pixel(tab_inactive_f);
-		uint32_t px_act_lt   = cow_colour_to_pixel(act_lt);
-		uint32_t px_act_dk   = cow_colour_to_pixel(act_dk);
-		uint32_t px_inact_lt = cow_colour_to_pixel(inact_lt);
-		uint32_t px_inact_dk = cow_colour_to_pixel(inact_dk);
+		struct cow_colour_triple act_t, inact_t;
+		cow_colour_make_triple(&act_t, tab_active_f);
+		cow_colour_make_triple(&inact_t, tab_inactive_f);
+		uint32_t px_act	     = act_t.base;
+		uint32_t px_inact    = inact_t.base;
+		uint32_t px_act_lt   = act_t.lt;
+		uint32_t px_act_dk   = act_t.dk;
+		uint32_t px_inact_lt = inact_t.lt;
+		uint32_t px_inact_dk = inact_t.dk;
 
 		int tab_w = title_w / n_tabs;
 		if (tab_w < 1)
@@ -700,56 +661,15 @@ cow_titlebar_render(uint32_t *pixels, int stride_px, int frame_w,
 			/* Tab label text */
 			const char *lbl = tab_titles[ti];
 			if (lbl != NULL && tw > 6 && font != NULL) {
-				int text_inset = 2 + COW_TITLEBAR_PADDING;
-				cairo_surface_t *ts =
-				    cairo_image_surface_create(
-					CAIRO_FORMAT_ARGB32, tw, tb_h);
-				cairo_t *tcr = cairo_create(ts);
-				cairo_set_source_rgba(tcr, tab_bg_f[0],
-				    tab_bg_f[1], tab_bg_f[2], tab_bg_f[3]);
-				cairo_paint(tcr);
-
-				PangoLayout *tl = pango_cairo_create_layout(
-				    tcr);
-				pango_layout_set_font_description(tl,
-				    font->desc);
-				pango_layout_set_text(tl, lbl, -1);
-				int avail = tw - 2 * text_inset;
-				if (avail > 0)
-					pango_layout_set_width(tl,
-					    avail * PANGO_SCALE);
-				pango_layout_set_ellipsize(tl,
-				    PANGO_ELLIPSIZE_END);
-				pango_layout_set_alignment(tl,
-				    PANGO_ALIGN_CENTER);
-				int tw2, th2;
-				pango_layout_get_pixel_size(tl, &tw2, &th2);
-				int ty2 = (tb_h - th2) / 2;
-				if (ty2 < 0)
-					ty2 = 0;
-				cairo_move_to(tcr, text_inset, ty2);
-				cairo_set_source_rgba(tcr, tab_fg[0], tab_fg[1],
-				    tab_fg[2], tab_fg[3]);
-				pango_cairo_show_layout(tcr, tl);
-				g_object_unref(tl);
-				cairo_surface_flush(ts);
-
-				unsigned char *sd2 =
-				    cairo_image_surface_get_data(ts);
-				int ss2 = cairo_image_surface_get_stride(ts) /
-				    4;
-				for (int py = 2; py < tb_h - 2; py++) {
-					for (int px2 = 2; px2 < tw - 2; px2++) {
-						uint32_t c = ((uint32_t *)
-							sd2)[py * ss2 + px2];
-						if ((c & 0xFF000000) != 0)
-							pixels[(tb_y + py) *
-								stride_px +
-							    (tx + px2)] = c;
-					}
-				}
-				cairo_destroy(tcr);
-				cairo_surface_destroy(ts);
+				struct cow_pixbuf dst = {
+					.pixels	   = pixels,
+					.stride_px = stride_px,
+					.width	   = INT_MAX,
+					.height	   = INT_MAX,
+				};
+				cow_font_render_label(&dst, tx, tb_y, tw, tb_h,
+				    font, lbl, tab_bg_f, tab_fg,
+				    COW_TITLEBAR_PADDING, NULL);
 			}
 		}
 	} else {
@@ -767,20 +687,15 @@ cow_titlebar_render(uint32_t *pixels, int stride_px, int frame_w,
 	 * containerise the two windows.
 	 */
 	if (drop_target) {
-		/* Use a bright accent colour — white with an orange tinge */
-		uint32_t px_hi = 0xFFFF8800u;
-		int	 x0 = tb_x, y0 = tb_y, w0 = tb_w, h0 = tb_h;
-		for (int r = 0; r < 2 && r < w0 / 2 && r < h0 / 2; r++) {
-			for (int x = x0 + r; x < x0 + w0 - r; x++) {
-				pixels[(y0 + r) * stride_px + x] = px_hi;
-				pixels[(y0 + h0 - 1 - r) * stride_px + x] =
-				    px_hi;
-			}
-			for (int y = y0 + r; y < y0 + h0 - r; y++) {
-				pixels[y * stride_px + (x0 + r)] = px_hi;
-				pixels[y * stride_px + (x0 + w0 - 1 - r)] =
-				    px_hi;
-			}
-		}
+		/* Bright accent ring (project-wide drop-target orange). */
+		uint32_t px_hi = cow_colour_to_pixel(COW_COLOUR_DROP_ORANGE);
+		struct cow_pixbuf p = {
+			.pixels	   = pixels,
+			.stride_px = stride_px,
+			.width	   = INT_MAX,
+			.height	   = INT_MAX,
+		};
+		cow_draw_relieve_rect(&p, tb_x, tb_y, tb_w, tb_h, 2, px_hi,
+		    px_hi, px_hi, px_hi);
 	}
 }

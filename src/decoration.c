@@ -529,15 +529,22 @@ cow_decoration_update(struct cow_view *view, bool active)
 		bool is_drop_target = cow_view_is_drop_target(view);
 		struct cow_border_colour drop_bc;
 		if (is_drop_target) {
-			float orange[4] = { 1.0f, 0.53f, 0.0f, 1.0f };
-			memcpy(drop_bc.n, orange, sizeof(float) * 4);
-			memcpy(drop_bc.s, orange, sizeof(float) * 4);
-			memcpy(drop_bc.e, orange, sizeof(float) * 4);
-			memcpy(drop_bc.w, orange, sizeof(float) * 4);
-			memcpy(drop_bc.nw, orange, sizeof(float) * 4);
-			memcpy(drop_bc.ne, orange, sizeof(float) * 4);
-			memcpy(drop_bc.sw, orange, sizeof(float) * 4);
-			memcpy(drop_bc.se, orange, sizeof(float) * 4);
+			memcpy(drop_bc.n, COW_COLOUR_DROP_ORANGE,
+			    sizeof(float) * 4);
+			memcpy(drop_bc.s, COW_COLOUR_DROP_ORANGE,
+			    sizeof(float) * 4);
+			memcpy(drop_bc.e, COW_COLOUR_DROP_ORANGE,
+			    sizeof(float) * 4);
+			memcpy(drop_bc.w, COW_COLOUR_DROP_ORANGE,
+			    sizeof(float) * 4);
+			memcpy(drop_bc.nw, COW_COLOUR_DROP_ORANGE,
+			    sizeof(float) * 4);
+			memcpy(drop_bc.ne, COW_COLOUR_DROP_ORANGE,
+			    sizeof(float) * 4);
+			memcpy(drop_bc.sw, COW_COLOUR_DROP_ORANGE,
+			    sizeof(float) * 4);
+			memcpy(drop_bc.se, COW_COLOUR_DROP_ORANGE,
+			    sizeof(float) * 4);
 			drop_bc.has_nw = drop_bc.has_ne = true;
 			drop_bc.has_sw = drop_bc.has_se = true;
 			drop_bc.has_corners		= true;
@@ -571,12 +578,8 @@ cow_decoration_update(struct cow_view *view, bool active)
 			/* Override titlebar to orange when this is a drop
 			 * target */
 			if (is_drop_target) {
-				static float orange[4] = { 1.0f, 0.53f, 0.0f,
-					1.0f };
-				static float white[4]  = { 1.0f, 1.0f, 1.0f,
-					 1.0f };
-				tb_colour	       = orange;
-				tb_fg		       = white;
+				tb_colour = (float *)COW_COLOUR_DROP_ORANGE;
+				tb_fg	  = (float *)COW_COLOUR_WHITE;
 			}
 
 			/* Build tab info if this view is in a container */

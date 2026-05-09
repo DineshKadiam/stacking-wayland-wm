@@ -19,6 +19,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "cow/draw.h"
+
 static void
 font_metrics(struct cow_font *font, const char *text, int *width, int *height)
 {
@@ -75,4 +77,76 @@ cow_font_text_width(struct cow_font *font, const char *text)
 		return 0;
 	font_metrics(font, text, &w, &h);
 	return w;
+}
+
+void
+cow_font_render_label(struct cow_pixbuf *dst, int dx, int dy, int w, int h,
+    struct cow_font *font, const char *text, const float bg[4],
+    const float fg[4], int reserve_px, int *out_text_w)
+{
+	if (out_text_w != NULL)
+		*out_text_w = 0;
+	if (dst == NULL || dst->pixels == NULL || font == NULL || text == NULL)
+		return;
+	if (w <= 0 || h <= 0)
+		return;
+
+	cairo_surface_t *surface =
+	    cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+	cairo_t *cr = cairo_create(surface);
+
+	cairo_set_source_rgba(cr, bg[0], bg[1], bg[2], bg[3]);
+	cairo_paint(cr);
+
+	int text_inset = 2 + reserve_px;
+	if (text_inset < 0)
+		text_inset = 0;
+
+	PangoLayout *layout = pango_cairo_create_layout(cr);
+	pango_layout_set_font_description(layout, font->desc);
+	pango_layout_set_text(layout, text, -1);
+
+	int avail_w = w - 2 * text_inset;
+	if (avail_w > 0)
+		pango_layout_set_width(layout, avail_w * PANGO_SCALE);
+	pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+	pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
+
+	int text_w = 0, text_h = 0;
+	pango_layout_get_pixel_size(layout, &text_w, &text_h);
+	if (out_text_w != NULL)
+		*out_text_w = text_w;
+
+	int text_y = (h - text_h) / 2;
+	if (text_y < 0)
+		text_y = 0;
+
+	cairo_move_to(cr, text_inset, text_y);
+	cairo_set_source_rgba(cr, fg[0], fg[1], fg[2], fg[3]);
+	pango_cairo_show_layout(cr, layout);
+
+	g_object_unref(layout);
+	cairo_surface_flush(surface);
+
+	unsigned char *sdata   = cairo_image_surface_get_data(surface);
+	int	       sstride = cairo_image_surface_get_stride(surface) / 4;
+	int	       reserve = reserve_px > 0 ? reserve_px : 0;
+
+	for (int py = reserve; py < h - reserve; py++) {
+		int y = dy + py;
+		if (y < 0 || y >= dst->height)
+			continue;
+		uint32_t *drow = dst->pixels + y * dst->stride_px;
+		for (int px = reserve; px < w - reserve; px++) {
+			int x = dx + px;
+			if (x < 0 || x >= dst->width)
+				continue;
+			uint32_t c = ((uint32_t *)sdata)[py * sstride + px];
+			if ((c & 0xFF000000) != 0)
+				drow[x] = c;
+		}
+	}
+
+	cairo_destroy(cr);
+	cairo_surface_destroy(surface);
 }

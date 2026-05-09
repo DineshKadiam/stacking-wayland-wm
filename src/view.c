@@ -1288,13 +1288,12 @@ cow_view_icon_render(struct cow_view *view)
 	memset(pixels, 0, (size_t)stride_px * icon_h * 4);
 
 	/* Use inactive border colors for the icon box */
-	struct cow_border_colour *bc	  = &cow_config->border_inactive;
-	uint32_t		  px_base = cow_colour_to_pixel(bc->n);
-	float			  lt[4], dk[4];
-	cow_colour_lighten(lt, bc->n);
-	cow_colour_darken(dk, bc->n);
-	uint32_t px_lt = cow_colour_to_pixel(lt);
-	uint32_t px_dk = cow_colour_to_pixel(dk);
+	struct cow_border_colour *bc = &cow_config->border_inactive;
+	struct cow_colour_triple  bc_t;
+	cow_colour_make_triple(&bc_t, bc->n);
+	uint32_t px_base = bc_t.base;
+	uint32_t px_lt	 = bc_t.lt;
+	uint32_t px_dk	 = bc_t.dk;
 
 	int icon_sz = cow_config ? cow_config->icon_size :
 				   COW_CFG_DEFAULT_ICON_SIZE;

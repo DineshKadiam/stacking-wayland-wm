@@ -21,36 +21,41 @@
 
 #include "cow/colour.h"
 #include "cow/config.h"
+#include "cow/draw.h"
 
-/* Sentinel: transparent / skip drawing. */
-#define TRANSPARENT_PX 0xFFFFFFFF
+/* Sentinel: transparent / skip drawing.  Aliased onto the project-wide
+ * cow_pixbuf primitive so existing call sites need not change. */
+#define TRANSPARENT_PX COW_DRAW_TRANSPARENT_PX
+
+/* Wrap (pixels, stride, img_w, img_h) into a cow_pixbuf for the
+ * project-wide drawing primitives.  Inlined; the resulting struct is
+ * tiny and the helper below only exists to shorten the per-call
+ * boilerplate at the existing border.c call sites. */
+static inline struct cow_pixbuf
+border_pixbuf(uint32_t *pixels, int stride, int img_w, int img_h)
+{
+	return (struct cow_pixbuf) {
+		.pixels	   = pixels,
+		.stride_px = stride,
+		.width	   = img_w,
+		.height	   = img_h,
+	};
+}
 
 static inline void
 hline(uint32_t *pixels, int stride, int img_w, int img_h, int x1, int x2, int y,
     uint32_t colour)
 {
-	if (y < 0 || y >= img_h)
-		return;
-	if (x1 < 0)
-		x1 = 0;
-	if (x2 >= img_w)
-		x2 = img_w - 1;
-	for (int x = x1; x <= x2; x++)
-		pixels[y * stride + x] = colour;
+	struct cow_pixbuf p = border_pixbuf(pixels, stride, img_w, img_h);
+	cow_draw_hline(&p, x1, x2, y, colour);
 }
 
 static inline void
 vline(uint32_t *pixels, int stride, int img_w, int img_h, int x, int y1, int y2,
     uint32_t colour)
 {
-	if (x < 0 || x >= img_w)
-		return;
-	if (y1 < 0)
-		y1 = 0;
-	if (y2 >= img_h)
-		y2 = img_h - 1;
-	for (int y = y1; y <= y2; y++)
-		pixels[y * stride + x] = colour;
+	struct cow_pixbuf p = border_pixbuf(pixels, stride, img_w, img_h);
+	cow_draw_vline(&p, x, y1, y2, colour);
 }
 
 static void
@@ -58,39 +63,9 @@ relieve_rect_per_edge(uint32_t *pixels, int stride, int img_w, int img_h, int x,
     int y, int w, int h, int line_width, uint32_t ul_left, uint32_t ul_top,
     uint32_t br_bot, uint32_t br_right)
 {
-	int max_w, max_h;
-
-	if (w <= 0 || h <= 0 || line_width <= 0)
-		return;
-
-	max_w = (w + 1) / 2;
-	if (max_w > line_width)
-		max_w = line_width;
-	max_h = (h + 1) / 2;
-	if (max_h > line_width)
-		max_h = line_width;
-
-	for (int i = 0; i < max_w; i++) {
-		if (ul_left != TRANSPARENT_PX)
-			vline(pixels, stride, img_w, img_h, x + i, y + i,
-			    y + h - 1 - i, ul_left);
-	}
-	for (int i = 0; i < max_h; i++) {
-		if (ul_top != TRANSPARENT_PX)
-			hline(pixels, stride, img_w, img_h, x + i + 1,
-			    x + w - i, y + i, ul_top);
-	}
-
-	for (int i = 0; i < max_h; i++) {
-		if (br_bot != TRANSPARENT_PX)
-			hline(pixels, stride, img_w, img_h, x + i,
-			    x + w - 1 - i, y + h - i, br_bot);
-	}
-	for (int i = 0; i < max_w; i++) {
-		if (br_right != TRANSPARENT_PX)
-			vline(pixels, stride, img_w, img_h, x + w - i,
-			    y + i + 1, y + h - i, br_right);
-	}
+	struct cow_pixbuf p = border_pixbuf(pixels, stride, img_w, img_h);
+	cow_draw_relieve_rect(&p, x, y, w, h, line_width, ul_left, ul_top,
+	    br_bot, br_right);
 }
 
 static void
@@ -142,34 +117,28 @@ struct edge_colours {
 	uint32_t n[3], s[3], w[3], e[3];
 };
 
+/*
+ * Pack the per-side base colour into [dk, lt, base] for the bevel
+ * routines.  The triple itself comes from cow_colour_make_triple; we
+ * only fan it out into the array layout the rest of border.c uses.
+ */
+static inline void
+edge_colours_pack_side(uint32_t out[3], const float src[4])
+{
+	struct cow_colour_triple t;
+	cow_colour_make_triple(&t, src);
+	out[0] = t.dk;
+	out[1] = t.lt;
+	out[2] = t.base;
+}
+
 static void
 edge_colours_init(struct edge_colours *ec, const struct cow_border_colour *bc)
 {
-	float lt[4], dk[4];
-
-	cow_colour_lighten(lt, bc->n);
-	cow_colour_darken(dk, bc->n);
-	ec->n[0] = cow_colour_to_pixel(dk);
-	ec->n[1] = cow_colour_to_pixel(lt);
-	ec->n[2] = cow_colour_to_pixel(bc->n);
-
-	cow_colour_lighten(lt, bc->s);
-	cow_colour_darken(dk, bc->s);
-	ec->s[0] = cow_colour_to_pixel(dk);
-	ec->s[1] = cow_colour_to_pixel(lt);
-	ec->s[2] = cow_colour_to_pixel(bc->s);
-
-	cow_colour_lighten(lt, bc->w);
-	cow_colour_darken(dk, bc->w);
-	ec->w[0] = cow_colour_to_pixel(dk);
-	ec->w[1] = cow_colour_to_pixel(lt);
-	ec->w[2] = cow_colour_to_pixel(bc->w);
-
-	cow_colour_lighten(lt, bc->e);
-	cow_colour_darken(dk, bc->e);
-	ec->e[0] = cow_colour_to_pixel(dk);
-	ec->e[1] = cow_colour_to_pixel(lt);
-	ec->e[2] = cow_colour_to_pixel(bc->e);
+	edge_colours_pack_side(ec->n, bc->n);
+	edge_colours_pack_side(ec->s, bc->s);
+	edge_colours_pack_side(ec->w, bc->w);
+	edge_colours_pack_side(ec->e, bc->e);
 }
 
 /* FVWM 7-layer relief tables. */
@@ -373,12 +342,8 @@ overdraw_explicit_corners(uint32_t *pixels, int stride, int fw_s, int fh_s,
 		if (!corners[ci].has)
 			continue;
 
-		float clt[4], cdk[4];
-		cow_colour_lighten(clt, corners[ci].colour);
-		cow_colour_darken(cdk, corners[ci].colour);
-		uint32_t cc[3] = { cow_colour_to_pixel(cdk),
-			cow_colour_to_pixel(clt),
-			cow_colour_to_pixel(corners[ci].colour) };
+		uint32_t cc[3];
+		edge_colours_pack_side(cc, corners[ci].colour);
 
 		int ccx = corners[ci].cx, ccy = corners[ci].cy;
 		int ccw = corners[ci].cw, cch = corners[ci].ch;
@@ -539,15 +504,10 @@ draw_handle_marks(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
 	for (int ci = 0; ci < 4; ci++) {
 		uint32_t xm_colour, ym_colour;
 		if (cm[ci].has_explicit) {
-			float clt[4], cdk[4];
-			cow_colour_lighten(clt, cm[ci].colour);
-			cow_colour_darken(cdk, cm[ci].colour);
-			xm_colour = cm[ci].xm_shadow ?
-			    cow_colour_to_pixel(cdk) :
-			    cow_colour_to_pixel(clt);
-			ym_colour = cm[ci].ym_shadow ?
-			    cow_colour_to_pixel(cdk) :
-			    cow_colour_to_pixel(clt);
+			struct cow_colour_triple t;
+			cow_colour_make_triple(&t, cm[ci].colour);
+			xm_colour = cm[ci].xm_shadow ? t.dk : t.lt;
+			ym_colour = cm[ci].ym_shadow ? t.dk : t.lt;
 		} else {
 			xm_colour = cm[ci].def_xm;
 			ym_colour = cm[ci].def_ym;
