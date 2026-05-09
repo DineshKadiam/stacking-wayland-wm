@@ -92,14 +92,10 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	char *desk_no;
 	if ((desk_no = args_get(args, 'k')) != NULL) {
-		const char *errstr;
-		long long   nr = strtonum(desk_no, 0, COW_NR_OF_DESKS - 1,
-		      &errstr);
-		if (errstr != NULL) {
-			cmdq_error(cmdq, "move-window: invalid desk: %s",
-			    desk_no);
+		long long nr;
+		if (!cmd_parse_int(cmdq, "move-window", "desk", desk_no, 0,
+			COW_NR_OF_DESKS - 1, &nr))
 			return (CMD_RETURN_ERROR);
-		}
 		do_desk(view, (uint8_t)nr, cmdq);
 		return (CMD_RETURN_NORMAL);
 	}
@@ -124,24 +120,20 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 		 * col is the -P argument; row follows as positional argv[0]. */
 		const char *col_s = args_get(args, 'P');
 		int	    col = 0, row = 0;
-		const char *errstr;
 		int	    cols = cow_config ? cow_config->page_cols :
 						COW_CFG_DEFAULT_PAGE_COLS;
 		int	    rows = cow_config ? cow_config->page_rows :
 						COW_CFG_DEFAULT_PAGE_ROWS;
-		col		 = (int)strtonum(col_s, 0, cols - 1, &errstr);
-		if (errstr != NULL) {
-			cmdq_error(cmdq, "move: bad page column: %s", col_s);
+		long long   ll;
+		if (!cmd_parse_int(cmdq, "move", "col", col_s, 0, cols - 1,
+			&ll))
 			return (CMD_RETURN_ERROR);
-		}
+		col = (int)ll;
 		if (args->argc >= 1) {
-			row = (int)strtonum(args->argv[0], 0, rows - 1,
-			    &errstr);
-			if (errstr != NULL) {
-				cmdq_error(cmdq, "move: bad page row: %s",
-				    args->argv[0]);
+			if (!cmd_parse_int(cmdq, "move", "row", args->argv[0],
+				0, rows - 1, &ll))
 				return (CMD_RETURN_ERROR);
-			}
+			row = (int)ll;
 		}
 		cow_view_move_to_page(view, col, row);
 		return (CMD_RETURN_NORMAL);
@@ -183,8 +175,7 @@ apply_move(struct cow_view *view)
 	/* Keep virtual position in sync with global position */
 	cow_view_sync_vxy_from_global(view);
 	cow_view_sync_container_pos(view);
-	view->dec.dirty		  = true;
-	cow_wm_request_manage_dirty();
+	cmd_view_dirty(view);
 }
 
 /*
@@ -537,9 +528,8 @@ do_snap(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
 static void
 do_xy(struct cow_view *view, const char *xs, const char *ys, struct cmd_q *cmdq)
 {
-	const char *errstr;
-	int	    x = 0, y = 0;
-	bool	    x_rel = false, y_rel = false;
+	int  x = 0, y = 0;
+	bool x_rel = false, y_rel = false;
 
 	/*
 	 * A leading '+' or '-' makes the value relative to the current
@@ -547,20 +537,17 @@ do_xy(struct cow_view *view, const char *xs, const char *ys, struct cmd_q *cmdq)
 	 * relative-by-zero is a no-op that users never actually want --
 	 * in practice they have typed '-y -0' meaning '-y 0'.
 	 */
+	long long ll;
 	if (xs != NULL) {
-		x = (int)strtonum(xs, -32768, 32767, &errstr);
-		if (errstr != NULL) {
-			cmdq_error(cmdq, "move: bad x value: %s", xs);
+		if (!cmd_parse_int(cmdq, "move", "x", xs, -32768, 32767, &ll))
 			return;
-		}
+		x     = (int)ll;
 		x_rel = (xs[0] == '+' || xs[0] == '-') && x != 0;
 	}
 	if (ys != NULL) {
-		y = (int)strtonum(ys, -32768, 32767, &errstr);
-		if (errstr != NULL) {
-			cmdq_error(cmdq, "move: bad y value: %s", ys);
+		if (!cmd_parse_int(cmdq, "move", "y", ys, -32768, 32767, &ll))
 			return;
-		}
+		y     = (int)ll;
 		y_rel = (ys[0] == '+' || ys[0] == '-') && y != 0;
 	}
 

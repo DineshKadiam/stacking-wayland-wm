@@ -24,6 +24,7 @@ t*
 #include <string.h>
 
 #include "cow/cmd.h"
+#include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/seat.h"
 #include "cow/view.h"
@@ -40,12 +41,54 @@ static void	       do_screen(const char *, struct cmd_q *);
 
 struct cmd_entry cmd_focus_entry = {
 	"focus",
-	"t:npwd:o:A:T:i:",
+	"t:npwd:o:",
 	0,
 	0,
-	"focus [-npw] [-d dir] [-o output] [-A app_id] [-T title] [-i id]",
+	"focus [-npw] [-d dir] [-o output] [-t %app|/title/|#id]",
 	cmd_focus_exec,
 };
+
+/*
+ * Resolve a window selector of the form:
+ *   %app_id   exact match on app_id
+ *   /title/   substring match on title (no trailing '/' required)
+ *   #id       exact match on identifier
+ *
+ * Calls one of the do_app_id/do_title/do_id helpers and returns true
+ * if a recognised prefix was found.  Emits an error and returns false
+ * if the selector is malformed.
+ */
+static bool
+focus_dispatch_selector(const char *spec, struct cmd_q *cmdq)
+{
+	if (spec == NULL || spec[0] == '\0') {
+		cmdq_error(cmdq, "focus: -t: empty selector");
+		return false;
+	}
+	switch (spec[0]) {
+	case '%':
+		do_app_id(spec + 1, cmdq);
+		return true;
+	case '/': {
+		/* Strip an optional trailing '/' for symmetry. */
+		size_t len = strlen(spec + 1);
+		char  *pat = xstrdup(spec + 1);
+		if (len > 0 && pat[len - 1] == '/')
+			pat[len - 1] = '\0';
+		do_title(pat, cmdq);
+		xfree(pat);
+		return true;
+	}
+	case '#':
+		do_id(spec + 1, cmdq);
+		return true;
+	default:
+		cmdq_error(cmdq,
+		    "focus: -t: selector must start with %%, /, or #: %s",
+		    spec);
+		return false;
+	}
+}
 
 static enum cmd_retval
 cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
@@ -54,9 +97,7 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	const char *dir_val = args_get(args, 'd');
 	const char *scr_val = args_get(args, 'o');
-	const char *app_val = args_get(args, 'A');
-	const char *ttl_val = args_get(args, 'T');
-	const char *id_val  = args_get(args, 'i');
+	const char *t_val   = args_get(args, 't');
 	bool	    do_warp = args_has(args, 'w');
 
 	if (args->argc > 0) {
@@ -80,12 +121,9 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 			return (CMD_RETURN_ERROR);
 		}
 		do_directional(dir, cmdq);
-	} else if (app_val != NULL) {
-		do_app_id(app_val, cmdq);
-	} else if (ttl_val != NULL) {
-		do_title(ttl_val, cmdq);
-	} else if (id_val != NULL) {
-		do_id(id_val, cmdq);
+	} else if (t_val != NULL) {
+		if (!focus_dispatch_selector(t_val, cmdq))
+			return (CMD_RETURN_ERROR);
 	}
 
 	if (do_warp) {
@@ -98,7 +136,7 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 static void
 defer_focus(struct cow_view *view)
 {
-	cow_wm.pending_focus	  = view;
+	cow_wm.pending_focus = view;
 	cow_wm_request_manage_dirty();
 }
 

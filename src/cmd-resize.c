@@ -130,23 +130,21 @@ static void
 do_set_size(struct cow_view *view, const char *ws, const char *hs,
     struct cmd_q *cmdq)
 {
-	const char *errstr;
-	int	    w = view->content_width;
-	int	    h = view->content_height;
+	int	  w = view->content_width;
+	int	  h = view->content_height;
+	long long ll;
 
 	if (ws != NULL) {
-		w = (int)strtonum(ws, 1, 32767, &errstr);
-		if (errstr != NULL) {
-			cmdq_error(cmdq, "window-resize: bad width: %s", ws);
+		if (!cmd_parse_int(cmdq, "window-resize", "width", ws, 1, 32767,
+			&ll))
 			return;
-		}
+		w = (int)ll;
 	}
 	if (hs != NULL) {
-		h = (int)strtonum(hs, 1, 32767, &errstr);
-		if (errstr != NULL) {
-			cmdq_error(cmdq, "window-resize: bad height: %s", hs);
+		if (!cmd_parse_int(cmdq, "window-resize", "height", hs, 1,
+			32767, &ll))
 			return;
-		}
+		h = (int)ll;
 	}
 
 	cow_clamp_dimensions(&w, &h);

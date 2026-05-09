@@ -74,12 +74,10 @@ cmd_desk_exec(struct cmd *self, struct cmd_q *cmdq)
 	/* Now parse the desk -- it's either going to be for collect or desk
 	 * switching.
 	 */
-	const char *errstr;
-	long long   nr = strtonum(desk_no, 0, COW_NR_OF_DESKS - 1, &errstr);
-	if (errstr != NULL) {
-		cmdq_error(cmdq, "desk switch: invalid desk: %s", desk_no);
+	long long nr;
+	if (!cmd_parse_int(cmdq, "desk", "desk", desk_no, 0,
+		COW_NR_OF_DESKS - 1, &nr))
 		return (CMD_RETURN_ERROR);
-	}
 
 	if (args_has(args, 'd')) {
 		cow_desk_switch(output, (uint8_t)nr);

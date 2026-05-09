@@ -132,17 +132,15 @@ cmd_page_exec(struct cmd *self, struct cmd_q *cmdq)
 			return (CMD_RETURN_ERROR);
 		}
 		const char *row_s = args->argv[0];
-		const char *errstr;
-		col = (int)strtonum(col_s, 0, cols - 1, &errstr);
-		if (errstr != NULL) {
-			cmdq_error(cmdq, "page: bad col value: %s", col_s);
+		long long   ll;
+		if (!cmd_parse_int(cmdq, "page", "col", col_s, 0, cols - 1,
+			&ll))
 			return (CMD_RETURN_ERROR);
-		}
-		row = (int)strtonum(row_s, 0, rows - 1, &errstr);
-		if (errstr != NULL) {
-			cmdq_error(cmdq, "page: bad row value: %s", row_s);
+		col = (int)ll;
+		if (!cmd_parse_int(cmdq, "page", "row", row_s, 0, rows - 1,
+			&ll))
 			return (CMD_RETURN_ERROR);
-		}
+		row = (int)ll;
 	} else {
 		cmdq_error(cmdq, "%s", cmd_page_entry.usage);
 		return (CMD_RETURN_ERROR);
