@@ -258,7 +258,7 @@ do_maximize(struct cow_view *view, enum maximize_type mt)
 	}
 	view->maximized = true;
 
-	int mbi = cow_find_maximize_button();
+	int mbi = cow_view_maximize_button_index();
 	if (mbi >= 0)
 		view->icon_inverted_button = mbi;
 }
@@ -402,7 +402,7 @@ do_expand(struct cow_view *view, enum expand_dir dir, bool toggle)
 	cow_view_set_pending_geometry(view, new_x, new_y, new_w, new_h);
 	view->maximized = true;
 
-	int mbi = cow_find_maximize_button();
+	int mbi = cow_view_maximize_button_index();
 	if (mbi >= 0)
 		view->icon_inverted_button = mbi;
 }

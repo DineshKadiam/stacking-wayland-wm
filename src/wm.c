@@ -1206,7 +1206,7 @@ cow_wm_run(void)
 		if (cow_wm.needs_manage_dirty) {
 			cow_wm.needs_manage_dirty = false;
 			wl_display_roundtrip(cow_wm.display);
-			cow_wm_manage_dirty();
+			cow_wm_manage_dirty_now();
 		}
 
 		if (cow_wm_shutdown_requested || cow_wm_restart_requested)
@@ -1215,7 +1215,7 @@ cow_wm_run(void)
 }
 
 void
-cow_wm_manage_dirty(void)
+cow_wm_manage_dirty_now(void)
 {
 	if (cow_wm.manager != NULL)
 		river_window_manager_v1_manage_dirty(cow_wm.manager);

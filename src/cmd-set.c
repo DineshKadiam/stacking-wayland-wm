@@ -750,5 +750,5 @@ refresh_visuals(void)
 		output->bg_dirty = true;
 	}
 
-	cow_wm_manage_dirty();
+	cow_wm_manage_dirty_now();
 }

@@ -988,7 +988,7 @@ cow_view_resolve_style(struct cow_view *view)
  * ================================================================ */
 
 int
-cow_find_maximize_button(void)
+cow_view_maximize_button_index(void)
 {
 	if (cow_config == NULL)
 		return -1;
@@ -1045,7 +1045,7 @@ cow_view_maximize(struct cow_view *view)
 	 */
 	cow_view_sync_container_geometry(view, view->x, view->y, w, h);
 
-	int mbi = cow_find_maximize_button();
+	int mbi = cow_view_maximize_button_index();
 	if (mbi >= 0) {
 		view->icon_inverted_button = mbi;
 		view->dec.dirty		   = true;

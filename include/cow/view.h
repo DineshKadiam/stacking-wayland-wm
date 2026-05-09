@@ -346,7 +346,7 @@ struct cow_view *cow_view_walk(struct cow_view *start, bool forward,
 /*
  * Maximize/unmaximize a view.
  */
-int  cow_find_maximize_button(void);
+int  cow_view_maximize_button_index(void);
 void cow_view_maximize(struct cow_view *view);
 void cow_view_unmaximize(struct cow_view *view);
 

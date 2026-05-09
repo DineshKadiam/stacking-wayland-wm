@@ -169,9 +169,13 @@ void cow_wm_run(void);
 void cow_wm_fini(void);
 
 /*
- * Request that the compositor start a manage sequence.
+ * Issue a manage_dirty protocol request to the compositor immediately.
+ * Most callers should use cow_wm_request_manage_dirty() instead, which
+ * defers the request to the next run-loop pass; cow_wm_manage_dirty_now
+ * is for code that has just finished a roundtrip and wants the next
+ * manage cycle to start without waiting for the run loop.
  */
-void cow_wm_manage_dirty(void);
+void cow_wm_manage_dirty_now(void);
 void cow_drag_ghost_destroy(void);
 
 /*
