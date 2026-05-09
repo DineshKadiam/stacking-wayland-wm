@@ -70,6 +70,7 @@ struct cow_vector_button {
  * When `pressed` is true, shadow and highlight colors are swapped.
  * The button size `btn_size` is used to scale the 0-100 coordinates.
  */
-void cow_vector_button_draw(const struct cow_vector_button *, uint32_t *, int, int, int, int, const uint32_t[static 5], bool);
+void cow_vector_button_draw(const struct cow_vector_button *, uint32_t *, int,
+    int, int, int, const uint32_t *, bool);
 
 #endif

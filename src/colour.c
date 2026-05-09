@@ -18,7 +18,7 @@
 #include <stdlib.h>
 
 bool
-cow_colour_parse(const char *str, float out[static 4])
+cow_colour_parse(const char *str, float *out)
 {
 	char	     *end;
 	unsigned long v = strtoul(str, &end, 0);
@@ -29,7 +29,7 @@ cow_colour_parse(const char *str, float out[static 4])
 }
 
 uint32_t
-cow_colour_to_pixel(const float colour[static 4])
+cow_colour_to_pixel(const float *colour)
 {
 	uint8_t r = (uint8_t)(colour[0] * 255.0f + 0.5f);
 	uint8_t g = (uint8_t)(colour[1] * 255.0f + 0.5f);
@@ -40,7 +40,7 @@ cow_colour_to_pixel(const float colour[static 4])
 }
 
 void
-cow_colour_convert(float dst[static 4], uint32_t colour)
+cow_colour_convert(float *dst, uint32_t colour)
 {
 	dst[0] = ((colour >> 16) & 0xff) / 255.0;
 	dst[1] = ((colour >> 8) & 0xff) / 255.0;
@@ -200,7 +200,7 @@ cow_colour_mult(float *r, float *g, float *b, float k)
 }
 
 void
-cow_colour_lighten(float dst[static 4], const float src[static 4])
+cow_colour_lighten(float *dst, const float *src)
 {
 	unsigned int r		= (unsigned int)(src[0] * 65535.0f + 0.5f);
 	unsigned int g		= (unsigned int)(src[1] * 65535.0f + 0.5f);
@@ -233,7 +233,7 @@ cow_colour_lighten(float dst[static 4], const float src[static 4])
 }
 
 void
-cow_colour_darken(float dst[static 4], const float src[static 4])
+cow_colour_darken(float *dst, const float *src)
 {
 	unsigned int r		= (unsigned int)(src[0] * 65535.0f + 0.5f);
 	unsigned int g		= (unsigned int)(src[1] * 65535.0f + 0.5f);
@@ -266,8 +266,7 @@ cow_colour_darken(float dst[static 4], const float src[static 4])
 }
 
 void
-cow_colour_make_triple(struct cow_colour_triple *out,
-    const float					 colour[static 4])
+cow_colour_make_triple(struct cow_colour_triple *out, const float *colour)
 {
 	float lt[4], dk[4];
 	cow_colour_lighten(lt, colour);

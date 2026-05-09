@@ -67,7 +67,7 @@ draw_line(uint32_t *pixels, int stride, int w, int h, int x0, int y0, int x1,
 
 void
 cow_vector_button_draw(const struct cow_vector_button *vector, uint32_t *pixels,
-    int stride, int w, int h, int btn_size, const uint32_t colors[static 5],
+    int stride, int w, int h, int btn_size, const uint32_t *colors,
     bool pressed)
 {
 	for (int i = 1; i < vector->num_points; i++) {
