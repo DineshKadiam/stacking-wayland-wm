@@ -199,6 +199,13 @@ void cow_wm_signal_handler(int sig);
 void cow_wm_restart_handler(int sig);
 
 /*
+ * Set by SIGTERM/SIGINT handler; checked in the event loop.  When true,
+ * the run loop exits and main() proceeds with normal teardown via
+ * cow_wm_fini.  Async-signal-safe to write from a signal handler.
+ */
+extern volatile sig_atomic_t cow_wm_shutdown_requested;
+
+/*
  * Set by SIGUSR1 handler; checked in the event loop.
  */
 extern volatile sig_atomic_t cow_wm_restart_requested;
