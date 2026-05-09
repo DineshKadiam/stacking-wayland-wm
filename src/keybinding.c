@@ -432,6 +432,73 @@ register_config_mouse_bindings(struct cow_seat *seat)
 /*
  * Register default keybindings (fallback when no config is loaded).
  */
+/*
+ * Each entry binds a single XKB key (or button) + modifier to either
+ * a custom action_fn (NULL cmd) or the standard action_execute_cmd_string
+ * (cmd != NULL).  Defined as a static table so the wiring up of all
+ * default bindings is data-driven.
+ */
+struct default_binding {
+	bool	      is_pointer; /* false = key, true = pointer button */
+	xkb_keysym_t  key;	  /* used if is_pointer == false */
+	uint32_t      button;	  /* used if is_pointer == true */
+	const char   *modifier;	  /* "super" / "super_shift" / "" */
+	cow_action_fn action;	  /* NULL falls back to cmd-string action */
+	const char   *cmd; /* command string for action_execute_cmd_string;
+			      ignored when action != NULL */
+};
+
+#define DB_KEY(k, mods, cmd) { false, (k), 0, (mods), NULL, (cmd) }
+#define DB_KEY_FN(k, mods, fn) { false, (k), 0, (mods), (fn), NULL }
+#define DB_PTR(b, mods, cmd) { true, 0, (b), (mods), NULL, (cmd) }
+
+static const struct default_binding default_bindings[] = {
+	/* Terminal */
+	DB_KEY_FN(XKB_KEY_Return, "super", action_exec_terminal),
+
+	/* Close / quit */
+	DB_KEY(XKB_KEY_q, "super", "winops -c"),
+	DB_KEY(XKB_KEY_q, "super_shift", "quit"),
+
+	/* Focus cycle */
+	DB_KEY(XKB_KEY_j, "super", "focus -n"),
+	DB_KEY(XKB_KEY_k, "super", "focus -p"),
+	DB_KEY(XKB_KEY_Tab, "super", "focus -n"),
+
+	/* Desk 0 + interactive move/resize keys */
+	DB_KEY(XKB_KEY_0, "super", "desk -d 0"),
+	DB_KEY(XKB_KEY_m, "super", "window-move"),
+	DB_KEY(XKB_KEY_r, "super", "resize"),
+
+	/* Pointer bindings */
+	DB_PTR(BTN_LEFT, "super", "window-move"),
+	DB_PTR(BTN_RIGHT, "super", "resize"),
+
+	/* Container tab cycling via mouse side buttons (no modifier).
+	 * BTN_SIDE / BTN_EXTRA are the back/forward side buttons present
+	 * on many mice.  Scroll wheel (X11 buttons 4/5) generates axis
+	 * events in Wayland and cannot be used as pointer bindings. */
+	DB_PTR(BTN_SIDE, "", "container next"),
+	DB_PTR(BTN_EXTRA, "", "container prev"),
+};
+
+#undef DB_KEY
+#undef DB_KEY_FN
+#undef DB_PTR
+
+static uint32_t
+modifier_mask(const char *name)
+{
+	uint32_t super = RIVER_SEAT_V1_MODIFIERS_MOD4;
+	if (name == NULL || name[0] == '\0')
+		return 0;
+	if (strcmp(name, "super") == 0)
+		return super;
+	if (strcmp(name, "super_shift") == 0)
+		return super | RIVER_SEAT_V1_MODIFIERS_SHIFT;
+	return 0;
+}
+
 static void
 register_default_bindings(struct cow_seat *seat)
 {
@@ -439,26 +506,24 @@ register_default_bindings(struct cow_seat *seat)
 	uint32_t super_shift = RIVER_SEAT_V1_MODIFIERS_MOD4 |
 	    RIVER_SEAT_V1_MODIFIERS_SHIFT;
 
-	/* Terminal */
-	cow_keybinding_create(seat, XKB_KEY_Return, super, action_exec_terminal,
-	    NULL);
+	for (size_t i = 0;
+	    i < sizeof(default_bindings) / sizeof(default_bindings[0]); i++) {
+		const struct default_binding *db = &default_bindings[i];
+		uint32_t      mods		 = modifier_mask(db->modifier);
+		cow_action_fn fn		 = db->action ? db->action :
+								action_execute_cmd_string;
+		void	     *arg = db->action ? NULL : xstrdup(db->cmd);
 
-	/* Close/quit */
-	cow_keybinding_create(seat, XKB_KEY_q, super, action_execute_cmd_string,
-	    xstrdup("winops -c"));
-	cow_keybinding_create(seat, XKB_KEY_q, super_shift,
-	    action_execute_cmd_string, xstrdup("quit"));
+		if (db->is_pointer)
+			cow_pointer_binding_create(seat, db->button, mods, fn,
+			    arg);
+		else
+			cow_keybinding_create(seat, db->key, mods, fn, arg);
+	}
 
-	/* Focus cycle */
-	cow_keybinding_create(seat, XKB_KEY_j, super, action_execute_cmd_string,
-	    xstrdup("focus -n"));
-	cow_keybinding_create(seat, XKB_KEY_k, super, action_execute_cmd_string,
-	    xstrdup("focus -p"));
-	cow_keybinding_create(seat, XKB_KEY_Tab, super,
-	    action_execute_cmd_string, xstrdup("focus -n"));
-
-	/* Desk switching: Super+1..9 -> desk -d 1..9 */
-	/* Move to desk:  Super+Shift+1..9 -> window-move -k 1..9 */
+	/* Desk switching: Super+1..9 -> desk -d N
+	 * Move-to-desk:   Super+Shift+1..9 -> window-move -k N
+	 * Built dynamically because the cmd string is per-iteration. */
 	xkb_keysym_t desk_syms[] = { XKB_KEY_1, XKB_KEY_2, XKB_KEY_3, XKB_KEY_4,
 		XKB_KEY_5, XKB_KEY_6, XKB_KEY_7, XKB_KEY_8, XKB_KEY_9 };
 	for (int i = 0; i < 9; i++) {
@@ -470,28 +535,6 @@ register_default_bindings(struct cow_seat *seat)
 		cow_keybinding_create(seat, desk_syms[i], super_shift,
 		    action_execute_cmd_string, move_cmd);
 	}
-	cow_keybinding_create(seat, XKB_KEY_0, super, action_execute_cmd_string,
-	    xstrdup("desk -d 0"));
-
-	/* Interactive move/resize */
-	cow_keybinding_create(seat, XKB_KEY_m, super, action_execute_cmd_string,
-	    xstrdup("window-move"));
-	cow_keybinding_create(seat, XKB_KEY_r, super, action_execute_cmd_string,
-	    xstrdup("resize"));
-
-	cow_pointer_binding_create(seat, BTN_LEFT, super,
-	    action_execute_cmd_string, xstrdup("window-move"));
-	cow_pointer_binding_create(seat, BTN_RIGHT, super,
-	    action_execute_cmd_string, xstrdup("resize"));
-
-	/* Container tab cycling via mouse side buttons (no modifier).
-	 * BTN_SIDE / BTN_EXTRA are the back/forward side buttons present
-	 * on many mice.  Scroll wheel (X11 buttons 4/5) generates axis
-	 * events in Wayland and cannot be used as pointer bindings. */
-	cow_pointer_binding_create(seat, BTN_SIDE, 0, action_execute_cmd_string,
-	    xstrdup("container next"));
-	cow_pointer_binding_create(seat, BTN_EXTRA, 0,
-	    action_execute_cmd_string, xstrdup("container prev"));
 }
 
 /*

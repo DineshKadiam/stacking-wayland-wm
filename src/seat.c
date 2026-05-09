@@ -228,22 +228,7 @@ cow_seat_destroy(struct cow_seat *seat)
 {
 	wl_list_remove(&seat->wm_link);
 
-	struct cow_keybinding *kb, *kb_tmp;
-	wl_list_for_each_safe(kb, kb_tmp, &seat->keybindings, link)
-	{
-		wl_list_remove(&kb->link);
-		river_xkb_binding_v1_destroy(kb->river_binding);
-		xfree(kb);
-	}
-
-	struct cow_pointer_binding *pb, *pb_tmp;
-	wl_list_for_each_safe(pb, pb_tmp, &seat->pointer_bindings, link)
-	{
-		wl_list_remove(&pb->link);
-		river_pointer_binding_v1_destroy(pb->river_binding);
-		xfree(pb);
-	}
-
+	cow_seat_destroy_bindings(seat);
 	cow_layer_shell_fini_seat(seat);
 
 	if (seat->xkb_seat != NULL)

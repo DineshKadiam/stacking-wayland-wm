@@ -30,6 +30,7 @@
 #include "cow/config.h"
 #include "cow/keybinding.h"
 #include "cow/memory.h"
+#include "cow/util.h"
 #include "cow/wm.h"
 
 struct cow_ipc cow_ipc;
@@ -44,49 +45,14 @@ cow_ipc_init(void)
 	memset(&cow_ipc, 0, sizeof(cow_ipc));
 	cow_ipc.server_fd = -1;
 
-	const char *runtime = getenv("XDG_RUNTIME_DIR");
-	if (runtime == NULL) {
-		fprintf(stderr, "cow: ipc: XDG_RUNTIME_DIR not set\n");
+	char path[108]; /* sockaddr_un.sun_path size */
+	int  fd = cow_unix_listen("cow-cmd.sock", path, sizeof(path),
+	     /* backlog */ 4);
+	if (fd < 0)
 		return false;
-	}
 
-	xasprintf(&cow_ipc.socket_path, "%s/cow-cmd.sock", runtime);
-
-	/* Remove stale socket */
-	unlink(cow_ipc.socket_path);
-
-	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-	if (fd < 0) {
-		fprintf(stderr, "cow: ipc: socket failed: %s\n",
-		    strerror(errno));
-		return false;
-	}
-
-	struct sockaddr_un addr = { .sun_family = AF_UNIX };
-	if (strlen(cow_ipc.socket_path) >= sizeof(addr.sun_path)) {
-		fprintf(stderr,
-		    "cow: ipc: socket path too long (%zu >= %zu): %s\n",
-		    strlen(cow_ipc.socket_path), sizeof(addr.sun_path),
-		    cow_ipc.socket_path);
-		close(fd);
-		return false;
-	}
-	strncpy(addr.sun_path, cow_ipc.socket_path, sizeof(addr.sun_path) - 1);
-
-	if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		fprintf(stderr, "cow: ipc: bind failed: %s\n", strerror(errno));
-		close(fd);
-		return false;
-	}
-
-	if (listen(fd, 4) < 0) {
-		fprintf(stderr, "cow: ipc: listen failed: %s\n",
-		    strerror(errno));
-		close(fd);
-		return false;
-	}
-
-	cow_ipc.server_fd = fd;
+	cow_ipc.server_fd   = fd;
+	cow_ipc.socket_path = xstrdup(path);
 	fprintf(stderr, "cow: ipc: listening on %s\n", cow_ipc.socket_path);
 	fflush(stderr);
 	return true;

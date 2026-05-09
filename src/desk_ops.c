@@ -34,6 +34,45 @@
  * - It has the STICKY flag set
  * AND it is not iconified.
  */
+/*
+ * Predicate: is 'view' (assumed to be on the current desk of
+ * 'output') visible on the current page?  Returns true when the page
+ * grid is 1x1 (single page) or the view is page-sticky.  Otherwise
+ * applies one of two rules:
+ *
+ *   edge_scroll = true  : page-strict.  A view lives on the page
+ *                         containing its top-left corner.
+ *   edge_scroll = false : FVWM-style overlap.  A view is visible if
+ *                         its virtual frame rectangle intersects the
+ *                         current viewport.
+ */
+static bool
+view_visible_in_page(const struct cow_view *view,
+    const struct cow_output		   *output)
+{
+	if (view->flags & COW_VIEW_STICKY_PAGE_FLAG)
+		return true;
+	if (cow_config == NULL ||
+	    (cow_config->page_cols <= 1 && cow_config->page_rows <= 1))
+		return true;
+
+	struct cow_desk *desk = output->current_desk;
+	int		 w    = output->usable_area.width;
+	int		 h    = output->usable_area.height;
+	int		 vpx  = desk->page_vx;
+	int		 vpy  = desk->page_vy;
+
+	if (cow_config->edge_scroll) {
+		return !(view->vx < vpx || view->vx >= vpx + w ||
+		    view->vy < vpy || view->vy >= vpy + h);
+	}
+	int vw = view->content_width + 2 * view->dec.border_width;
+	int vh = view->content_height + 2 * view->dec.border_width +
+	    view->dec.title_thickness;
+	return !(view->vx + vw <= vpx || view->vx >= vpx + w ||
+	    view->vy + vh <= vpy || view->vy >= vpy + h);
+}
+
 bool
 cow_view_visible(const struct cow_view *view, const struct cow_output *output)
 {
@@ -49,55 +88,12 @@ cow_view_visible(const struct cow_view *view, const struct cow_output *output)
 		return false;
 	if (view->desk == NULL)
 		return true;
-	if (view->desk == output->current_desk) {
-		/* On the correct desk: now check the page. */
-		if (view->flags & COW_VIEW_STICKY_PAGE_FLAG)
-			return true; /* page-sticky: always visible */
-		if (cow_config != NULL &&
-		    (cow_config->page_cols > 1 || cow_config->page_rows > 1)) {
-			struct cow_desk *desk = output->current_desk;
-			int		 w    = output->usable_area.width;
-			int		 h    = output->usable_area.height;
-			int		 vpx  = desk->page_vx;
-			int		 vpy  = desk->page_vy;
-
-			if (cow_config->edge_scroll) {
-				/*
-				 * Page-strict mode: a view lives on the
-				 * page containing its top-left corner.
-				 * Used with edge_scroll because each
-				 * window fully transitions to a new page
-				 * on edge cross; we don't want both pages
-				 * to claim it during the transition.
-				 */
-				if (view->vx < vpx || view->vx >= vpx + w ||
-				    view->vy < vpy || view->vy >= vpy + h)
-					return false;
-			} else {
-				/*
-				 * FVWM-style overlap: a view is visible if
-				 * its virtual frame rectangle intersects
-				 * the current viewport.  Lets windows
-				 * straddle page boundaries.
-				 */
-				int vw = view->content_width +
-				    2 * view->dec.border_width;
-				int vh = view->content_height +
-				    2 * view->dec.border_width +
-				    view->dec.title_thickness;
-				if (view->vx + vw <= vpx ||
-				    view->vx >= vpx + w ||
-				    view->vy + vh <= vpy || view->vy >= vpy + h)
-					return false;
-			}
-		}
-		return true;
-	}
+	if (view->desk == output->current_desk)
+		return view_visible_in_page(view, output);
 	if (view->flags & COW_VIEW_STICKY_DESK_FLAG)
 		return true;
 	/* Visible if on a collected desk */
-	if (view->desk != NULL &&
-	    (output->collected_desks & (1u << view->desk->nr)))
+	if (output->collected_desks & (1u << view->desk->nr))
 		return true;
 	return false;
 }

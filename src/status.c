@@ -27,6 +27,7 @@
 
 #include "cow/memory.h"
 #include "cow/output.h"
+#include "cow/util.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
@@ -42,57 +43,14 @@ static size_t last_snapshot_len = 0;
 void
 cow_status_init(void)
 {
-	const char *runtime = getenv("XDG_RUNTIME_DIR");
-	if (runtime == NULL)
+	char path[108]; /* sockaddr_un.sun_path size */
+	int  fd = cow_unix_listen("cow-status.sock", path, sizeof(path),
+	     /* backlog */ 4);
+	if (fd < 0)
 		return;
 
-	xasprintf(&socket_path, "%s/cow-status.sock", runtime);
-	unlink(socket_path);
-
-	server_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC,
-	    0);
-	if (server_fd < 0) {
-		fprintf(stderr, "cow: status: socket failed: %s\n",
-		    strerror(errno));
-		xfree(socket_path);
-		socket_path = NULL;
-		return;
-	}
-
-	struct sockaddr_un addr = { .sun_family = AF_UNIX };
-	if (strlen(socket_path) >= sizeof(addr.sun_path)) {
-		fprintf(stderr,
-		    "cow: status: socket path too long (%zu >= %zu): %s\n",
-		    strlen(socket_path), sizeof(addr.sun_path), socket_path);
-		close(server_fd);
-		server_fd = -1;
-		xfree(socket_path);
-		socket_path = NULL;
-		return;
-	}
-	strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
-
-	if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		fprintf(stderr, "cow: status: bind failed: %s\n",
-		    strerror(errno));
-		close(server_fd);
-		server_fd = -1;
-		xfree(socket_path);
-		socket_path = NULL;
-		return;
-	}
-
-	if (listen(server_fd, 4) < 0) {
-		fprintf(stderr, "cow: status: listen failed: %s\n",
-		    strerror(errno));
-		close(server_fd);
-		server_fd = -1;
-		unlink(socket_path);
-		xfree(socket_path);
-		socket_path = NULL;
-		return;
-	}
-
+	server_fd   = fd;
+	socket_path = xstrdup(path);
 	fprintf(stderr, "cow: status: listening on %s\n", socket_path);
 }
 
