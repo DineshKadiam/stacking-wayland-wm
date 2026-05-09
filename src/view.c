@@ -28,6 +28,7 @@
 #include "cow/config.h"
 #include "cow/decoration.h"
 #include "cow/desk_ops.h"
+#include "cow/draw.h"
 #include "cow/keybinding.h"
 #include "cow/memory.h"
 #include "cow/output.h"
@@ -35,6 +36,7 @@
 #include "cow/seat.h"
 #include "cow/shm.h"
 #include "cow/status.h"
+#include "cow/util.h"
 #include "cow/wm.h"
 
 #include "river-window-management-v1-client-protocol.h"
@@ -248,24 +250,10 @@ cow_view_create(struct river_window_v1 *rw)
 {
 	struct cow_view *view = xcalloc(1, sizeof(*view));
 
-	view->river_window	 = rw;
-	view->node		 = NULL;
-	view->decoration_surface = NULL;
-	view->decoration	 = NULL;
-	view->identifier	 = NULL;
-	view->app_id		 = NULL;
-	view->title		 = NULL;
-	view->parent		 = NULL;
-	view->has_dimensions	 = false;
-	view->closed		 = false;
-	view->configured	 = false;
-	view->fullscreen	 = false;
-	view->maximized		 = false;
-	view->flags		 = 0;
+	view->river_window = rw;
 
-	/* Default: use SSD unless the window only supports CSD */
+	/* xcalloc zeroed the struct; assign only non-zero defaults. */
 	view->use_ssd		   = true;
-	view->title_pressed	   = false;
 	view->pressed_button	   = -1;
 	view->icon_inverted_button = -1;
 
@@ -290,69 +278,82 @@ cow_view_create(struct river_window_v1 *rw)
 
 	return view;
 }
-void
-cow_view_destroy(struct cow_view *view)
-{
-	cow_status_emit();
 
-	/* Clear drag-drop references before freeing */
+/* Clear all WM-wide back-references to 'view' (drag, pending focus,
+ * focused). */
+static void
+view_clear_wm_refs(struct cow_view *view)
+{
 	if (cow_wm.drag_drop_target == view)
 		cow_wm.drag_drop_target = NULL;
 	if (cow_wm.drag_drop_source == view)
 		cow_wm.drag_drop_source = NULL;
-
-	/* Clear pending-focus reference if it was pointing at us. */
 	if (cow_wm.pending_focus == view)
 		cow_wm.pending_focus = NULL;
+	if (cow_wm.focused_view == view)
+		cow_wm.focused_view = NULL;
+}
 
-	/*
-	 * Clear all per-seat view pointers.  Without this, any seat
-	 * that had pointer/keyboard focus on the about-to-die view
-	 * keeps a dangling pointer.  When cow's render loop next
-	 * dereferences interacted_view / pressed_view / etc. the UB
-	 * cascades into spurious requests on already-destroyed river
-	 * window objects, which panics river inside Window.destroy.
-	 */
-	{
-		struct cow_seat *s;
-		wl_list_for_each(s, &cow_wm.seats, wm_link)
-		    cow_seat_forget_view(s, view);
-	}
+/*
+ * Clear all per-seat back-references to 'view'.  Without this, any
+ * seat that had pointer/keyboard focus on the about-to-die view keeps
+ * a dangling pointer; the render loop's next dereference of
+ * interacted_view / pressed_view / etc. cascades into spurious
+ * requests on already-destroyed river window objects, which panics
+ * river inside Window.destroy.
+ */
+static void
+view_clear_seat_refs(struct cow_view *view)
+{
+	struct cow_seat *s;
+	wl_list_for_each(s, &cow_wm.seats, wm_link)
+	    cow_seat_forget_view(s, view);
+}
 
-	/* Detach from container without cascade (WM is shutting down) */
-	if (view->container_member != NULL) {
-		struct cow_container_member *m = view->container_member;
-		struct cow_container	    *c = m->container;
-		bool			     was_active = (c->active == m);
-		wl_list_remove(&m->link);
-		c->n_members--;
-		view->container_member = NULL;
-		xfree(m);
-		if (c->n_members == 0) {
-			wl_list_remove(&c->wm_link);
-			xfree(c);
-		} else if (was_active) {
-			c->active = wl_container_of(c->members.next, c->active,
-			    link);
-			c->active->view->use_ssd   = true;
-			c->active->view->dec.dirty = true;
-		}
+/*
+ * Detach 'view' from its container without cascading (callers are
+ * tearing the view down).  Frees the container if this was the last
+ * member; otherwise re-activates a sibling and marks it for repaint.
+ */
+static void
+view_detach_container_silent(struct cow_view *view)
+{
+	if (view->container_member == NULL)
+		return;
+	struct cow_container_member *m		= view->container_member;
+	struct cow_container	    *c		= m->container;
+	bool			     was_active = (c->active == m);
+	wl_list_remove(&m->link);
+	c->n_members--;
+	view->container_member = NULL;
+	xfree(m);
+	if (c->n_members == 0) {
+		wl_list_remove(&c->wm_link);
+		xfree(c);
+	} else if (was_active) {
+		c->active = wl_container_of(c->members.next, c->active, link);
+		c->active->view->use_ssd   = true;
+		c->active->view->dec.dirty = true;
 	}
+}
+
+void
+cow_view_destroy(struct cow_view *view)
+{
+	cow_status_emit();
+	view_clear_wm_refs(view);
+	view_clear_seat_refs(view);
+	view_detach_container_silent(view);
 
 	wl_list_remove(&view->wm_link);
 	wl_list_remove(&view->desk_views);
 	wl_list_remove(&view->output_views);
 
-	if (cow_wm.focused_view == view)
-		cow_wm.focused_view = NULL;
 	cow_decoration_fini(&view->dec);
 
-	if (view->node != NULL)
-		river_node_v1_destroy(view->node);
-	if (view->decoration != NULL)
-		river_decoration_v1_destroy(view->decoration);
-	if (view->decoration_surface != NULL)
-		wl_surface_destroy(view->decoration_surface);
+	COW_DESTROY_AND_NULL(view->node, river_node_v1_destroy);
+	COW_DESTROY_AND_NULL(view->decoration, river_decoration_v1_destroy);
+	COW_DESTROY_AND_NULL(view->decoration_surface, wl_surface_destroy);
 
 	river_window_v1_destroy(view->river_window);
 
@@ -421,217 +422,192 @@ cow_view_configure(struct cow_view *view)
 	cow_wm_request_manage_dirty();
 }
 
-void
-cow_view_apply_render(struct cow_view *view)
+/* Forward declaration: defined later, used by view_cleanup_stale_decoration. */
+static void view_drop_decoration(struct cow_view *view);
+
+/* ----------------------------------------------------------------------
+ * cow_view_apply_render -- helpers
+ *
+ * The top-level apply_render dispatcher reads as a list of named
+ * phases.  Each helper below covers one logical step and is called in
+ * order: cleanup, placement, geometry sync, node positioning,
+ * stacking, visibility, clip.
+ * ---------------------------------------------------------------------- */
+
+/*
+ * Deferred decoration cleanup.  When a view loses SSD ownership (e.g.
+ * a container tab was deactivated) its decoration surface must stay
+ * alive until this render cycle so that any pending window_interaction
+ * events are still routed to a valid surface.  Destroy it now, before
+ * hide/show, so the compositor releases the surface atomically with
+ * render_finish.
+ */
+static void
+view_cleanup_stale_decoration(struct cow_view *view)
 {
-	if (!view->has_dimensions || view->closed)
+	if (view->use_ssd || view->decoration == NULL)
+		return;
+	view_drop_decoration(view);
+}
+
+/*
+ * Compute the under-mouse placement origin.  Centres the frame on the
+ * pointer position then clamps so the full frame stays within the
+ * usable area (which already has reserved areas applied).  Clamping
+ * max before min keeps the top-left visible on screens smaller than
+ * the window.
+ */
+static void
+view_place_undermouse(struct cow_view *view, int dec_left, int dec_top)
+{
+	struct cow_box *ua = &view->output->usable_area;
+	int		px = ua->x + ua->width / 2;
+	int		py = ua->y + ua->height / 2;
+	cow_seat_get_pointer(&px, &py);
+	int cw	= view->content_width > 0 ? view->content_width : 640;
+	int ch	= view->content_height > 0 ? view->content_height : 400;
+	int fw	= cw + 2 * view->dec.border_width;
+	int fh	= ch + dec_top + view->dec.border_width;
+	view->x = px - fw / 2 + dec_left;
+	view->y = py - fh / 2 + dec_top;
+
+	if (ua->width > 0) {
+		int max_x = ua->x + ua->width - fw + dec_left;
+		int min_x = ua->x + dec_left;
+		if (view->x > max_x)
+			view->x = max_x;
+		if (view->x < min_x)
+			view->x = min_x;
+	}
+	if (ua->height > 0) {
+		int max_y = ua->y + ua->height - fh + dec_top;
+		int min_y = ua->y + dec_top;
+		if (view->y > max_y)
+			view->y = max_y;
+		if (view->y < min_y)
+			view->y = min_y;
+	}
+}
+
+static void
+view_place_centre(struct cow_view *view, int dec_left, int dec_top)
+{
+	struct cow_box *ua = &view->output->usable_area;
+	int		fw = view->content_width + 2 * view->dec.border_width;
+	int fh	= view->content_height + dec_top + view->dec.border_width;
+	view->x = ua->x + (ua->width - fw) / 2 + dec_left;
+	view->y = ua->y + (ua->height - fh) / 2 + dec_top;
+}
+
+static void
+view_place_cascade(struct cow_view *view, int dec_left, int dec_top, int gap)
+{
+	static int	cascade_offset = 0;
+	struct cow_box *ua	       = &view->output->usable_area;
+	view->x	       = ua->x + dec_left + gap + cascade_offset;
+	view->y	       = ua->y + dec_top + gap + cascade_offset;
+	cascade_offset = (cascade_offset + 30) % 150;
+}
+
+/*
+ * Set vx/vy from the freshly-computed x/y so the window appears on the
+ * page the user is currently viewing, then clamp the virtual position
+ * so the window's top-left corner lands within the current page.  A
+ * negative or over-width vx would cause cow_view_visible to immediately
+ * hide the window.
+ */
+static void
+view_clamp_to_current_page(struct cow_view *view)
+{
+	struct cow_box	*ua  = &view->output->usable_area;
+	struct cow_desk *pd  = view->output->current_desk;
+	int		 vpx = pd->page_vx;
+	int		 vpy = pd->page_vy;
+	int		 ow  = ua->width;
+	int		 oh  = ua->height;
+	view->vx	     = (view->x - view->output->x) + vpx;
+	view->vy	     = (view->y - view->output->y) + vpy;
+	if (ow > 0 && view->vx < vpx)
+		view->vx = vpx;
+	if (ow > 0 && view->vx >= vpx + ow)
+		view->vx = vpx + ow - 1;
+	if (oh > 0 && view->vy < vpy)
+		view->vy = vpy;
+	if (oh > 0 && view->vy >= vpy + oh)
+		view->vy = vpy + oh - 1;
+	view->x = view->output->x + (view->vx - vpx);
+	view->y = view->output->y + (view->vy - vpy);
+}
+
+/*
+ * Initial window placement based on the configured strategy.  Picks the
+ * pointer's output rather than the output that created the view, then
+ * delegates to the placement-specific helpers.  No-op if the view has
+ * already been placed.
+ */
+static void
+view_compute_initial_placement(struct cow_view *view)
+{
+	if (view->placed)
 		return;
 
-	/*
-	 * Deferred decoration cleanup: if a view lost SSD ownership
-	 * (e.g. a container tab was deactivated) its decoration surface
-	 * must stay alive until this render cycle so that any pending
-	 * window_interaction events are still routed to a valid surface.
-	 * Destroy it now, before hide/show, so the compositor can release
-	 * the surface atomically with the render_finish.
-	 */
-	if (!view->use_ssd && view->decoration != NULL) {
-		river_decoration_v1_destroy(view->decoration);
-		view->decoration = NULL;
-		wl_surface_destroy(view->decoration_surface);
-		view->decoration_surface = NULL;
-		cow_decoration_fini(&view->dec);
-		cow_decoration_init(&view->dec);
+	if (view->output == NULL)
+		return;
+
+	struct cow_seat *ps = cow_seat_first_with_pointer();
+	if (ps != NULL) {
+		struct cow_output *ptr_out = cow_output_at(ps->pointer_x,
+		    ps->pointer_y);
+		if (ptr_out != NULL)
+			cow_view_reassign_output(view, ptr_out);
 	}
 
-	/* Get the render node if we don't have one yet */
-	if (view->node == NULL) {
-		view->node = river_window_v1_get_node(view->river_window);
+	int gap	     = cow_config ? cow_config->gap : COW_CFG_DEFAULT_GAP;
+	int dec_top  = view->dec.border_width + view->dec.title_thickness;
+	int dec_left = view->dec.border_width;
+	enum cow_placement_mode mode = cow_config ? cow_config->placement :
+						    COW_PLACEMENT_CASCADE;
+
+	switch (mode) {
+	case COW_PLACEMENT_UNDERMOUSE:
+		view_place_undermouse(view, dec_left, dec_top);
+		break;
+	case COW_PLACEMENT_CENTRE:
+		view_place_centre(view, dec_left, dec_top);
+		break;
+	case COW_PLACEMENT_CASCADE:
+	default:
+		view_place_cascade(view, dec_left, dec_top, gap);
+		break;
 	}
+	view_clamp_to_current_page(view);
+	view->placed = true;
+}
 
-	/* Initial window placement based on the configured strategy. */
-	if (!view->placed && view->output != NULL) {
-		/* Place on the output where the pointer is, not
-		 * necessarily the output that created the view. */
-		struct cow_seat *ps = cow_seat_first_with_pointer();
-		if (ps != NULL) {
-			struct cow_output *ptr_out =
-			    cow_output_at(ps->pointer_x, ps->pointer_y);
-			if (ptr_out != NULL)
-				cow_view_reassign_output(view, ptr_out);
-		}
-
-		struct cow_box *ua = &view->output->usable_area;
-		int gap = cow_config ? cow_config->gap : COW_CFG_DEFAULT_GAP;
-		int dec_top = view->dec.border_width +
-		    view->dec.title_thickness;
-		int			dec_left = view->dec.border_width;
-		enum cow_placement_mode mode	 = cow_config ?
-			cow_config->placement :
-			COW_PLACEMENT_CASCADE;
-
-		switch (mode) {
-		case COW_PLACEMENT_UNDERMOUSE: {
-			/* Centre the window frame on the pointer position.
-			 * pointer_x/y are global compositor coords; convert
-			 * to within-output position, then add page offset so
-			 * the window lands on the current virtual page. */
-			int px = ua->x + ua->width / 2;
-			int py = ua->y + ua->height / 2;
-			cow_seat_get_pointer(&px, &py);
-			/* Use actual dimensions if known, else a sensible
-			 * default so the window is centred on the pointer
-			 * even before the first dimensions event arrives. */
-			int cw = view->content_width > 0 ? view->content_width :
-							   640;
-			int ch = view->content_height > 0 ?
-			    view->content_height :
-			    400;
-			int fw = cw + 2 * view->dec.border_width;
-			int fh = ch + dec_top + view->dec.border_width;
-			view->x = px - fw / 2 + dec_left;
-			view->y = py - fh / 2 + dec_top;
-
-			/* Clamp so the full frame stays within the usable
-			 * area (which already has reserved areas applied).
-			 * Clamp max before min so that on a screen smaller
-			 * than the window the top-left is still visible. */
-			if (ua->width > 0) {
-				int max_x = ua->x + ua->width - fw + dec_left;
-				int min_x = ua->x + dec_left;
-				if (view->x > max_x)
-					view->x = max_x;
-				if (view->x < min_x)
-					view->x = min_x;
-			}
-			if (ua->height > 0) {
-				int max_y = ua->y + ua->height - fh + dec_top;
-				int min_y = ua->y + dec_top;
-				if (view->y > max_y)
-					view->y = max_y;
-				if (view->y < min_y)
-					view->y = min_y;
-			}
-			break;
-		}
-		case COW_PLACEMENT_CENTRE: {
-			/* Centre the window in the usable area. */
-			int fw = view->content_width +
-			    2 * view->dec.border_width;
-			int fh = view->content_height + dec_top +
-			    view->dec.border_width;
-			view->x = ua->x + (ua->width - fw) / 2 + dec_left;
-			view->y = ua->y + (ua->height - fh) / 2 + dec_top;
-			break;
-		}
-		case COW_PLACEMENT_CASCADE:
-		default: {
-			static int cascade_offset = 0;
-			view->x = ua->x + dec_left + gap + cascade_offset;
-			view->y = ua->y + dec_top + gap + cascade_offset;
-			cascade_offset = (cascade_offset + 30) % 150;
-			break;
-		}
-		}
-		/*
-		 * Convert the global placement position to a virtual position.
-		 * vx/vy must include the current page viewport offset so that
-		 * the window appears on the page the user is currently viewing,
-		 * not always on page (0,0).
-		 *
-		 * vx = (x - output->x) + page_vx
-		 *    = offset-within-output + current-page-left
-		 *
-		 * Clamp so the window's top-left corner lands within the
-		 * current page; a negative or over-width vx would cause
-		 * cow_view_visible to immediately hide the window.
-		 */
-		{
-			struct cow_desk *pd  = view->output->current_desk;
-			int		 vpx = pd->page_vx;
-			int		 vpy = pd->page_vy;
-			int		 ow  = ua->width;
-			int		 oh  = ua->height;
-			view->vx = (view->x - view->output->x) + vpx;
-			view->vy = (view->y - view->output->y) + vpy;
-			if (ow > 0 && view->vx < vpx)
-				view->vx = vpx;
-			if (ow > 0 && view->vx >= vpx + ow)
-				view->vx = vpx + ow - 1;
-			if (oh > 0 && view->vy < vpy)
-				view->vy = vpy;
-			if (oh > 0 && view->vy >= vpy + oh)
-				view->vy = vpy + oh - 1;
-			/* Recompute x/y from the clamped virtual position */
-			view->x = view->output->x + (view->vx - vpx);
-			view->y = view->output->y + (view->vy - vpy);
-		}
-		view->placed = true;
-	} else if (!view->placed && view->output != NULL &&
-	    view->desk != NULL) {
-		/*
-		 * Window arrived with a pre-set position (e.g. XWayland with
-		 * a saved geometry) that bypassed the placement block above.
-		 * vx/vy are still zero; seed them from x/y now so the window
-		 * lands on the correct page instead of always page (0,0).
-		 */
-		cow_view_sync_vxy_from_global(view);
-		view->placed = true;
-	}
-
-	/*
-	 * Do NOT clamp view->x/y to the usable area here.  The rendered
-	 * x/y is legitimately negative or out-of-bounds for windows that
-	 * live on a different page from the one currently displayed — their
-	 * vx/vy are correct and the render correctly places them off-screen.
-	 * Clamping here would corrupt vx/vy by treating the off-screen
-	 * render position as if the window had moved off the usable area.
-	 * Boundary clamping is applied at placement time and when windows
-	 * are explicitly moved or resized.
-	 */
-
-	/*
-	 * Compute the global compositor render position from the virtual
-	 * position (vx, vy) and the current page viewport offset.
-	 * With a 1x1 grid (page_vx=page_vy=0):
-	 *   x = output->x + vx,  y = output->y + vy
-	 * which matches the previous single-page behaviour exactly.
-	 * When the user scrolls to page (1,0):
-	 *   page_vx = output_width  →  x = output->x + vx - output_width
-	 * causing the window to slide one screen-width to the left.
-	 */
-	cow_view_sync_global_from_vxy(view);
-
-	/*
-	 * River assigns a window to whichever output contains its position,
-	 * even for hidden windows.  An off-page window has a large negative
-	 * or large positive y (or x), which may fall inside a physically
-	 * adjacent monitor (e.g. monitor X above monitor Y).  When the page
-	 * switches back, River uses the wrong output.
-	 *
-	 * Fix: for windows that are not visible on their page, park them at
-	 * a position that is guaranteed to be outside all physical outputs.
-	 * We use one pixel below the bounding box of all outputs, which is
-	 * always off-screen on Wayland.  This does not affect vx/vy — those
-	 * remain correct for when the window comes back into view.
-	 */
+/*
+ * Position node + apply raise/lower.  River assigns a window to
+ * whichever output contains its position, even for hidden windows; an
+ * off-page window may have a large negative or positive y/x that
+ * lands inside a physically adjacent monitor.  Park hidden views one
+ * pixel below the bounding box of all outputs (always off-screen on
+ * Wayland) so River doesn't migrate them.  vx/vy stay correct.
+ */
+static void
+view_apply_node_position(struct cow_view *view)
+{
 	int render_x = view->x;
 	int render_y = view->y;
 	if (view->output != NULL && !cow_view_visible(view, view->output)) {
 		render_x = 0;
 		render_y = cow_outputs_max_bottom() + 1;
 	}
-
 	river_node_v1_set_position(view->node, render_x, render_y);
 
-	/* Raise if requested (from focus change) */
 	if (view->needs_raise && view->node != NULL) {
 		river_node_v1_place_top(view->node);
 		view->raise_seq	  = ++cow_wm.raise_seq_counter;
 		view->needs_raise = false;
 	}
-
-	/* Lower if requested (from IPC) */
 	if (view->pending_lower && view->node != NULL) {
 		river_node_v1_place_bottom(view->node);
 		view->pending_lower = false;
@@ -649,40 +625,94 @@ cow_view_apply_render(struct cow_view *view)
 		struct cow_container *c = view->container_member->container;
 		river_node_v1_set_position(view->node, c->x, c->y);
 	}
+}
 
-	/* Show or hide based on desk membership + sticky + iconified */
+/* Show or hide the view's surface based on visibility, and update
+ * decoration / container z-order while it's visible. */
+static void
+view_apply_show_hide(struct cow_view *view)
+{
 	if (view->output == NULL || !cow_view_visible(view, view->output)) {
 		river_window_v1_hide(view->river_window);
-	} else {
-		river_window_v1_show(view->river_window);
+		return;
+	}
 
-		/* Z-ordering: ensure all container members stack together */
-		if (view->container_member != NULL && view->needs_raise) {
-			struct cow_container *c =
-			    view->container_member->container;
-			struct cow_container_member *active = c->active;
-			if (active != NULL && active->view->node != NULL &&
-			    view != active->view) {
-				river_node_v1_place_below(view->node,
-				    active->view->node);
-			}
-		}
+	river_window_v1_show(view->river_window);
 
-		/* Update decoration surface (SSD frame) */
-		if (view->use_ssd) {
-			bool active = (view == cow_wm.focused_view);
-			cow_decoration_update(view, active);
+	/* Z-ordering: ensure all container members stack together. */
+	if (view->container_member != NULL && view->needs_raise) {
+		struct cow_container *c = view->container_member->container;
+		struct cow_container_member *active = c->active;
+		if (active != NULL && active->view->node != NULL &&
+		    view != active->view) {
+			river_node_v1_place_below(view->node,
+			    active->view->node);
 		}
 	}
 
-	/* Apply pending content clip box (rendering state).
-	 * Used by shade to hide window content while keeping
-	 * the decoration (titlebar + borders) visible. */
-	if (view->pending_clip) {
-		river_window_v1_set_content_clip_box(view->river_window,
-		    view->clip_x, view->clip_y, view->clip_w, view->clip_h);
-		view->pending_clip = false;
+	if (view->use_ssd) {
+		bool active = (view == cow_wm.focused_view);
+		cow_decoration_update(view, active);
 	}
+}
+
+/* Apply pending content clip box.  Used by shade to hide window
+ * content while keeping the decoration (titlebar + borders) visible. */
+static void
+view_apply_pending_clip(struct cow_view *view)
+{
+	if (!view->pending_clip)
+		return;
+	river_window_v1_set_content_clip_box(view->river_window, view->clip_x,
+	    view->clip_y, view->clip_w, view->clip_h);
+	view->pending_clip = false;
+}
+
+void
+cow_view_apply_render(struct cow_view *view)
+{
+	if (!view->has_dimensions || view->closed)
+		return;
+
+	view_cleanup_stale_decoration(view);
+
+	if (view->node == NULL)
+		view->node = river_window_v1_get_node(view->river_window);
+
+	view_compute_initial_placement(view);
+
+	/*
+	 * Window arrived with a pre-set position (e.g. XWayland with a
+	 * saved geometry) that bypassed the placement block above.  vx/vy
+	 * are still zero; seed them from x/y now so the window lands on
+	 * the correct page instead of always page (0,0).
+	 */
+	if (!view->placed && view->output != NULL && view->desk != NULL) {
+		cow_view_sync_vxy_from_global(view);
+		view->placed = true;
+	}
+
+	/*
+	 * Do NOT clamp view->x/y to the usable area here.  The rendered
+	 * x/y is legitimately negative or out-of-bounds for windows that
+	 * live on a different page from the one currently displayed -- their
+	 * vx/vy are correct and the render correctly places them off-screen.
+	 * Boundary clamping is applied at placement time and when windows
+	 * are explicitly moved or resized.
+	 *
+	 * Compute the global render position from vx/vy and the current
+	 * page viewport offset.  With a 1x1 grid (page_vx=page_vy=0):
+	 *   x = output->x + vx,  y = output->y + vy
+	 * matching the single-page behaviour.  When the user scrolls to
+	 * page (1,0):
+	 *   page_vx = output_width  →  x = output->x + vx - output_width
+	 * sliding the window one screen-width to the left.
+	 */
+	cow_view_sync_global_from_vxy(view);
+
+	view_apply_node_position(view);
+	view_apply_show_hide(view);
+	view_apply_pending_clip(view);
 }
 
 void
@@ -800,12 +830,11 @@ cow_view_frame_box_at(const struct cow_view *v, int x, int y)
  * View style resolution
  * ================================================================ */
 
-void
-cow_view_resolve_style(struct cow_view *view)
+/* Seed style with the WM-wide defaults (or last-resort baked-in values
+ * when cow_config is NULL).  Override flags start cleared. */
+static void
+view_style_seed_defaults(struct cow_view_style *s)
 {
-	struct cow_view_style *s = &view->style;
-
-	/* Start from global config defaults */
 	s->border = cow_config ? cow_config->border : COW_CFG_DEFAULT_BORDER;
 	s->has_border_override	    = false;
 	s->has_titlebar_override    = false;
@@ -834,95 +863,107 @@ cow_view_resolve_style(struct cow_view *view)
 		memcpy(s->titlebar_fg_inactive, black, sizeof(float) * 4);
 		s->titlebar_enabled = false;
 	}
+}
 
-	/* Apply matching rules in order (last match wins for each field) */
-	if (cow_config == NULL)
-		goto done;
+/*
+ * Test whether a view-config rule applies to 'view'.  Combines the
+ * output/desk constraints and the app_id/title match into one
+ * predicate.
+ */
+static bool
+view_style_rule_matches(const struct cow_view *view,
+    const struct cow_view_config_entry	      *vc)
+{
+	if (vc->output_name != NULL && view->output != NULL &&
+	    view->output->name != NULL &&
+	    strcmp(vc->output_name, view->output->name) != 0)
+		return false;
 
-	struct cow_view_config_entry *vc;
-	wl_list_for_each(vc, &cow_config->view_configs, link)
-	{
-		/* Check output/desk constraints */
-		if (vc->output_name != NULL && view->output != NULL &&
-		    view->output->name != NULL &&
-		    strcmp(vc->output_name, view->output->name) != 0)
-			continue;
-		/* Desk constraint: match against the current desk
-		 * being displayed.  All visible windows on this desk
-		 * get the desk's style.  For collected windows, use
-		 * their assigned desk instead so they retain their
-		 * original desk's style. */
-		if (vc->desk_nr >= 0 && view->output != NULL) {
-			bool collected	= (view->desk != NULL &&
-			     view->desk != view->output->current_desk &&
-			     (view->output->collected_desks &
-				 (1u << view->desk->nr)));
-			int  match_desk = collected ?
-			     view->desk->nr :
-			     view->output->current_desk->nr;
-			if (match_desk != vc->desk_nr)
-				continue;
-		}
-
-		/* Check app_id/title match */
-		bool match = false;
-		if (vc->title != NULL) {
-			if (view->title != NULL) {
-				if (vc->use_glob)
-					match = fnmatch(vc->title, view->title,
-						    0) == 0;
-				else
-					match = strcmp(vc->title,
-						    view->title) == 0;
-			}
-		} else if (vc->app_id != NULL) {
-			const char *id = view->app_id ? view->app_id : "";
-			if (strcmp(vc->app_id, "*") == 0)
-				match = true;
-			else if (vc->use_glob)
-				match = fnmatch(vc->app_id, id, 0) == 0;
-			else
-				match = strcmp(vc->app_id, id) == 0;
-		}
-		if (!match)
-			continue;
-
-		/* Apply visual overrides */
-		if (vc->has_border)
-			s->border = vc->border;
-		if (vc->has_border_colour_active) {
-			s->border_active       = vc->border_colour_active;
-			s->has_border_override = true;
-		}
-		if (vc->has_border_colour_inactive) {
-			s->border_inactive     = vc->border_colour_inactive;
-			s->has_border_override = true;
-		}
-		if (vc->has_titlebar_active) {
-			memcpy(s->titlebar_active, vc->titlebar_active_colour,
-			    sizeof(float) * 4);
-			s->has_titlebar_override = true;
-		}
-		if (vc->has_titlebar_inactive) {
-			memcpy(s->titlebar_inactive,
-			    vc->titlebar_inactive_colour, sizeof(float) * 4);
-			s->has_titlebar_override = true;
-		}
-		if (vc->has_titlebar_fg_active) {
-			memcpy(s->titlebar_fg_active, vc->titlebar_fg_active,
-			    sizeof(float) * 4);
-			s->has_titlebar_fg_override = true;
-		}
-		if (vc->has_titlebar_fg_inactive) {
-			memcpy(s->titlebar_fg_inactive,
-			    vc->titlebar_fg_inactive, sizeof(float) * 4);
-			s->has_titlebar_fg_override = true;
-		}
-		if (vc->has_titlebar_enabled)
-			s->titlebar_enabled = vc->titlebar_enabled;
+	/*
+	 * Desk constraint: match against the current desk being
+	 * displayed.  All visible windows on this desk get the desk's
+	 * style.  For collected windows, use their assigned desk
+	 * instead so they retain their original desk's style.
+	 */
+	if (vc->desk_nr >= 0 && view->output != NULL) {
+		bool collected	= (view->desk != NULL &&
+		     view->desk != view->output->current_desk &&
+		     (view->output->collected_desks & (1u << view->desk->nr)));
+		int  match_desk = collected ? view->desk->nr :
+					      view->output->current_desk->nr;
+		if (match_desk != vc->desk_nr)
+			return false;
 	}
 
-done:
+	if (vc->title != NULL) {
+		if (view->title == NULL)
+			return false;
+		return vc->use_glob ? fnmatch(vc->title, view->title, 0) == 0 :
+				      strcmp(vc->title, view->title) == 0;
+	}
+	if (vc->app_id != NULL) {
+		const char *id = view->app_id ? view->app_id : "";
+		if (strcmp(vc->app_id, "*") == 0)
+			return true;
+		return vc->use_glob ? fnmatch(vc->app_id, id, 0) == 0 :
+				      strcmp(vc->app_id, id) == 0;
+	}
+	return false;
+}
+
+/* Apply the visual overrides from a single matching rule to 'style'. */
+static void
+view_style_apply_overrides(struct cow_view_style *s,
+    const struct cow_view_config_entry		 *vc)
+{
+	if (vc->has_border)
+		s->border = vc->border;
+	if (vc->has_border_colour_active) {
+		s->border_active       = vc->border_colour_active;
+		s->has_border_override = true;
+	}
+	if (vc->has_border_colour_inactive) {
+		s->border_inactive     = vc->border_colour_inactive;
+		s->has_border_override = true;
+	}
+	if (vc->has_titlebar_active) {
+		memcpy(s->titlebar_active, vc->titlebar_active_colour,
+		    sizeof(float) * 4);
+		s->has_titlebar_override = true;
+	}
+	if (vc->has_titlebar_inactive) {
+		memcpy(s->titlebar_inactive, vc->titlebar_inactive_colour,
+		    sizeof(float) * 4);
+		s->has_titlebar_override = true;
+	}
+	if (vc->has_titlebar_fg_active) {
+		memcpy(s->titlebar_fg_active, vc->titlebar_fg_active,
+		    sizeof(float) * 4);
+		s->has_titlebar_fg_override = true;
+	}
+	if (vc->has_titlebar_fg_inactive) {
+		memcpy(s->titlebar_fg_inactive, vc->titlebar_fg_inactive,
+		    sizeof(float) * 4);
+		s->has_titlebar_fg_override = true;
+	}
+	if (vc->has_titlebar_enabled)
+		s->titlebar_enabled = vc->titlebar_enabled;
+}
+
+void
+cow_view_resolve_style(struct cow_view *view)
+{
+	struct cow_view_style *s = &view->style;
+	view_style_seed_defaults(s);
+
+	if (cow_config != NULL) {
+		struct cow_view_config_entry *vc;
+		wl_list_for_each(vc, &cow_config->view_configs, link)
+		{
+			if (view_style_rule_matches(view, vc))
+				view_style_apply_overrides(s, vc);
+		}
+	}
 	s->resolved = true;
 }
 
@@ -986,24 +1027,7 @@ cow_view_maximize(struct cow_view *view)
 	 * w/h directly because the dimensions event hasn't arrived yet and
 	 * view->content_width still holds the old value.
 	 */
-	if (view->container_member != NULL) {
-		struct cow_container *c = view->container_member->container;
-		c->x			= view->x;
-		c->y			= view->y;
-		c->content_width	= w;
-		c->content_height	= h;
-		struct cow_container_member *m;
-		wl_list_for_each(m, &c->members, link)
-		{
-			if (m->view == view)
-				continue;
-			m->view->x	   = view->x;
-			m->view->y	   = view->y;
-			m->view->dec.dirty = true;
-			cow_view_set_pending_geometry(m->view, view->x, view->y,
-			    w, h);
-		}
-	}
+	cow_view_sync_container_geometry(view, view->x, view->y, w, h);
 
 	int mbi = cow_find_maximize_button();
 	if (mbi >= 0) {
@@ -1047,25 +1071,8 @@ cow_view_unmaximize(struct cow_view *view)
 
 	/* Restore container geometry to the saved (pre-maximize) values.
 	 * Use view->x/y (already recomputed from vx/vy) as the global coord. */
-	if (view->container_member != NULL) {
-		struct cow_container *c = view->container_member->container;
-		c->x			= view->x;
-		c->y			= view->y;
-		c->content_width	= view->saved_width;
-		c->content_height	= view->saved_height;
-		struct cow_container_member *m;
-		wl_list_for_each(m, &c->members, link)
-		{
-			if (m->view == view)
-				continue;
-			m->view->x	   = view->x;
-			m->view->y	   = view->y;
-			m->view->dec.dirty = true;
-			cow_view_set_pending_geometry(m->view, view->x,
-			    view->saved_y, view->saved_width,
-			    view->saved_height);
-		}
-	}
+	cow_view_sync_container_geometry(view, view->x, view->y,
+	    view->saved_width, view->saved_height);
 
 	view->icon_inverted_button = -1;
 	view->dec.dirty		   = true;
@@ -1200,7 +1207,7 @@ cow_view_exit_fullscreen(struct cow_view *view)
  * Icons are laid out in a row at the bottom of the usable area.
  */
 void
-cow_output_layout_icons(struct cow_output *output)
+cow_view_layout_icons_on_output(struct cow_output *output)
 {
 	int icon_sz = cow_config ? cow_config->icon_size :
 				   COW_CFG_DEFAULT_ICON_SIZE;
@@ -1237,6 +1244,143 @@ cow_output_layout_icons(struct cow_output *output)
  * Render the icon surface for an iconified view.
  * Draws a bordered rectangle with the app_id as text.
  */
+/* Lazily create the icon's wl_surface, river shell surface, and node.
+ * Returns false if any allocation failed (caller should bail). */
+static bool
+icon_ensure_surface(struct cow_view *view)
+{
+	if (view->icon_surface == NULL) {
+		view->icon_surface = wl_compositor_create_surface(
+		    cow_wm.compositor);
+		if (view->icon_surface == NULL)
+			return false;
+	}
+	if (view->icon_shell == NULL) {
+		view->icon_shell = river_window_manager_v1_get_shell_surface(
+		    cow_wm.manager, view->icon_surface);
+		if (view->icon_shell == NULL)
+			return false;
+	}
+	if (view->icon_node == NULL)
+		view->icon_node = river_shell_surface_v1_get_node(
+		    view->icon_shell);
+	return true;
+}
+
+/* Allocate (or resize) the icon's SHM buffer.  Returns false on
+ * allocation failure. */
+static bool
+icon_ensure_buffer(struct cow_view *view, int icon_w, int icon_h)
+{
+	if (view->icon_buffer != NULL &&
+	    (view->icon_buffer->width != icon_w ||
+		view->icon_buffer->height != icon_h)) {
+		cow_shm_buffer_destroy(view->icon_buffer);
+		view->icon_buffer = NULL;
+	}
+	if (view->icon_buffer == NULL) {
+		view->icon_buffer = cow_shm_buffer_create(icon_w, icon_h);
+		if (view->icon_buffer == NULL)
+			return false;
+	}
+	return true;
+}
+
+/* Fill the icon box (centred at the top of the icon area) and draw
+ * 3D relief if border_style != NONE. */
+static void
+icon_draw_box(struct cow_pixbuf *p, int icon_sz, uint32_t px_base,
+    uint32_t px_lt, uint32_t px_dk)
+{
+	int box_x = (p->width - icon_sz) / 2;
+	int box_y = 0;
+	int bw	  = 3;
+
+	cow_draw_fill_rect(p, box_x, box_y, icon_sz, icon_sz, px_base);
+
+	if (cow_config == NULL ||
+	    cow_config->border_style == COW_BORDER_STYLE_NONE)
+		return;
+
+	for (int r = 0; r < bw; r++) {
+		cow_draw_hline(p, box_x + r, box_x + icon_sz - 1 - r, box_y + r,
+		    px_lt);
+		cow_draw_vline(p, box_x + r, box_y + r, box_y + icon_sz - 1 - r,
+		    px_lt);
+		cow_draw_hline(p, box_x + r, box_x + icon_sz - 1 - r,
+		    box_y + icon_sz - 1 - r, px_dk);
+		cow_draw_vline(p, box_x + icon_sz - 1 - r, box_y + r,
+		    box_y + icon_sz - 1 - r, px_dk);
+	}
+}
+
+/* Render the icon's app_id label into the strip below the icon box. */
+static void
+icon_draw_label(uint32_t *pixels, int stride_px, int icon_w, int icon_h,
+    int icon_sz, const char *label)
+{
+	int text_y	= icon_sz + 2;
+	int text_area_h = icon_h - text_y;
+	if (text_area_h <= 0)
+		return;
+
+	/* Create a cairo surface over just the text area. */
+	cairo_surface_t *cs = cairo_image_surface_create_for_data(
+	    (unsigned char *)(pixels + text_y * stride_px), CAIRO_FORMAT_ARGB32,
+	    icon_w, text_area_h, stride_px * 4);
+	cairo_t *cr = cairo_create(cs);
+
+	const char	     *fname  = cow_config && cow_config->font_name ?
+		       cow_config->font_name :
+		       "monospace 9";
+	PangoLayout	     *layout = pango_cairo_create_layout(cr);
+	PangoFontDescription *fd = pango_font_description_from_string(fname);
+	/* Use a smaller font for the icon label */
+	pango_font_description_set_size(fd, 8 * PANGO_SCALE);
+	pango_layout_set_font_description(layout, fd);
+	pango_layout_set_text(layout, label, -1);
+	pango_layout_set_width(layout, icon_w * PANGO_SCALE);
+	pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
+	pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+
+	cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);
+	pango_cairo_show_layout(cr, layout);
+
+	g_object_unref(layout);
+	pango_font_description_free(fd);
+	cairo_destroy(cr);
+	cairo_surface_destroy(cs);
+}
+
+/* Stipple every base-coloured pixel with alternating light/dark to
+ * mark sticky iconified windows. */
+static void
+icon_draw_sticky_stipple(struct cow_pixbuf *p, uint32_t px_base, uint32_t px_lt,
+    uint32_t px_dk)
+{
+	for (int y = 0; y < p->height; y++) {
+		uint32_t *row = p->pixels + y * p->stride_px;
+		for (int x = 0; x < p->width; x++) {
+			if (row[x] != px_base)
+				continue;
+			row[x] = ((x + y) % 2 == 0) ? px_lt : px_dk;
+		}
+	}
+}
+
+/* Attach the buffer, damage the surface, sync to the next commit, and
+ * position the icon node. */
+static void
+icon_commit(struct cow_view *view, int icon_w, int icon_h)
+{
+	wl_surface_attach(view->icon_surface, view->icon_buffer->buffer, 0, 0);
+	wl_surface_damage_buffer(view->icon_surface, 0, 0, icon_w, icon_h);
+	river_shell_surface_v1_sync_next_commit(view->icon_shell);
+	wl_surface_commit(view->icon_surface);
+
+	river_node_v1_set_position(view->icon_node, view->icon_x, view->icon_y);
+}
+
 void
 cow_view_icon_render(struct cow_view *view)
 {
@@ -1250,151 +1394,34 @@ cow_view_icon_render(struct cow_view *view)
 	if (icon_w <= 0 || icon_h <= 0)
 		return;
 
-	/* Create surfaces if needed */
-	if (view->icon_surface == NULL) {
-		view->icon_surface = wl_compositor_create_surface(
-		    cow_wm.compositor);
-		if (view->icon_surface == NULL)
-			return;
-	}
-	if (view->icon_shell == NULL) {
-		view->icon_shell = river_window_manager_v1_get_shell_surface(
-		    cow_wm.manager, view->icon_surface);
-		if (view->icon_shell == NULL)
-			return;
-	}
-	if (view->icon_node == NULL) {
-		view->icon_node = river_shell_surface_v1_get_node(
-		    view->icon_shell);
-	}
+	if (!icon_ensure_surface(view))
+		return;
+	if (!icon_ensure_buffer(view, icon_w, icon_h))
+		return;
 
-	/* Allocate or reallocate the SHM buffer */
-	if (view->icon_buffer != NULL &&
-	    (view->icon_buffer->width != icon_w ||
-		view->icon_buffer->height != icon_h)) {
-		cow_shm_buffer_destroy(view->icon_buffer);
-		view->icon_buffer = NULL;
-	}
-	if (view->icon_buffer == NULL) {
-		view->icon_buffer = cow_shm_buffer_create(icon_w, icon_h);
-		if (view->icon_buffer == NULL)
-			return;
-	}
+	struct cow_pixbuf p = {
+		.pixels	   = view->icon_buffer->data,
+		.stride_px = view->icon_buffer->stride / 4,
+		.width	   = icon_w,
+		.height	   = icon_h,
+	};
 
-	uint32_t *pixels    = view->icon_buffer->data;
-	int	  stride_px = view->icon_buffer->stride / 4;
+	/* Clear to transparent. */
+	cow_draw_clear_rect(&p, 0, 0, icon_w, icon_h);
 
-	/* Clear to transparent */
-	memset(pixels, 0, (size_t)stride_px * icon_h * 4);
-
-	/* Use inactive border colors for the icon box */
-	struct cow_border_colour *bc = &cow_config->border_inactive;
-	struct cow_colour_triple  bc_t;
-	cow_colour_make_triple(&bc_t, bc->n);
-	uint32_t px_base = bc_t.base;
-	uint32_t px_lt	 = bc_t.lt;
-	uint32_t px_dk	 = bc_t.dk;
+	/* Use inactive border colours for the icon box. */
+	struct cow_colour_triple bc_t;
+	cow_colour_make_triple(&bc_t, cow_config->border_inactive.n);
 
 	int icon_sz = cow_config ? cow_config->icon_size :
 				   COW_CFG_DEFAULT_ICON_SIZE;
-	int box_x   = (icon_w - icon_sz) / 2;
-	int box_y   = 0;
-	int bw	    = 3; /* icon border width */
 
-	/* Fill the icon box */
-	for (int y = box_y; y < box_y + icon_sz; y++) {
-		for (int x = box_x; x < box_x + icon_sz; x++) {
-			if (x >= 0 && x < icon_w && y >= 0 && y < icon_h)
-				pixels[y * stride_px + x] = px_base;
-		}
-	}
-
-	/* Draw 3D relief if border_style is set */
-	if (cow_config->border_style != COW_BORDER_STYLE_NONE) {
-		for (int r = 0; r < bw; r++) {
-			/* Top + left = light */
-			for (int x = box_x + r; x < box_x + icon_sz - r; x++) {
-				if ((box_y + r) < icon_h)
-					pixels[(box_y + r) * stride_px + x] =
-					    px_lt;
-			}
-			for (int y = box_y + r; y < box_y + icon_sz - r; y++) {
-				if ((box_x + r) < icon_w)
-					pixels[y * stride_px + box_x + r] =
-					    px_lt;
-			}
-			/* Bottom + right = dark */
-			for (int x = box_x + r; x < box_x + icon_sz - r; x++) {
-				int by = box_y + icon_sz - 1 - r;
-				if (by < icon_h)
-					pixels[by * stride_px + x] = px_dk;
-			}
-			for (int y = box_y + r; y < box_y + icon_sz - r; y++) {
-				int bx = box_x + icon_sz - 1 - r;
-				if (bx < icon_w)
-					pixels[y * stride_px + bx] = px_dk;
-			}
-		}
-	}
-
-	/* Render app_id text below the icon box using pango */
-	const char *label	= view->app_id ? view->app_id : "?";
-	int	    text_y	= icon_sz + 2;
-	int	    text_area_h = icon_h - text_y;
-
-	if (text_area_h > 0) {
-		/* Create a cairo surface over just the text area */
-		cairo_surface_t *cs = cairo_image_surface_create_for_data(
-		    (unsigned char *)(pixels + text_y * stride_px),
-		    CAIRO_FORMAT_ARGB32, icon_w, text_area_h, stride_px * 4);
-		cairo_t *cr = cairo_create(cs);
-
-		const char  *fname	 = cow_config && cow_config->font_name ?
-			   cow_config->font_name :
-			   "monospace 9";
-		PangoLayout *layout	 = pango_cairo_create_layout(cr);
-		PangoFontDescription *fd = pango_font_description_from_string(
-		    fname);
-		/* Use a smaller font for the icon label */
-		pango_font_description_set_size(fd, 8 * PANGO_SCALE);
-		pango_layout_set_font_description(layout, fd);
-		pango_layout_set_text(layout, label, -1);
-		pango_layout_set_width(layout, icon_w * PANGO_SCALE);
-		pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
-		pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
-
-		cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);
-		pango_cairo_show_layout(cr, layout);
-
-		g_object_unref(layout);
-		pango_font_description_free(fd);
-		cairo_destroy(cr);
-		cairo_surface_destroy(cs);
-	}
-
-	/* Draw stipple on sticky iconified windows --
-	 * alternating light/dark pixels */
-	if (view->flags & COW_VIEW_STICKY_FLAG) {
-		for (int y = 0; y < icon_h; y++) {
-			for (int x = 0; x < icon_w; x++) {
-				if (pixels[y * stride_px + x] != px_base)
-					continue;
-				if ((x + y) % 2 == 0)
-					pixels[y * stride_px + x] = px_lt;
-				else
-					pixels[y * stride_px + x] = px_dk;
-			}
-		}
-	}
-
-	/* Commit the buffer */
-	wl_surface_attach(view->icon_surface, view->icon_buffer->buffer, 0, 0);
-	wl_surface_damage_buffer(view->icon_surface, 0, 0, icon_w, icon_h);
-	river_shell_surface_v1_sync_next_commit(view->icon_shell);
-	wl_surface_commit(view->icon_surface);
-
-	/* Position the icon */
-	river_node_v1_set_position(view->icon_node, view->icon_x, view->icon_y);
+	icon_draw_box(&p, icon_sz, bc_t.base, bc_t.lt, bc_t.dk);
+	icon_draw_label(p.pixels, p.stride_px, icon_w, icon_h, icon_sz,
+	    view->app_id ? view->app_id : "?");
+	if (view->flags & COW_VIEW_STICKY_FLAG)
+		icon_draw_sticky_stipple(&p, bc_t.base, bc_t.lt, bc_t.dk);
+	icon_commit(view, icon_w, icon_h);
 }
 
 static void
@@ -1430,7 +1457,7 @@ cow_view_iconify(struct cow_view *view)
 
 	/* Layout all icons on this output */
 	if (view->output != NULL)
-		cow_output_layout_icons(view->output);
+		cow_view_layout_icons_on_output(view->output);
 
 	/* Focus next visible view */
 	struct cow_view *next = cow_view_walk(view, true, cow_view_focusable);
@@ -1454,7 +1481,7 @@ cow_view_deiconify(struct cow_view *view)
 
 	/* Re-layout remaining icons on this output */
 	if (view->output != NULL)
-		cow_output_layout_icons(view->output);
+		cow_view_layout_icons_on_output(view->output);
 
 	/* Focus the restored window */
 	view->needs_raise    = true;

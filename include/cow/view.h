@@ -371,7 +371,7 @@ void cow_view_icon_render(struct cow_view *view);
 /*
  * Recompute icon positions for all iconified views on an output.
  */
-void cow_output_layout_icons(struct cow_output *output);
+void cow_view_layout_icons_on_output(struct cow_output *output);
 
 static inline bool
 cow_view_is_iconified(const struct cow_view *view)
