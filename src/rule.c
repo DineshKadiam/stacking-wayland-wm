@@ -1,0 +1,250 @@
+/*
+ * Copyright (c) 2026 Thomas Adam
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#include "cow/rule.h"
+
+#include <string.h>
+
+#include "cow/cmd.h"
+#include "cow/memory.h"
+#include "cow/output.h"
+#include "cow/view.h"
+#include "cow/wm.h"
+
+/*
+ * Lookup table mapping rule-type enum values to their canonical string
+ * names.  Used by both directions of conversion (string <-> enum) so
+ * the spelling lives in exactly one place.
+ */
+static const struct {
+	enum cow_rule_type type;
+	const char	  *name;
+} rule_type_table[] = {
+	{ COW_RULE_ON_MAP,	   "on-map"	    },
+	{ COW_RULE_ON_MOVE,	    "on-move"      },
+	{ COW_RULE_ON_RESIZE,    "on-resize"	  },
+	{ COW_RULE_ON_SHADE,     "on-shade"	},
+	{ COW_RULE_ON_UNSHADE,   "on-unshade"   },
+	{ COW_RULE_ON_ICONIFY,   "on-iconify"   },
+	{ COW_RULE_ON_DEICONIFY, "on-deiconify" },
+	{ COW_RULE_ON_NEW_DESK,	"on-new-desk"  },
+	{ COW_RULE_ON_NEW_PAGE,	"on-new-page"  },
+	{ COW_RULE_ON_RESTART,   "on-restart"   },
+};
+
+/*
+ * Rules are stored in a file-scope wl_list rather than on cow_wm so
+ * that registration during config parse (which happens before
+ * cow_wm_init) is well-defined.  cow_wm_init's memset does not touch
+ * this list.
+ */
+static struct wl_list rules;
+static bool	      rules_initialised;
+
+static void
+rules_lazy_init(void)
+{
+	if (!rules_initialised) {
+		wl_list_init(&rules);
+		rules_initialised = true;
+	}
+}
+
+void
+cow_rule_init(void)
+{
+	rules_lazy_init();
+}
+
+static void
+cow_rule_free(struct cow_rule *rule)
+{
+	if (rule == NULL)
+		return;
+	xfree(rule->name);
+	xfree(rule->output_name);
+	xfree(rule->match_spec);
+	if (rule->cmdlist != NULL)
+		cmd_list_free(rule->cmdlist);
+	xfree(rule);
+}
+
+void
+cow_rule_fini(void)
+{
+	if (!rules_initialised)
+		return;
+	struct cow_rule *r, *tmp;
+	wl_list_for_each_safe(r, tmp, &rules, link)
+	{
+		wl_list_remove(&r->link);
+		cow_rule_free(r);
+	}
+	rules_initialised = false;
+}
+
+bool
+cow_rule_type_from_string(const char *s, enum cow_rule_type *out)
+{
+	if (s == NULL || out == NULL)
+		return false;
+	for (size_t i = 0;
+	    i < sizeof(rule_type_table) / sizeof(rule_type_table[0]); i++) {
+		if (strcmp(rule_type_table[i].name, s) == 0) {
+			*out = rule_type_table[i].type;
+			return true;
+		}
+	}
+	return false;
+}
+
+const char *
+cow_rule_type_name(enum cow_rule_type type)
+{
+	for (size_t i = 0;
+	    i < sizeof(rule_type_table) / sizeof(rule_type_table[0]); i++) {
+		if (rule_type_table[i].type == type)
+			return rule_type_table[i].name;
+	}
+	return "unknown";
+}
+
+struct cow_rule *
+cow_rule_find_by_name(const char *name)
+{
+	if (name == NULL)
+		return NULL;
+	rules_lazy_init();
+	struct cow_rule *r;
+	wl_list_for_each(r, &rules, link)
+	{
+		if (r->name != NULL && strcmp(r->name, name) == 0)
+			return r;
+	}
+	return NULL;
+}
+
+void
+cow_rule_add(struct cow_rule *rule)
+{
+	if (rule == NULL)
+		return;
+	rules_lazy_init();
+	wl_list_insert(rules.prev, &rule->link);
+}
+
+bool
+cow_rule_remove_by_name(const char *name)
+{
+	struct cow_rule *r = cow_rule_find_by_name(name);
+	if (r == NULL)
+		return false;
+	wl_list_remove(&r->link);
+	cow_rule_free(r);
+	return true;
+}
+
+/*
+ * Per-view selector check.  Used by both phases (a global rule may
+ * still carry -s).
+ */
+static bool
+rule_view_matches(const struct cow_rule *rule, const struct cow_view *view)
+{
+	if (rule->match_spec == NULL)
+		return true;
+	if (view == NULL)
+		return false;
+	return cow_view_matches_selector(view, rule->match_spec);
+}
+
+/*
+ * Scope match for non-global rules.  Returns true when the event's
+ * (output, desk) context falls within the rule's -t-derived
+ * constraints.  Empty constraints mean "any".
+ */
+static bool
+rule_scope_matches(const struct cow_rule *rule, const struct cow_desk *desk,
+    const struct cow_output *output)
+{
+	if (rule->output_name != NULL) {
+		if (output == NULL || output->name == NULL ||
+		    strcmp(rule->output_name, output->name) != 0)
+			return false;
+	}
+	if (rule->desk_nr >= 0) {
+		if (desk == NULL || desk->nr != rule->desk_nr)
+			return false;
+	}
+	return true;
+}
+
+/* Run a single rule's command body against the supplied context. */
+static void
+rule_run(struct cow_rule *rule, struct cow_view *view, struct cow_desk *desk,
+    struct cow_output *output)
+{
+	struct cmd_q *cmdq = cmdq_new();
+	cmdq->client_fd	   = -1;
+	cmdq_set_default_target(cmdq, view, desk, output);
+	cmdq_run(cmdq, rule->cmdlist);
+	cmdq_free(cmdq);
+}
+
+void
+cow_rule_fire(enum cow_rule_type type, struct cow_view *view,
+    struct cow_desk *desk, struct cow_output *output)
+{
+	if (type <= COW_RULE_NONE || type >= COW_RULE_TYPE_COUNT)
+		return;
+	if (!rules_initialised)
+		return; /* no rules registered */
+
+	struct cow_rule *rule;
+
+	/*
+	 * Phase 1: global rules.  Run unconditionally for any event of
+	 * this type (subject to the optional -s view selector).  Order
+	 * is registration order within the global subset.
+	 */
+	wl_list_for_each(rule, &rules, link)
+	{
+		if (rule->type != type || !rule->is_global)
+			continue;
+		if (!rule_view_matches(rule, view))
+			continue;
+		rule_run(rule, view, desk, output);
+	}
+
+	/*
+	 * Phase 2: scoped rules.  Run only when the event's (output,
+	 * desk) context matches the rule's -t scope.  This phase
+	 * supplements / overrides what the globals did: scoped rules
+	 * see the same default_target so commands like `set border 5`
+	 * or `set titlebar.height 33` apply on top of any state the
+	 * globals left behind.
+	 */
+	wl_list_for_each(rule, &rules, link)
+	{
+		if (rule->type != type || rule->is_global)
+			continue;
+		if (!rule_scope_matches(rule, desk, output))
+			continue;
+		if (!rule_view_matches(rule, view))
+			continue;
+		rule_run(rule, view, desk, output);
+	}
+}

@@ -199,54 +199,6 @@ struct cow_titlebar_config {
 };
 
 /*
- * Per-app-id view configuration.
- */
-struct cow_view_config_entry {
-	struct wl_list link;
-	char	      *app_id;	 /* match pattern (app_id or title) */
-	char	      *title;	 /* title match pattern (if set) */
-	bool	       use_glob; /* true = fnmatch glob, false = exact */
-	int  assign_desk_nr;	 /* desk to assign view to; -1 = default */
-	bool sticky;
-	bool focus;
-
-	/* Constraints: only apply to views on this output/desk.
-	 * NULL = match any. */
-	char *output_name;
-	int   desk_nr; /* -1 = any */
-
-	/* Visual overrides (has_* flags indicate which are set) */
-	bool has_border;
-	int  border;
-
-	/* Per-edge border colors (full cow_border_colour override) */
-	bool			 has_border_colour_active;
-	struct cow_border_colour border_colour_active;
-	bool			 has_border_colour_inactive;
-	struct cow_border_colour border_colour_inactive;
-
-	/* Titlebar colors */
-	bool  has_titlebar_active;
-	float titlebar_active_colour[4];
-	bool  has_titlebar_inactive;
-	float titlebar_inactive_colour[4];
-	bool  has_titlebar_fg_active;
-	float titlebar_fg_active[4];
-	bool  has_titlebar_fg_inactive;
-	float titlebar_fg_inactive[4];
-	bool  has_titlebar_enabled;
-	bool  titlebar_enabled;
-
-	/* Squeezed titlebar overrides. */
-	bool			    has_squeeze_mode;
-	bool			    has_squeeze_justify;
-	bool			    has_squeeze_width;
-	bool			    has_squeeze_offset;
-	bool			    has_squeeze_min_width;
-	struct cow_titlebar_squeeze squeeze;
-};
-
-/*
  * The portable configuration struct for the river-based cow.
  *
  * Parsed from the line-based cow.conf format.  Only contains
@@ -326,14 +278,10 @@ struct cow_config {
 	float output_bg_colour[4];
 	bool  has_output_bg_colour;
 
-	/* Hooks: shell commands run at specific lifecycle points */
-	char *hook_restart; /* run before execvp on SIGUSR1 restart */
-
 	/* Parsed binding lists */
 	struct wl_list keyboard_bindings; /* cow_binding_entry.link */
 	struct wl_list mouse_bindings;	  /* cow_mouse_binding_entry.link */
 	struct wl_list actions;		  /* cow_action_entry.link */
-	struct wl_list view_configs;	  /* cow_view_config_entry.link */
 };
 
 extern struct cow_config *cow_config;
@@ -360,11 +308,6 @@ void cow_config_destroy(struct cow_config *);
  * ~/.config/cow/cow.conf, /etc/cow/cow.conf.
  */
 const char *cow_config_default_path(void);
-
-/*
- * Find a view config entry by app_id. Returns NULL if not found.
- */
-struct cow_view_config_entry *cow_config_find_view(struct cow_config *, const char *, const char *, struct cow_output *, struct cow_desk *);
 
 /*
  * Find an action entry by name. Returns the command string, or NULL.

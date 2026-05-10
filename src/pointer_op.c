@@ -22,6 +22,7 @@
 #include "cow/desk_ops.h"
 #include "cow/output.h"
 #include "cow/pan_frames.h"
+#include "cow/rule.h"
 #include "cow/seat.h"
 #include "cow/status.h"
 #include "cow/view.h"
@@ -336,10 +337,24 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 	seat->titlebar_press = COW_TITLEBAR_PRESS_NONE;
 	seat->pressed_view   = NULL;
 
+	enum cow_pointer_op_type finished_type = seat->op.type;
+
 	river_seat_v1_op_end(seat->river_seat);
 	seat->op_in_progress = false;
 	seat->op_released    = false;
 	seat->op.type	     = COW_POINTER_OP_NONE;
+
+	/* Fire lifecycle rules for the completed op.  Skipped if the
+	 * view was destroyed during the op (caller has already returned
+	 * before reaching here). */
+	if (view != NULL && !view->closed) {
+		if (finished_type == COW_POINTER_OP_MOVE)
+			cow_rule_fire(COW_RULE_ON_MOVE, view, view->desk,
+			    view->output);
+		else if (finished_type == COW_POINTER_OP_RESIZE)
+			cow_rule_fire(COW_RULE_ON_RESIZE, view, view->desk,
+			    view->output);
+	}
 }
 
 void

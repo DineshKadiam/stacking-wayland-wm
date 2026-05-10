@@ -136,13 +136,11 @@ do_collect(struct cow_output *output, uint8_t nr)
 		}
 	}
 
-	/* Re-resolve styles for all views on this output */
+	/* Mark views on this output dirty for repaint. */
 	wl_list_for_each(v, &cow_wm.views, wm_link)
 	{
-		if (v->output == output && !v->closed) {
-			cow_view_resolve_style(v);
+		if (v->output == output && !v->closed)
 			v->dec.dirty = true;
-		}
 	}
 
 	cow_status_emit();

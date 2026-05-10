@@ -77,7 +77,7 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	/* Close -- deferred to manage callback */
 	if (args_has(args, 'c')) {
-		view->pending_close	  = true;
+		view->pending_close = true;
 		cow_wm_request_manage_dirty();
 		return (CMD_RETURN_NORMAL);
 	}
@@ -96,7 +96,7 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 		    0;
 
 		view->flags ^= COW_VIEW_STICKY_DESK_FLAG;
-		view->dec.dirty		  = true;
+		view->dec.dirty = true;
 		cow_wm_request_manage_dirty();
 
 		if (was_sticky) {
@@ -111,7 +111,7 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 		/* -S: toggle page-sticky (visible on all pages of current desk)
 		 */
 		view->flags ^= COW_VIEW_STICKY_PAGE_FLAG;
-		view->dec.dirty		  = true;
+		view->dec.dirty = true;
 		cow_wm_request_manage_dirty();
 	}
 
@@ -152,7 +152,7 @@ cmd_window_expand_exec(struct cmd *self, struct cmd_q *cmdq)
 	do_expand(view, dir, toggle);
 
 	cow_wm_request_manage_dirty();
-	view->dec.dirty		  = true;
+	view->dec.dirty = true;
 
 	return (CMD_RETURN_NORMAL);
 }
@@ -184,7 +184,7 @@ cmd_window_maximize_exec(struct cmd *self, struct cmd_q *cmdq)
 		do_maximize(view, MAXIMIZE);
 
 	cow_wm_request_manage_dirty();
-	view->dec.dirty		  = true;
+	view->dec.dirty = true;
 
 	return (CMD_RETURN_NORMAL);
 }
@@ -220,14 +220,14 @@ cmd_window_shade_exec(struct cmd *self, struct cmd_q *cmdq)
 static void
 do_raise(struct cow_view *view)
 {
-	view->needs_raise	  = true;
+	view->needs_raise = true;
 	cow_wm_request_manage_dirty();
 }
 
 static void
 do_lower(struct cow_view *view)
 {
-	view->pending_lower	  = true;
+	view->pending_lower = true;
 	cow_wm_request_manage_dirty();
 }
 
@@ -480,12 +480,13 @@ do_identify(struct cow_view *view, struct cmd_q *cmdq)
 		cJSON_AddItemToObject(info, "size_hints", hints);
 	}
 
-	/* Style */
-	if (view->style.resolved) {
+	/* Style: report the global config defaults that apply to all views.
+	 * Per-view overrides are no longer cached here. */
+	if (cow_config != NULL) {
 		cJSON *style = cJSON_CreateObject();
-		cJSON_AddNumberToObject(style, "border", view->style.border);
+		cJSON_AddNumberToObject(style, "border", cow_config->border);
 		cJSON_AddBoolToObject(style, "titlebar_enabled",
-		    view->style.titlebar_enabled);
+		    cow_config->titlebar.enabled);
 		cJSON_AddItemToObject(info, "style", style);
 	}
 

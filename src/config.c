@@ -15,7 +15,6 @@
  */
 #include "cow/config.h"
 
-#include <fnmatch.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -227,7 +226,6 @@ cow_config_create(void)
 
 	wl_list_init(&config->keyboard_bindings);
 	wl_list_init(&config->mouse_bindings);
-	wl_list_init(&config->view_configs);
 
 	return config;
 }
@@ -257,16 +255,6 @@ cow_config_destroy(struct cow_config *config)
 		xfree(mb->key_string);
 		xfree(mb->action_string);
 		xfree(mb);
-	}
-
-	struct cow_view_config_entry *vc, *vc_tmp;
-	wl_list_for_each_safe(vc, vc_tmp, &config->view_configs, link)
-	{
-		wl_list_remove(&vc->link);
-		xfree(vc->app_id);
-		xfree(vc->title);
-		xfree(vc->output_name);
-		xfree(vc);
 	}
 
 	xfree(config);
@@ -309,48 +297,5 @@ cow_config_default_path(void)
 	if (access(COW_SYSCONFDIR "/cow.conf", R_OK) == 0)
 		return COW_SYSCONFDIR "/cow.conf";
 
-	return NULL;
-}
-
-static bool
-pattern_match(const char *pattern, const char *str, bool use_glob)
-{
-	if (pattern == NULL || str == NULL)
-		return false;
-	if (use_glob)
-		return fnmatch(pattern, str, 0) == 0;
-	return strcmp(pattern, str) == 0;
-}
-
-struct cow_view_config_entry *
-cow_config_find_view(struct cow_config *config, const char *app_id,
-    const char *title, struct cow_output *output, struct cow_desk *desk)
-{
-	struct cow_view_config_entry *entry;
-	wl_list_for_each(entry, &config->view_configs, link)
-	{
-		/* Check output constraint */
-		if (entry->output_name != NULL && output != NULL &&
-		    output->name != NULL &&
-		    strcmp(entry->output_name, output->name) != 0)
-			continue;
-
-		/* Check desk constraint */
-		if (entry->desk_nr >= 0 && desk != NULL &&
-		    desk->nr != entry->desk_nr)
-			continue;
-
-		/* Match on title if title pattern is set */
-		if (entry->title != NULL) {
-			if (pattern_match(entry->title, title, entry->use_glob))
-				return entry;
-			continue;
-		}
-
-		/* Match on app_id */
-		if (entry->app_id != NULL &&
-		    pattern_match(entry->app_id, app_id, entry->use_glob))
-			return entry;
-	}
 	return NULL;
 }

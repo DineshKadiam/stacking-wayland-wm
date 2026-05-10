@@ -32,6 +32,7 @@
 #include "cow/keybinding.h"
 #include "cow/memory.h"
 #include "cow/output.h"
+#include "cow/rule.h"
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
 #include "cow/shm.h"
@@ -383,24 +384,6 @@ cow_view_configure(struct cow_view *view)
 		RIVER_WINDOW_V1_CAPABILITIES_MINIMIZE |
 		RIVER_WINDOW_V1_CAPABILITIES_WINDOW_MENU);
 
-	/* Apply per-app-id view config rules */
-	if (cow_config != NULL) {
-		struct cow_view_config_entry *vc =
-		    cow_config_find_view(cow_config, view->app_id, view->title,
-			view->output, view->desk);
-		if (vc != NULL) {
-			if (vc->assign_desk_nr >= 0 && view->output != NULL) {
-				cow_view_assign_desk(view,
-				    (uint8_t)vc->assign_desk_nr);
-			}
-			if (vc->sticky)
-				view->flags |= COW_VIEW_STICKY_FLAG;
-		}
-	}
-
-	/* Resolve visual style from global config + matching rules */
-	cow_view_resolve_style(view);
-
 	/*
 	 * Trigger River's .ready -> .initialized state transition by calling
 	 * propose_dimensions.  Without this call, River never sends the first
@@ -420,6 +403,8 @@ cow_view_configure(struct cow_view *view)
 	view->needs_raise = true;
 	view->needs_focus = true;
 	cow_wm_request_manage_dirty();
+
+	cow_rule_fire(COW_RULE_ON_MAP, view, view->desk, view->output);
 }
 
 /* Forward declaration: defined later, used by view_cleanup_stale_decoration. */
@@ -778,6 +763,40 @@ cow_view_find_by_identifier(const char *identifier)
 	return NULL;
 }
 
+bool
+cow_view_matches_selector(const struct cow_view *view, const char *spec)
+{
+	if (view == NULL || spec == NULL || spec[0] == '\0')
+		return false;
+	switch (spec[0]) {
+	case '%':
+		if (view->app_id == NULL)
+			return false;
+		return strcmp(view->app_id, spec + 1) == 0;
+	case '/': {
+		if (view->title == NULL)
+			return false;
+		const char *pat	  = spec + 1;
+		size_t	    plen  = strlen(pat);
+		bool	    strip = (plen > 0 && pat[plen - 1] == '/');
+		if (!strip)
+			return strstr(view->title, pat) != NULL;
+		char tmp[1024];
+		if (plen - 1 >= sizeof(tmp))
+			return false;
+		memcpy(tmp, pat, plen - 1);
+		tmp[plen - 1] = '\0';
+		return strstr(view->title, tmp) != NULL;
+	}
+	case '#':
+		if (view->identifier == NULL)
+			return false;
+		return strcmp(view->identifier, spec + 1) == 0;
+	default:
+		return false;
+	}
+}
+
 struct cow_view *
 cow_view_walk(struct cow_view *start, bool forward,
     bool (*pred)(const struct cow_view *))
@@ -840,147 +859,6 @@ cow_view_frame_box_at(const struct cow_view *v, int x, int y)
 		.width	= v->content_width + 2 * bw,
 		.height = v->content_height + bw + tt + bw,
 	};
-}
-
-/* ================================================================
- * View style resolution
- * ================================================================ */
-
-/* Seed style with the WM-wide defaults (or last-resort baked-in values
- * when cow_config is NULL).  Override flags start cleared. */
-static void
-view_style_seed_defaults(struct cow_view_style *s)
-{
-	s->border = cow_config ? cow_config->border : COW_CFG_DEFAULT_BORDER;
-	s->has_border_override	    = false;
-	s->has_titlebar_override    = false;
-	s->has_titlebar_fg_override = false;
-	if (cow_config != NULL) {
-		s->border_active   = cow_config->border_active;
-		s->border_inactive = cow_config->border_inactive;
-		memcpy(s->titlebar_active, cow_config->titlebar.active_colour,
-		    sizeof(float) * 4);
-		memcpy(s->titlebar_inactive,
-		    cow_config->titlebar.inactive_colour, sizeof(float) * 4);
-		memcpy(s->titlebar_fg_active, cow_config->titlebar.fg_active,
-		    sizeof(float) * 4);
-		memcpy(s->titlebar_fg_inactive,
-		    cow_config->titlebar.fg_inactive, sizeof(float) * 4);
-		s->titlebar_enabled = cow_config->titlebar.enabled;
-	} else {
-		float white[4] = { 1, 1, 1, 1 };
-		float grey[4]  = { 0.5, 0.5, 0.5, 1 };
-		float black[4] = { 0, 0, 0, 1 };
-		cow_colour_convert(s->border_active.n, 0xFFFFFF);
-		cow_colour_convert(s->border_inactive.n, 0x808080);
-		memcpy(s->titlebar_active, white, sizeof(float) * 4);
-		memcpy(s->titlebar_inactive, grey, sizeof(float) * 4);
-		memcpy(s->titlebar_fg_active, black, sizeof(float) * 4);
-		memcpy(s->titlebar_fg_inactive, black, sizeof(float) * 4);
-		s->titlebar_enabled = false;
-	}
-}
-
-/*
- * Test whether a view-config rule applies to 'view'.  Combines the
- * output/desk constraints and the app_id/title match into one
- * predicate.
- */
-static bool
-view_style_rule_matches(const struct cow_view *view,
-    const struct cow_view_config_entry	      *vc)
-{
-	if (vc->output_name != NULL && view->output != NULL &&
-	    view->output->name != NULL &&
-	    strcmp(vc->output_name, view->output->name) != 0)
-		return false;
-
-	/*
-	 * Desk constraint: match against the current desk being
-	 * displayed.  All visible windows on this desk get the desk's
-	 * style.  For collected windows, use their assigned desk
-	 * instead so they retain their original desk's style.
-	 */
-	if (vc->desk_nr >= 0 && view->output != NULL) {
-		bool collected	= (view->desk != NULL &&
-		     view->desk != view->output->current_desk &&
-		     (view->output->collected_desks & (1u << view->desk->nr)));
-		int  match_desk = collected ? view->desk->nr :
-					      view->output->current_desk->nr;
-		if (match_desk != vc->desk_nr)
-			return false;
-	}
-
-	if (vc->title != NULL) {
-		if (view->title == NULL)
-			return false;
-		return vc->use_glob ? fnmatch(vc->title, view->title, 0) == 0 :
-				      strcmp(vc->title, view->title) == 0;
-	}
-	if (vc->app_id != NULL) {
-		const char *id = view->app_id ? view->app_id : "";
-		if (strcmp(vc->app_id, "*") == 0)
-			return true;
-		return vc->use_glob ? fnmatch(vc->app_id, id, 0) == 0 :
-				      strcmp(vc->app_id, id) == 0;
-	}
-	return false;
-}
-
-/* Apply the visual overrides from a single matching rule to 'style'. */
-static void
-view_style_apply_overrides(struct cow_view_style *s,
-    const struct cow_view_config_entry		 *vc)
-{
-	if (vc->has_border)
-		s->border = vc->border;
-	if (vc->has_border_colour_active) {
-		s->border_active       = vc->border_colour_active;
-		s->has_border_override = true;
-	}
-	if (vc->has_border_colour_inactive) {
-		s->border_inactive     = vc->border_colour_inactive;
-		s->has_border_override = true;
-	}
-	if (vc->has_titlebar_active) {
-		memcpy(s->titlebar_active, vc->titlebar_active_colour,
-		    sizeof(float) * 4);
-		s->has_titlebar_override = true;
-	}
-	if (vc->has_titlebar_inactive) {
-		memcpy(s->titlebar_inactive, vc->titlebar_inactive_colour,
-		    sizeof(float) * 4);
-		s->has_titlebar_override = true;
-	}
-	if (vc->has_titlebar_fg_active) {
-		memcpy(s->titlebar_fg_active, vc->titlebar_fg_active,
-		    sizeof(float) * 4);
-		s->has_titlebar_fg_override = true;
-	}
-	if (vc->has_titlebar_fg_inactive) {
-		memcpy(s->titlebar_fg_inactive, vc->titlebar_fg_inactive,
-		    sizeof(float) * 4);
-		s->has_titlebar_fg_override = true;
-	}
-	if (vc->has_titlebar_enabled)
-		s->titlebar_enabled = vc->titlebar_enabled;
-}
-
-void
-cow_view_resolve_style(struct cow_view *view)
-{
-	struct cow_view_style *s = &view->style;
-	view_style_seed_defaults(s);
-
-	if (cow_config != NULL) {
-		struct cow_view_config_entry *vc;
-		wl_list_for_each(vc, &cow_config->view_configs, link)
-		{
-			if (view_style_rule_matches(view, vc))
-				view_style_apply_overrides(s, vc);
-		}
-	}
-	s->resolved = true;
 }
 
 /* ================================================================
@@ -1120,6 +998,8 @@ cow_view_shade(struct cow_view *view, int direction)
 	cow_wm_request_manage_dirty();
 
 	view->dec.dirty = true;
+
+	cow_rule_fire(COW_RULE_ON_SHADE, view, view->desk, view->output);
 }
 
 void
@@ -1152,6 +1032,8 @@ cow_view_unshade(struct cow_view *view)
 	}
 
 	cow_wm_request_manage_dirty();
+
+	cow_rule_fire(COW_RULE_ON_UNSHADE, view, view->desk, view->output);
 }
 
 void
@@ -1482,6 +1364,8 @@ cow_view_iconify(struct cow_view *view)
 	}
 
 	cow_wm_request_manage_dirty();
+
+	cow_rule_fire(COW_RULE_ON_ICONIFY, view, view->desk, view->output);
 }
 
 void
@@ -1503,6 +1387,8 @@ cow_view_deiconify(struct cow_view *view)
 	view->needs_raise    = true;
 	cow_wm.pending_focus = view;
 	cow_wm_request_manage_dirty();
+
+	cow_rule_fire(COW_RULE_ON_DEICONIFY, view, view->desk, view->output);
 }
 
 struct cow_view *
@@ -1730,7 +1616,6 @@ cow_container_remove_view(struct cow_view *view)
 	view->use_ssd = true;
 	cow_decoration_fini(&view->dec);
 	cow_decoration_init(&view->dec);
-	cow_view_resolve_style(view);
 
 	/* Restore pre-container geometry */
 	if (saved_pre_width > 0 && saved_pre_height > 0) {
@@ -1759,7 +1644,6 @@ cow_container_remove_view(struct cow_view *view)
 			lv->use_ssd = true;
 			cow_decoration_fini(&lv->dec);
 			cow_decoration_init(&lv->dec);
-			cow_view_resolve_style(lv);
 			lv->dec.dirty = true;
 		}
 		wl_list_remove(&c->wm_link);

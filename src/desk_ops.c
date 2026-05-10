@@ -20,6 +20,7 @@
 #include "cow/config.h"
 #include "cow/output.h"
 #include "cow/pan_frames.h"
+#include "cow/rule.h"
 #include "cow/seat.h"
 #include "cow/status.h"
 #include "cow/util.h"
@@ -130,14 +131,13 @@ switch_output_desk(struct cow_output *output, uint8_t desk_nr)
 	output->current_desk	= target;
 	output->collected_desks = 0;
 
-	/* Re-resolve styles for views on this output */
+	/* Mark views on this output dirty so the new desk's geometry is
+	 * applied on the next render. */
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
-		if (view->output == output && !view->closed) {
-			cow_view_resolve_style(view);
+		if (view->output == output && !view->closed)
 			view->dec.dirty = true;
-		}
 	}
 
 	/* Clear focused view if it is no longer visible on this output. */
@@ -152,6 +152,9 @@ switch_output_desk(struct cow_output *output, uint8_t desk_nr)
 				seat->focused_view = NULL;
 		}
 	}
+
+	cow_rule_fire(COW_RULE_ON_MAP, NULL, output->current_desk, output);
+	cow_rule_fire(COW_RULE_ON_NEW_DESK, NULL, output->current_desk, output);
 }
 
 void
@@ -231,8 +234,6 @@ cow_view_assign_desk(struct cow_view *view, uint8_t desk_nr)
 	view->desk = target;
 	wl_list_insert(&target->views, &view->desk_views);
 
-	/* Re-resolve style since desk-constrained rules may differ */
-	cow_view_resolve_style(view);
 	view->dec.dirty = true;
 
 	/* Visibility recomputed in render callback */
@@ -312,6 +313,8 @@ switch_output_page(struct cow_output *output, int new_vx, int new_vy)
 		}
 		view->dec.dirty = true;
 	}
+
+	cow_rule_fire(COW_RULE_ON_NEW_PAGE, NULL, desk, output);
 }
 
 void

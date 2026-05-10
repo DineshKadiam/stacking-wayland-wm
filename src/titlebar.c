@@ -15,7 +15,6 @@
  */
 #include "cow/titlebar.h"
 
-#include <fnmatch.h>
 #include <limits.h>
 #include <string.h>
 
@@ -42,52 +41,6 @@ cow_titlebar_compute_thickness(struct cow_font *font)
 	return raw_height + COW_TITLEBAR_PADDING * 2;
 }
 
-/*
- * Return true if rule 'vc' matches 'view', matching the semantics of
- * cow_view_resolve_style (which is what actually drives the rest of
- * the per-rule visual overrides).  We reuse this here instead of
- * calling cow_config_find_view() so that:
- *
- *   - "last match wins" is honoured across multiple rules, matching
- *     resolve_style's behaviour;
- *   - a rule pattern of "*" matches even views whose app_id is NULL.
- */
-static bool
-rule_matches_view(const struct cow_view_config_entry *vc,
-    const struct cow_view			     *view)
-{
-	if (vc->output_name != NULL && view->output != NULL &&
-	    view->output->name != NULL &&
-	    strcmp(vc->output_name, view->output->name) != 0)
-		return false;
-	if (vc->desk_nr >= 0 && view->output != NULL) {
-		bool collected	= (view->desk != NULL &&
-		     view->desk != view->output->current_desk &&
-		     (view->output->collected_desks & (1u << view->desk->nr)));
-		int  match_desk = collected ? view->desk->nr :
-					      view->output->current_desk->nr;
-		if (match_desk != vc->desk_nr)
-			return false;
-	}
-
-	if (vc->title != NULL) {
-		if (view->title == NULL)
-			return false;
-		if (vc->use_glob)
-			return fnmatch(vc->title, view->title, 0) == 0;
-		return strcmp(vc->title, view->title) == 0;
-	}
-	if (vc->app_id != NULL) {
-		const char *id = view->app_id ? view->app_id : "";
-		if (strcmp(vc->app_id, "*") == 0)
-			return true;
-		if (vc->use_glob)
-			return fnmatch(vc->app_id, id, 0) == 0;
-		return strcmp(vc->app_id, id) == 0;
-	}
-	return false;
-}
-
 void
 cow_titlebar_effective_squeeze(const struct cow_view *view,
     struct cow_titlebar_squeeze			     *out)
@@ -106,7 +59,9 @@ cow_titlebar_effective_squeeze(const struct cow_view *view,
 		return;
 	}
 
-	/* Start from the global config default. */
+	/* Use the global config default.  Per-app overrides are no
+	 * longer applied here -- those are now expressed via on-map
+	 * rules running `set titlebar.squeeze...` commands. */
 	if (cow_config != NULL) {
 		*out = cow_config->titlebar.squeeze;
 	} else {
@@ -115,30 +70,6 @@ cow_titlebar_effective_squeeze(const struct cow_view *view,
 		out->width     = COW_CFG_DEFAULT_SQUEEZE_WIDTH;
 		out->offset    = 0;
 		out->min_width = COW_CFG_DEFAULT_SQUEEZE_MIN_WIDTH;
-	}
-
-	if (cow_config == NULL)
-		return;
-
-	/*
-	 * Walk every rule and let the last matching one win -- matches
-	 * cow_view_resolve_style's iteration semantics.
-	 */
-	struct cow_view_config_entry *vc;
-	wl_list_for_each(vc, &cow_config->view_configs, link)
-	{
-		if (!rule_matches_view(vc, view))
-			continue;
-		if (vc->has_squeeze_mode)
-			out->mode = vc->squeeze.mode;
-		if (vc->has_squeeze_justify)
-			out->justify = vc->squeeze.justify;
-		if (vc->has_squeeze_width)
-			out->width = vc->squeeze.width;
-		if (vc->has_squeeze_offset)
-			out->offset = vc->squeeze.offset;
-		if (vc->has_squeeze_min_width)
-			out->min_width = vc->squeeze.min_width;
 	}
 }
 

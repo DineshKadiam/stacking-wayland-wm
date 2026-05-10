@@ -92,25 +92,6 @@ enum shade_direction {
 };
 
 /*
- * Resolved visual style for a view.  Starts from global config
- * defaults and is overridden by matching rules.
- */
-struct cow_view_style {
-	int			 border;
-	struct cow_border_colour border_active;
-	struct cow_border_colour border_inactive;
-	bool  has_border_override; /* per-edge override set */
-	float titlebar_active[4];
-	float titlebar_inactive[4];
-	float titlebar_fg_active[4];
-	float titlebar_fg_inactive[4];
-	bool  has_titlebar_override;
-	bool  has_titlebar_fg_override;
-	bool  titlebar_enabled;
-	bool  resolved;
-};
-
-/*
  * A managed window tracked by the window manager.
  * Wraps a river_window_v1 object.
  */
@@ -192,9 +173,6 @@ struct cow_view {
 	enum shade_direction sd;
 	int shade_saved_width; /* content dimensions before shading */
 	int shade_saved_height;
-
-	/* Resolved visual style (from global config + matching rules) */
-	struct cow_view_style style;
 
 	/* Decoration press state (for sunken title/button visual) */
 	bool title_pressed;
@@ -335,6 +313,17 @@ struct cow_box cow_view_frame_box_at(const struct cow_view *, int, int);
 struct cow_view *cow_view_find_by_identifier(const char *);
 
 /*
+ * Test whether 'view' matches the given selector spec.  Selector
+ * grammar matches the cmd-focus -t form:
+ *   %app_id   exact match on app_id
+ *   /title/   substring match on title (trailing '/' optional)
+ *   #id       exact match on identifier
+ *
+ * Returns false on NULL/empty/malformed spec or when no match.
+ */
+bool cow_view_matches_selector(const struct cow_view *, const char *);
+
+/*
  * Walk the view list circularly from start, returning the first
  * view matching pred.  Returns NULL if none found.
  */
@@ -379,12 +368,6 @@ void cow_view_icon_render(struct cow_view *);
 void cow_view_layout_icons_on_output(struct cow_output *);
 
 bool cow_view_is_iconified(const struct cow_view *);
-
-/*
- * Resolve the view's visual style from global config + matching rules.
- * Called when the view is created and when rules/config change.
- */
-void cow_view_resolve_style(struct cow_view *);
 
 /* -----------------------------------------------------------------------
  * Container API

@@ -146,6 +146,16 @@ cmdq_continue(struct cmd_q *cmdq)
 					retval = CMD_RETURN_ERROR;
 					break;
 				}
+			} else {
+				/*
+				 * No -t given.  If a default target was
+				 * seeded on the queue (by the rule
+				 * subsystem), inherit it so commands inside
+				 * a rule body see the event's view / desk /
+				 * output without having to spell out -t on
+				 * every line.
+				 */
+				cmdq->target = cmdq->default_target;
 			}
 			if (s_spec != NULL) {
 				if (!cmd_ctx_parse(s_spec, &cmdq->source,
@@ -194,4 +204,13 @@ cmdq_flush(struct cmd_q *cmdq)
 		xfree(item);
 	}
 	cmdq->item = NULL;
+}
+
+void
+cmdq_set_default_target(struct cmd_q *cmdq, struct cow_view *window,
+    struct cow_desk *desk, struct cow_output *output)
+{
+	cmdq->default_target.window = window;
+	cmdq->default_target.desk   = desk;
+	cmdq->default_target.output = output;
 }

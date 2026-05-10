@@ -13,374 +13,192 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
+
 /*
- * Command: rule -- define a window rule.
+ * `rule` -- bind a chain of cow commands to a lifecycle event.
  *
- * usage: rule [-T] [-t output:desk] pattern [key value ...]
+ *   rule -g | -t output[:desk]   -n <name> -T <event> [-s <selector>] cmd...
+ *   rule -d -n <name>
  *
- * During startup, rules are deferred until outputs are available.
+ * -g and -t are mutually exclusive (one is required for adds).  -n
+ * names the rule (unique across all rules).  -T selects the
+ * lifecycle event (see cow_rule_type_from_string).  -s restricts
+ * firing to views matching the selector grammar (%app | /title/ |
+ * #id) -- only meaningful for view-bearing events.
+ *
+ * The remaining argv tokens are joined with single spaces and parsed
+ * via cmd_string_parse, so semicolons inside (escaped or not) chain
+ * commands as usual.
+ *
+ * Rules are inserted into the active list immediately, including
+ * during config parse: the -t output[:desk] specifier is stored as
+ * the literal output name and matched against output->name at fire
+ * time, so registration does not need outputs to exist yet.
  */
 
-#include <fnmatch.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "cow/compat.h"
 #include "cow/cmd.h"
-#include "cow/colour.h"
-#include "cow/config.h"
-#include "cow/ipc.h"
 #include "cow/memory.h"
 #include "cow/output.h"
-#include "cow/view.h"
+#include "cow/rule.h"
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_rule_exec(struct cmd *, struct cmd_q *);
-static void	       do_rule(struct cmd *, struct cmd_q *);
-static bool	       has_glob_chars(const char *);
+static bool	       do_rule_add(struct args *, struct cmd_q *);
+static bool	       parse_scope_t(const char *, char **, int *);
 
 struct cmd_entry cmd_rule_entry = {
 	"rule",
-	"t:s:T",
-	1,
+	"dgn:T:t:s:",
+	0,
 	-1,
-	"rule [-T] [-t spec] pattern [key value ...]",
+	"rule -g | -t output[:desk] -n <name> -T <event> [-s sel] cmd...\n"
+	"rule -d -n <name>",
 	cmd_rule_exec,
 };
-
-/* Deferred rule list for startup mode. */
-static char **deferred_rules;
-static int    num_deferred_rules;
-static int    deferred_rules_cap;
 
 static enum cmd_retval
 cmd_rule_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	struct args *args = self->args;
 
-	/* Special case: "rule restart <command ...>" registers a lifecycle
-	 * hook run synchronously before cow restarts on SIGUSR1. */
-	if (args->argc >= 2 && strcmp(args->argv[0], "restart") == 0) {
-		char *cmd = cmd_argv_to_string(args->argc, args->argv, 1);
-		xfree(cow_config->hook_restart);
-		cow_config->hook_restart = cmd;
+	/* Deletion: -d -n <name>. */
+	if (args_has(args, 'd')) {
+		const char *name = args_get(args, 'n');
+		if (name == NULL) {
+			cmdq_error(cmdq, "rule: -d requires -n <name>");
+			return (CMD_RETURN_ERROR);
+		}
+		if (!cow_rule_remove_by_name(name)) {
+			cmdq_error(cmdq, "rule: no rule named '%s'", name);
+			return (CMD_RETURN_ERROR);
+		}
 		return (CMD_RETURN_NORMAL);
 	}
 
-	if (cow_ipc.startup_mode) {
-		/* Defer: reconstruct the full command line and save it */
-		char   line[2048];
-		size_t pos = 0;
-
-		/* Rebuild: rule [-T] [-t spec] args... */
-		pos += snprintf(line + pos, sizeof(line) - pos, "rule ");
-		if (args_has(self->args, 'T'))
-			pos += snprintf(line + pos, sizeof(line) - pos, "-T ");
-		const char *t_spec = args_get(self->args, 't');
-		if (t_spec != NULL)
-			pos += snprintf(line + pos, sizeof(line) - pos,
-			    "-t '%s' ", t_spec);
-		for (int i = 0; i < self->args->argc; i++) {
-			if (i > 0)
-				pos += snprintf(line + pos, sizeof(line) - pos,
-				    " ");
-			pos += snprintf(line + pos, sizeof(line) - pos, "%s",
-			    self->args->argv[i]);
-		}
-
-		if (num_deferred_rules >= deferred_rules_cap) {
-			deferred_rules_cap = deferred_rules_cap ?
-			    deferred_rules_cap * 2 :
-			    8;
-			deferred_rules	   = xrealloc(deferred_rules,
-				deferred_rules_cap, sizeof(char *));
-		}
-		deferred_rules[num_deferred_rules++] = xstrdup(line);
-
-		return (CMD_RETURN_NORMAL);
-	}
-
-	do_rule(self, cmdq);
+	if (!do_rule_add(args, cmdq))
+		return (CMD_RETURN_ERROR);
 	return (CMD_RETURN_NORMAL);
 }
 
-static void
-do_rule(struct cmd *self, struct cmd_q *cmdq)
+/*
+ * Parse a rule's -t output[:desk] specifier.  Empty parts mean "any":
+ * ":1" is desk 1 on any output, "DP-1:" is any desk on DP-1, "DP-1:0"
+ * is desk 0 on DP-1, "DP-1" is any desk on DP-1.
+ *
+ * The output name is stored verbatim (no validation against existing
+ * outputs) so that rules registered before outputs are bound (i.e.
+ * during config parse) still work; cow_rule_fire matches on
+ * output->name string equality at fire time.
+ *
+ * Returns true on success.  *output_name is xstrdup'd (or left NULL),
+ * *desk_nr is set to 0..COW_NR_OF_DESKS-1 (or left -1).
+ */
+static bool
+parse_scope_t(const char *spec, char **output_name, int *desk_nr)
 {
-	struct args *args	 = self->args;
-	bool	     match_title = args_has(args, 'T');
-
-	struct cow_view_config_entry *entry = xcalloc(1, sizeof(*entry));
-	entry->assign_desk_nr		    = -1;
-	entry->desk_nr			    = -1;
-
-	const char *pattern = args->argv[0];
-	entry->use_glob	    = has_glob_chars(pattern);
-
-	if (match_title)
-		entry->title = xstrdup(pattern);
-	else
-		entry->app_id = xstrdup(pattern);
-
-	/* Target constraint from -t.
-	 * Parse the spec string directly so that omitted parts (e.g. ":1"
-	 * meaning no output constraint) are not filled with resolved
-	 * defaults.  Format: [output]:[desk] */
-	const char *t_spec = args_get(args, 't');
-	if (t_spec != NULL) {
-		char *spec  = xstrdup(t_spec);
-		char *colon = strchr(spec, ':');
-		if (colon != NULL) {
-			*colon			= '\0';
-			const char *output_part = spec;
-			const char *desk_part	= colon + 1;
-			if (*output_part != '\0') {
-				struct cow_output *o = cow_output_find_by_name(
-				    output_part);
-				if (o != NULL && o->name != NULL)
-					entry->output_name = xstrdup(o->name);
-			}
-			if (*desk_part != '\0') {
-				char *end;
-				long  nr = strtol(desk_part, &end, 10);
-				if (end != desk_part && *end == '\0' &&
-				    nr >= 0 && nr < COW_NR_OF_DESKS)
-					entry->desk_nr = (int)nr;
-			}
-		} else {
-			/* No colon: treat entire spec as output name */
-			if (*spec != '\0') {
-				struct cow_output *o = cow_output_find_by_name(
-				    spec);
-				if (o != NULL && o->name != NULL)
-					entry->output_name = xstrdup(o->name);
-			}
+	if (spec == NULL || spec[0] == '\0')
+		return false;
+	char *dup   = xstrdup(spec);
+	char *colon = strchr(dup, ':');
+	if (colon != NULL) {
+		*colon			= '\0';
+		const char *output_part = dup;
+		const char *desk_part	= colon + 1;
+		if (*output_part != '\0')
+			*output_name = xstrdup(output_part);
+		if (*desk_part != '\0') {
+			char *end;
+			long  nr = strtol(desk_part, &end, 10);
+			if (end != desk_part && *end == '\0' && nr >= 0 &&
+			    nr < COW_NR_OF_DESKS)
+				*desk_nr = (int)nr;
 		}
-		xfree(spec);
+	} else if (*dup != '\0') {
+		*output_name = xstrdup(dup);
 	}
-
-	/* Parse key-value pairs from argv[1..] */
-	for (int i = 1; i + 1 < args->argc; i += 2) {
-		const char *key = args->argv[i];
-		const char *val = args->argv[i + 1];
-
-		if (strcmp(key, "desk") == 0) {
-			const char *errstr;
-			entry->assign_desk_nr = (int)strtonum(val, 0, 9,
-			    &errstr);
-			if (errstr != NULL)
-				entry->assign_desk_nr = -1;
-		} else if (strcmp(key, "sticky") == 0) {
-			bool b;
-			if (cmd_parse_bool(val, &b))
-				entry->sticky = b;
-		} else if (strcmp(key, "border") == 0) {
-			const char *errstr;
-			entry->border = (int)strtonum(val, 0, 100, &errstr);
-			if (errstr == NULL)
-				entry->has_border = true;
-		} else if (strcmp(key, "colour.active") == 0) {
-			/* Uniform active border colour (all edges) */
-			float c[4];
-			if (cow_colour_parse(val, c)) {
-				struct cow_border_colour *bc =
-				    &entry->border_colour_active;
-				memcpy(bc->n, c, sizeof(float) * 4);
-				memcpy(bc->s, c, sizeof(float) * 4);
-				memcpy(bc->e, c, sizeof(float) * 4);
-				memcpy(bc->w, c, sizeof(float) * 4);
-				entry->has_border_colour_active = true;
-			}
-		} else if (strcmp(key, "colour.inactive") == 0) {
-			float c[4];
-			if (cow_colour_parse(val, c)) {
-				struct cow_border_colour *bc =
-				    &entry->border_colour_inactive;
-				memcpy(bc->n, c, sizeof(float) * 4);
-				memcpy(bc->s, c, sizeof(float) * 4);
-				memcpy(bc->e, c, sizeof(float) * 4);
-				memcpy(bc->w, c, sizeof(float) * 4);
-				entry->has_border_colour_inactive = true;
-			}
-		} else if (strncmp(key, "colour.active.", 14) == 0) {
-			/* Per-edge: colour.active.n, .s, .e, .w, .nw etc */
-			const char *edge = key + 14;
-			float	    c[4];
-			if (!cow_colour_parse(val, c))
-				goto bad_key;
-			struct cow_border_colour *bc =
-			    &entry->border_colour_active;
-			entry->has_border_colour_active = true;
-			if (strcmp(edge, "n") == 0)
-				memcpy(bc->n, c, sizeof(float) * 4);
-			else if (strcmp(edge, "s") == 0)
-				memcpy(bc->s, c, sizeof(float) * 4);
-			else if (strcmp(edge, "e") == 0)
-				memcpy(bc->e, c, sizeof(float) * 4);
-			else if (strcmp(edge, "w") == 0)
-				memcpy(bc->w, c, sizeof(float) * 4);
-			else if (strcmp(edge, "nw") == 0) {
-				memcpy(bc->nw, c, sizeof(float) * 4);
-				bc->has_nw	= true;
-				bc->has_corners = true;
-			} else if (strcmp(edge, "ne") == 0) {
-				memcpy(bc->ne, c, sizeof(float) * 4);
-				bc->has_ne	= true;
-				bc->has_corners = true;
-			} else if (strcmp(edge, "sw") == 0) {
-				memcpy(bc->sw, c, sizeof(float) * 4);
-				bc->has_sw	= true;
-				bc->has_corners = true;
-			} else if (strcmp(edge, "se") == 0) {
-				memcpy(bc->se, c, sizeof(float) * 4);
-				bc->has_se	= true;
-				bc->has_corners = true;
-			} else
-				goto bad_key;
-		} else if (strncmp(key, "colour.inactive.", 16) == 0) {
-			const char *edge = key + 16;
-			float	    c[4];
-			if (!cow_colour_parse(val, c))
-				goto bad_key;
-			struct cow_border_colour *bc =
-			    &entry->border_colour_inactive;
-			entry->has_border_colour_inactive = true;
-			if (strcmp(edge, "n") == 0)
-				memcpy(bc->n, c, sizeof(float) * 4);
-			else if (strcmp(edge, "s") == 0)
-				memcpy(bc->s, c, sizeof(float) * 4);
-			else if (strcmp(edge, "e") == 0)
-				memcpy(bc->e, c, sizeof(float) * 4);
-			else if (strcmp(edge, "w") == 0)
-				memcpy(bc->w, c, sizeof(float) * 4);
-			else if (strcmp(edge, "nw") == 0) {
-				memcpy(bc->nw, c, sizeof(float) * 4);
-				bc->has_nw	= true;
-				bc->has_corners = true;
-			} else if (strcmp(edge, "ne") == 0) {
-				memcpy(bc->ne, c, sizeof(float) * 4);
-				bc->has_ne	= true;
-				bc->has_corners = true;
-			} else if (strcmp(edge, "sw") == 0) {
-				memcpy(bc->sw, c, sizeof(float) * 4);
-				bc->has_sw	= true;
-				bc->has_corners = true;
-			} else if (strcmp(edge, "se") == 0) {
-				memcpy(bc->se, c, sizeof(float) * 4);
-				bc->has_se	= true;
-				bc->has_corners = true;
-			} else
-				goto bad_key;
-		} else if (strcmp(key, "titlebar.active_colour") == 0) {
-			if (cow_colour_parse(val,
-				entry->titlebar_active_colour))
-				entry->has_titlebar_active = true;
-		} else if (strcmp(key, "titlebar.inactive_colour") == 0) {
-			if (cow_colour_parse(val,
-				entry->titlebar_inactive_colour))
-				entry->has_titlebar_inactive = true;
-		} else if (strcmp(key, "titlebar.fg_active") == 0) {
-			if (cow_colour_parse(val, entry->titlebar_fg_active))
-				entry->has_titlebar_fg_active = true;
-		} else if (strcmp(key, "titlebar.fg_inactive") == 0) {
-			if (cow_colour_parse(val, entry->titlebar_fg_inactive))
-				entry->has_titlebar_fg_inactive = true;
-		} else if (strcmp(key, "titlebar.enabled") == 0) {
-			bool b;
-			if (cmd_parse_bool(val, &b)) {
-				entry->has_titlebar_enabled = true;
-				entry->titlebar_enabled	    = b;
-			}
-		} else if (strcmp(key, "titlebar.squeeze") == 0) {
-			enum cow_squeeze_mode m;
-			if (cow_parse_squeeze_mode(val, &m)) {
-				entry->has_squeeze_mode = true;
-				entry->squeeze.mode	= m;
-			} else
-				goto bad_key;
-		} else if (strcmp(key, "titlebar.squeeze.justify") == 0) {
-			enum cow_squeeze_just j;
-			if (cow_parse_squeeze_just(val, &j)) {
-				entry->has_squeeze_justify = true;
-				entry->squeeze.justify	   = j;
-			} else
-				goto bad_key;
-		} else if (strcmp(key, "titlebar.squeeze.width") == 0) {
-			const char *errstr;
-			long long   v = strtonum(val, 0, 32767, &errstr);
-			if (errstr != NULL)
-				goto bad_key;
-			entry->has_squeeze_width = true;
-			entry->squeeze.width	 = (int)v;
-		} else if (strcmp(key, "titlebar.squeeze.offset") == 0) {
-			const char *errstr;
-			long long   v = strtonum(val, -32768, 32767, &errstr);
-			if (errstr != NULL)
-				goto bad_key;
-			entry->has_squeeze_offset = true;
-			entry->squeeze.offset	  = (int)v;
-		} else if (strcmp(key, "titlebar.squeeze.min_width") == 0) {
-			const char *errstr;
-			long long   v = strtonum(val, 0, 32767, &errstr);
-			if (errstr != NULL)
-				goto bad_key;
-			entry->has_squeeze_min_width = true;
-			entry->squeeze.min_width     = (int)v;
-		} else {
-		bad_key:
-			cmdq_error(cmdq, "rule: unknown key: %s", key);
-			xfree(entry->app_id);
-			xfree(entry->title);
-			xfree(entry->output_name);
-			xfree(entry);
-			return;
-		}
-	}
-
-	/* Insert at tail so rules are checked in config file order.
-	 * "Last match wins" means later rules override earlier ones. */
-	wl_list_insert(cow_config->view_configs.prev, &entry->link);
-
-	/* Re-resolve styles for all views so the new rule takes effect */
-	struct cow_view *view;
-	wl_list_for_each(view, &cow_wm.views, wm_link)
-	{
-		if (!view->closed) {
-			cow_view_resolve_style(view);
-			view->dec.dirty = true;
-		}
-	}
-	cow_wm_request_manage_dirty();
+	xfree(dup);
+	return true;
 }
 
 static bool
-has_glob_chars(const char *s)
+do_rule_add(struct args *args, struct cmd_q *cmdq)
 {
-	return strchr(s, '*') != NULL || strchr(s, '?') != NULL ||
-	    strchr(s, '[') != NULL;
-}
+	const char *name  = args_get(args, 'n');
+	const char *T_val = args_get(args, 'T');
+	bool	    is_g  = args_has(args, 'g');
+	const char *t_val = args_get(args, 't');
+	const char *s_val = args_get(args, 's');
 
-void
-cow_rule_run_deferred(void)
-{
-	for (int i = 0; i < num_deferred_rules; i++) {
-		struct cmd_list *cmdlist = NULL;
-		char		*cause	 = NULL;
-
-		if (cmd_string_parse(deferred_rules[i], &cmdlist, NULL, 0,
-			&cause) == 0 &&
-		    cmdlist != NULL) {
-			struct cmd_q *cmdq = cmdq_new();
-			cmdq->client_fd	   = -1;
-			cmdq_run(cmdq, cmdlist);
-			cmd_list_free(cmdlist);
-			cmdq_free(cmdq);
-		}
-		xfree(cause);
-		xfree(deferred_rules[i]);
+	if (name == NULL) {
+		cmdq_error(cmdq, "rule: missing -n <name>");
+		return false;
 	}
-	xfree(deferred_rules);
-	deferred_rules	   = NULL;
-	num_deferred_rules = 0;
-	deferred_rules_cap = 0;
+	if (T_val == NULL) {
+		cmdq_error(cmdq, "rule: missing -T <event>");
+		return false;
+	}
+	if (is_g && t_val != NULL) {
+		cmdq_error(cmdq, "rule: -g and -t are mutually exclusive");
+		return false;
+	}
+	if (!is_g && t_val == NULL) {
+		cmdq_error(cmdq, "rule: one of -g or -t is required");
+		return false;
+	}
+	if (args->argc < 1) {
+		cmdq_error(cmdq, "rule: missing command body");
+		return false;
+	}
+
+	enum cow_rule_type type;
+	if (!cow_rule_type_from_string(T_val, &type)) {
+		cmdq_error(cmdq, "rule: unknown event: %s", T_val);
+		return false;
+	}
+
+	/* -s only meaningful for view-bearing events. */
+	if (s_val != NULL &&
+	    (type == COW_RULE_ON_NEW_DESK || type == COW_RULE_ON_NEW_PAGE ||
+		type == COW_RULE_ON_RESTART)) {
+		cmdq_error(cmdq, "rule: -s is not valid for event %s", T_val);
+		return false;
+	}
+
+	if (cow_rule_find_by_name(name) != NULL) {
+		cmdq_error(cmdq, "rule: a rule named '%s' already exists",
+		    name);
+		return false;
+	}
+
+	/* Reconstruct + parse the command body. */
+	char		*body = cmd_argv_to_string(args->argc, args->argv, 0);
+	struct cmd_list *cmdlist = NULL;
+	char		*cause	 = NULL;
+	if (cmd_string_parse(body, &cmdlist, NULL, 0, &cause) != 0 ||
+	    cmdlist == NULL) {
+		cmdq_error(cmdq, "rule: parse: %s",
+		    cause != NULL ? cause : "(unknown)");
+		xfree(cause);
+		xfree(body);
+		return false;
+	}
+	xfree(cause);
+	xfree(body);
+
+	struct cow_rule *rule = xcalloc(1, sizeof(*rule));
+	rule->name	      = xstrdup(name);
+	rule->type	      = type;
+	rule->is_global	      = is_g;
+	rule->desk_nr	      = -1;
+	rule->cmdlist	      = cmdlist;
+	if (s_val != NULL)
+		rule->match_spec = xstrdup(s_val);
+	if (t_val != NULL)
+		(void)parse_scope_t(t_val, &rule->output_name, &rule->desk_nr);
+
+	cow_rule_add(rule);
+	return true;
 }

@@ -65,6 +65,7 @@ srcs = [
     'src/output.c',
     'src/pan_frames.c',
     'src/pointer_op.c',
+    'src/rule.c',
     'src/seat.c',
     'src/shm.c',
     'src/state.c',

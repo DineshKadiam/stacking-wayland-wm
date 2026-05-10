@@ -402,18 +402,19 @@ cow_decoration_update(struct cow_view *view, bool active)
 	if (!view->use_ssd || !view->has_dimensions)
 		return;
 
-	/* Apply per-view style overrides */
-	if (view->style.resolved) {
-		dec->border_width = view->style.border;
-		if (view->style.titlebar_enabled) {
+	/* Apply visual settings from the global config.  Per-view style
+	 * overrides used to live here; that responsibility now belongs
+	 * to event-driven rules running `set` commands which mutate the
+	 * global config. */
+	if (cow_config != NULL) {
+		dec->border_width = cow_config->border;
+		if (cow_config->titlebar.enabled) {
 			if (dec->title_thickness == 0) {
 				struct cow_font *font = get_titlebar_font();
-				int		 h    = cow_config ?
-						    cow_config->titlebar.height :
-						    0;
-				dec->title_thickness  = (h > 0) ?
-				     h :
-				     cow_titlebar_compute_thickness(font);
+				int h = cow_config->titlebar.height;
+				dec->title_thickness = (h > 0) ?
+				    h :
+				    cow_titlebar_compute_thickness(font);
 			}
 		} else {
 			dec->title_thickness = 0;
@@ -501,15 +502,10 @@ cow_decoration_update(struct cow_view *view, bool active)
 	{
 		int stride_px = dec->buffer->stride / 4;
 
-		/* Use per-view style colors if overridden by a rule,
-		 * otherwise fall back to global config per-edge colors. */
+		/* Border colours come from the global config. */
 		const struct cow_border_colour *bc;
-		if (view->style.resolved && view->style.has_border_override)
-			bc = active ? &view->style.border_active :
-				      &view->style.border_inactive;
-		else
-			bc = active ? &cow_config->border_active :
-				      &cow_config->border_inactive;
+		bc = active ? &cow_config->border_active :
+			      &cow_config->border_inactive;
 
 		/* Render border: fill_border_base always runs for
 		 * per-edge active/inactive colors; FVWM/MWM add 3D
@@ -557,21 +553,11 @@ cow_decoration_update(struct cow_view *view, bool active)
 		/* Render titlebar if enabled */
 		if (tt > 0) {
 			struct cow_font *font = get_titlebar_font();
-			/* Use per-view titlebar colors if overridden */
+			/* Per-view titlebar colour overrides used to live
+			 * here; cow_titlebar_render now picks the colour
+			 * from the global config when these are NULL. */
 			const float *tb_colour = NULL;
 			const float *tb_fg     = NULL;
-			if (view->style.resolved &&
-			    view->style.has_titlebar_override) {
-				tb_colour = active ?
-				    view->style.titlebar_active :
-				    view->style.titlebar_inactive;
-			}
-			if (view->style.resolved &&
-			    view->style.has_titlebar_fg_override) {
-				tb_fg = active ?
-				    view->style.titlebar_fg_active :
-				    view->style.titlebar_fg_inactive;
-			}
 			bool is_sticky = (view->flags & COW_VIEW_STICKY_FLAG) !=
 			    0;
 

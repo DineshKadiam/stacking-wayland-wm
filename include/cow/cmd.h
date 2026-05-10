@@ -190,6 +190,16 @@ struct cmd_q {
 	 * Populated by cmdq_continue before calling cmd->exec. */
 	struct cmd_ctx target;
 	struct cmd_ctx source;
+
+	/*
+	 * Fallback target context, applied by cmdq_continue when the
+	 * current cmd has no -t flag.  Used by the rule subsystem to
+	 * pass the event's view / desk / output through to commands
+	 * inside a rule body without forcing every command to spell
+	 * out a -t.  Zero-initialised; assign via
+	 * cmdq_set_default_target().
+	 */
+	struct cmd_ctx default_target;
 };
 
 /* Error cause list. */
@@ -236,7 +246,8 @@ struct cow_desk *cmd_require_target_desk(struct cmd_q *, const char *);
  * "<cmd_name>: <field>: bad value: <val>" error via cmdq_error and
  * returns false (leaving *out untouched).
  */
-bool cmd_parse_int(struct cmd_q *, const char *, const char *, const char *, long long, long long, long long *);
+bool cmd_parse_int(struct cmd_q *, const char *, const char *, const char *,
+    long long, long long, long long *);
 
 /*
  * Combined args lookup + integer parse.  If the flag is absent, returns
@@ -244,14 +255,16 @@ bool cmd_parse_int(struct cmd_q *, const char *, const char *, const char *, lon
  * If present but malformed, emits the canonical error and returns
  * false.  On success, returns true.
  */
-bool cmd_args_int(struct cmd_q *, const char *, struct args *, u_char, long long, long long, long long *);
+bool cmd_args_int(struct cmd_q *, const char *, struct args *, u_char,
+    long long, long long, long long *);
 
 /*
  * Resolve a direction-flag.  If 'required' is true and the flag is
  * absent, emits the canonical error.  Returns COW_DIR_NONE on absence
  * or parse failure (and emits an error in the failure case).
  */
-enum cow_direction cmd_args_direction(struct cmd_q *, const char *, struct args *, u_char, bool);
+enum cow_direction cmd_args_direction(struct cmd_q *, const char *,
+    struct args *, u_char, bool);
 
 /*
  * Mark a view as needing visual + manage refresh.  Combines
@@ -280,12 +293,6 @@ extern struct cmd_entry *cmd_table[];
  * Called from main() after the WM is connected.
  */
 void cow_exec_run_deferred(void);
-
-/*
- * Run any rule commands that were deferred during config loading.
- * Called after WM is connected and outputs are available.
- */
-void cow_rule_run_deferred(void);
 
 /* Built-in commands. */
 extern struct cmd_entry cmd_set_entry;
@@ -339,6 +346,8 @@ void		 cmdq_run(struct cmd_q *, struct cmd_list *);
 void		 cmdq_append(struct cmd_q *, struct cmd_list *);
 int		 cmdq_continue(struct cmd_q *);
 void		 cmdq_flush(struct cmd_q *);
+void		 cmdq_set_default_target(struct cmd_q *, struct cow_view *,
+		struct cow_desk *, struct cow_output *);
 
 /* Memory wrappers -- declared in cow/memory.h */
 #include "cow/memory.h"
