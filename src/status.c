@@ -210,6 +210,20 @@ cow_status_emit(void)
 		cJSON_AddNumberToObject(out, "page_rows", prows);
 		cJSON_AddNumberToObject(out, "page_col", pcol);
 		cJSON_AddNumberToObject(out, "page_row", prow);
+		/*
+		 * Raw sub-page viewport offsets in desk pixel space.
+		 * page_col / page_row are truncated to the page index
+		 * the viewport's top-left sits on -- but with the
+		 * `scroll` command (or an interactive scroll-drag) the
+		 * viewport can sit at an arbitrary offset between two
+		 * pages.  Emit the raw pixels too so cowpager can draw
+		 * the viewport's true position rather than snapping to
+		 * a whole-page cell.
+		 */
+		cJSON_AddNumberToObject(out, "page_vx",
+		    output->current_desk->page_vx);
+		cJSON_AddNumberToObject(out, "page_vy",
+		    output->current_desk->page_vy);
 		/* Usable area for cowpager window scaling */
 		cJSON_AddNumberToObject(out, "output_w", pw);
 		cJSON_AddNumberToObject(out, "output_h", ph);

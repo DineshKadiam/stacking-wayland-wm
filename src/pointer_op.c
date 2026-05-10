@@ -190,6 +190,31 @@ cow_pointer_op_start_move(struct cow_seat *seat, struct cow_view *view)
 }
 
 void
+cow_pointer_op_start_scroll(struct cow_seat *seat, struct cow_output *output,
+    bool reverse)
+{
+	if (seat == NULL || output == NULL || seat->op_in_progress)
+		return;
+
+	struct cow_desk *desk = output->current_desk;
+	if (desk == NULL)
+		return;
+
+	seat->op.type		  = COW_POINTER_OP_SCROLL_DRAG;
+	seat->op.view		  = NULL;
+	seat->op.scroll_output	  = output;
+	seat->op.scroll_anchor_vx = desk->page_vx;
+	seat->op.scroll_anchor_vy = desk->page_vy;
+	seat->op.scroll_reverse	  = reverse;
+	seat->op_in_progress	  = true;
+	seat->op_released	  = false;
+	seat->op_dx		  = 0;
+	seat->op_dy		  = 0;
+
+	river_seat_v1_op_start_pointer(seat->river_seat);
+}
+
+void
 cow_pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
     uint32_t edges)
 {
@@ -362,6 +387,55 @@ cow_pointer_op_process(struct cow_seat *seat)
 {
 	if (!seat->op_in_progress)
 		return;
+
+	/*
+	 * SCROLL_DRAG is view-less: pan the bound output's viewport
+	 * from cumulative deltas (op_dx / op_dy).  The view-anchored
+	 * MOVE / RESIZE paths below all assume seat->op.view is set;
+	 * scroll-drag has its own short-circuit here and never reaches
+	 * them.
+	 */
+	if (seat->op.type == COW_POINTER_OP_SCROLL_DRAG) {
+		/*
+		 * Defensive lookup: if the bound output was disconnected
+		 * mid-drag the cached scroll_output pointer is dangling.
+		 * Walk the live outputs list to confirm it's still around.
+		 */
+		struct cow_output *out = NULL;
+		struct cow_output *cand;
+		wl_list_for_each(cand, &cow_wm.outputs, wm_link)
+		{
+			if (cand == seat->op.scroll_output) {
+				out = cand;
+				break;
+			}
+		}
+		if (out != NULL) {
+			int dx = seat->op_dx;
+			int dy = seat->op_dy;
+			if (seat->op.scroll_reverse) {
+				/* "Grab and drag" the viewport: cursor
+				 * moves right, the desk appears to move
+				 * right (viewport offset moves LEFT). */
+				dx = -dx;
+				dy = -dy;
+			}
+			int new_vx = seat->op.scroll_anchor_vx + dx;
+			int new_vy = seat->op.scroll_anchor_vy + dy;
+			/* No wrap during interactive drag: a wrap would
+			 * teleport the viewport to the opposite edge mid
+			 * gesture and feel broken.  Clamp instead. */
+			cow_page_scroll_to(out, new_vx, new_vy, false);
+		}
+		if (out == NULL || seat->op_released) {
+			river_seat_v1_op_end(seat->river_seat);
+			seat->op_in_progress   = false;
+			seat->op_released      = false;
+			seat->op.type	       = COW_POINTER_OP_NONE;
+			seat->op.scroll_output = NULL;
+		}
+		return;
+	}
 
 	struct cow_view *view = seat->op.view;
 	if (view == NULL || view->closed) {
@@ -541,6 +615,10 @@ cow_pointer_op_process(struct cow_seat *seat)
 	}
 
 	case COW_POINTER_OP_NONE:
+	case COW_POINTER_OP_SCROLL_DRAG:
+		/* SCROLL_DRAG is handled in the early-return block at
+		 * the top of this function and never reaches here.
+		 * Listed for completeness so -Wswitch stays clean. */
 		break;
 	}
 

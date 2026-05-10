@@ -423,7 +423,25 @@ cow_page_scroll_to(struct cow_output *output, int new_vx, int new_vy, bool wrap)
 			new_vy = vy_max;
 	}
 
+	/*
+	 * Bypass the per-page-jump scroll animation: sub-page scroll
+	 * is by definition step-by-step (interactive drag) or
+	 * intentionally instant (a `scroll H V` keybind).  Letting the
+	 * animation logic engage here would either re-animate between
+	 * every drag delta or smoothly slide an arbitrary pixel
+	 * distance the user expected to land at immediately.  Save
+	 * and restore the global animate flag around switch_output_page
+	 * so any concurrent whole-page `page`/`desk-switch` animation
+	 * state is left alone.
+	 */
+	bool saved_animate = false;
+	if (cow_config != NULL) {
+		saved_animate = cow_config->page_scroll_animate;
+		cow_config->page_scroll_animate = false;
+	}
 	switch_output_page(output, new_vx, new_vy);
+	if (cow_config != NULL)
+		cow_config->page_scroll_animate = saved_animate;
 
 	cow_status_emit();
 	cow_wm_request_manage_dirty();

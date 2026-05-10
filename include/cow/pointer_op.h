@@ -21,6 +21,7 @@
 
 struct cow_seat;
 struct cow_view;
+struct cow_output;
 
 /*
  * Type of interactive pointer operation.
@@ -29,6 +30,13 @@ enum cow_pointer_op_type {
 	COW_POINTER_OP_NONE,
 	COW_POINTER_OP_MOVE,
 	COW_POINTER_OP_RESIZE,
+	/*
+	 * Drag-the-viewport pan (the cow analogue of fvwm3's
+	 * `Scroll reverse`).  No view is involved; pointer motion
+	 * pans the bound output's desk viewport for as long as the
+	 * triggering mouse button is held.
+	 */
+	COW_POINTER_OP_SCROLL_DRAG,
 };
 
 /*
@@ -56,6 +64,24 @@ struct cow_pointer_op {
 
 	/* For resize: which edges are being dragged */
 	uint32_t resize_edges;
+
+	/*
+	 * SCROLL_DRAG state.  Pointer motion is interpreted relative
+	 * to (scroll_anchor_vx, scroll_anchor_vy) -- the page_vx /
+	 * page_vy of the bound output's current desk at op-start.
+	 * scroll_output is held so the same output is panned for the
+	 * duration of the drag even if the pointer wanders onto
+	 * another output (matching fvwm: `Scroll reverse` always
+	 * scrolls the monitor where the drag started).
+	 *
+	 * scroll_reverse=true makes motion pan the viewport in the
+	 * opposite direction (the cursor appears to grab and drag the
+	 * desk).  scroll_reverse=false makes motion pan in the same
+	 * direction (the cursor pushes against an edge to scroll).
+	 */
+	struct cow_output *scroll_output;
+	int		   scroll_anchor_vx, scroll_anchor_vy;
+	bool		   scroll_reverse;
 };
 
 /*
@@ -68,7 +94,17 @@ void cow_pointer_op_start_move(struct cow_seat *, struct cow_view *);
  * Begin an interactive resize of the given view.
  * Must be called during a manage sequence.
  */
-void cow_pointer_op_start_resize(struct cow_seat *, struct cow_view *, uint32_t);
+void cow_pointer_op_start_resize(struct cow_seat *, struct cow_view *,
+    uint32_t);
+
+/*
+ * Begin an interactive scroll-drag on the given output.  Pointer
+ * motion pans the output's current desk viewport relative to its
+ * page_vx / page_vy at op start.  reverse selects whether the
+ * cursor "grabs and drags" (true) or "pushes" (false) the viewport.
+ * The op ends when the triggering mouse button is released.
+ */
+void cow_pointer_op_start_scroll(struct cow_seat *, struct cow_output *, bool);
 
 /*
  * Process pointer operation state during a manage sequence.

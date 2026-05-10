@@ -17,10 +17,22 @@
  * Command: scroll -- pan the virtual desk's viewport.
  *
  * usage: scroll [-t output] [-w] [-p] horizontal vertical
+ *        scroll [-t output] [-R] -r
  *
  *   -t output    target output by name (default: current output)
  *   -w           wrap at desk edges (default: clamp)
  *   -p           horizontal/vertical are pixels (default: percent of page)
+ *   -r           start an interactive drag-the-viewport pan; the
+ *                viewport follows the pointer until the triggering
+ *                mouse button is released.  This is the cow analogue
+ *                of fvwm3's `Scroll reverse` -- bind it to a mouse
+ *                button to "grab and drag" the desk.  Wrap (-w) and
+ *                percent/pixel (-p) flags are ignored with -r since
+ *                interactive drag works in raw pixels and never wraps.
+ *   -R           paired with -r, makes the viewport follow the
+ *                pointer in the SAME direction instead of opposite.
+ *                Without -R, -r behaves like fvwm `reverse` (grab and
+ *                drag).
  *
  * Modeled on fvwm3's `Scroll` command.  Unlike `page`, which jumps in
  * whole-page units, `scroll` shifts the viewport by an arbitrary
@@ -35,6 +47,8 @@
  *   scroll -w 100000 0     # one page right, wrapping at desk edge
  *                          # (the fvwm 'multiply by 1000' wrap idiom);
  *                          # equivalent to: scroll -w 100 0
+ *   mouse 1 R CM scroll -r # Ctrl+Meta+Button1 grabs and drags the
+ *                          # desk viewport
  */
 
 #include <limits.h>
@@ -46,16 +60,18 @@
 #include "cow/config.h"
 #include "cow/desk_ops.h"
 #include "cow/output.h"
+#include "cow/pointer_op.h"
+#include "cow/seat.h"
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_scroll_exec(struct cmd *, struct cmd_q *);
 
 struct cmd_entry cmd_scroll_entry = {
 	"scroll",
-	"t:wp",
+	"t:wprR",
+	0,
 	2,
-	2,
-	"[-t output] [-w] [-p] horizontal vertical",
+	"[-t output] [-w] [-p] horizontal vertical | [-t output] [-R] -r",
 	cmd_scroll_exec,
 };
 
@@ -100,6 +116,41 @@ cmd_scroll_exec(struct cmd *self, struct cmd_q *cmdq)
 	int h = output->usable_area.height;
 	if (w <= 0 || h <= 0)
 		return (CMD_RETURN_NORMAL);
+
+	/*
+	 * Interactive drag-the-viewport mode.  -r alone is the
+	 * "reverse" form (grab-and-drag, fvwm's default behaviour);
+	 * -r -R reverses the direction so the viewport tracks the
+	 * pointer in the SAME direction.  Either way no positional
+	 * args are expected.
+	 */
+	if (args_has(args, 'r')) {
+		if (args->argc != 0) {
+			cmdq_error(cmdq,
+			    "scroll: -r takes no positional arguments");
+			return (CMD_RETURN_ERROR);
+		}
+		struct cow_seat *seat = cow_seat_primary();
+		if (seat == NULL) {
+			cmdq_error(cmdq, "scroll: no seat");
+			return (CMD_RETURN_ERROR);
+		}
+		if (seat->op_in_progress) {
+			/* Another op is already running; ignore.  The
+			 * mouse binding that triggered us already
+			 * grabbed the pointer for the other op. */
+			return (CMD_RETURN_NORMAL);
+		}
+		bool reverse = !args_has(args, 'R');
+		cow_pointer_op_start_scroll(seat, output, reverse);
+		return (CMD_RETURN_NORMAL);
+	}
+
+	/* Non-interactive path requires both positional args. */
+	if (args->argc != 2) {
+		cmdq_error(cmdq, "usage: %s", cmd_scroll_entry.usage);
+		return (CMD_RETURN_ERROR);
+	}
 
 	bool pixels = args_has(args, 'p');
 	bool wrap   = args_has(args, 'w');

@@ -65,10 +65,18 @@ typedef struct {
 } pdesk_t;
 
 typedef struct {
-	char	name[64];
-	int	current_desk;
-	int	page_cols, page_rows;
-	int	page_col, page_row;
+	char name[64];
+	int  current_desk;
+	int  page_cols, page_rows;
+	int  page_col, page_row;
+	/*
+	 * Raw sub-page viewport offsets in desk pixel space.  page_col
+	 * and page_row are truncated indexes; page_vx / page_vy give
+	 * the viewport's exact top-left so we can render the visible
+	 * area as a rectangle rather than a single cell when the user
+	 * has sub-page-scrolled (via `scroll` or an interactive drag).
+	 */
+	int	page_vx, page_vy;
 	int	output_w, output_h;
 	pdesk_t desks[MAX_DESKS];
 	int	n_desks;
@@ -373,6 +381,40 @@ draw_desk(cairo_t *cr, const state_t *st, const pout_t *o, const pdesk_t *d,
 				cairo_rectangle(cr, sx, sy, sw, sh);
 				cairo_fill(cr);
 			}
+		}
+	}
+
+	/*
+	 * Sub-page viewport overlay.  When the active desk's viewport
+	 * sits at an arbitrary pixel offset (after `scroll` or an
+	 * interactive scroll-drag), highlight the actual visible
+	 * region rather than just one whole-page cell.  Drawn after
+	 * the page-grid pass so it sits on top of the cells and any
+	 * window miniatures that fall inside it.
+	 */
+	if (is_active) {
+		/* Desk extent in pixels. */
+		double dx_w = (double)pcols * ow;
+		double dy_h = (double)prows * oh;
+		if (dx_w > 0 && dy_h > 0) {
+			double vx = o->page_vx;
+			double vy = o->page_vy;
+			double vw = ow;
+			double vh = oh;
+			/* Map desk-pixels onto the grid's pixel area. */
+			double ax = gx + (vx / dx_w) * gw;
+			double ay = gy + (vy / dy_h) * gh;
+			double aw = (vw / dx_w) * gw;
+			double ah = (vh / dy_h) * gh;
+			/* Translucent fill + crisp outline so it reads
+			 * over any cell-highlight underneath. */
+			cairo_set_source_rgba(cr, 0.95, 0.85, 0.30, 0.18);
+			cairo_rectangle(cr, ax, ay, aw, ah);
+			cairo_fill(cr);
+			cairo_set_source_rgba(cr, 0.95, 0.85, 0.30, 0.95);
+			cairo_set_line_width(cr, 1.2);
+			cairo_rectangle(cr, ax + 0.5, ay + 0.5, aw - 1, ah - 1);
+			cairo_stroke(cr);
 		}
 	}
 }
@@ -936,6 +978,8 @@ parse_status(const char *json)
 		GN("page_rows", page_rows)
 		GN("page_col", page_col)
 		GN("page_row", page_row)
+		GN("page_vx", page_vx)
+		GN("page_vy", page_vy)
 		GN("output_w", output_w)
 		GN("output_h", output_h)
 #undef GN
