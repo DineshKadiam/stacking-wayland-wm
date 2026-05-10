@@ -379,6 +379,58 @@ cow_page_switch(struct cow_output *output, int col, int row)
 }
 
 void
+cow_page_scroll_to(struct cow_output *output, int new_vx, int new_vy, bool wrap)
+{
+	if (output == NULL || cow_config == NULL)
+		return;
+
+	int cols = cow_config->page_cols;
+	int rows = cow_config->page_rows;
+	int w	 = output->usable_area.width;
+	int h	 = output->usable_area.height;
+	if (w <= 0 || h <= 0)
+		return;
+
+	int desk_w = cols * w;
+	int desk_h = rows * h;
+	if (desk_w <= 0 || desk_h <= 0)
+		return;
+
+	if (wrap) {
+		/* Mod into [0, desk_extent).  C99 % can be negative for
+		 * negative inputs, so normalise. */
+		new_vx %= desk_w;
+		if (new_vx < 0)
+			new_vx += desk_w;
+		new_vy %= desk_h;
+		if (new_vy < 0)
+			new_vy += desk_h;
+	} else {
+		/* Clamp to the same range cow_page_switch reaches:
+		 * [0, (cols-1)*w] x [0, (rows-1)*h].  Sub-page offsets
+		 * within the last column / row are not exposed -- the
+		 * viewport's right/bottom edge lines up with the desk's
+		 * right/bottom edge. */
+		int vx_max = (cols - 1) * w;
+		int vy_max = (rows - 1) * h;
+		if (new_vx < 0)
+			new_vx = 0;
+		if (new_vx > vx_max)
+			new_vx = vx_max;
+		if (new_vy < 0)
+			new_vy = 0;
+		if (new_vy > vy_max)
+			new_vy = vy_max;
+	}
+
+	switch_output_page(output, new_vx, new_vy);
+
+	cow_status_emit();
+	cow_wm_request_manage_dirty();
+	pan_frames_update_all();
+}
+
+void
 cow_view_move_to_page(struct cow_view *view, int col, int row)
 {
 	if (view == NULL || view->output == NULL || cow_config == NULL)

@@ -43,6 +43,7 @@ srcs = [
     'src/cmd-quit.c',
     'src/cmd-resize.c',
     'src/cmd-rule.c',
+    'src/cmd-scroll.c',
     'src/cmd-set.c',
     'src/cmd-show.c',
     'src/cmd-string.c',

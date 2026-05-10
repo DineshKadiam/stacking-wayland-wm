@@ -60,6 +60,22 @@ int cow_page_row(const struct cow_output *);
 void cow_view_move_to_page(struct cow_view *, int, int);
 
 /*
+ * Pan the current desk's viewport on the given output to an arbitrary
+ * virtual pixel offset.  Unlike cow_page_switch, the result need not
+ * align with page boundaries -- this is what the `scroll` command uses
+ * to do sub-page panning.
+ *
+ * If wrap is true the offset wraps around the desk extent
+ * (cols * output_width, rows * output_height); otherwise it is clamped
+ * to [0, (cols-1)*w] x [0, (rows-1)*h] -- matching cow_page_switch's
+ * clamp behaviour.
+ *
+ * Animation, sticky-page handling, and the on-new-page / on-desk
+ * rule fires all run as for cow_page_switch.
+ */
+void cow_page_scroll_to(struct cow_output *, int, int, bool);
+
+/*
  * Clamp any views whose vx/vy fall outside the current page grid.
  * Called after desktop_size is reduced.
  */
