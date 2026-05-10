@@ -153,8 +153,8 @@ switch_output_desk(struct cow_output *output, uint8_t desk_nr)
 		}
 	}
 
-	cow_rule_fire(COW_RULE_ON_MAP, NULL, output->current_desk, output);
 	cow_rule_fire(COW_RULE_ON_NEW_DESK, NULL, output->current_desk, output);
+	cow_rule_fire(COW_RULE_ON_DESK, NULL, output->current_desk, output);
 }
 
 void
@@ -315,6 +315,7 @@ switch_output_page(struct cow_output *output, int new_vx, int new_vy)
 	}
 
 	cow_rule_fire(COW_RULE_ON_NEW_PAGE, NULL, desk, output);
+	cow_rule_fire(COW_RULE_ON_DESK, NULL, desk, output);
 }
 
 void

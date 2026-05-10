@@ -91,12 +91,16 @@ do_reload(struct cmd_q *cmdq)
 		cow_seat_register_default_bindings(seat);
 	}
 
+	/* Re-stamp every view's cfg snapshot from the freshly parsed
+	 * cow_config so existing views pick up the new defaults; then
+	 * mark their decoration dirty for re-render. */
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
 		if (!view->closed) {
+			cow_view_cfg_apply_global(&view->cfg);
 			view->dec.dirty	       = true;
-			view->dec.border_width = cow_config->border;
+			view->dec.border_width = view->cfg.border;
 		}
 	}
 

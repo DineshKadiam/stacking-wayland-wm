@@ -41,6 +41,17 @@ enum cow_rule_type {
 	COW_RULE_ON_NEW_DESK,
 	COW_RULE_ON_NEW_PAGE,
 	COW_RULE_ON_RESTART,
+	/*
+	 * Declarative desk style.  Unlike the other ON_* events which
+	 * fire once per lifecycle event, ON_DESK rules express a desk's
+	 * persistent style and re-fire whenever the desk's effective
+	 * configuration may need to be re-applied:
+	 *   - a desk becomes the current desk on an output (on-new-desk)
+	 *   - the page within a desk changes (on-new-page)
+	 *   - a view maps onto a desk (on-map)
+	 * Use with "-t :N" or ":N:" scope to target a specific desk.
+	 */
+	COW_RULE_ON_DESK,
 	COW_RULE_TYPE_COUNT,
 };
 

@@ -92,6 +92,64 @@ enum shade_direction {
 };
 
 /*
+ * Per-view visual configuration.  A snapshot of the visual subset of
+ * cow_config taken at view-create time, with subsequent updates from
+ * either (a) global `set` commands (which mutate cow_config and stamp
+ * every view's snapshot) or (b) view-targeted `set` commands -- run
+ * either via -t with a window selector, or via the rule subsystem
+ * fanning out an event to a view (default_target.window resolved).
+ *
+ * Only fields that affect a single view's rendered decoration live
+ * here.  Behavioural fields (placement, focus_mode, desktop_config,
+ * page_*, edge_scroll, reserved.*, gap, step, snap_distance,
+ * keybindings) stay global on cow_config because they don't make
+ * sense to vary per view.  output.colour.background is per-output,
+ * not per-view.
+ *
+ * font_name is duplicated here for completeness so the snapshot is
+ * self-contained, but the decoration code currently uses a single
+ * global titlebar_font cache keyed off cow_config->font_name; a
+ * per-view font cache is left for a later rev.
+ */
+struct cow_view_cfg {
+	int		      border;
+	int		      corner_length;
+	bool		      handles;
+	enum cow_border_style border_style;
+
+	struct cow_border_colour border_active;
+	struct cow_border_colour border_inactive;
+
+	struct cow_titlebar_config  titlebar;
+	struct cow_container_config container;
+
+	char *font_name;
+
+	int icon_size;
+};
+
+/*
+ * Initialise a snapshot from the current cow_config.  Heap-allocated
+ * fields (font_name, titlebar.font_name) are dup'd so the snapshot
+ * owns its own copies.
+ */
+void cow_view_cfg_init_from_global(struct cow_view_cfg *);
+
+/*
+ * Re-stamp a snapshot from the current cow_config.  Used when a
+ * global `set` updates cow_config; every existing view's snapshot is
+ * brought back into sync for the visual fields.  Frees and re-dups
+ * any heap-allocated strings.
+ */
+void cow_view_cfg_apply_global(struct cow_view_cfg *);
+
+/*
+ * Free heap-allocated members of a snapshot.  Does not free the
+ * struct itself.
+ */
+void cow_view_cfg_fini(struct cow_view_cfg *);
+
+/*
  * A managed window tracked by the window manager.
  * Wraps a river_window_v1 object.
  */
@@ -227,6 +285,16 @@ struct cow_view {
 	 * has use_ssd = true).
 	 */
 	struct cow_container_member *container_member;
+
+	/*
+	 * Per-view visual configuration snapshot.  Initialised from
+	 * cow_config at view-create time and mutated thereafter by
+	 * `set` commands targeting this view (or all views, in the
+	 * case of a global set).  All decoration / titlebar / icon
+	 * rendering paths read visual fields from here, never from
+	 * cow_config directly.
+	 */
+	struct cow_view_cfg cfg;
 };
 
 /*
@@ -333,7 +401,7 @@ struct cow_view *cow_view_walk(struct cow_view *, bool,
 /*
  * Maximize/unmaximize a view.
  */
-int  cow_view_maximize_button_index(void);
+int  cow_view_maximize_button_index(const struct cow_view *);
 void cow_view_maximize(struct cow_view *);
 void cow_view_unmaximize(struct cow_view *);
 

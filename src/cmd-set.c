@@ -20,6 +20,7 @@
  */
 
 #include <limits.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,14 +44,59 @@
 static enum cmd_retval cmd_set_exec(struct cmd *, struct cmd_q *);
 static void	       do_set_int(const char *, const char *, struct cmd_q *);
 static void do_set_colour(const char *, const char *, struct cmd_q *);
-static void do_set_border_style(const char *);
+static void do_set_border_style(const char *, struct cmd_q *);
 static void do_set_desktop_config(const char *, struct cmd_q *);
 static void do_set_focus(const char *);
 static void do_set_placement(const char *, struct cmd_q *);
-static void do_set_font(const char *);
-static void do_set_titlebar(const char *, const char *);
-static void do_set_button(const char *, const char *);
+static void do_set_font(const char *, struct cmd_q *);
+static void do_set_titlebar(const char *, const char *, struct cmd_q *);
+static void do_set_button(const char *, const char *, struct cmd_q *);
 static void refresh_visuals(void);
+
+/*
+ * When a `set` command runs with cmdq->target.window resolved (either
+ * via -t :::W from the user, or via the rule subsystem fanning out an
+ * event to a view), per-view-able style writes are diverted from
+ * cow_config into the view's cfg snapshot.  Returns NULL when no
+ * target window is set; callers fall back to writing cow_config in
+ * that case.
+ *
+ * After a global write to cow_config (target NULL), callers stamp
+ * every existing view's snapshot via cow_view_cfg_apply_global so
+ * the change is reflected on already-mapped windows too.
+ */
+static struct cow_view_cfg *
+cfg_target(struct cmd_q *cmdq)
+{
+	if (cmdq == NULL || cmdq->target.window == NULL)
+		return NULL;
+	return &cmdq->target.window->cfg;
+}
+
+/*
+ * After a global write to cow_config, walk every view and re-stamp
+ * its cfg snapshot.  Without this, existing views would keep stale
+ * snapshots and CLI `set border 5` would only take effect on
+ * not-yet-created views.
+ *
+ * Skip during startup: cow_wm.views has not been wl_list_init'd yet
+ * when cow_ipc_load_config runs the user's config (cow_wm_init runs
+ * later in main()).  No stamping is needed in that case -- views
+ * created after startup snapshot the freshly-populated cow_config
+ * via cow_view_cfg_init_from_global at create time.
+ */
+static void
+stamp_all_views_from_global(void)
+{
+	if (cow_ipc.startup_mode)
+		return;
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (!view->closed)
+			cow_view_cfg_apply_global(&view->cfg);
+	}
+}
 
 struct cmd_entry cmd_set_entry = {
 	"set",
@@ -102,7 +148,7 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	if (strcmp(key, "border_style") == 0) {
-		do_set_border_style(val);
+		do_set_border_style(val, cmdq);
 		xfree(val);
 		return (CMD_RETURN_NORMAL);
 	}
@@ -169,30 +215,34 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	if (strcmp(key, "font") == 0) {
-		do_set_font(val);
+		do_set_font(val, cmdq);
 		xfree(val);
 		return (CMD_RETURN_NORMAL);
 	}
 	if (strcmp(key, "titlebar.enabled") == 0 ||
 	    strcmp(key, "handles") == 0) {
-		do_set_titlebar(key, val);
+		do_set_titlebar(key, val, cmdq);
 		xfree(val);
 		return (CMD_RETURN_NORMAL);
 	}
 
 	if (strcmp(key, "titlebar.height") == 0) {
-		if (cow_config != NULL) {
-			const char *errstr;
-			long long   v = strtonum(val, 0, INT_MAX, &errstr);
-			if (errstr != NULL) {
-				cmdq_error(cmdq,
-				    "set: titlebar.height: bad value: %s", val);
-				xfree(val);
-				return (CMD_RETURN_ERROR);
-			}
-			cow_config->titlebar.height = (int)v;
-			refresh_visuals();
+		const char *errstr;
+		long long   v = strtonum(val, 0, INT_MAX, &errstr);
+		if (errstr != NULL) {
+			cmdq_error(cmdq, "set: titlebar.height: bad value: %s",
+			    val);
+			xfree(val);
+			return (CMD_RETURN_ERROR);
 		}
+		struct cow_view_cfg *cfg = cfg_target(cmdq);
+		if (cfg != NULL) {
+			cfg->titlebar.height = (int)v;
+		} else if (cow_config != NULL) {
+			cow_config->titlebar.height = (int)v;
+			stamp_all_views_from_global();
+		}
+		refresh_visuals();
 		xfree(val);
 		return (CMD_RETURN_NORMAL);
 	}
@@ -207,10 +257,14 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 			xfree(val);
 			return (CMD_RETURN_ERROR);
 		}
-		if (cow_config != NULL) {
+		struct cow_view_cfg *cfg = cfg_target(cmdq);
+		if (cfg != NULL) {
+			cfg->titlebar.squeeze.mode = m;
+		} else if (cow_config != NULL) {
 			cow_config->titlebar.squeeze.mode = m;
-			refresh_visuals();
+			stamp_all_views_from_global();
 		}
+		refresh_visuals();
 		xfree(val);
 		return (CMD_RETURN_NORMAL);
 	}
@@ -225,10 +279,14 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 			xfree(val);
 			return (CMD_RETURN_ERROR);
 		}
-		if (cow_config != NULL) {
+		struct cow_view_cfg *cfg = cfg_target(cmdq);
+		if (cfg != NULL) {
+			cfg->titlebar.squeeze.justify = j;
+		} else if (cow_config != NULL) {
 			cow_config->titlebar.squeeze.justify = j;
-			refresh_visuals();
+			stamp_all_views_from_global();
 		}
+		refresh_visuals();
 		xfree(val);
 		return (CMD_RETURN_NORMAL);
 	}
@@ -247,13 +305,21 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 			xfree(val);
 			return (CMD_RETURN_ERROR);
 		}
-		if (cow_config != NULL) {
+		struct cow_view_cfg	    *cfg = cfg_target(cmdq);
+		struct cow_titlebar_squeeze *sq	 = NULL;
+		if (cfg != NULL)
+			sq = &cfg->titlebar.squeeze;
+		else if (cow_config != NULL)
+			sq = &cow_config->titlebar.squeeze;
+		if (sq != NULL) {
 			if (strcmp(key, "titlebar.squeeze.width") == 0)
-				cow_config->titlebar.squeeze.width = (int)v;
+				sq->width = (int)v;
 			else if (strcmp(key, "titlebar.squeeze.offset") == 0)
-				cow_config->titlebar.squeeze.offset = (int)v;
+				sq->offset = (int)v;
 			else
-				cow_config->titlebar.squeeze.min_width = (int)v;
+				sq->min_width = (int)v;
+			if (cfg == NULL)
+				stamp_all_views_from_global();
 			refresh_visuals();
 		}
 		xfree(val);
@@ -262,8 +328,17 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	if (strcmp(key, "container.tab.sunken") == 0) {
 		bool b;
-		if (cow_config != NULL && cmd_parse_bool(val, &b))
+		if (!cmd_parse_bool(val, &b)) {
+			xfree(val);
+			return (CMD_RETURN_NORMAL);
+		}
+		struct cow_view_cfg *cfg = cfg_target(cmdq);
+		if (cfg != NULL) {
+			cfg->container.tab_sunken_inactive = b;
+		} else if (cow_config != NULL) {
 			cow_config->container.tab_sunken_inactive = b;
+			stamp_all_views_from_global();
+		}
 		xfree(val);
 		refresh_visuals();
 		return (CMD_RETURN_NORMAL);
@@ -319,7 +394,7 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	if (strncmp(key, "titlebar.button_", 16) == 0) {
-		do_set_button(key, val);
+		do_set_button(key, val, cmdq);
 		xfree(val);
 		return (CMD_RETURN_NORMAL);
 	}
@@ -332,18 +407,72 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 static void
 do_set_int(const char *key, const char *val, struct cmd_q *cmdq)
 {
+	const char *errstr;
+	long long   v = strtonum(val, 0, INT_MAX, &errstr);
+	if (errstr != NULL) {
+		cmdq_error(cmdq, "set: %s: bad value: %s", key, val);
+		return;
+	}
+
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+
+	/*
+	 * Per-view-able integer fields.  When a target window is
+	 * resolved, write into the view's cfg snapshot only.  When no
+	 * target is set, write cow_config and stamp every view's
+	 * snapshot so the change is reflected on already-mapped
+	 * windows.
+	 */
+	if (strcmp(key, "border") == 0) {
+		if (cfg != NULL) {
+			cfg->border = (int)v;
+		} else {
+			cow_config->border = (int)v;
+			stamp_all_views_from_global();
+		}
+		refresh_visuals();
+		return;
+	}
+	if (strcmp(key, "corner_length") == 0) {
+		if (cfg != NULL) {
+			cfg->corner_length = (int)v;
+			if (cfg->corner_length == 0)
+				cfg->handles = false;
+		} else {
+			cow_config->corner_length = (int)v;
+			if (cow_config->corner_length == 0)
+				cow_config->handles = false;
+			stamp_all_views_from_global();
+		}
+		refresh_visuals();
+		return;
+	}
+	if (strcmp(key, "icon.size") == 0) {
+		if (cfg != NULL) {
+			cfg->icon_size = (int)v;
+		} else {
+			cow_config->icon_size = (int)v;
+			stamp_all_views_from_global();
+		}
+		refresh_visuals();
+		return;
+	}
+
+	/*
+	 * Global-only integer fields.  These describe behaviour or
+	 * geometry that doesn't make sense per-view: reserved area is
+	 * an output-level subtraction, step is the keyboard move/resize
+	 * granularity, snap_distance is the snap floor for any drag.
+	 */
 	struct {
 		const char *name;
 		int	   *ptr;
 	} fields[] = {
-		{ "border",	    &cow_config->border		},
 		{ "step",		  &cow_config->step	    },
-		{ "corner_length",   &cow_config->corner_length   },
 		{ "reserved.top",	  &cow_config->reserved.top    },
 		{ "reserved.bottom", &cow_config->reserved.bottom },
 		{ "reserved.left",   &cow_config->reserved.left   },
 		{ "reserved.right",  &cow_config->reserved.right	},
-		{ "icon.size",       &cow_config->icon_size	      },
 		{ "snap_distance",   &cow_config->snap_distance   },
 		{ NULL,		NULL			     },
 	};
@@ -351,15 +480,7 @@ do_set_int(const char *key, const char *val, struct cmd_q *cmdq)
 	for (int i = 0; fields[i].name != NULL; i++) {
 		if (strcmp(key, fields[i].name) != 0)
 			continue;
-		const char *errstr;
-		long long   v = strtonum(val, 0, INT_MAX, &errstr);
-		if (errstr != NULL) {
-			cmdq_error(cmdq, "set: %s: bad value: %s", key, val);
-			return;
-		}
 		*fields[i].ptr = (int)v;
-		if (strcmp(key, "corner_length") == 0 && *fields[i].ptr == 0)
-			cow_config->handles = false;
 		refresh_visuals();
 		return;
 	}
@@ -368,7 +489,8 @@ do_set_int(const char *key, const char *val, struct cmd_q *cmdq)
 static void
 do_set_colour(const char *key, const char *val, struct cmd_q *cmdq)
 {
-	/* Per-output background: output.colour.background.<name> */
+	/* Per-output background: output.colour.background.<name>.
+	 * Per-output, not per-view; no snapshot routing. */
 	if (strncmp(key, "output.colour.background.", 25) == 0) {
 		const char *oname = key + 25;
 		float	    c[4];
@@ -392,6 +514,12 @@ do_set_colour(const char *key, const char *val, struct cmd_q *cmdq)
 		return;
 	}
 
+	/* Per-view-able from here on.  Each branch resolves the target
+	 * struct (view->cfg or cow_config) up front, then writes the
+	 * parsed colour into it.  After a global write, all snapshots
+	 * are restamped. */
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+
 	/* Uniform colour shortcuts */
 	if (strcmp(key, "colour.active") == 0 ||
 	    strcmp(key, "colour.inactive") == 0) {
@@ -400,148 +528,184 @@ do_set_colour(const char *key, const char *val, struct cmd_q *cmdq)
 			cmdq_error(cmdq, "set: invalid colour value");
 			return;
 		}
-		struct cow_border_colour *bc = (strcmp(key, "colour.active") ==
-						   0) ?
-		    &cow_config->border_active :
-		    &cow_config->border_inactive;
+		bool is_active = (strcmp(key, "colour.active") == 0);
+		struct cow_border_colour *bc;
+		if (cfg != NULL) {
+			bc = is_active ? &cfg->border_active :
+					 &cfg->border_inactive;
+		} else {
+			bc = is_active ? &cow_config->border_active :
+					 &cow_config->border_inactive;
+		}
 		memcpy(bc->n, c, sizeof(float) * 4);
 		memcpy(bc->s, c, sizeof(float) * 4);
 		memcpy(bc->e, c, sizeof(float) * 4);
 		memcpy(bc->w, c, sizeof(float) * 4);
+		if (cfg == NULL)
+			stamp_all_views_from_global();
 		refresh_visuals();
 		return;
 	}
 
-	/* Titlebar colors */
+	/* Titlebar colours: foreground + background, active + inactive. */
 	struct {
 		const char *name;
-		float	   *ptr;
+		size_t	    cfg_off; /* offset into cow_view_cfg.titlebar */
 	} tb_fields[] = {
 		{ "titlebar.active_colour",
-		    cow_config->titlebar.active_colour			       },
+		    offsetof(struct cow_titlebar_config, active_colour) },
 		{ "titlebar.inactive_colour",
-		    cow_config->titlebar.inactive_colour				 },
-		{ "titlebar.fg_active",	cow_config->titlebar.fg_active   },
-		{ "titlebar.fg_inactive",	  cow_config->titlebar.fg_inactive },
-		{ NULL,			NULL			     },
+		    offsetof(struct cow_titlebar_config, inactive_colour) },
+		{ "titlebar.fg_active",
+		    offsetof(struct cow_titlebar_config, fg_active) },
+		{ "titlebar.fg_inactive",
+		    offsetof(struct cow_titlebar_config, fg_inactive) },
+		{ NULL, 0 },
 	};
 	for (int i = 0; tb_fields[i].name != NULL; i++) {
-		if (strcmp(key, tb_fields[i].name) == 0) {
-			if (!cow_colour_parse(val, tb_fields[i].ptr)) {
-				cmdq_error(cmdq, "set: invalid colour value");
-				return;
-			}
-			refresh_visuals();
-			return;
-		}
-	}
-
-	/* Container tab colors */
-	struct {
-		const char *name;
-		float	   *ptr;
-		bool	   *has;
-	} ct_fields[] = {
-		{ "container.tab.active_colour",
-		    cow_config->container.tab_active,
-		    &cow_config->container.has_tab_active	  },
-		{ "container.tab.inactive_colour",
-		    cow_config->container.tab_inactive,
-		    &cow_config->container.has_tab_inactive	    },
-		{ "container.tab.fg_active",
-		    cow_config->container.tab_fg_active,
-		    &cow_config->container.has_tab_fg_active     },
-		{ "container.tab.fg_inactive",
-		    cow_config->container.tab_fg_inactive,
-		    &cow_config->container.has_tab_fg_inactive   },
-		{ NULL,			    NULL, NULL },
-	};
-	for (int i = 0; ct_fields[i].name != NULL; i++) {
-		if (strcmp(key, ct_fields[i].name) == 0) {
-			if (!cow_colour_parse(val, ct_fields[i].ptr)) {
-				cmdq_error(cmdq, "set: invalid colour value");
-				return;
-			}
-			*ct_fields[i].has = true;
-			refresh_visuals();
-			return;
-		}
-	}
-
-	/* Per-edge border colors */
-	struct {
-		const char *name;
-		float	   *ptr;
-	} colour_fields[] = {
-		{ "colour.active.n",	     cow_config->border_active.n	 },
-		{ "colour.active.s",	     cow_config->border_active.s	 },
-		{ "colour.active.e",	     cow_config->border_active.e	 },
-		{ "colour.active.w",	     cow_config->border_active.w	 },
-		{ "colour.active.nw",	      cow_config->border_active.nw   },
-		{ "colour.active.ne",	      cow_config->border_active.ne   },
-		{ "colour.active.sw",	      cow_config->border_active.sw   },
-		{ "colour.active.se",	      cow_config->border_active.se   },
-		{ "colour.inactive.n",	       cow_config->border_inactive.n  },
-		{ "colour.inactive.s",	       cow_config->border_inactive.s  },
-		{ "colour.inactive.e",	       cow_config->border_inactive.e  },
-		{ "colour.inactive.w",	       cow_config->border_inactive.w  },
-		{ "colour.inactive.nw",	cow_config->border_inactive.nw },
-		{ "colour.inactive.ne",	cow_config->border_inactive.ne },
-		{ "colour.inactive.sw",	cow_config->border_inactive.sw },
-		{ "colour.inactive.se",	cow_config->border_inactive.se },
-		{ "output.colour.background", cow_config->output_bg_colour   },
-		{ NULL,			NULL			     },
-	};
-
-	for (int i = 0; colour_fields[i].name != NULL; i++) {
-		if (strcmp(key, colour_fields[i].name) != 0)
+		if (strcmp(key, tb_fields[i].name) != 0)
 			continue;
-		if (!cow_colour_parse(val, colour_fields[i].ptr)) {
+		struct cow_titlebar_config *tb = (cfg != NULL) ?
+		    &cfg->titlebar :
+		    &cow_config->titlebar;
+		float *ptr = (float *)((char *)tb + tb_fields[i].cfg_off);
+		if (!cow_colour_parse(val, ptr)) {
 			cmdq_error(cmdq, "set: invalid colour value");
 			return;
 		}
-		if (strcmp(key, "output.colour.background") == 0)
-			cow_config->has_output_bg_colour = true;
-		if (strcmp(key, "colour.active.nw") == 0)
-			cow_config->border_active.has_nw = true;
-		else if (strcmp(key, "colour.active.ne") == 0)
-			cow_config->border_active.has_ne = true;
-		else if (strcmp(key, "colour.active.sw") == 0)
-			cow_config->border_active.has_sw = true;
-		else if (strcmp(key, "colour.active.se") == 0)
-			cow_config->border_active.has_se = true;
-		else if (strcmp(key, "colour.inactive.nw") == 0)
-			cow_config->border_inactive.has_nw = true;
-		else if (strcmp(key, "colour.inactive.ne") == 0)
-			cow_config->border_inactive.has_ne = true;
-		else if (strcmp(key, "colour.inactive.sw") == 0)
-			cow_config->border_inactive.has_sw = true;
-		else if (strcmp(key, "colour.inactive.se") == 0)
-			cow_config->border_inactive.has_se = true;
-		if (cow_config->border_active.has_nw ||
-		    cow_config->border_active.has_ne ||
-		    cow_config->border_active.has_sw ||
-		    cow_config->border_active.has_se)
-			cow_config->border_active.has_corners = true;
-		if (cow_config->border_inactive.has_nw ||
-		    cow_config->border_inactive.has_ne ||
-		    cow_config->border_inactive.has_sw ||
-		    cow_config->border_inactive.has_se)
-			cow_config->border_inactive.has_corners = true;
+		if (cfg == NULL)
+			stamp_all_views_from_global();
 		refresh_visuals();
 		return;
 	}
+
+	/* Container tab colours */
+	struct {
+		const char *name;
+		size_t	    fg_off; /* offset into cow_container_config */
+		size_t	    has_off;
+	} ct_fields[] = {
+		{ "container.tab.active_colour",
+		    offsetof(struct cow_container_config, tab_active),
+		    offsetof(struct cow_container_config, has_tab_active) },
+		{ "container.tab.inactive_colour",
+		    offsetof(struct cow_container_config, tab_inactive),
+		    offsetof(struct cow_container_config, has_tab_inactive) },
+		{ "container.tab.fg_active",
+		    offsetof(struct cow_container_config, tab_fg_active),
+		    offsetof(struct cow_container_config, has_tab_fg_active) },
+		{ "container.tab.fg_inactive",
+		    offsetof(struct cow_container_config, tab_fg_inactive),
+		    offsetof(struct cow_container_config,
+			has_tab_fg_inactive) },
+		{ NULL, 0, 0 },
+	};
+	for (int i = 0; ct_fields[i].name != NULL; i++) {
+		if (strcmp(key, ct_fields[i].name) != 0)
+			continue;
+		struct cow_container_config *cc = (cfg != NULL) ?
+		    &cfg->container :
+		    &cow_config->container;
+		float *ptr = (float *)((char *)cc + ct_fields[i].fg_off);
+		bool  *has = (bool *)((char *)cc + ct_fields[i].has_off);
+		if (!cow_colour_parse(val, ptr)) {
+			cmdq_error(cmdq, "set: invalid colour value");
+			return;
+		}
+		*has = true;
+		if (cfg == NULL)
+			stamp_all_views_from_global();
+		refresh_visuals();
+		return;
+	}
+
+	/* output.colour.background -- global-only (per-output bg lives
+	 * on cow_output via the .<name> form handled above). */
+	if (strcmp(key, "output.colour.background") == 0) {
+		if (!cow_colour_parse(val, cow_config->output_bg_colour)) {
+			cmdq_error(cmdq, "set: invalid colour value");
+			return;
+		}
+		cow_config->has_output_bg_colour = true;
+		refresh_visuals();
+		return;
+	}
+
+	/* Per-edge border colours: colour.{active,inactive}.{n,s,e,w,
+	 * nw,ne,sw,se}.  Resolve the cow_border_colour, then map the
+	 * suffix to the matching field. */
+	bool is_active	 = (strncmp(key, "colour.active.", 14) == 0);
+	bool is_inactive = (strncmp(key, "colour.inactive.", 16) == 0);
+
+	if (!is_active && !is_inactive)
+		return;
+
+	struct cow_border_colour *bc;
+	if (cfg != NULL) {
+		bc = is_active ? &cfg->border_active : &cfg->border_inactive;
+	} else {
+		bc = is_active ? &cow_config->border_active :
+				 &cow_config->border_inactive;
+	}
+
+	const char *edge = key + (is_active ? 14 : 16);
+	float	   *ptr;
+	bool	   *has = NULL;
+	if (strcmp(edge, "n") == 0)
+		ptr = bc->n;
+	else if (strcmp(edge, "s") == 0)
+		ptr = bc->s;
+	else if (strcmp(edge, "e") == 0)
+		ptr = bc->e;
+	else if (strcmp(edge, "w") == 0)
+		ptr = bc->w;
+	else if (strcmp(edge, "nw") == 0) {
+		ptr = bc->nw;
+		has = &bc->has_nw;
+	} else if (strcmp(edge, "ne") == 0) {
+		ptr = bc->ne;
+		has = &bc->has_ne;
+	} else if (strcmp(edge, "sw") == 0) {
+		ptr = bc->sw;
+		has = &bc->has_sw;
+	} else if (strcmp(edge, "se") == 0) {
+		ptr = bc->se;
+		has = &bc->has_se;
+	} else {
+		return;
+	}
+
+	if (!cow_colour_parse(val, ptr)) {
+		cmdq_error(cmdq, "set: invalid colour value");
+		return;
+	}
+	if (has != NULL)
+		*has = true;
+	if (bc->has_nw || bc->has_ne || bc->has_sw || bc->has_se)
+		bc->has_corners = true;
+	if (cfg == NULL)
+		stamp_all_views_from_global();
+	refresh_visuals();
 }
 
 static void
-do_set_border_style(const char *val)
+do_set_border_style(const char *val, struct cmd_q *cmdq)
 {
+	enum cow_border_style style;
 	if (strcmp(val, "fvwm") == 0)
-		cow_config->border_style = COW_BORDER_STYLE_FVWM;
+		style = COW_BORDER_STYLE_FVWM;
 	else if (strcmp(val, "mwm") == 0)
-		cow_config->border_style = COW_BORDER_STYLE_MWM;
+		style = COW_BORDER_STYLE_MWM;
 	else
-		cow_config->border_style = COW_BORDER_STYLE_NONE;
+		style = COW_BORDER_STYLE_NONE;
+
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+	if (cfg != NULL) {
+		cfg->border_style = style;
+	} else {
+		cow_config->border_style = style;
+		stamp_all_views_from_global();
+	}
 	refresh_visuals();
 }
 
@@ -636,30 +800,49 @@ do_set_placement(const char *val, struct cmd_q *cmdq)
 }
 
 static void
-do_set_font(const char *val)
+do_set_font(const char *val, struct cmd_q *cmdq)
 {
-	xfree(cow_config->font_name);
-	cow_config->font_name = xstrdup(val);
-	refresh_visuals();
-}
-
-static void
-do_set_titlebar(const char *key, const char *val)
-{
-	bool b;
-
-	if (strcmp(key, "titlebar.enabled") == 0) {
-		if (cmd_parse_bool(val, &b))
-			cow_config->titlebar.enabled = b;
-	} else if (strcmp(key, "handles") == 0) {
-		if (cmd_parse_bool(val, &b))
-			cow_config->handles = b;
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+	if (cfg != NULL) {
+		xfree(cfg->font_name);
+		cfg->font_name = xstrdup(val);
+	} else {
+		xfree(cow_config->font_name);
+		cow_config->font_name = xstrdup(val);
+		stamp_all_views_from_global();
 	}
 	refresh_visuals();
 }
 
 static void
-do_set_button(const char *key, const char *val)
+do_set_titlebar(const char *key, const char *val, struct cmd_q *cmdq)
+{
+	bool b;
+	if (!cmd_parse_bool(val, &b))
+		return;
+
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+
+	if (strcmp(key, "titlebar.enabled") == 0) {
+		if (cfg != NULL) {
+			cfg->titlebar.enabled = b;
+		} else {
+			cow_config->titlebar.enabled = b;
+			stamp_all_views_from_global();
+		}
+	} else if (strcmp(key, "handles") == 0) {
+		if (cfg != NULL) {
+			cfg->handles = b;
+		} else {
+			cow_config->handles = b;
+			stamp_all_views_from_global();
+		}
+	}
+	refresh_visuals();
+}
+
+static void
+do_set_button(const char *key, const char *val, struct cmd_q *cmdq)
 {
 	struct {
 		const char *vector_key;
@@ -675,28 +858,32 @@ do_set_button(const char *key, const char *val)
 		{ NULL,			    NULL,			      -1 },
 	};
 
+	struct cow_view_cfg	   *cfg = cfg_target(cmdq);
+	struct cow_titlebar_config *tb	= (cfg != NULL) ? &cfg->titlebar :
+							  &cow_config->titlebar;
+
 	for (int i = 0; btn_fields[i].vector_key != NULL; i++) {
 		if (strcmp(key, btn_fields[i].vector_key) == 0) {
 			cow_parse_vector_button_string(
-			    &cow_config->titlebar.buttons[btn_fields[i].idx]
-				.vector,
-			    val);
+			    &tb->buttons[btn_fields[i].idx].vector, val);
+			if (cfg == NULL)
+				stamp_all_views_from_global();
 			refresh_visuals();
 			return;
 		}
 		if (strcmp(key, btn_fields[i].action_key) == 0) {
+			enum cow_button_action a;
 			if (strcmp(val, "close") == 0)
-				cow_config->titlebar.buttons[btn_fields[i].idx]
-				    .action = COW_BUTTON_ACTION_CLOSE;
+				a = COW_BUTTON_ACTION_CLOSE;
 			else if (strcmp(val, "maximize") == 0)
-				cow_config->titlebar.buttons[btn_fields[i].idx]
-				    .action = COW_BUTTON_ACTION_MAXIMIZE;
+				a = COW_BUTTON_ACTION_MAXIMIZE;
 			else if (strcmp(val, "iconify") == 0)
-				cow_config->titlebar.buttons[btn_fields[i].idx]
-				    .action = COW_BUTTON_ACTION_ICONIFY;
+				a = COW_BUTTON_ACTION_ICONIFY;
 			else
-				cow_config->titlebar.buttons[btn_fields[i].idx]
-				    .action = COW_BUTTON_ACTION_NONE;
+				a = COW_BUTTON_ACTION_NONE;
+			tb->buttons[btn_fields[i].idx].action = a;
+			if (cfg == NULL)
+				stamp_all_views_from_global();
 			return;
 		}
 	}
@@ -708,34 +895,40 @@ refresh_visuals(void)
 	if (cow_ipc.startup_mode)
 		return;
 
-	int new_tt = 0;
-	if (cow_config->titlebar.enabled) {
-		int h = cow_config->titlebar.height;
-		if (h > 0) {
-			new_tt = h;
-		} else {
-			struct cow_font tb_font;
-			const char     *fname = cow_config->font_name ?
-				cow_config->font_name :
-				"monospace 10";
-			cow_font_init(&tb_font, fname);
-			new_tt = cow_titlebar_compute_thickness(&tb_font);
-		}
-	}
-
+	/* Each view recomputes its decoration scaffolding from its
+	 * own per-view cfg snapshot.  This runs after either a
+	 * view-targeted set (only the targeted view's snapshot
+	 * changed; other views read unchanged data) or a global set
+	 * (every view's snapshot was just stamped from cow_config).
+	 */
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
-		if (!view->closed) {
-			view->dec.dirty		      = true;
-			view->dec.border_width	      = cow_config->border;
-			view->dec.title_thickness     = new_tt;
-			view->dec.last_content_width  = -1;
-			view->dec.last_content_height = -1;
-			if (view->dec.buffer != NULL) {
-				cow_shm_buffer_destroy(view->dec.buffer);
-				view->dec.buffer = NULL;
+		if (view->closed)
+			continue;
+		int new_tt = 0;
+		if (view->cfg.titlebar.enabled) {
+			int h = view->cfg.titlebar.height;
+			if (h > 0) {
+				new_tt = h;
+			} else {
+				struct cow_font tb_font;
+				const char     *fname = view->cfg.font_name ?
+					view->cfg.font_name :
+					"monospace 10";
+				cow_font_init(&tb_font, fname);
+				new_tt = cow_titlebar_compute_thickness(
+				    &tb_font);
 			}
+		}
+		view->dec.dirty		      = true;
+		view->dec.border_width	      = view->cfg.border;
+		view->dec.title_thickness     = new_tt;
+		view->dec.last_content_width  = -1;
+		view->dec.last_content_height = -1;
+		if (view->dec.buffer != NULL) {
+			cow_shm_buffer_destroy(view->dec.buffer);
+			view->dec.buffer = NULL;
 		}
 	}
 

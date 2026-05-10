@@ -46,7 +46,8 @@ int cow_titlebar_compute_thickness(struct cow_font *);
  * always resolve to COW_SQUEEZE_NONE -- squeeze and tab strips do
  * not compose cleanly.  Output is written into '*out'.
  */
-void cow_titlebar_effective_squeeze(const struct cow_view *, struct cow_titlebar_squeeze *);
+void cow_titlebar_effective_squeeze(const struct cow_view *,
+    struct cow_titlebar_squeeze *);
 
 /*
  * Return the rectangle, in the view's decoration-buffer coordinate
@@ -98,6 +99,9 @@ bool cow_titlebar_hit(const struct cow_view *, int, int);
  * drop_target: when true, draw a highlight border on the title strip
  *              to indicate this window is the current drop target.
  */
-void cow_titlebar_render(uint32_t *, int, int, int, struct cow_box, const char *, bool, struct cow_font *, int, int, bool, const float *, const float *, bool, const char **, int, int, bool);
+void cow_titlebar_render(uint32_t *, int, int, int, struct cow_box,
+    const char *, bool, struct cow_font *, int, int, bool,
+    const struct cow_titlebar_config *, const struct cow_container_config *,
+    const float *, const float *, bool, const char **, int, int, bool);
 
 #endif

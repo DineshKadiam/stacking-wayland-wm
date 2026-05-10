@@ -53,9 +53,11 @@ struct cow_view_decoration {
 };
 
 /*
- * Initialize a view's decoration state.
+ * Initialize a view's decoration state.  Reads initial border width
+ * and titlebar thickness from the view's cfg snapshot, so the view's
+ * cfg must already be initialised when this is called.
  */
-void cow_decoration_init(struct cow_view_decoration *);
+void cow_decoration_init(struct cow_view *);
 
 /*
  * Free all decoration resources.

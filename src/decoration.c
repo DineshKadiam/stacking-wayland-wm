@@ -131,7 +131,8 @@ squeeze_paint_side(uint32_t *buf, int stride_px, int frame_w, int frame_h,
     int bw, int cl, int tt, int top_band, int marker_w,
     int	 tbr_near_x, /* titlebar's near-edge x for this side */
     bool left_side, const float *corner_colour,
-    const struct cow_border_colour *bc, const uint32_t *scratch)
+    const struct cow_border_colour *bc, const uint32_t *scratch,
+    enum cow_border_style border_style)
 {
 	/*
 	 * Geometry per side:
@@ -244,7 +245,7 @@ squeeze_paint_side(uint32_t *buf, int stride_px, int frame_w, int frame_h,
 	int	  mini_str = mini_w;
 	uint32_t *mini = xcalloc((size_t)mini_str * mini_h, sizeof(uint32_t));
 	cow_border_style_render(mini, mini_str, mini_w, mini_h, &cm_bc, bw, cl,
-	    cow_config->border_style);
+	    border_style);
 
 	int src_x0 = !left_side ? (mini_w - mw) : 0;
 
@@ -295,18 +296,12 @@ squeeze_paint_side(uint32_t *buf, int stride_px, int frame_w, int frame_h,
 	 * N-edge colour and should use the matching default handle).
 	 */
 	if (!left_side && bc->has_ne) {
-		int w_dout = (cow_config->border_style ==
-				 COW_BORDER_STYLE_MWM) ?
-		    0 :
-		    1;
+		int w_dout = (border_style == COW_BORDER_STYLE_MWM) ? 0 : 1;
 		/* inset = (w[5]>0 || w[6]>0) ? 1 : 0 -- is 1 for both
 		 * FVWM (w[5]=w[6]=1) and MWM (w[5]=1) with default bws. */
 		int inset    = 1;
 		int mark_len = bw - w_dout - inset;
-		int mark_thk = (cow_config->border_style ==
-				   COW_BORDER_STYLE_MWM) ?
-		    1 :
-		    2;
+		int mark_thk = (border_style == COW_BORDER_STYLE_MWM) ? 1 : 2;
 		if (mark_len > 0) {
 			float dk[4];
 			cow_colour_darken(dk, corner_colour);
@@ -366,17 +361,17 @@ squeeze_paint_side(uint32_t *buf, int stride_px, int frame_w, int frame_h,
 }
 
 void
-cow_decoration_init(struct cow_view_decoration *dec)
+cow_decoration_init(struct cow_view *view)
 {
+	struct cow_view_decoration *dec = &view->dec;
 	memset(dec, 0, sizeof(*dec));
 	dec->dirty	  = true;
-	dec->border_width = cow_config ? cow_config->border :
-					 COW_CFG_DEFAULT_BORDER;
+	dec->border_width = view->cfg.border;
 
-	/* Enable titlebar when config says so */
-	if (cow_config != NULL && cow_config->titlebar.enabled) {
+	/* Enable titlebar when the view's snapshot says so. */
+	if (view->cfg.titlebar.enabled) {
 		struct cow_font *font = get_titlebar_font();
-		int		 h    = cow_config->titlebar.height;
+		int		 h    = view->cfg.titlebar.height;
 		dec->title_thickness  = (h > 0) ?
 		     h :
 		     cow_titlebar_compute_thickness(font);
@@ -402,23 +397,24 @@ cow_decoration_update(struct cow_view *view, bool active)
 	if (!view->use_ssd || !view->has_dimensions)
 		return;
 
-	/* Apply visual settings from the global config.  Per-view style
-	 * overrides used to live here; that responsibility now belongs
-	 * to event-driven rules running `set` commands which mutate the
-	 * global config. */
-	if (cow_config != NULL) {
-		dec->border_width = cow_config->border;
-		if (cow_config->titlebar.enabled) {
-			if (dec->title_thickness == 0) {
-				struct cow_font *font = get_titlebar_font();
-				int h = cow_config->titlebar.height;
-				dec->title_thickness = (h > 0) ?
-				    h :
-				    cow_titlebar_compute_thickness(font);
-			}
-		} else {
-			dec->title_thickness = 0;
+	/*
+	 * Apply visual settings from the view's per-view cfg snapshot.
+	 * cmd-set writes here when a target window is resolved (whether
+	 * by an explicit -t or by the rule subsystem fanning out an
+	 * event).  Reads on cow_config don't appear in the decoration
+	 * code path at all -- a view sees only its own snapshot.
+	 */
+	dec->border_width = view->cfg.border;
+	if (view->cfg.titlebar.enabled) {
+		if (dec->title_thickness == 0) {
+			struct cow_font *font = get_titlebar_font();
+			int		 h    = view->cfg.titlebar.height;
+			dec->title_thickness  = (h > 0) ?
+			     h :
+			     cow_titlebar_compute_thickness(font);
 		}
+	} else {
+		dec->title_thickness = 0;
 	}
 
 	int bw	       = dec->border_width;
@@ -502,17 +498,16 @@ cow_decoration_update(struct cow_view *view, bool active)
 	{
 		int stride_px = dec->buffer->stride / 4;
 
-		/* Border colours come from the global config. */
+		/* Border colours come from the view's snapshot. */
 		const struct cow_border_colour *bc;
-		bc = active ? &cow_config->border_active :
-			      &cow_config->border_inactive;
+		bc = active ? &view->cfg.border_active :
+			      &view->cfg.border_inactive;
 
 		/* Render border: fill_border_base always runs for
 		 * per-edge active/inactive colors; FVWM/MWM add 3D
 		 * relief on top; NONE = flat fill only. */
-		int cl = (cow_config->handles &&
-			     cow_config->corner_length > 0) ?
-		    cow_config->corner_length :
+		int cl = (view->cfg.handles && view->cfg.corner_length > 0) ?
+		    view->cfg.corner_length :
 		    0;
 		if (cl > 0 && tt > 0 && cl < bw + tt)
 			cl = bw + tt;
@@ -548,7 +543,7 @@ cow_decoration_update(struct cow_view *view, bool active)
 		}
 
 		cow_border_style_render(dec->buffer->data, stride_px, frame_w,
-		    frame_h, bc, bw, cl, cow_config->border_style);
+		    frame_h, bc, bw, cl, view->cfg.border_style);
 
 		/* Render titlebar if enabled */
 		if (tt > 0) {
@@ -605,7 +600,8 @@ cow_decoration_update(struct cow_view *view, bool active)
 			cow_titlebar_render(dec->buffer->data, stride_px,
 			    frame_w, bw, tb_rect, display_title, active, font,
 			    view->pressed_button, view->icon_inverted_button,
-			    view->title_pressed, tb_colour, tb_fg, is_sticky,
+			    view->title_pressed, &view->cfg.titlebar,
+			    &view->cfg.container, tb_colour, tb_fg, is_sticky,
 			    tab_titles, n_tabs, active_tab, is_drop_target);
 			xfree(display_title);
 			xfree(tab_titles);
@@ -672,13 +668,14 @@ cow_decoration_update(struct cow_view *view, bool active)
 				uint32_t *scratch = xmalloc(nbytes);
 				cow_border_style_render(scratch, stride_px,
 				    frame_w, frame_h, &plain, bw,
-				    /* cl = */ 0, cow_config->border_style);
+				    /* cl = */ 0, view->cfg.border_style);
 
 				/* Corner colours (fall back to plain N if
 				 * not explicitly configured). */
-				const float *n_colour  = active ?
-				     cow_config->border_active.n :
-				     cow_config->border_inactive.n;
+				/* bc was resolved above from the view's
+				 * snapshot; bc->n is the active/inactive
+				 * north edge colour for this view. */
+				const float *n_colour  = bc->n;
 				const float *ne_colour = bc->has_ne ? bc->ne :
 								      n_colour;
 				const float *nw_colour = bc->has_nw ? bc->nw :
@@ -700,7 +697,8 @@ cow_decoration_update(struct cow_view *view, bool active)
 					    tt, top_band, marker_w,
 					    tbr.x + tbr.width,
 					    /* left_side = */ false, ne_colour,
-					    bc, scratch);
+					    bc, scratch,
+					    view->cfg.border_style);
 				}
 				if (sq.justify == COW_JUST_RIGHT ||
 				    sq.justify == COW_JUST_CENTRE) {
@@ -708,7 +706,8 @@ cow_decoration_update(struct cow_view *view, bool active)
 					    stride_px, frame_w, frame_h, bw, cl,
 					    tt, top_band, marker_w, tbr.x,
 					    /* left_side = */ true, nw_colour,
-					    bc, scratch);
+					    bc, scratch,
+					    view->cfg.border_style);
 				}
 
 				xfree(scratch);

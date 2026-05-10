@@ -45,6 +45,74 @@
 static int next_container_id;
 
 /*
+ * Per-view config snapshot helpers.  See struct cow_view_cfg in
+ * cow/view.h for the rationale.  These three functions own the
+ * lifecycle of the heap-allocated strings that live inside the
+ * snapshot, so callers (cow_view_create / cow_view_destroy / cmd-set
+ * after a global write) need only invoke them.
+ */
+static void
+view_cfg_copy_from_global(struct cow_view_cfg *dst)
+{
+	if (cow_config == NULL) {
+		memset(dst, 0, sizeof(*dst));
+		dst->border	   = COW_CFG_DEFAULT_BORDER;
+		dst->corner_length = COW_CFG_DEFAULT_CORNER_LENGTH;
+		dst->icon_size	   = COW_CFG_DEFAULT_ICON_SIZE;
+		dst->border_style  = COW_BORDER_STYLE_FVWM;
+		return;
+	}
+	dst->border	     = cow_config->border;
+	dst->corner_length   = cow_config->corner_length;
+	dst->handles	     = cow_config->handles;
+	dst->border_style    = cow_config->border_style;
+	dst->border_active   = cow_config->border_active;
+	dst->border_inactive = cow_config->border_inactive;
+	dst->titlebar	     = cow_config->titlebar;
+	/*
+	 * cow_titlebar_config carries an owned char *font_name pointer.
+	 * The struct copy above shares the pointer with cow_config; null
+	 * it so a later free in this snapshot doesn't double-free, then
+	 * dup if the global has one.
+	 */
+	dst->titlebar.font_name = (cow_config->titlebar.font_name != NULL) ?
+	    xstrdup(cow_config->titlebar.font_name) :
+	    NULL;
+	dst->container		= cow_config->container;
+	dst->icon_size		= cow_config->icon_size;
+}
+
+void
+cow_view_cfg_init_from_global(struct cow_view_cfg *cfg)
+{
+	memset(cfg, 0, sizeof(*cfg));
+	view_cfg_copy_from_global(cfg);
+	if (cow_config != NULL && cow_config->font_name != NULL)
+		cfg->font_name = xstrdup(cow_config->font_name);
+}
+
+void
+cow_view_cfg_apply_global(struct cow_view_cfg *cfg)
+{
+	xfree(cfg->font_name);
+	xfree(cfg->titlebar.font_name);
+	cfg->font_name		= NULL;
+	cfg->titlebar.font_name = NULL;
+	view_cfg_copy_from_global(cfg);
+	if (cow_config != NULL && cow_config->font_name != NULL)
+		cfg->font_name = xstrdup(cow_config->font_name);
+}
+
+void
+cow_view_cfg_fini(struct cow_view_cfg *cfg)
+{
+	xfree(cfg->font_name);
+	xfree(cfg->titlebar.font_name);
+	cfg->font_name		= NULL;
+	cfg->titlebar.font_name = NULL;
+}
+
+/*
  * river_window_v1 event handlers
  */
 
@@ -261,7 +329,8 @@ cow_view_create(struct river_window_v1 *rw)
 	/* New windows start on top of the stack. */
 	view->raise_seq = ++cow_wm.raise_seq_counter;
 
-	cow_decoration_init(&view->dec);
+	cow_view_cfg_init_from_global(&view->cfg);
+	cow_decoration_init(view);
 
 	/* Assign to the current output and its active sheet */
 	if (cow_wm.current_output != NULL) {
@@ -361,6 +430,7 @@ cow_view_destroy(struct cow_view *view)
 	xfree(view->identifier);
 	xfree(view->app_id);
 	xfree(view->title);
+	cow_view_cfg_fini(&view->cfg);
 	xfree(view);
 }
 
@@ -405,6 +475,7 @@ cow_view_configure(struct cow_view *view)
 	cow_wm_request_manage_dirty();
 
 	cow_rule_fire(COW_RULE_ON_MAP, view, view->desk, view->output);
+	cow_rule_fire(COW_RULE_ON_DESK, view, view->desk, view->output);
 }
 
 /* Forward declaration: defined later, used by view_cleanup_stale_decoration. */
@@ -866,13 +937,15 @@ cow_view_frame_box_at(const struct cow_view *v, int x, int y)
  * ================================================================ */
 
 int
-cow_view_maximize_button_index(void)
+cow_view_maximize_button_index(const struct cow_view *view)
 {
-	if (cow_config == NULL)
+	const struct cow_titlebar_config *tb = (view != NULL) ?
+	    &view->cfg.titlebar :
+	    (cow_config != NULL ? &cow_config->titlebar : NULL);
+	if (tb == NULL)
 		return -1;
 	for (int i = 0; i < 3; i++) {
-		if (cow_config->titlebar.buttons[i].action ==
-		    COW_BUTTON_ACTION_MAXIMIZE)
+		if (tb->buttons[i].action == COW_BUTTON_ACTION_MAXIMIZE)
 			return i;
 	}
 	return -1;
@@ -923,7 +996,7 @@ cow_view_maximize(struct cow_view *view)
 	 */
 	cow_view_sync_container_geometry(view, view->x, view->y, w, h);
 
-	int mbi = cow_view_maximize_button_index();
+	int mbi = cow_view_maximize_button_index(view);
 	if (mbi >= 0) {
 		view->icon_inverted_button = mbi;
 		view->dec.dirty		   = true;
@@ -1107,6 +1180,9 @@ cow_view_exit_fullscreen(struct cow_view *view)
 void
 cow_view_layout_icons_on_output(struct cow_output *output)
 {
+	/* Use the global icon_size for the row geometry; individual
+	 * views may carry a different icon_size in their snapshot but
+	 * the layout grid is uniform per-output to keep icons aligned. */
 	int icon_sz = cow_config ? cow_config->icon_size :
 				   COW_CFG_DEFAULT_ICON_SIZE;
 	int icon_h  = icon_sz + 20; /* extra height for text below */
@@ -1188,7 +1264,7 @@ icon_ensure_buffer(struct cow_view *view, int icon_w, int icon_h)
  * 3D relief if border_style != NONE. */
 static void
 icon_draw_box(struct cow_pixbuf *p, int icon_sz, uint32_t px_base,
-    uint32_t px_lt, uint32_t px_dk)
+    uint32_t px_lt, uint32_t px_dk, enum cow_border_style border_style)
 {
 	int box_x = (p->width - icon_sz) / 2;
 	int box_y = 0;
@@ -1196,8 +1272,7 @@ icon_draw_box(struct cow_pixbuf *p, int icon_sz, uint32_t px_base,
 
 	cow_draw_fill_rect(p, box_x, box_y, icon_sz, icon_sz, px_base);
 
-	if (cow_config == NULL ||
-	    cow_config->border_style == COW_BORDER_STYLE_NONE)
+	if (border_style == COW_BORDER_STYLE_NONE)
 		return;
 
 	for (int r = 0; r < bw; r++) {
@@ -1307,14 +1382,15 @@ cow_view_icon_render(struct cow_view *view)
 	/* Clear to transparent. */
 	cow_draw_clear_rect(&p, 0, 0, icon_w, icon_h);
 
-	/* Use inactive border colours for the icon box. */
+	/* Use inactive border colours from the view's snapshot for the
+	 * icon box. */
 	struct cow_colour_triple bc_t;
-	cow_colour_make_triple(&bc_t, cow_config->border_inactive.n);
+	cow_colour_make_triple(&bc_t, view->cfg.border_inactive.n);
 
-	int icon_sz = cow_config ? cow_config->icon_size :
-				   COW_CFG_DEFAULT_ICON_SIZE;
+	int icon_sz = view->cfg.icon_size;
 
-	icon_draw_box(&p, icon_sz, bc_t.base, bc_t.lt, bc_t.dk);
+	icon_draw_box(&p, icon_sz, bc_t.base, bc_t.lt, bc_t.dk,
+	    view->cfg.border_style);
 	icon_draw_label(p.pixels, p.stride_px, icon_w, icon_h, icon_sz,
 	    view->app_id ? view->app_id : "?");
 	if (view->flags & COW_VIEW_STICKY_FLAG)
@@ -1418,7 +1494,7 @@ view_drop_decoration(struct cow_view *view)
 		view->decoration_surface = NULL;
 	}
 	cow_decoration_fini(&view->dec);
-	cow_decoration_init(&view->dec);
+	cow_decoration_init(view);
 }
 
 struct cow_container *
@@ -1615,7 +1691,7 @@ cow_container_remove_view(struct cow_view *view)
 	/* Restore independent decoration */
 	view->use_ssd = true;
 	cow_decoration_fini(&view->dec);
-	cow_decoration_init(&view->dec);
+	cow_decoration_init(view);
 
 	/* Restore pre-container geometry */
 	if (saved_pre_width > 0 && saved_pre_height > 0) {
@@ -1643,7 +1719,7 @@ cow_container_remove_view(struct cow_view *view)
 			xfree(last);
 			lv->use_ssd = true;
 			cow_decoration_fini(&lv->dec);
-			cow_decoration_init(&lv->dec);
+			cow_decoration_init(lv);
 			lv->dec.dirty = true;
 		}
 		wl_list_remove(&c->wm_link);

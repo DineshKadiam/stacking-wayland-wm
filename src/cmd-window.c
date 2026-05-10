@@ -258,7 +258,7 @@ do_maximize(struct cow_view *view, enum maximize_type mt)
 	}
 	view->maximized = true;
 
-	int mbi = cow_view_maximize_button_index();
+	int mbi = cow_view_maximize_button_index(view);
 	if (mbi >= 0)
 		view->icon_inverted_button = mbi;
 }
@@ -402,7 +402,7 @@ do_expand(struct cow_view *view, enum expand_dir dir, bool toggle)
 	cow_view_set_pending_geometry(view, new_x, new_y, new_w, new_h);
 	view->maximized = true;
 
-	int mbi = cow_view_maximize_button_index();
+	int mbi = cow_view_maximize_button_index(view);
 	if (mbi >= 0)
 		view->icon_inverted_button = mbi;
 }
@@ -480,15 +480,14 @@ do_identify(struct cow_view *view, struct cmd_q *cmdq)
 		cJSON_AddItemToObject(info, "size_hints", hints);
 	}
 
-	/* Style: report the global config defaults that apply to all views.
-	 * Per-view overrides are no longer cached here. */
-	if (cow_config != NULL) {
-		cJSON *style = cJSON_CreateObject();
-		cJSON_AddNumberToObject(style, "border", cow_config->border);
-		cJSON_AddBoolToObject(style, "titlebar_enabled",
-		    cow_config->titlebar.enabled);
-		cJSON_AddItemToObject(info, "style", style);
-	}
+	/* Style: report this view's per-view cfg snapshot (which may
+	 * differ from cow_config when the view was hit by a targeted
+	 * `set` or matched an event-driven rule body). */
+	cJSON *style = cJSON_CreateObject();
+	cJSON_AddNumberToObject(style, "border", view->cfg.border);
+	cJSON_AddBoolToObject(style, "titlebar_enabled",
+	    view->cfg.titlebar.enabled);
+	cJSON_AddItemToObject(info, "style", style);
 
 	cow_ipc_respond_data(fd, info);
 }

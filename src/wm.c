@@ -351,12 +351,14 @@ handle_wm_manage_start(__unused void *data,
 						still_on_button = (hit == bi);
 					}
 				}
-				if (still_on_button && cow_config != NULL) {
+				if (still_on_button) {
 					int bi = s->pressed_button_idx;
 					if (bi >= 0 && bi < 3) {
+						/* Per-view button action
+						 * lives on the view's
+						 * snapshot, not cow_config. */
 						enum cow_button_action act =
-						    cow_config->titlebar
-							.buttons[bi]
+						    pv->cfg.titlebar.buttons[bi]
 							.action;
 						cow_wm.focused_view = pv;
 						if (pv->output != NULL)
@@ -457,9 +459,7 @@ handle_wm_manage_start(__unused void *data,
 				int tt = iv->dec.title_thickness;
 				int lx = s->pointer_x - iv->x;
 				int ly = s->pointer_y - iv->y;
-				int cl = cow_config ?
-				    cow_config->corner_length :
-				    20;
+				int cl = iv->cfg.corner_length;
 				if (cl < bw)
 					cl = bw;
 

@@ -59,18 +59,10 @@ cow_titlebar_effective_squeeze(const struct cow_view *view,
 		return;
 	}
 
-	/* Use the global config default.  Per-app overrides are no
-	 * longer applied here -- those are now expressed via on-map
-	 * rules running `set titlebar.squeeze...` commands. */
-	if (cow_config != NULL) {
-		*out = cow_config->titlebar.squeeze;
-	} else {
-		out->mode      = COW_SQUEEZE_NONE;
-		out->justify   = COW_JUST_LEFT;
-		out->width     = COW_CFG_DEFAULT_SQUEEZE_WIDTH;
-		out->offset    = 0;
-		out->min_width = COW_CFG_DEFAULT_SQUEEZE_MIN_WIDTH;
-	}
+	/* Read from the view's snapshot.  on-map / on-desk rules that
+	 * write `set titlebar.squeeze ...` against this view's target
+	 * land in view->cfg, so this read picks them up automatically. */
+	*out = view->cfg.titlebar.squeeze;
 }
 
 /*
@@ -243,20 +235,21 @@ void
 cow_titlebar_render(uint32_t *pixels, int stride_px, int frame_w,
     int border_width, struct cow_box tb_rect, const char *title, bool active,
     struct cow_font *font, int pressed_button, int icon_inverted_button,
-    bool title_pressed, const float *style_colour, const float *style_fg,
-    bool sticky, const char **tab_titles, int n_tabs, int active_tab,
-    bool drop_target)
+    bool title_pressed, const struct cow_titlebar_config *tb_cfg,
+    const struct cow_container_config *cc, const float *style_colour,
+    const float *style_fg, bool sticky, const char **tab_titles, int n_tabs,
+    int active_tab, bool drop_target)
 {
 	if (tb_rect.height <= 0 || tb_rect.width <= 0 ||
 	    frame_w <= 2 * border_width)
 		return;
 
-	/* Titlebar colors: use style override if provided,
-	 * otherwise fall back to config */
-	float				  base[4], fg[4];
-	const struct cow_titlebar_config *tb_cfg = cow_config ?
-	    &cow_config->titlebar :
-	    NULL;
+	/* Titlebar colors: use style override if provided, otherwise
+	 * fall back to the supplied per-view tb_cfg.  Callers always
+	 * supply tb_cfg from the view's snapshot, so the NULL branch
+	 * below only exists for defensive symmetry with the legacy
+	 * cow_config-may-be-NULL paths. */
+	float base[4], fg[4];
 	if (style_colour != NULL) {
 		memcpy(base, style_colour, sizeof(float) * 4);
 		if (style_fg != NULL)
@@ -481,10 +474,10 @@ cow_titlebar_render(uint32_t *pixels, int stride_px, int frame_w,
 
 	/*
 	 * Container tab strip.  When n_tabs > 1, divide the title area into
-	 * equal-width segments.  Active/inactive tab colours come from
-	 * cow_config->container so users can style them via
-	 * 'set container.tab.*'.  Falls back to the titlebar base/dk colours
-	 * when no config is available.
+	 * equal-width segments.  Active/inactive tab colours come from the
+	 * cc parameter (the view's cow_view_cfg.container snapshot) so
+	 * users can style them per-view via 'set container.tab.*'.  Falls
+	 * back to the titlebar base/dk colours when cc is NULL.
 	 */
 	if (n_tabs > 1 && tab_titles != NULL && title_w > 0) {
 		/*
@@ -492,11 +485,8 @@ cow_titlebar_render(uint32_t *pixels, int stride_px, int frame_w,
 		 * overrides; the defaults use the titlebar's own base/dk for
 		 * backgrounds and the titlebar's fg for both label colours so
 		 * that text remains readable regardless of how dark the
-		 * inactive (dk) background is.
-		 */
-		const struct cow_container_config *cc = cow_config ?
-		    &cow_config->container :
-		    NULL;
+		 * inactive (dk) background is.  cc was passed in by the
+		 * caller from the view's snapshot. */
 
 		float tab_active_f[4], tab_inactive_f[4];
 		float tab_fg_active_f[4], tab_fg_inactive_f[4];
