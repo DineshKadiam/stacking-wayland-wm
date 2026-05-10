@@ -23,11 +23,11 @@
 #include <string.h>
 
 #include "cow/cmd.h"
+#include "cow/ipc.h"
 #include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/view.h"
 #include "cow/wm.h"
-#include "cow/output.h"
 
 /* ================================================================
  * Output resolution
@@ -61,12 +61,17 @@ resolve_output(const char *spec, char **cause)
 		return wl_container_of(prev, cow_wm.current_output, wm_link);
 	}
 
-	/* Match by name */
-	struct cow_output *out;
-	wl_list_for_each(out, &cow_wm.outputs, wm_link)
-	{
-		if (out->name != NULL && strcmp(out->name, spec) == 0)
-			return out;
+	/* Match by name.  Skip the iteration during startup when
+	 * cow_wm.outputs has not been wl_list_init'd yet (cow_wm_init
+	 * runs after cow_ipc_load_config); no outputs exist at that
+	 * point so the spec necessarily can't resolve. */
+	if (!cow_ipc.startup_mode) {
+		struct cow_output *out;
+		wl_list_for_each(out, &cow_wm.outputs, wm_link)
+		{
+			if (out->name != NULL && strcmp(out->name, spec) == 0)
+				return out;
+		}
 	}
 
 	xasprintf(cause, "unknown output: %s", spec);
@@ -120,6 +125,19 @@ resolve_window(const char *spec, struct cow_output *output,
 
 	if (strcmp(spec, "@focused") == 0)
 		return cow_wm.focused_view;
+
+	/*
+	 * cow_wm.views is wl_list_init'd by cow_wm_init, which runs
+	 * after cow_ipc_load_config in main().  Any window selector
+	 * that requires walking the views list crashes if attempted
+	 * before init.  Refuse with a clear error -- no windows exist
+	 * at that point so the spec can't resolve anyway.
+	 */
+	if (cow_ipc.startup_mode) {
+		xasprintf(cause, "cannot resolve window during config load: %s",
+		    spec);
+		return NULL;
+	}
 
 	if (strcmp(spec, "@next") == 0 || strcmp(spec, "@prev") == 0) {
 		struct cow_view *focused = cow_wm.focused_view;
@@ -254,17 +272,30 @@ cmd_ctx_parse(const char *spec, struct cmd_ctx *ctx, char **cause)
 			desk_str   = buf;
 			window_str = dot + 1;
 		} else {
-			/* No delimiters: check if it matches an output name
-			 * first; if so treat it as an output specifier rather
-			 * than a window selector. */
-			struct cow_output *o;
-			bool		   is_output = false;
-			wl_list_for_each(o, &cow_wm.outputs, wm_link)
-			{
-				if (o->name != NULL &&
-				    strcmp(o->name, buf) == 0) {
-					is_output = true;
-					break;
+			/*
+			 * No delimiters: check if it matches an output name
+			 * first; if so treat it as an output specifier
+			 * rather than a window selector.
+			 *
+			 * cow_wm.outputs is a wl_list that's wl_list_init'd
+			 * by cow_wm_init, which runs after cow_ipc_load_config
+			 * in main().  Iterating it before init would walk
+			 * garbage pointers and crash.  At startup there are
+			 * no outputs anyway, so skip the probe and let the
+			 * spec fall through as a window selector -- the
+			 * subsequent resolve_window will return the right
+			 * "no such window" error rather than crashing.
+			 */
+			bool is_output = false;
+			if (!cow_ipc.startup_mode) {
+				struct cow_output *o;
+				wl_list_for_each(o, &cow_wm.outputs, wm_link)
+				{
+					if (o->name != NULL &&
+					    strcmp(o->name, buf) == 0) {
+						is_output = true;
+						break;
+					}
 				}
 			}
 			if (is_output)
