@@ -811,17 +811,19 @@ ptr_button(void *d, struct wl_pointer *p, uint32_t s, uint32_t t, uint32_t btn,
 		}
 	}
 
-	/* Switch page */
+	/* Switch page.  `scroll -a col,row` is the absolute-jump form
+	 * of the `scroll` command (the retired `page -c` shorthand);
+	 * the col,row pair is a single comma-separated token. */
 	if (pc >= 0 && pr >= 0) {
 		const pout_t *o = tracked_output(&st);
 		if (!o && st.n_outs)
 			o = &st.outs[0];
 		char cmd[128];
 		if (o && o->name[0] && strcmp(st.desktop_config, "global") != 0)
-			snprintf(cmd, sizeof(cmd), "page -t %s -c %d %d",
+			snprintf(cmd, sizeof(cmd), "scroll -t %s -a %d,%d",
 			    o->name, pc, pr);
 		else
-			snprintf(cmd, sizeof(cmd), "page -c %d %d", pc, pr);
+			snprintf(cmd, sizeof(cmd), "scroll -a %d,%d", pc, pr);
 		ipc_send(cmd);
 	}
 }

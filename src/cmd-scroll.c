@@ -17,11 +17,25 @@
  * Command: scroll -- pan the virtual desk's viewport.
  *
  * usage: scroll [-t output] [-w] [-p] horizontal vertical
+ *        scroll [-t output] -a col,row
+ *        scroll [-t output] -d left|right|up|down
  *        scroll [-t output] [-R] -r
  *
  *   -t output    target output by name (default: current output)
  *   -w           wrap at desk edges (default: clamp)
  *   -p           horizontal/vertical are pixels (default: percent of page)
+ *   -a col,row   jump to the absolute page position col,row (a single
+ *                token with a comma separator, not two positional
+ *                args).  Equivalent to the retired `page -c COL ROW`.
+ *   -d DIR       jump one page in DIR (left|right|up|down) with
+ *                wrap.  Equivalent to the retired `page -d DIR` and
+ *                shorthand for `scroll -w +/-100 0` etc.  -n / -p
+ *                shorthand for `-d right` / `-d left`.
+ *   -n           next page (right, wrapping).  Equivalent to the
+ *                retired `page -n`.  Shorthand for `scroll -w 100 0`.
+ *   -P           previous page (left, wrapping).  Equivalent to the
+ *                retired `page -p` (renamed here because lowercase
+ *                -p already means "pixels").
  *   -r           start an interactive drag-the-viewport pan; the
  *                viewport follows the pointer until the triggering
  *                mouse button is released.  This is the cow analogue
@@ -34,10 +48,10 @@
  *                Without -R, -r behaves like fvwm `reverse` (grab and
  *                drag).
  *
- * Modeled on fvwm3's `Scroll` command.  Unlike `page`, which jumps in
- * whole-page units, `scroll` shifts the viewport by an arbitrary
- * offset, allowing a window to straddle two pages.  Negative values
- * scroll left/up.
+ * Modeled on fvwm3's `Scroll` command.  Subsumes the old `page`
+ * command: `page` jumped in whole-page units only, `scroll` shifts
+ * the viewport by an arbitrary offset (sub-page values let a window
+ * straddle two pages).  Negative values scroll left/up.
  *
  * Examples:
  *   scroll 100 0           # one full page right
@@ -47,6 +61,10 @@
  *   scroll -w 100000 0     # one page right, wrapping at desk edge
  *                          # (the fvwm 'multiply by 1000' wrap idiom);
  *                          # equivalent to: scroll -w 100 0
+ *   scroll -a 2,0          # jump to page (col=2, row=0)
+ *   scroll -d right        # one page right, wrapping
+ *   scroll -n              # next page (right with wrap)
+ *   scroll -P              # previous page (left with wrap)
  *   mouse 1 R CM scroll -r # Ctrl+Meta+Button1 grabs and drags the
  *                          # desk viewport
  */
@@ -68,10 +86,11 @@ static enum cmd_retval cmd_scroll_exec(struct cmd *, struct cmd_q *);
 
 struct cmd_entry cmd_scroll_entry = {
 	"scroll",
-	"t:wprR",
+	"t:wpa:d:nPrR",
 	0,
 	2,
-	"[-t output] [-w] [-p] horizontal vertical | [-t output] [-R] -r",
+	"[-t output] [-w] [-p] H V | -a col,row | -d DIR | -n | -P | "
+	"[-R] -r",
 	cmd_scroll_exec,
 };
 
@@ -130,6 +149,24 @@ cmd_scroll_exec(struct cmd *self, struct cmd_q *cmdq)
 			    "scroll: -r takes no positional arguments");
 			return (CMD_RETURN_ERROR);
 		}
+		/*
+		 * Interactive scroll requires an active manage sequence:
+		 * river_seat_v1_op_start_pointer (called inside
+		 * cow_pointer_op_start_scroll) is only valid from a
+		 * pointer-driven manage cycle.  Invoking it from IPC
+		 * context (e.g. `moocow scroll -r`) where
+		 * cow_wm.sequence == NONE is a river protocol violation
+		 * that terminates the connection.  Match cmd-move /
+		 * cmd-resize: silently no-op out of manage and tell the
+		 * user via the IPC error channel so a one-off CLI call
+		 * doesn't kill the WM.
+		 */
+		if (cow_wm.sequence != COW_WM_SEQUENCE_MANAGE) {
+			cmdq_error(cmdq,
+			    "scroll: -r only valid from a mouse / key "
+			    "binding (not from IPC)");
+			return (CMD_RETURN_ERROR);
+		}
 		struct cow_seat *seat = cow_seat_primary();
 		if (seat == NULL) {
 			cmdq_error(cmdq, "scroll: no seat");
@@ -143,6 +180,109 @@ cmd_scroll_exec(struct cmd *self, struct cmd_q *cmdq)
 		}
 		bool reverse = !args_has(args, 'R');
 		cow_pointer_op_start_scroll(seat, output, reverse);
+		return (CMD_RETURN_NORMAL);
+	}
+
+	int cols = cow_config->page_cols;
+	int rows = cow_config->page_rows;
+
+	/*
+	 * Absolute jump: -a col,row.  Lands the viewport at (col*w,
+	 * row*h).  The col,row pair is a single comma-separated token
+	 * rather than two positional args so the surrounding argv
+	 * handling stays uniform (no flag-takes-two-positionals
+	 * special case).  Out-of-range indices error out cleanly.
+	 */
+	if (args_has(args, 'a')) {
+		if (args->argc != 0) {
+			cmdq_error(cmdq,
+			    "scroll: -a takes no positional arguments");
+			return (CMD_RETURN_ERROR);
+		}
+		const char *spec  = args_get(args, 'a');
+		const char *comma = strchr(spec, ',');
+		if (comma == NULL) {
+			cmdq_error(cmdq,
+			    "scroll: -a: expected col,row (got '%s')", spec);
+			return (CMD_RETURN_ERROR);
+		}
+		/* Split into two NUL-terminated halves on a local copy so
+		 * cmd_parse_int sees clean strings. */
+		size_t prefix_len = (size_t)(comma - spec);
+		if (prefix_len >= 64 || strlen(comma + 1) >= 64) {
+			cmdq_error(cmdq, "scroll: -a: value too long");
+			return (CMD_RETURN_ERROR);
+		}
+		char col_buf[64];
+		memcpy(col_buf, spec, prefix_len);
+		col_buf[prefix_len] = '\0';
+		const char *row_str = comma + 1;
+		long long   lc, lr;
+		if (!cmd_parse_int(cmdq, "scroll", "col", col_buf, 0, cols - 1,
+			&lc))
+			return (CMD_RETURN_ERROR);
+		if (!cmd_parse_int(cmdq, "scroll", "row", row_str, 0, rows - 1,
+			&lr))
+			return (CMD_RETURN_ERROR);
+		cow_page_scroll_to(output, (int)lc * w, (int)lr * h, false);
+		return (CMD_RETURN_NORMAL);
+	}
+
+	/*
+	 * Direction shortcuts.  -d DIR / -n / -P all jump one page in
+	 * the named direction with wrap; equivalent to `scroll -w +/-100
+	 * 0` etc.  These exist so users coming from the old `page`
+	 * command have a one-token rebind path: `page -n` -> `scroll -n`.
+	 */
+	if (args_has(args, 'd') || args_has(args, 'n') || args_has(args, 'P')) {
+		if (args->argc != 0) {
+			cmdq_error(cmdq,
+			    "scroll: -d / -n / -P take no positional "
+			    "arguments");
+			return (CMD_RETURN_ERROR);
+		}
+		long long dx_pct = 0, dy_pct = 0;
+		if (args_has(args, 'n')) {
+			dx_pct = 100;
+		} else if (args_has(args, 'P')) {
+			dx_pct = -100;
+		} else {
+			const char *dir = args_get(args, 'd');
+			switch (cow_parse_direction(dir)) {
+			case COW_DIR_RIGHT:
+				dx_pct = 100;
+				break;
+			case COW_DIR_LEFT:
+				dx_pct = -100;
+				break;
+			case COW_DIR_DOWN:
+				dy_pct = 100;
+				break;
+			case COW_DIR_UP:
+				dy_pct = -100;
+				break;
+			case COW_DIR_NONE:
+			default:
+				cmdq_error(cmdq,
+				    "scroll: unknown direction: %s "
+				    "(left|right|up|down)",
+				    dir);
+				return (CMD_RETURN_ERROR);
+			}
+		}
+		struct cow_desk *desk = output->current_desk;
+		long long new_vx = (long long)desk->page_vx + dx_pct * w / 100;
+		long long new_vy = (long long)desk->page_vy + dy_pct * h / 100;
+		if (new_vx > INT_MAX)
+			new_vx = INT_MAX;
+		if (new_vx < INT_MIN)
+			new_vx = INT_MIN;
+		if (new_vy > INT_MAX)
+			new_vy = INT_MAX;
+		if (new_vy < INT_MIN)
+			new_vy = INT_MIN;
+		cow_page_scroll_to(output, (int)new_vx, (int)new_vy,
+		    /* wrap = */ true);
 		return (CMD_RETURN_NORMAL);
 	}
 
