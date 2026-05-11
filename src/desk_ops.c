@@ -63,7 +63,22 @@ view_visible_in_page(const struct cow_view *view,
 	int		 vpx  = desk->page_vx;
 	int		 vpy  = desk->page_vy;
 
-	if (cow_config->edge_scroll) {
+	/*
+	 * Page-strict visibility ("a window lives on the page that
+	 * contains its top-left corner") only makes sense when the
+	 * viewport is aligned to a page boundary.  After a sub-page
+	 * `scroll` -- whether one-shot or via an interactive drag --
+	 * vpx / vpy lie somewhere between two pages, and the user
+	 * naturally expects any window whose frame rectangle intrudes
+	 * into the current viewport to remain drawn.  Fall through to
+	 * overlap-style culling in that case regardless of the
+	 * edge_scroll setting; otherwise windows on the adjacent page
+	 * would pop out of view as soon as the viewport shifted by a
+	 * single pixel away from their page boundary.
+	 */
+	bool aligned = (w > 0 && h > 0 && vpx % w == 0 && vpy % h == 0);
+
+	if (cow_config->edge_scroll && aligned) {
 		return !(view->vx < vpx || view->vx >= vpx + w ||
 		    view->vy < vpy || view->vy >= vpy + h);
 	}
