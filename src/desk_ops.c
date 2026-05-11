@@ -274,6 +274,15 @@ switch_output_page(struct cow_output *output, int new_vx, int new_vy)
 	if (desk->page_vx == new_vx && desk->page_vy == new_vy)
 		return;
 
+	/*
+	 * Snapshot the previous origin BEFORE we mutate it.  Page-
+	 * sticky views below need to know how much the viewport moved
+	 * so they can shift by exactly that amount, keeping their
+	 * screen position constant.
+	 */
+	int old_vx = desk->page_vx;
+	int old_vy = desk->page_vy;
+
 	if (cow_config != NULL && cow_config->page_scroll_animate) {
 		desk->scroll_from_vx  = desk->page_vx;
 		desk->scroll_from_vy  = desk->page_vy;
@@ -287,8 +296,6 @@ switch_output_page(struct cow_output *output, int new_vx, int new_vy)
 		desk->scrolling = false;
 	}
 
-	int		 w = output->usable_area.width;
-	int		 h = output->usable_area.height;
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
@@ -298,18 +305,23 @@ switch_output_page(struct cow_output *output, int new_vx, int new_vy)
 		    !(view->flags & COW_VIEW_STICKY_PAGE_FLAG))
 			continue;
 		/*
-		 * Page-sticky windows must follow the viewport: update their
-		 * virtual position to keep the same within-page offset on the
-		 * new page.  Without this the render formula
-		 * (output->x + vx - new_page_vx) lands them on a different
-		 * physical output whenever vx was anchored to a different page.
+		 * Page-sticky windows must follow the viewport so their
+		 * screen position stays constant.  Shift the view's vx /
+		 * vy by the same delta the viewport just moved -- this
+		 * works for both whole-page jumps (cow_page_switch) and
+		 * arbitrary sub-page steps (cow_page_scroll_to and the
+		 * interactive scroll-drag).
+		 *
+		 * Earlier this used view->vx % w to recover a "within
+		 * page" offset, but that only works when both old and
+		 * new page_vx are multiples of w.  During a drag, each
+		 * delta would re-add the previous step's contribution
+		 * and the sticky view appeared to slide across the
+		 * screen.
 		 */
-		if ((view->flags & COW_VIEW_STICKY_PAGE_FLAG) && w > 0 &&
-		    h > 0) {
-			int within_x = view->vx % w;
-			int within_y = view->vy % h;
-			view->vx     = new_vx + within_x;
-			view->vy     = new_vy + within_y;
+		if (view->flags & COW_VIEW_STICKY_PAGE_FLAG) {
+			view->vx += new_vx - old_vx;
+			view->vy += new_vy - old_vy;
 		}
 		view->dec.dirty = true;
 	}
