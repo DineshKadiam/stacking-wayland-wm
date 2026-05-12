@@ -138,6 +138,13 @@ cow_rule_find_by_name(const char *name)
 	return NULL;
 }
 
+const struct wl_list *
+cow_rules_head(void)
+{
+	rules_lazy_init();
+	return &rules;
+}
+
 void
 cow_rule_add(struct cow_rule *rule)
 {

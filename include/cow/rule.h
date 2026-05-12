@@ -87,6 +87,14 @@ const char *cow_rule_type_name(enum cow_rule_type);
 struct cow_rule *cow_rule_find_by_name(const char *);
 
 /*
+ * Return the file-scope list of registered rules so external callers
+ * (e.g. `show rules`) can iterate them.  The list head is owned by
+ * rule.c; callers must not modify it.  Returns NULL until
+ * cow_rule_init() has been called.
+ */
+const struct wl_list *cow_rules_head(void);
+
+/*
  * Take ownership of 'rule' (caller must have populated all fields,
  * including a parsed cmdlist).  Appends to the rules list.
  */

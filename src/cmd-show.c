@@ -19,6 +19,7 @@
  * usage: show windows
  *        show desk
  *        show output
+ *        show rules
  *        show config KEY
  *        show config.KEY
  */
@@ -30,6 +31,7 @@
 #include "cow/config.h"
 #include "cow/ipc.h"
 #include "cow/output.h"
+#include "cow/rule.h"
 #include "cow/titlebar.h"
 #include "cow/view.h"
 #include "cow/wm.h"
@@ -38,6 +40,7 @@ static enum cmd_retval cmd_show_exec(struct cmd *, struct cmd_q *);
 static void	       do_show_windows(int fd);
 static void	       do_show_desk(int fd);
 static void	       do_show_output(int fd);
+static void	       do_show_rules(int fd);
 static void	       do_show_config(const char *ckey, int fd, struct cmd_q *);
 
 struct cmd_entry cmd_show_entry = {
@@ -68,6 +71,11 @@ cmd_show_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	if (strcmp(topic, "output") == 0) {
 		do_show_output(fd);
+		return (CMD_RETURN_NORMAL);
+	}
+
+	if (strcmp(topic, "rules") == 0) {
+		do_show_rules(fd);
 		return (CMD_RETURN_NORMAL);
 	}
 
@@ -182,6 +190,47 @@ do_show_output(int fd)
 		cow_box_json_add(ua, &out->usable_area);
 		cJSON_AddItemToObject(o, "usable", ua);
 		cJSON_AddItemToArray(arr, o);
+	}
+	cow_ipc_respond_data(fd, arr);
+}
+
+static void
+do_show_rules(int fd)
+{
+	cJSON		     *arr  = cJSON_CreateArray();
+	const struct wl_list *head = cow_rules_head();
+	struct cow_rule	     *rule;
+
+	wl_list_for_each(rule, head, link)
+	{
+		cJSON *r = cJSON_CreateObject();
+		cJSON_AddStringToObject(r, "name",
+		    rule->name ? rule->name : "");
+		cJSON_AddStringToObject(r, "type",
+		    cow_rule_type_name(rule->type));
+		cJSON_AddBoolToObject(r, "global", rule->is_global);
+		if (rule->output_name != NULL)
+			cJSON_AddStringToObject(r, "output", rule->output_name);
+		if (rule->desk_nr >= 0)
+			cJSON_AddNumberToObject(r, "desk", rule->desk_nr);
+		if (rule->match_spec != NULL)
+			cJSON_AddStringToObject(r, "match", rule->match_spec);
+
+		/*
+		 * Render the rule body (parsed command list) back to a
+		 * source-form string.  cmd_list_print uses " ; " between
+		 * commands, matching what the user wrote in their config.
+		 */
+		if (rule->cmdlist != NULL) {
+			char buf[1024];
+			buf[0] = '\0';
+			cmd_list_print(rule->cmdlist, buf, sizeof(buf));
+			cJSON_AddStringToObject(r, "body", buf);
+		} else {
+			cJSON_AddStringToObject(r, "body", "");
+		}
+
+		cJSON_AddItemToArray(arr, r);
 	}
 	cow_ipc_respond_data(fd, arr);
 }
