@@ -92,6 +92,29 @@ struct cow_mouse_binding_entry {
 };
 
 /*
+ * Decoration regions a click can land in.
+ */
+enum cow_dec_region {
+	COW_DEC_REGION_NONE = 0,
+	COW_DEC_REGION_N,
+	COW_DEC_REGION_S,
+	COW_DEC_REGION_E,
+	COW_DEC_REGION_W,
+	COW_DEC_REGION_NE,
+	COW_DEC_REGION_NW,
+	COW_DEC_REGION_SE,
+	COW_DEC_REGION_SW,
+	COW_DEC_REGION_TITLEBAR,
+	COW_DEC_REGION_COUNT,
+};
+
+struct cow_dec_binding_entry {
+	struct wl_list	    link;
+	enum cow_dec_region region;
+	char		   *action_string; /* full cmd-string body */
+};
+
+/*
  * Button action enum.
  */
 enum cow_button_action {
@@ -282,9 +305,10 @@ struct cow_config {
 	bool  has_output_bg_colour;
 
 	/* Parsed binding lists */
-	struct wl_list keyboard_bindings; /* cow_binding_entry.link */
-	struct wl_list mouse_bindings;	  /* cow_mouse_binding_entry.link */
-	struct wl_list actions;		  /* cow_action_entry.link */
+	struct wl_list keyboard_bindings;   /* cow_binding_entry.link */
+	struct wl_list mouse_bindings;	    /* cow_mouse_binding_entry.link */
+	struct wl_list decoration_bindings; /* cow_dec_binding_entry.link */
+	struct wl_list actions;		    /* cow_action_entry.link */
 };
 
 extern struct cow_config *cow_config;
@@ -316,5 +340,24 @@ const char *cow_config_default_path(void);
  * Find an action entry by name. Returns the command string, or NULL.
  */
 const char *cow_config_find_action(struct cow_config *, const char *);
+
+/*
+ * Parse a region name ("N", "south", "ne", "titlebar", ...) into a
+ * cow_dec_region value.  Case-insensitive.  Returns COW_DEC_REGION_NONE
+ * on a bad name.
+ */
+enum cow_dec_region cow_dec_region_parse(const char *);
+
+const char *cow_dec_region_name(enum cow_dec_region);
+
+/*
+ * Look up a decoration-click binding for the given region.  Caller
+ * should treat the returned pointer as borrowed: it's owned by the
+ * cow_config binding list.
+ */
+const char *cow_dec_binding_lookup(enum cow_dec_region);
+
+struct cow_view;
+bool cow_dec_binding_fire(struct cow_view *, enum cow_dec_region);
 
 #endif

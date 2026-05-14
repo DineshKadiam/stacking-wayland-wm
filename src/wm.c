@@ -588,8 +588,31 @@ handle_wm_manage_start(__unused void *data,
 				}
 
 				if (in_corner && corner_edges != 0) {
-					cow_pointer_op_start_resize(s, iv,
-					    corner_edges);
+					/*
+					 * User-bound corner click overrides
+					 * the default diagonal resize.
+					 * cow_dec_binding_fire is a no-op
+					 * (returns false) when nothing is
+					 * bound for this corner, in which
+					 * case the resize fires as before.
+					 */
+					enum cow_dec_region cr =
+					    COW_DEC_REGION_NONE;
+					if (corner_edges ==
+					    (COW_EDGE_TOP | COW_EDGE_LEFT))
+						cr = COW_DEC_REGION_NW;
+					else if (corner_edges ==
+					    (COW_EDGE_TOP | COW_EDGE_RIGHT))
+						cr = COW_DEC_REGION_NE;
+					else if (corner_edges ==
+					    (COW_EDGE_BOTTOM | COW_EDGE_LEFT))
+						cr = COW_DEC_REGION_SW;
+					else if (corner_edges ==
+					    (COW_EDGE_BOTTOM | COW_EDGE_RIGHT))
+						cr = COW_DEC_REGION_SE;
+					if (!cow_dec_binding_fire(iv, cr))
+						cow_pointer_op_start_resize(s,
+						    iv, corner_edges);
 				} else if (cow_titlebar_hit(iv, lx, ly)) {
 					/*
 					 * Titlebar (below north border, above
@@ -701,6 +724,24 @@ handle_wm_manage_start(__unused void *data,
 								}
 							}
 						}
+						/*
+						 * Blank-titlebar click.  Fire
+						 * a user-bound action if one
+						 * is registered for region
+						 * "titlebar"; only fall back
+						 * to the default title-drag
+						 * move when nothing is bound.
+						 * Buttons and active tab
+						 * clicks above already
+						 * short-circuited so they
+						 * keep their semantics.
+						 */
+						if (cow_dec_binding_fire(iv,
+							COW_DEC_REGION_TITLEBAR)) {
+							s->interacted_view =
+							    NULL;
+							goto seat_done;
+						}
 						iv->title_pressed = true;
 						iv->dec.dirty	  = true;
 						s->titlebar_press =
@@ -713,16 +754,29 @@ handle_wm_manage_start(__unused void *data,
 				    lx >= hit_cw) {
 					/* Border edge (not in content, not in
 					 * titlebar, not corner) */
-					uint32_t edges = 0;
-					if (ly < -tt)
+					uint32_t	    edges = 0;
+					enum cow_dec_region er =
+					    COW_DEC_REGION_NONE;
+					if (ly < -tt) {
 						edges = COW_EDGE_TOP;
-					else if (ly >= hit_ch)
+						er    = COW_DEC_REGION_N;
+					} else if (ly >= hit_ch) {
 						edges = COW_EDGE_BOTTOM;
-					else if (lx < 0)
+						er    = COW_DEC_REGION_S;
+					} else if (lx < 0) {
 						edges = COW_EDGE_LEFT;
-					else if (lx >= hit_cw)
+						er    = COW_DEC_REGION_W;
+					} else if (lx >= hit_cw) {
 						edges = COW_EDGE_RIGHT;
-					if (edges != 0)
+						er    = COW_DEC_REGION_E;
+					}
+					/*
+					 * Edge click: fire bound action if
+					 * any, else fall back to the default
+					 * one-axis resize.
+					 */
+					if (edges != 0 &&
+					    !cow_dec_binding_fire(iv, er))
 						cow_pointer_op_start_resize(s,
 						    iv, edges);
 				}

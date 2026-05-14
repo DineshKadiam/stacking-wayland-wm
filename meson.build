@@ -29,6 +29,7 @@ srcs = [
     'src/border.c',
     'src/cmd-args.c',
     'src/cmd-bind.c',
+    'src/cmd-bind-decoration.c',
     'src/cmd-container.c',
     'src/cmd-ctx.c',
     'src/cmd-desk.c',

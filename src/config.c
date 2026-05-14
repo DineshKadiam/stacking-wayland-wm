@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 
 #include "cow/colour.h"
@@ -227,6 +228,7 @@ cow_config_create(void)
 
 	wl_list_init(&config->keyboard_bindings);
 	wl_list_init(&config->mouse_bindings);
+	wl_list_init(&config->decoration_bindings);
 
 	return config;
 }
@@ -256,6 +258,14 @@ cow_config_destroy(struct cow_config *config)
 		xfree(mb->key_string);
 		xfree(mb->action_string);
 		xfree(mb);
+	}
+
+	struct cow_dec_binding_entry *db, *db_tmp;
+	wl_list_for_each_safe(db, db_tmp, &config->decoration_bindings, link)
+	{
+		wl_list_remove(&db->link);
+		xfree(db->action_string);
+		xfree(db);
 	}
 
 	xfree(config);
@@ -298,5 +308,69 @@ cow_config_default_path(void)
 	if (access(COW_SYSCONFDIR "/cow.conf", R_OK) == 0)
 		return COW_SYSCONFDIR "/cow.conf";
 
+	return NULL;
+}
+
+/*
+ * Decoration-region helpers.
+ *
+ * Region names are matched case-insensitively.  Both compass shorthands
+ * (N / S / E / W / NE / NW / SE / SW) and full names (north / south /
+ * east / west / north-east etc.) are accepted, plus "titlebar" / "title"
+ * for the title bar zone.
+ */
+static const struct {
+	enum cow_dec_region region;
+	const char	   *primary; /* canonical name returned by _name */
+	const char	   *alt;     /* additional accepted spelling */
+} region_table[] = {
+	{ COW_DEC_REGION_N,	    "n",	 "north"	 },
+	{ COW_DEC_REGION_S,	    "s",	 "south"	 },
+	{ COW_DEC_REGION_E,	    "e",	 "east"	},
+	{ COW_DEC_REGION_W,	    "w",	 "west"	},
+	{ COW_DEC_REGION_NE,	     "ne",	   "north-east" },
+	{ COW_DEC_REGION_NW,	     "nw",	   "north-west" },
+	{ COW_DEC_REGION_SE,	     "se",	   "south-east" },
+	{ COW_DEC_REGION_SW,	     "sw",	   "south-west" },
+	{ COW_DEC_REGION_TITLEBAR, "titlebar", "title"      },
+};
+
+enum cow_dec_region
+cow_dec_region_parse(const char *s)
+{
+	if (s == NULL || *s == '\0')
+		return COW_DEC_REGION_NONE;
+	for (size_t i = 0; i < sizeof(region_table) / sizeof(region_table[0]);
+	    i++) {
+		if (strcasecmp(s, region_table[i].primary) == 0 ||
+		    (region_table[i].alt != NULL &&
+			strcasecmp(s, region_table[i].alt) == 0))
+			return region_table[i].region;
+	}
+	return COW_DEC_REGION_NONE;
+}
+
+const char *
+cow_dec_region_name(enum cow_dec_region r)
+{
+	for (size_t i = 0; i < sizeof(region_table) / sizeof(region_table[0]);
+	    i++) {
+		if (region_table[i].region == r)
+			return region_table[i].primary;
+	}
+	return "none";
+}
+
+const char *
+cow_dec_binding_lookup(enum cow_dec_region region)
+{
+	if (cow_config == NULL || region == COW_DEC_REGION_NONE)
+		return NULL;
+	struct cow_dec_binding_entry *e;
+	wl_list_for_each(e, &cow_config->decoration_bindings, link)
+	{
+		if (e->region == region)
+			return e->action_string;
+	}
 	return NULL;
 }
