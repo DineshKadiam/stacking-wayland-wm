@@ -534,6 +534,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 		 * haven't been updated yet (they're updated when the dimensions
 		 * event arrives).
 		 */
+		cow_view_sync_vxy_from_global(view);
 		cow_view_sync_container_geometry(view, new_x, new_y, new_w,
 		    new_h);
 		break;
