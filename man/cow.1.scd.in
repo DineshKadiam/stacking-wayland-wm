@@ -168,6 +168,9 @@ Set a configuration option at runtime. *-v* prints the resulting value.
 :  integer (ms)
 :  Time the pointer must dwell at an edge before a page switch fires.
    Default: _300_.
+|  *raise\_on\_focus*
+:  _true_ | _false_
+:  Raise on focus: raise window when focused (default: on).
 |  *focus*
 :  _sloppy_ | _click_
 :  Focus model. Default: _click_.

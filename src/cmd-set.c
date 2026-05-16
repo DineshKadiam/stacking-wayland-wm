@@ -393,6 +393,15 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_NORMAL);
 	}
 
+	if (strcmp(key, "raise_on_focus") == 0) {
+		bool b;
+		if (cow_config != NULL && cmd_parse_bool(val, &b)) {
+			cow_config->raise_on_focus = b;
+		}
+		xfree(val);
+		return (CMD_RETURN_NORMAL);
+	}
+
 	if (strncmp(key, "titlebar.button_", 16) == 0) {
 		do_set_button(key, val, cmdq);
 		xfree(val);

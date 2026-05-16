@@ -240,6 +240,9 @@ struct cow_config {
 	bool edge_scroll;
 	int  edge_scroll_delay_ms; /* delay before scroll fires, default 300 */
 
+	/* Raise on focus: raise window when focused (default: on) */
+	bool raise_on_focus;
+
 	/* Colors */
 	struct cow_border_colour border_active;
 	struct cow_border_colour border_inactive;

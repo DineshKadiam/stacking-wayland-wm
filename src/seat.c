@@ -247,7 +247,7 @@ cow_seat_focus_view(struct cow_seat *seat, struct cow_view *view)
 	river_seat_v1_focus_window(seat->river_seat, view->river_window);
 	seat->focused_view  = view;
 	cow_wm.focused_view = view;
-	view->needs_raise   = true;
+	view->needs_raise   = cow_config->raise_on_focus;
 
 	/* Update current output to follow focus */
 	if (view->output != NULL)
