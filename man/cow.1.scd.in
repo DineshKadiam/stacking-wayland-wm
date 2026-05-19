@@ -309,7 +309,7 @@ mouse L+right  resize
 mouse L+middle window-move -C
 ```
 
-## bind-decoration region command ...
+## bind-decoration [-2] region command ...
 
 Bind a primary-button click on a window's decoration to a
 command.  Each window's frame is divided into regions.  See the
@@ -322,6 +322,11 @@ against that window.
 	Double-click binding (default is single-click).  A region can
 	carry one single-click binding and one double-click binding
 	simultaneously.
+
+*-2*
+	Double-click binding (default is single-click).  A region can
+	carry one single-click binding and one double-click binding
+	simultaneously; they're tracked as separate keys.
 
 The _region_ argument is case-insensitive and accepts both the compass
 shorthands and the long form:
@@ -349,9 +354,12 @@ shorthands and the long form:
 
 The defaults bindings are:
 
-- Corners normally start a diagonal resize.
-- Edges normally start a one-axis resize.
-- Blank titlebar area normally starts a title-drag move.
+- *Single*-click on a corner    -> diagonal resize.
+- *Single*-click on an edge     -> one-axis resize.
+- *Single*-click on titlebar    -> title-drag move.
+- *Double*-click on titlebar    -> shade / unshade (north).
+- *Double*-click on any other region has no built-in action; binding
+  it with *-2* registers the only action that fires.
 
 Double-clicks on edges and corners have no defaults.
 
@@ -364,11 +372,20 @@ Examples:
 # Maximise a window by clicking anywhere on its titlebar.
 bind-decoration titlebar window-maximize -m
 
+# Double-click the titlebar to shade (this is the default behaviour;
+# the example shows how to re-express it explicitly with -2, or
+# replace shade with something else of your choosing).
+bind-decoration -2 titlebar window-shade -d north
+
 # Maximise on a click on the north edge.
 bind-decoration N window-maximize -m
 
 # Close the window with a click in the NE corner.
 bind-decoration NE       winops -c
+
+# Double-click NE corner closes the window (the single-click default
+# of starting a corner resize still fires on the first click).
+bind-decoration -2 NE    winops -c
 
 # Chain: start a resize then focus the next window.
 bind-decoration SE       resize \; focus -n

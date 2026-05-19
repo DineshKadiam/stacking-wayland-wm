@@ -155,7 +155,7 @@ cow_config_create(void)
 	config->page_scroll_ms	     = COW_CFG_DEFAULT_PAGE_SCROLL_MS;
 	config->edge_scroll	     = false;
 	config->edge_scroll_delay_ms = COW_CFG_DEFAULT_EDGE_SCROLL_DELAY;
-	config->raise_on_focus       = true;
+	config->raise_on_focus	     = true;
 	config->icon_size	     = COW_CFG_DEFAULT_ICON_SIZE;
 	config->snap_distance	     = COW_CFG_DEFAULT_SNAP_DISTANCE;
 
@@ -362,14 +362,16 @@ cow_dec_region_name(enum cow_dec_region r)
 }
 
 const char *
-cow_dec_binding_lookup(enum cow_dec_region region)
+cow_dec_binding_lookup(enum cow_dec_region region, int clicks)
 {
 	if (cow_config == NULL || region == COW_DEC_REGION_NONE)
+		return NULL;
+	if (clicks != 1 && clicks != 2)
 		return NULL;
 	struct cow_dec_binding_entry *e;
 	wl_list_for_each(e, &cow_config->decoration_bindings, link)
 	{
-		if (e->region == region)
+		if (e->region == region && e->clicks == clicks)
 			return e->action_string;
 	}
 	return NULL;

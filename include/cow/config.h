@@ -111,6 +111,7 @@ enum cow_dec_region {
 struct cow_dec_binding_entry {
 	struct wl_list	    link;
 	enum cow_dec_region region;
+	int		    clicks;
 	char		   *action_string; /* full cmd-string body */
 };
 
@@ -355,9 +356,9 @@ const char *cow_dec_region_name(enum cow_dec_region);
  * should treat the returned pointer as borrowed: it's owned by the
  * cow_config binding list.
  */
-const char *cow_dec_binding_lookup(enum cow_dec_region);
+const char *cow_dec_binding_lookup(enum cow_dec_region, int clicks);
 
 struct cow_view;
-bool cow_dec_binding_fire(struct cow_view *, enum cow_dec_region);
+bool cow_dec_binding_fire(struct cow_view *, enum cow_dec_region, int clicks);
 
 #endif

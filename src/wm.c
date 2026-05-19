@@ -470,26 +470,33 @@ handle_wm_manage_start(__unused void *data,
 				    iv->shade_saved_height :
 				    iv->content_height;
 
-				/* Double-click on titlebar -> shade/unshade
-				 * (north) */
-				bool in_titlebar = cow_titlebar_hit(iv, lx,
-						       ly) ||
-				    (iv->sd != COW_SHADE_NONE);
-				if (in_titlebar) {
-					struct timespec now;
-					clock_gettime(CLOCK_MONOTONIC, &now);
-					if (s->last_click_view == iv &&
-					    elapsed_ms(&s->last_click_time,
-						&now) < DOUBLE_CLICK_MS) {
-						cow_view_shade(iv,
-						    COW_SHADE_NORTH);
-						s->last_click_view = NULL;
-						s->interacted_view = NULL;
-						continue;
-					}
-					s->last_click_view = iv;
-					s->last_click_time = now;
-				}
+				/*
+				 * Double-click detection.  Any click on this
+				 * view's decoration within DOUBLE_CLICK_MS of
+				 * the previous one counts as a double-click;
+				 * the per-region dispatch below uses `clicks`
+				 * to look up (region, 2) bindings first,
+				 * falling back to (region, 1) or the built-in
+				 * defaults.  The titlebar-double-shade
+				 * behaviour that used to live here is now
+				 * the default action when no double-click
+				 * titlebar binding is registered; see
+				 * dispatch_dec_click in this file.
+				 *
+				 * Earlier this only tracked titlebar clicks,
+				 * so double-clicks on edges / corners were
+				 * impossible to detect.  Tracking every
+				 * decoration click means a user-bound
+				 * bind-decoration -2 N works the same way as
+				 * -2 titlebar.
+				 */
+				struct timespec now;
+				clock_gettime(CLOCK_MONOTONIC, &now);
+				int clicks = 1;
+				if (s->last_click_view == iv &&
+				    elapsed_ms(&s->last_click_time, &now) <
+					DOUBLE_CLICK_MS)
+					clicks = 2;
 
 				/* Corner resize detection.
 				 *
@@ -590,11 +597,14 @@ handle_wm_manage_start(__unused void *data,
 				if (in_corner && corner_edges != 0) {
 					/*
 					 * User-bound corner click overrides
-					 * the default diagonal resize.
-					 * cow_dec_binding_fire is a no-op
-					 * (returns false) when nothing is
-					 * bound for this corner, in which
-					 * case the resize fires as before.
+					 * the default diagonal resize.  Try
+					 * (region, clicks) first; if no
+					 * binding fired AND this is a single
+					 * click, fall back to the default.
+					 * Double-clicks on corners with no
+					 * binding do nothing (the first click
+					 * already started a resize the user
+					 * has since released).
 					 */
 					enum cow_dec_region cr =
 					    COW_DEC_REGION_NONE;
@@ -610,7 +620,9 @@ handle_wm_manage_start(__unused void *data,
 					else if (corner_edges ==
 					    (COW_EDGE_BOTTOM | COW_EDGE_RIGHT))
 						cr = COW_DEC_REGION_SE;
-					if (!cow_dec_binding_fire(iv, cr))
+					if (!cow_dec_binding_fire(iv, cr,
+						clicks) &&
+					    clicks == 1)
 						cow_pointer_op_start_resize(s,
 						    iv, corner_edges);
 				} else if (cow_titlebar_hit(iv, lx, ly)) {
@@ -725,19 +737,52 @@ handle_wm_manage_start(__unused void *data,
 							}
 						}
 						/*
-						 * Blank-titlebar click.  Fire
-						 * a user-bound action if one
-						 * is registered for region
-						 * "titlebar"; only fall back
-						 * to the default title-drag
-						 * move when nothing is bound.
+						 * Blank-titlebar click.  Try
+						 * (titlebar, clicks) first;
+						 * fall back to the built-in
+						 * default for the matching
+						 * click count when no binding
+						 * fires: single-click starts
+						 * a title-drag move, double-
+						 * click shades the window.
 						 * Buttons and active tab
 						 * clicks above already
 						 * short-circuited so they
 						 * keep their semantics.
 						 */
 						if (cow_dec_binding_fire(iv,
-							COW_DEC_REGION_TITLEBAR)) {
+							COW_DEC_REGION_TITLEBAR,
+							clicks)) {
+							/*
+							 * Binding consumed the
+							 * double-click;
+							 * forget the prior
+							 * click so a third
+							 * click starts a
+							 * fresh single.
+							 */
+							if (clicks == 2)
+								s->last_click_view =
+								    NULL;
+							else {
+								s->last_click_view =
+								    iv;
+								s->last_click_time =
+								    now;
+							}
+							s->interacted_view =
+							    NULL;
+							goto seat_done;
+						}
+						if (clicks == 2) {
+							/* Default: shade/
+							 * unshade (preserves
+							 * the old hard-coded
+							 * behaviour). */
+							cow_view_shade(iv,
+							    COW_SHADE_NORTH);
+							s->last_click_view =
+							    NULL;
 							s->interacted_view =
 							    NULL;
 							goto seat_done;
@@ -749,6 +794,12 @@ handle_wm_manage_start(__unused void *data,
 						s->pressed_view = iv;
 						cow_pointer_op_start_move(s,
 						    iv);
+						/*
+						 * last_click_view / time get
+						 * stamped by the bottom block
+						 * after we fall out of this
+						 * if/else if chain.
+						 */
 					}
 				} else if (ly < -tt || ly >= hit_ch || lx < 0 ||
 				    lx >= hit_cw) {
@@ -771,14 +822,39 @@ handle_wm_manage_start(__unused void *data,
 						er    = COW_DEC_REGION_E;
 					}
 					/*
-					 * Edge click: fire bound action if
-					 * any, else fall back to the default
-					 * one-axis resize.
+					 * Edge click: try (region, clicks)
+					 * binding first.  Fall back to the
+					 * default one-axis resize only on a
+					 * single click that didn't fire any
+					 * binding.  A bare double-click on
+					 * an unbound edge does nothing --
+					 * the previous click already started
+					 * a resize the user has since
+					 * released.
 					 */
 					if (edges != 0 &&
-					    !cow_dec_binding_fire(iv, er))
+					    !cow_dec_binding_fire(iv, er,
+						clicks) &&
+					    clicks == 1)
 						cow_pointer_op_start_resize(s,
 						    iv, edges);
+				}
+
+				/*
+				 * Record this click so the next one can be
+				 * detected as a double if it arrives within
+				 * DOUBLE_CLICK_MS on the same view.  A
+				 * successful double-click clears the state
+				 * so a third click starts a fresh single
+				 * (otherwise a triple click would alternate
+				 * single/double/single forever).  Otherwise
+				 * stamp the time of this click.
+				 */
+				if (clicks == 2) {
+					s->last_click_view = NULL;
+				} else {
+					s->last_click_view = iv;
+					s->last_click_time = now;
 				}
 			}
 			s->interacted_view = NULL;
