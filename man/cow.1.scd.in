@@ -14,7 +14,7 @@ cow - Compositor On Wayland
 
 A large _virtual desktop_ can be created, effectively splitting the screen into
 an _N_ x _M_ matrix, called _pages_.  These pages can then be viewed by using the
-mouse on the edge of the screen, or by using the _page_ command.
+mouse on the edge of the screen, or by using the _scroll_ command.
 
 Desktops provide a means of aggregating open applications into different areas.
 
@@ -805,29 +805,100 @@ of containers:
 
 This section details commands which affect desktops/pages often per-output.
 
-## page [-t output] [-n] [-p] [-d dir] [-c col row]
+## scroll [-t output] [-w] [-p] _H_ _V_
 
-Navigate the virtual page grid within the current desk.
+## scroll [-t output] -a _col_,_row_
+
+## scroll [-t output] -d _left_|_right_|_up_|_down_
+
+## scroll [-t output] -n
+
+## scroll [-t output] -P
+
+## scroll [-t output] [-R] -r
+
+Pan the virtual page viewport for the current desk.
+
+Pages can be scrolled in either full pages, or part increments.  Additionally,
+it's possible to in-effect, "drag" the viewport with the mouse to any position.
+
+In the deltas form (_H_ _V_), _H_ is the horizontal scroll and _V_ the
+vertical.  By default each value is a percentage of one page in that
+axis: _100_ is one full page right (or down), _-100_ one page left
+(or up), _50_ is half a page, and so on.  With *-p* the values are
+raw pixels instead.
+
+Options are:
 
 *-t* _output_
 	Target the named output instead of the current one.
 
-*-n*
-	Next page: right along the current row, wrapping to the first column
-	of the next row at the end.
+*-w*
+	Wrap at the desk edges.  Without *-w*, the viewport is clamped
+	to the desk extent.  The legacy fvwm idiom of multiplying the
+	percentage by 1000 (e.g. _scroll 100000 0_) is also recognised
+	as an implicit *-w*.
 
 *-p*
-	Previous page.
+	Treat _H_ and _V_ as pixels rather than percent of a page.
+
+*-a* _col_,_row_
+	Absolute jump: land the viewport at the page _col_,_row_ (0-indexed).
+	The pair are a single comma-separated token.
 
 *-d* _dir_
-	Move in direction _dir_: _left_, _right_, _up_, or _down_. Wraps
-	at edges.
+	Jump one page in direction _dir_: _left_, _right_, _up_, or _down_,
+	wrapping at desk edges.
 
-*-c* _col_ _row_
-	Go directly to the page at column _col_, row _row_ (0-indexed).
+*-n*
+	Next page (right, wrapping at the end of a row to the start of the
+	next row).  Shorthand for _scroll -w 100 0_.
+
+*-P*
+	Previous page (left, wrapping).
+*-r*
+	Start an interactive drag-the-viewport pan.  The viewport follows
+	the pointer until the triggering mouse button is released.  Only
+	valid when invoked from a mouse or key binding.
+	Bind it to a mouse button to "grab and drag"
+	the desk.  The *-w* and *-p* flags are ignored with *-r* since
+	interactive drag works in raw pixels and never wraps.
+
+*-R*
+	Paired with *-r*, makes the viewport follow the pointer in the
+	*same* direction instead of opposite.
 
 Pages exist only when _desktop\_size N M_ is configured with N > 1 or
 M > 1.
+
+Examples:
+
+```
+# One full page right (clamps at the last column).
+scroll 100 0
+
+# Half a page right, a quarter page down.
+scroll 50 25
+
+# 200 pixels right.
+scroll -p 200 0
+
+# One page right, wrapping at the desk edge.
+scroll -w 100 0
+
+# Jump straight to page (col=2, row=0).
+scroll -a 2,0
+
+# One page right, wrapping; convenient for keybindings.
+scroll -d right
+
+# Next / previous page with wrap.
+scroll -n
+scroll -P
+
+# Bind Ctrl+Meta+Button1 to grab and drag the viewport.
+mouse CM+left scroll -r
+```
 
 ## desk [-t output] [-d 0-9] [-c 0-9] [-np]
 
