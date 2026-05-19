@@ -354,12 +354,21 @@ shorthands and the long form:
 
 The defaults bindings are:
 
-- *Single*-click on a corner    -> diagonal resize.
-- *Single*-click on an edge     -> one-axis resize.
-- *Single*-click on titlebar    -> title-drag move.
-- *Double*-click on titlebar    -> shade / unshade (north).
-- *Double*-click on any other region has no built-in action; binding
-  it with *-2* registers the only action that fires.
+[[ *Region*
+:[ *Clicks*
+:< *Default action*
+|  N / S / E / W
+:  single
+:  window-resize -e _dir_ (interactive one-axis resize)
+|  NE / NW / SE / SW
+:  single
+:  window-resize -e _dir_ (interactive diagonal resize)
+|  titlebar
+:  single
+:  window-move (interactive title-drag move)
+|  titlebar
+:  double
+:  window-shade -d north (shade / unshade)
 
 Double-clicks on edges and corners have no defaults.
 
@@ -369,26 +378,23 @@ window decoration, so currently, only mouse button 1 is usable.
 Examples:
 
 ```
-# Maximise a window by clicking anywhere on its titlebar.
+# Maximise a window by clicking anywhere on its titlebar
+# (replaces the default window-move).
 bind-decoration titlebar window-maximize -m
 
-# Double-click the titlebar to shade (this is the default behaviour;
-# the example shows how to re-express it explicitly with -2, or
-# replace shade with something else of your choosing).
+# Re-express the default double-click-shade explicitly.
 bind-decoration -2 titlebar window-shade -d north
 
 # Maximise on a click on the north edge.
 bind-decoration N window-maximize -m
 
-# Close the window with a click in the NE corner.
-bind-decoration NE       winops -c
-
 # Double-click NE corner closes the window (the single-click default
-# of starting a corner resize still fires on the first click).
+# of starting a corner resize still fires on the first click; bind
+# the single-click pair too if you want to suppress it).
 bind-decoration -2 NE    winops -c
 
 # Chain: start a resize then focus the next window.
-bind-decoration SE       resize \; focus -n
+bind-decoration SE       window-resize -e se \; focus -n
 ```
 
 ## rule -d -n <name> | -g | -t output[:desk] -n <name> -T <event> [-s sel] cmd...
@@ -578,7 +584,7 @@ Move a window. With no flags, begin an interactive move using the mouse.
 	Set the window's Y position. A leading _+_ or _-_ makes the value
 	relative to the current position.
 
-## window-resize [-t target] [-gs] [-d dir] [-w width] [-h height]
+## window-resize [-t target] [-gs] [-d dir] [-e edges] [-w width] [-h height]
 
 Resize a window. With no flags, begin an interactive resize operation with the
 mouse, from the bottom-right corner.
@@ -592,6 +598,15 @@ mouse, from the bottom-right corner.
 
 *-s -d* _dir_
 	Shrink the window in direction _dir_ by one step.
+
+*-e* _edges_
+	Begin an interactive resize anchored on the named _edges_ -- a
+	compass spec built from the letters _n_, _s_, _e_, _w_.  Single
+	letters select an edge (_n_, _s_, _e_, _w_); two-letter combos
+	select a corner (_ne_, _nw_, _se_, _sw_).  Used by
+	*bind-decoration* to express per-edge / per-corner resize defaults
+	as ordinary commands; default if *-e* is omitted is the historic
+	*se* (bottom-right) corner.
 
 *-w* _width_
 	Set the window width in pixels.

@@ -358,7 +358,16 @@ do_interactive(struct cow_view *view)
 	 */
 	if (cow_wm.sequence != COW_WM_SEQUENCE_MANAGE)
 		return;
-	struct cow_seat *seat = cow_seat_primary();
+	/*
+	 * Prefer the seat whose pointer initiated the current
+	 * interaction (set by wm.c's decoration-click dispatch when
+	 * firing a bind-decoration binding).  Falls back to the
+	 * primary seat for callers without an active interaction --
+	 * e.g. `window-move` fired from a keybinding.
+	 */
+	struct cow_seat *seat = cow_wm.current_interaction_seat;
+	if (seat == NULL)
+		seat = cow_seat_primary();
 	if (seat != NULL) {
 		unmax_if_needed(view);
 		cow_pointer_op_start_move(seat, view);

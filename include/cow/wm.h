@@ -92,6 +92,17 @@ struct cow_wm {
 	struct cow_output *current_output;
 	struct cow_view	  *focused_view;
 
+	/*
+	 * Seat whose pointer interaction is currently being dispatched
+	 * (decoration click etc.).  Set by wm.c's decoration-click
+	 * dispatch right before firing a bind-decoration binding,
+	 * cleared after.  Lets `window-move`, `window-resize`, and any
+	 * other cmd that starts a pointer op pick the originating seat
+	 * for multi-seat setups instead of defaulting to the primary
+	 * one.  NULL outside a decoration dispatch.
+	 */
+	struct cow_seat *current_interaction_seat;
+
 	/* Monotonic counter assigned to a view's raise_seq on each raise. */
 	uint64_t raise_seq_counter;
 

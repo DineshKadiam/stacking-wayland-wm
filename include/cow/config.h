@@ -361,4 +361,14 @@ const char *cow_dec_binding_lookup(enum cow_dec_region, int clicks);
 struct cow_view;
 bool cow_dec_binding_fire(struct cow_view *, enum cow_dec_region, int clicks);
 
+/*
+ * Populate the current cow_config->decoration_bindings list with
+ * the built-in defaults (resize for each edge/corner; move +
+ * double-click-shade for the titlebar).  Call once after
+ * cow_config_create so user `bind-decoration` lines in the config
+ * naturally override these defaults via the same-pair replacement
+ * rule in cmd-bind-decoration.
+ */
+void cow_decoration_register_default_bindings(void);
+
 #endif

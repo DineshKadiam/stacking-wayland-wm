@@ -453,6 +453,17 @@ handle_wm_manage_start(__unused void *data,
 			struct cow_view *iv = s->interacted_view;
 			cow_seat_focus_view(s, iv);
 
+			/*
+			 * Make this seat available to commands dispatched
+			 * by cow_dec_binding_fire (window-move,
+			 * window-resize, etc.) so their interactive op
+			 * binds to the seat that initiated the click, not
+			 * to the primary seat -- meaningful for multi-seat
+			 * configurations.  Cleared at the bottom of the
+			 * block.
+			 */
+			cow_wm.current_interaction_seat = s;
+
 			if (s->has_pointer_position && iv->use_ssd &&
 			    !s->op_in_progress) {
 				int bw = iv->dec.border_width;
@@ -596,15 +607,11 @@ handle_wm_manage_start(__unused void *data,
 
 				if (in_corner && corner_edges != 0) {
 					/*
-					 * User-bound corner click overrides
-					 * the default diagonal resize.  Try
-					 * (region, clicks) first; if no
-					 * binding fired AND this is a single
-					 * click, fall back to the default.
-					 * Double-clicks on corners with no
-					 * binding do nothing (the first click
-					 * already started a resize the user
-					 * has since released).
+					 * Corner click: dispatch via the
+					 * bind-decoration table.  Both
+					 * the historic diagonal-resize default
+					 * and any user override live there;
+					 * no C-side fallback is needed.
 					 */
 					enum cow_dec_region cr =
 					    COW_DEC_REGION_NONE;
@@ -620,11 +627,7 @@ handle_wm_manage_start(__unused void *data,
 					else if (corner_edges ==
 					    (COW_EDGE_BOTTOM | COW_EDGE_RIGHT))
 						cr = COW_DEC_REGION_SE;
-					if (!cow_dec_binding_fire(iv, cr,
-						clicks) &&
-					    clicks == 1)
-						cow_pointer_op_start_resize(s,
-						    iv, corner_edges);
+					cow_dec_binding_fire(iv, cr, clicks);
 				} else if (cow_titlebar_hit(iv, lx, ly)) {
 					/*
 					 * Titlebar (below north border, above
@@ -737,107 +740,45 @@ handle_wm_manage_start(__unused void *data,
 							}
 						}
 						/*
-						 * Blank-titlebar click.  Try
-						 * (titlebar, clicks) first;
-						 * fall back to the built-in
-						 * default for the matching
-						 * click count when no binding
-						 * fires: single-click starts
-						 * a title-drag move, double-
-						 * click shades the window.
+						 * Blank-titlebar click.
+						 * Dispatch via the
+						 * bind-decoration table.  The
+						 * built-in defaults
+						 * (single -> window-move,
+						 * double -> shade) live there
+						 * alongside any user
+						 * override; no inline
+						 * fallback is needed here.
 						 * Buttons and active tab
 						 * clicks above already
 						 * short-circuited so they
 						 * keep their semantics.
 						 */
-						if (cow_dec_binding_fire(iv,
-							COW_DEC_REGION_TITLEBAR,
-							clicks)) {
-							/*
-							 * Binding consumed the
-							 * double-click;
-							 * forget the prior
-							 * click so a third
-							 * click starts a
-							 * fresh single.
-							 */
-							if (clicks == 2)
-								s->last_click_view =
-								    NULL;
-							else {
-								s->last_click_view =
-								    iv;
-								s->last_click_time =
-								    now;
-							}
-							s->interacted_view =
-							    NULL;
-							goto seat_done;
-						}
-						if (clicks == 2) {
-							/* Default: shade/
-							 * unshade (preserves
-							 * the old hard-coded
-							 * behaviour). */
-							cow_view_shade(iv,
-							    COW_SHADE_NORTH);
-							s->last_click_view =
-							    NULL;
-							s->interacted_view =
-							    NULL;
-							goto seat_done;
-						}
-						iv->title_pressed = true;
-						iv->dec.dirty	  = true;
-						s->titlebar_press =
-						    COW_TITLEBAR_PRESS_TITLE;
-						s->pressed_view = iv;
-						cow_pointer_op_start_move(s,
-						    iv);
-						/*
-						 * last_click_view / time get
-						 * stamped by the bottom block
-						 * after we fall out of this
-						 * if/else if chain.
-						 */
+						cow_dec_binding_fire(iv,
+						    COW_DEC_REGION_TITLEBAR,
+						    clicks);
 					}
 				} else if (ly < -tt || ly >= hit_ch || lx < 0 ||
 				    lx >= hit_cw) {
-					/* Border edge (not in content, not in
-					 * titlebar, not corner) */
-					uint32_t	    edges = 0;
+					/*
+					 * Border edge (not in content, not
+					 * in titlebar, not corner).  All
+					 * action lives in the
+					 * bind-decoration table -- the
+					 * historic one-axis resize default
+					 * is just a stock entry there.
+					 */
 					enum cow_dec_region er =
 					    COW_DEC_REGION_NONE;
-					if (ly < -tt) {
-						edges = COW_EDGE_TOP;
-						er    = COW_DEC_REGION_N;
-					} else if (ly >= hit_ch) {
-						edges = COW_EDGE_BOTTOM;
-						er    = COW_DEC_REGION_S;
-					} else if (lx < 0) {
-						edges = COW_EDGE_LEFT;
-						er    = COW_DEC_REGION_W;
-					} else if (lx >= hit_cw) {
-						edges = COW_EDGE_RIGHT;
-						er    = COW_DEC_REGION_E;
-					}
-					/*
-					 * Edge click: try (region, clicks)
-					 * binding first.  Fall back to the
-					 * default one-axis resize only on a
-					 * single click that didn't fire any
-					 * binding.  A bare double-click on
-					 * an unbound edge does nothing --
-					 * the previous click already started
-					 * a resize the user has since
-					 * released.
-					 */
-					if (edges != 0 &&
-					    !cow_dec_binding_fire(iv, er,
-						clicks) &&
-					    clicks == 1)
-						cow_pointer_op_start_resize(s,
-						    iv, edges);
+					if (ly < -tt)
+						er = COW_DEC_REGION_N;
+					else if (ly >= hit_ch)
+						er = COW_DEC_REGION_S;
+					else if (lx < 0)
+						er = COW_DEC_REGION_W;
+					else if (lx >= hit_cw)
+						er = COW_DEC_REGION_E;
+					cow_dec_binding_fire(iv, er, clicks);
 				}
 
 				/*
@@ -860,6 +801,14 @@ handle_wm_manage_start(__unused void *data,
 			s->interacted_view = NULL;
 		}
 	seat_done:
+		/*
+		 * Clear the interaction-seat marker once the decoration
+		 * dispatch above is fully resolved (whether normal exit
+		 * or `goto seat_done` shortcut).  Commands fired beyond
+		 * this point (sloppy focus, deferred manage, …) must
+		 * not see a stale value.
+		 */
+		cow_wm.current_interaction_seat = NULL;
 
 		/* Sloppy focus */
 		if (s->sloppy_focus_view != NULL &&

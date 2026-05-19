@@ -31,14 +31,15 @@ static void	       do_resize_step(struct cow_view *, const char *, int,
 	       struct cmd_q *);
 static void do_set_size(struct cow_view *, const char *, const char *,
     struct cmd_q *);
-static void do_interactive(struct cow_view *);
+static void do_interactive(struct cow_view *, uint32_t edges);
+static bool parse_edges(const char *, uint32_t *);
 
 struct cmd_entry cmd_resize_entry = {
 	"window-resize",
-	"t:gsd:w:h:",
+	"t:gsd:w:h:e:",
 	0,
 	0,
-	"[-gs] [-d dir] [-w width] [-h height]",
+	"[-gs] [-d dir] [-e edges] [-w width] [-h height]",
 	cmd_resize_exec,
 	0,
 };
@@ -71,8 +72,63 @@ cmd_resize_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_NORMAL);
 	}
 
-	do_interactive(view);
+	uint32_t    edges     = COW_EDGE_BOTTOM | COW_EDGE_RIGHT;
+	const char *edges_str = args_get(args, 'e');
+	if (edges_str != NULL && !parse_edges(edges_str, &edges)) {
+		cmdq_error(cmdq,
+		    "window-resize: -e: bad edge spec '%s' "
+		    "(expected n|s|e|w|ne|nw|se|sw)",
+		    edges_str);
+		return (CMD_RETURN_ERROR);
+	}
+	do_interactive(view, edges);
 	return (CMD_RETURN_NORMAL);
+}
+
+/*
+ * Parse a compass edge specifier (case-insensitive: "n", "se",
+ * "nw", ...) into the cow_pointer_op edge bitmap.  Used by -e on
+ * `window-resize` so the decoration-click binding for each edge /
+ * corner can express its drag direction in command form rather
+ * than having a separate hard-coded path.
+ */
+static bool
+parse_edges(const char *spec, uint32_t *out)
+{
+	if (spec == NULL || *spec == '\0')
+		return false;
+	uint32_t edges = 0;
+	for (const char *p = spec; *p != '\0'; p++) {
+		switch (*p) {
+		case 'n':
+		case 'N':
+			edges |= COW_EDGE_TOP;
+			break;
+		case 's':
+		case 'S':
+			edges |= COW_EDGE_BOTTOM;
+			break;
+		case 'e':
+		case 'E':
+			edges |= COW_EDGE_RIGHT;
+			break;
+		case 'w':
+		case 'W':
+			edges |= COW_EDGE_LEFT;
+			break;
+		default:
+			return false;
+		}
+	}
+	/* Reject contradictory pairs like "ns" or "ew". */
+	if ((edges & COW_EDGE_TOP) && (edges & COW_EDGE_BOTTOM))
+		return false;
+	if ((edges & COW_EDGE_LEFT) && (edges & COW_EDGE_RIGHT))
+		return false;
+	if (edges == 0)
+		return false;
+	*out = edges;
+	return true;
 }
 
 /*
@@ -155,13 +211,19 @@ do_set_size(struct cow_view *view, const char *ws, const char *hs,
 }
 
 static void
-do_interactive(struct cow_view *view)
+do_interactive(struct cow_view *view, uint32_t edges)
 {
 	/* Only valid inside a manage sequence — see cmd-move.c */
 	if (cow_wm.sequence != COW_WM_SEQUENCE_MANAGE)
 		return;
-	struct cow_seat *seat = cow_seat_primary();
+	/*
+	 * See cmd-move.c: prefer the seat that initiated the click
+	 * (set by wm.c's decoration-click dispatch), falling back to
+	 * the primary seat for non-decoration callers like keybindings.
+	 */
+	struct cow_seat *seat = cow_wm.current_interaction_seat;
+	if (seat == NULL)
+		seat = cow_seat_primary();
 	if (seat != NULL)
-		cow_pointer_op_start_resize(seat, view,
-		    COW_EDGE_BOTTOM | COW_EDGE_RIGHT);
+		cow_pointer_op_start_resize(seat, view, edges);
 }

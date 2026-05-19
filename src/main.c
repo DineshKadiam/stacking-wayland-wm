@@ -42,7 +42,7 @@ static const char *usage = "usage: cow [-hsv] [-c config]\n";
 int
 main(int argc, char *argv[])
 {
-	const char *config_path	       = NULL;
+	const char *config_path = NULL;
 	int	    ch;
 
 	while ((ch = getopt(argc, argv, "c:hsv")) != -1) {
@@ -73,6 +73,16 @@ main(int argc, char *argv[])
 	setenv("XDG_SESSION_TYPE", "wayland", 0);
 
 	cow_config = cow_config_create();
+
+	/*
+	 * Seed the decoration-binding table with the built-in
+	 * defaults (resize on each edge / corner, move + double-click
+	 * shade on the titlebar).  This must run BEFORE config parse
+	 * so any `bind-decoration` lines the user has replace the
+	 * matching defaults via cmd-bind-decoration's same-pair
+	 * replacement rule, rather than appending alongside them.
+	 */
+	cow_decoration_register_default_bindings();
 
 	/*
 	 * Resolve the config path: use the explicit -c path if given,

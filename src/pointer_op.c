@@ -186,6 +186,19 @@ cow_pointer_op_start_move(struct cow_seat *seat, struct cow_view *view)
 	seat->op_dx	     = 0;
 	seat->op_dy	     = 0;
 
+	/*
+	 * Titlebar-press visual feedback: while a move is in progress
+	 * the title strip renders pressed.  The flags are cleared by
+	 * op_finalize when the drag ends.  Set them here so any caller
+	 * (the wm.c decoration-click dispatch, the `window-move`
+	 * command fired from a bind-decoration, ...) gets the same
+	 * visual behaviour without duplicating the bookkeeping.
+	 */
+	view->title_pressed  = true;
+	view->dec.dirty	     = true;
+	seat->titlebar_press = COW_TITLEBAR_PRESS_TITLE;
+	seat->pressed_view   = view;
+
 	river_seat_v1_op_start_pointer(seat->river_seat);
 }
 
