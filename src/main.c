@@ -75,16 +75,6 @@ main(int argc, char *argv[])
 	cow_config = cow_config_create();
 
 	/*
-	 * Seed the decoration-binding table with the built-in
-	 * defaults (resize on each edge / corner, move + double-click
-	 * shade on the titlebar).  This must run BEFORE config parse
-	 * so any `bind-decoration` lines the user has replace the
-	 * matching defaults via cmd-bind-decoration's same-pair
-	 * replacement rule, rather than appending alongside them.
-	 */
-	cow_decoration_register_default_bindings();
-
-	/*
 	 * Resolve the config path: use the explicit -c path if given,
 	 * otherwise search the default locations.  If nothing is found,
 	 * proceed with built-in defaults and no warning -- the user may
@@ -96,6 +86,18 @@ main(int argc, char *argv[])
 	if (config_path != NULL && !cow_ipc_load_config(config_path))
 		fprintf(stderr,
 		    "cow: warning: config load failed, using defaults\n");
+
+	/*
+	 * Decoration-click defaults.  Mirror the keybinding pattern:
+	 * the shipped config carries them as ordinary
+	 * `bind-decoration` lines (visible and editable like any other
+	 * binding), and this fallback only fires when the user has no
+	 * config or their config doesn't declare any decoration
+	 * bindings.  Without this, a user running with an empty config
+	 * would lose move/resize/shade entirely.
+	 */
+	if (wl_list_empty(&cow_config->decoration_bindings))
+		cow_decoration_register_default_bindings();
 	/* Ignore SIGPIPE -- child processes (xterm etc.) may cause this */
 	signal(SIGPIPE, SIG_IGN);
 
