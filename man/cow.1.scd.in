@@ -309,6 +309,71 @@ mouse L+right  resize
 mouse L+middle window-move -C
 ```
 
+## bind-decoration region command ...
+
+Bind a primary-button click on a window's decoration to a
+command.  Each window's frame is divided into regions.  See the
+_ANATOMY_OF_A_WINDOW_ section.
+
+When a bound region of the window is clicked on, the attached action runs
+against that window.
+
+*-2*
+	Double-click binding (default is single-click).  A region can
+	carry one single-click binding and one double-click binding
+	simultaneously.
+
+The _region_ argument is case-insensitive and accepts both the compass
+shorthands and the long form:
+
+[[ *Region*
+:< *Aliases*
+|  *N*
+:  _north_
+|  *S*
+:  _south_
+|  *E*
+:  _east_
+|  *W*
+:  _west_
+|  *NE*
+:  _north-east_
+|  *NW*
+:  _north-west_
+|  *SE*
+:  _south-east_
+|  *SW*
+:  _south-west_
+|  *titlebar*
+:  _title_
+
+The defaults bindings are:
+
+- Corners normally start a diagonal resize.
+- Edges normally start a one-axis resize.
+- Blank titlebar area normally starts a title-drag move.
+
+Double-clicks on edges and corners have no defaults.
+
+*Limitation:* *River* does not expose which button was used when clicking on the
+window decoration, so currently, only mouse button 1 is usable.
+
+Examples:
+
+```
+# Maximise a window by clicking anywhere on its titlebar.
+bind-decoration titlebar window-maximize -m
+
+# Maximise on a click on the north edge.
+bind-decoration N window-maximize -m
+
+# Close the window with a click in the NE corner.
+bind-decoration NE       winops -c
+
+# Chain: start a resize then focus the next window.
+bind-decoration SE       resize \; focus -n
+```
+
 ## rule -d -n <name> | -g | -t output[:desk] -n <name> -T <event> [-s sel] cmd...
 
 Apply rules (groups of commands) to certain conditions (events).
