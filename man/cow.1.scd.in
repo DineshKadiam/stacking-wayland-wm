@@ -12,9 +12,14 @@ cow - Compositor On Wayland
 
 *cow* is a window manager using River as the compositor.
 
-*cow* is therefore responsible for managing windows, performing actions via
-key/mouse bindings, as well as the style of the window. **cow** is a stacking
-window manager meaning there are no tiling or pre-defined layouts.
+A large _virtual desktop_ can be created, effectively splitting the screen into
+an _N_ x _M_ matrix, called _pages_.  These pages can then be viewed by using the
+mouse on the edge of the screen, or by using the _page_ command.
+
+Desktops provide a means of aggregating open applications into different areas.
+
+*cow* provides commands which can be used to change settings, setup key/mouse
+bindings, etc.
 
 # OPTIONS
 
@@ -28,25 +33,107 @@ window manager meaning there are no tiling or pre-defined layouts.
 *-v*
 	Print version and exit.
 
+# OUTPUT MANAGEMENT
+
+Neither *cow* nor *River* manages outputs (screens/monitors) directly.
+Instead, applications such as *wlr-randr(1)*, and *wdisplays* (for something
+similar to *xrandr*) can be used instead.
+
+Because *cow* needs to know information about outputs after it has started, it
+is recommended that the dedicated file _~/.config/cow/after-start.sh_ -- which
+is a shell-script, contains the relevant commands to set the output layout.
+
+*NOTE:* in this example, it is assumed that *$XDG\_CONFIG\_HOME* is set to
+_~/.config_.
+
+# ANATOMY OF A WINDOW
+
+*cow* puts a decorative border around windows.  This border consists of a bar on
+each side, and a small L-shaped section on each corner.  There is an additional
+top bar called the _titlebar_ which is used to display the name of the window.
+
+In addition, there are three titlebar buttons which can be defined and bound to
+actions, such as closing a window, maximizing, or iconifying a window.
+
+The diagram below shows an outline of a typical window in *cow*:
+
+```
+   NW                              N                             NE
+   +++──────────────────────────────────────────────────────────+++
+   + [L]                        Titlebar                  [R][R2] +
+   +──────────────────────────────────────────────────────────────+
+   │                                                              │
+   │                                                              │
+   │                                                              │
+ W │                                                              │ E
+   │                                                              │
+   │                                                              │
+   │                                                              │
+   │                                                              │
+   +                                                              +
+   +++──────────────────────────────────────────────────────────+++
+   SW                              S                             SE
+```
+
+The labels of the window indicate the different components that can be changed.
+
+A window is made up of sides -- and are referenced like that of a compass.
+
+All eight parts of the window border (which includes corners) can be styled via
+the *set* command,
+
+The titlebar can also be styled or disabled completely, via the *set* command.
+
+# THE VIRTUAL DESKTOP
+
+*cow* provides up to ten virtual desktops.  The screen is a viewport onto a
+_desktop_ which may be larger than the screen.  Several distinct desktops can be
+accessed (for example, having different desktops for different projects).
+
+Because the desktop can be larger than the physical screen, it can therefore be
+divided into _N_ x _M_ regions, called _pages_.  This configuration is then
+applied to all desktops.
+
+For example, the following would define nine pages, arranged in a
+square:
+
+*set* _desktop\_size_ 3 3
+
+Which would conceptually look like this:
+
+```
++----+----+----+
+|    |    |    |
+|    |    |    |
++----+----+----*
+|    |    |    |
+|    |    |    |
++----+----+----+
+|    |    |    |
+|    |    |    |
++----+----+----+
+```
+
+All _pages_ are the same size.
+
+_Pages_ can be moved to/from by enabling _edge\_scroll_ by resting the mouse
+pointer at the screen edges.  See the *set* command.
+
+Windows on pages can be be viewed using the *cowpager(1)* command.
+
+Windows can also be moved between pages by dragging them to the edge of the
+output, assuming _edge\_scroll_ has been enabled.  See the *set* command.
+
+*cow* keeps its windows in a Z-ordered stacking order.  That is to say, windows
+can be raised or lowered over one another.  This can be controlled via the
+_winops_ command.
+
+# DESKTOP BEHAVIOUR
+
+Desktops can be configured either independently of each output, or desktops are
+the same across all outputs.  See the _deskstop\_configuration_ setting.
+
 # CONFIGURATION
-
-## File Format
-
-The configuration file is plain text. Each line is a *cow* command, using the
-same syntax accepted over the IPC socket. Lines beginning with *#* are
-comments. A backslash (*\\*) at the end of a line continues the command on the
-next line.
-
-Example:
-
-```
-# Set border width and style
-set border 10
-set border_style fvwm
-
-# Bind Super+Return to launch a terminal
-bind L+Return exec foot
-```
 
 ## Search Order
 
@@ -60,214 +147,147 @@ exists:
 . *~/.config/cow/cow.conf*
 . */<PREFIX>/etc/cow/cow.conf*
 
-# COMMANDS
+## File Format
 
-Commands form the configuration language and are also accepted over the IPC
-socket. Each command is a single line; arguments follow shell quoting
-conventions. See *TARGET SPECIFIER* below for the *-t* syntax used by many
-commands.
-
-## set [-v] key value
-
-Set a configuration option at runtime. *-v* prints the resulting value.
-
-*Integer keys:*
-
-[[ *Key*
-:< *Description*
-|  *border*
-:  Border thickness in pixels (default: 1).
-|  *step*
-:  Move/resize step in pixels (default: 100).
-|  *corner\_length*
-:  Length of border corner handles in pixels (default: 20).
-|  *icon.size*
-:  Iconified window icon size in pixels (default: 64).
-|  *snap\_distance*
-:  Snap attraction distance in pixels; 0 disables (default: 10).
-|  *reserved.top*
-:  Pixels reserved at the top of each output (default: 0).
-|  *reserved.bottom*
-:  Pixels reserved at the bottom of each output (default: 0).
-|  *reserved.left*
-:  Pixels reserved at the left of each output (default: 0).
-|  *reserved.right*
-:  Pixels reserved at the right of each output (default: 0).
-
-*Colour keys* (values are hexadecimal RGB, e.g. *0xFF0000*):
-
-[[ *Key*
-:< *Description*
-|  *colour.active*
-:  Active (focused) window border colour.
-|  *colour.active.n*
-:  Active border: north edge.
-|  *colour.active.s*
-:  Active border: south edge.
-|  *colour.active.e*
-:  Active border: east edge.
-|  *colour.active.w*
-:  Active border: west edge.
-|  *colour.active.nw*
-:  Active border: north-west corner.
-|  *colour.active.ne*
-:  Active border: north-east corner.
-|  *colour.active.sw*
-:  Active border: south-west corner.
-|  *colour.active.se*
-:  Active border: south-east corner.
-|  *colour.inactive*
-:  Inactive (unfocused) border colour.
-|  *colour.inactive.n*
-:  Inactive border: north edge.
-|  *colour.inactive.s*
-:  Inactive border: south edge.
-|  *colour.inactive.e*
-:  Inactive border: east edge.
-|  *colour.inactive.w*
-:  Inactive border: west edge.
-|  *output.colour.background*
-:  Background colour for all outputs.
-|  *output.colour.background.*_name_
-:  Background colour for the named output.
-|  *titlebar.active\_colour*
-:  Titlebar background when focused.
-|  *titlebar.inactive\_colour*
-:  Titlebar background when unfocused.
-|  *titlebar.fg\_active*
-:  Titlebar foreground (text) when focused.
-|  *titlebar.fg\_inactive*
-:  Titlebar foreground (text) when unfocused.
-
-*Other keys:*
-
-[[ *Key*
-:[ *Values*
-:< *Description*
-|  *border\_style*
-:  _fvwm_ | _mwm_ | _none_
-:  Border rendering style. Default: _none_.
-|  *desktop-configuration*
-:  _global_ | _per-output_ | _shared_
-:  Desk layout mode.
-|  *desktop\_size* _N_ _M_
-:  N × M integer
-:  Virtual page grid: N columns × M rows per desk. Default: _1 1_
-   (no pages). Set e.g. _3 2_ for three columns and two rows.
-|  *page\_scroll\_animate*
-:  _true_ | _false_
-:  Animate page transitions. Default: _false_ (instant cut).
-|  *page\_scroll\_ms*
-:  integer (ms)
-:  Page scroll animation duration. Default: _200_.
-|  *edge\_scroll*
-:  _true_ | _false_
-:  Enable edge scroll: dwell at a screen edge to switch page.
-   Default: _false_.
-|  *edge\_scroll\_delay\_ms*
-:  integer (ms)
-:  Time the pointer must dwell at an edge before a page switch fires.
-   Default: _300_.
-|  *raise\_on\_focus*
-:  _true_ | _false_
-:  Raise on focus: raise window when focused (default: on).
-|  *focus*
-:  _sloppy_ | _click_
-:  Focus model. Default: _click_.
-|  *placement*
-:  _cascade_ | _undermouse_ | _centre_ | _center_
-:  New window placement. Default: _cascade_.
-|  *font* _name_
-:  Pango font string
-:  Font for titlebars. Default: _monospace 10_.
-|  *handles*
-:  _true_ | _1_
-:  Draw handle marks on border corners.
-|  *titlebar.enabled*
-:  _true_ | _1_
-:  Show titlebars.
-|  *titlebar.height*
-:  integer (pixels)
-:  Fix the titlebar height in pixels. When set to 0 (the default) the
-   height is derived from the font size.
-|  *titlebar.button\_left.vector*
-:  vector string
-:  Geometry of the left titlebar button.
-|  *titlebar.button\_left.action*
-:  command string
-:  Action for the left titlebar button.
-|  *titlebar.button\_right.vector*
-:  vector string
-:  Geometry of the right titlebar button.
-|  *titlebar.button\_right.action*
-:  command string
-:  Action for the right titlebar button.
-|  *titlebar.button\_right2.vector*
-:  vector string
-:  Geometry of the second right titlebar button.
-|  *titlebar.button\_right2.action*
-:  command string
-:  Action for the second right titlebar button.
-|  *titlebar.squeeze*
-:  _none_ | _natural_ | _fixed_
-:  Shrink the titlebar down to a minimum size.
-   
-   Remaining pixels of the titlebar
-   strip are transparent and pass clicks through.  _none_ is the
-   default (full-width titlebar); _natural_ sizes the titlebar to
-   the title text + buttons; _fixed_ uses _titlebar.squeeze.width_.
-|  *titlebar.squeeze.justify*
-:  _left_ | _centre_ | _right_
-:  Horizontal alignment of the squeezed titlebar within the
-   full-width strip.  Default: _left_.  _center_ is accepted as a
-   synonym for _centre_.
-|  *titlebar.squeeze.width*
-:  integer (pixels)
-:  Width of the squeezed titlebar when
-   _titlebar.squeeze_ is _fixed_.  Default: _300_.
-|  *titlebar.squeeze.offset*
-:  integer (pixels; may be negative)
-:  Horizontal nudge applied after _justify_.  Useful for e.g.
-   positioning the titlebar 40px in from the left edge.  Default: _0_.
-|  *titlebar.squeeze.min\_width*
-:  integer (pixels)
-:  Minimum width for _natural_ mode (floor applied after
-   measurement).  Default: _80_.
-|  *container.tab.active\_colour*
-:  hex colour (_0xRRGGBB_)
-:  Background colour of the active tab label. Default: _0xC0C0C0_.
-|  *container.tab.inactive\_colour*
-:  hex colour (_0xRRGGBB_)
-:  Background colour of inactive tab labels. Default: _0x808080_.
-|  *container.tab.fg\_active*
-:  hex colour (_0xRRGGBB_)
-:  Foreground (text) colour of the active tab label. Default: _0x000000_.
-|  *container.tab.fg\_inactive*
-:  hex colour (_0xRRGGBB_)
-:  Foreground (text) colour of inactive tab labels. Default: _0x202020_.
-|  *container.tab.sunken*
-:  _true_ | _1_ | _false_ | _0_
-:  Draw inactive tabs with a sunken (depressed) bevel. Default: _false_ (flat).
-
-*Button vector format:* _N_ _x1_*X*_y1_*@*_c1_ _x2_*X*_y2_*@*_c2_ *...* where _N_ is
-the number of points, coordinates are 0-100 (percentages of the button area),
-and *@*_c_ is a colour index (0 or 1).
-
-## bind key action ...
-
-Bind a key combination to a command. _key_ is a modifier string followed by a
-keysym or keycode (see *KEY BINDINGS*). _action_ is any *cow* command.  To run
-external programs, use the _exec_ command.
+The configuration file is plain text. Each line is a *cow* command, using the
+Lines beginning with *#* are comments.  A backslash (*\\*) at the end of a
+line continues the command on the next line.
 
 Example:
 
 ```
-bind L+Return exec foot
-bind LCA+q quit
-bind LS+Up window-move -n -d up
+# This is a comment which cow ignores.
+set border 10
+set border_style fvwm
+
+# This command is split over multiple lines for clarity.
+bind \\
+    L+Return \\
+    exec foot
+```
+
+# COMMAND REFERENCING
+
+Commands in *cow* can operate on outputs, desktops, pages, and windows.  The
+commands in *cow* are therefore pre-disposed to understand that they need one or
+more of those contexts to operate on.
+
+In some cases that's automatic (such as operating on the focused window, or the
+current output, etc.) but commands can be told to override that.
+
+## Source and Target Definitions
+
+Most commands have a target on which the command is going to operate on, and for
+consistency across those commands, that is the `-t` flag.  The same concept
+exists for for a _source_ window, via `-s`.
+
+The format for both is the following:
+
+	output:desk.window
+
+That is to say, there's three components -- the delimiters between the parts are
+literal and must be specified:
+
+*output*
+	Output name, *@next*, or *@prev*.
+
+*desk*
+	Desk number (0-9), *@next*, or *@prev*.
+
+*window*
+	One of:
+
+	- *%*_app\_id_ - match by app\_id
+	- */*_substring_*/* - match by title substring
+	- *#*_id_ - match by River identifier
+	- *@focused* - the currently focused window (default)
+	- *@next* - next window in stacking order
+	- *@prev* - previous window in stacking order
+
+In the case of using a substring, this is run through `fnmatch(3)`
+
+# COMMAND CHAINING
+
+With any given command, it's possible to chain them together.  For example:
+
+	exec xterm \; exec notify-send "xterm executed"
+
+The command divider is `\\;` and must be escaped in this way so as not to incur
+any shell interpretation.
+
+Also, line continuation between changed commands is also possible, and looks
+like this:
+
+```
+rule -g -T on-restart -n cleanup \
+	exec killall waybar \; \
+	exec killall conky \; \
+	exec killall pasystray
+```
+
+# COMMAND OUTPUT
+
+Certain commands in *cow* are designed to return information.  In such cases,
+the output is in JSON format.
+
+This may be subject to change in the future.
+
+# GLOBAL COMMANDS
+
+The following details those commands which just operate on general settings.
+Note that the same command might also contain window/output settings, which will
+be also be added under the relevant section.
+
+## bind modifier+key action ...
+
+Key bindings are specified as a modifier string immediately followed by *+* and
+a keysym name, or *-* and a numeric keycode:
+
+```
+bind MODIFIERS+keysym  command
+bind MODIFIERS-keycode command
+```
+
+*Modifier characters:*
+
+[[ *Character*
+:< *Modifier*
+|  *L*
+:  Logo (Super / Windows key).
+|  *S*
+:  Shift.
+|  *C*
+:  Control.
+|  *A*
+:  Alt (Mod1).
+|  *5*
+:  AltGr (Mod5).
+
+Modifiers are combined by concatenation: *LS* means Logo+Shift, *LCA* means
+Logo+Control+Alt. Use *0* to specify no modifier.
+
+Key symbols and codes can be determined with *wev*(1).
+
+Examples:
+
+```
+bind L+Return  exec xterm
+bind LS+a      winops -c
+bind LCA+q     quit
+bind 0+F1      action-help
 ```
 
 ## mouse key action ...
+
+Mouse bindings use the same modifier format as the *bind* command. The button
+name replaces the keysym:
+
+```
+mouse MODIFIERS+button command
+```
+
+Button names: *left*, *right*, *middle*, *side*, *extra*, *forward*, *back*,
+*task*.
 
 Bind a pointer button combination to a command. The _key_ format is the same
 as for *bind*, but the key name is a button name (see *MOUSE BINDINGS*).
@@ -280,75 +300,66 @@ mouse L+right  resize
 mouse L+middle window-move -C
 ```
 
-## rule [-T] [-t [output]:[desk]] pattern [key value ...]
+## rule -d -n <name> | -g | -t output[:desk] -n <name> -T <event> [-s sel] cmd...
 
-Apply per-window configuration when a window matching _pattern_ first appears.
-_pattern_ is matched against the window's app\_id (or title if *-T* is given)
-using glob rules; _\*_ matches any window.
+Apply rules (groups of commands) to certain conditions (events).
 
-*-T*
-	Match against the window title instead of app\_id.
+A rule has a _name_ (via `-n`) which must be specified.  Note that rules are
+globally stored, so any conflicting names will mean that rule is replaced.  It
+also has a _type_ (via `-T`) which specifies when to run the rule.  Multiple
+rules can be defined against the same _type_ as long as their names are
+distinct.
 
-*-t* _[output]:[desk]_
-	Constrain the rule to windows on the specified output and/or desk.
+The following table shows which events are available:
 
-*Special rule form:*
-
-```
-rule restart command ...
-```
-
-Register a shell command to be executed before *cow* restarts itself (on
-*SIGUSR1*). Used to stop processes that must be relaunched cleanly, such as
-status bars.
-
-*Per-window keys:*
-
-[[ *Key*
+[[ *Event*
 :< *Description*
-|  *desk* _N_
-:  Assign window to desk number N.
-|  *sticky true*
-:  Make window sticky (appears on all desks).
-|  *border* _N_
-:  Override border width in pixels.
-|  *colour.active* _RGBA_
-:  Override active border colour.
-|  *colour.active.*_edge_ _RGBA_
-:  Override per-edge active border colour.
-|  *colour.inactive* _RGBA_
-:  Override inactive border colour.
-|  *colour.inactive.*_edge_ _RGBA_
-:  Override per-edge inactive border colour.
-|  *titlebar.enabled* _true_ | _false_
-:  Show or hide titlebar for this window.
-|  *titlebar.active\_colour* _RGBA_
-:  Titlebar background when focused.
-|  *titlebar.inactive\_colour* _RGBA_
-:  Titlebar background when unfocused.
-|  *titlebar.fg\_active* _RGBA_
-:  Titlebar foreground when focused.
-|  *titlebar.fg\_inactive* _RGBA_
-:  Titlebar foreground when unfocused.
-|  *titlebar.squeeze* _none_ | _natural_ | _fixed_
-:  Override the squeeze mode for matching windows.
-|  *titlebar.squeeze.justify* _left_ | _centre_ | _right_
-:  Override the squeeze justify for matching windows.
-|  *titlebar.squeeze.width* _N_
-:  Override the fixed-mode squeeze width for matching windows.
-|  *titlebar.squeeze.offset* _N_
-:  Override the squeeze offset for matching windows.
-|  *titlebar.squeeze.min\_width* _N_
-:  Override the natural-mode minimum width for matching windows.
+|  *on-map*
+:  Fired when a window appears on the screen.
+|  *on-move*
+:  Fired when a window is moved.
+|  *on-resize*
+:  Fired when a window is resized.
+|  *on-shade*
+:  Fired when a window is shaded.
+|  *on-unshade*
+:  Fired when a window is unshaded.
+|  *on-iconify*
+:  Fired when a window is iconified.
+|  *on-deiconify*
+:  Fired when a window is deiconified.
+|  *on-new-desk*
+:  Fired a new desk is switched to.
+|  *on-new-page*
+:  Fired when a new page is switched to.
+|  *on-restart*
+:  Fired when *cow* is restarted (can also happen via `-USR1` signal.
+|  *on-desk*
+:  Used to change window styles on a particular desk.
 
-Example:
+Specificity of rules are such that global rules (via `-g`) run before any
+specific defined rules.  For example:
 
 ```
-rule '*' colour.active 0xFFFFFF colour.inactive 0x444444
-rule -t ':2' '*' titlebar.active_colour 0xFFD700
-rule 'Eterm' titlebar.squeeze natural titlebar.squeeze.justify left
-rule restart 'killall waybar'
+
+# Define a global rule -- this will always run.
+rule -g -Ton-map -ng-on-map exec notify-send "A window has appeared."
+
+# Define a rule to change a window property when windows appears on desk 2
+rule -t :2 -Ton-map -ndesk2 \
+	set titlebar.active_colour 0xFF8C00 \; \
+        set titlebar.inactive_colour 0xB28E4C \; \
+        set colour.inactive 0xB28E4C
 ```
+
+Rules can be deleted with the `-d` option.  Additionally, `-n` is needed to
+specify the name, example:
+
+```
+rule -d -ndesk2
+```
+
+Defined rules can be seen with the *show* command.
 
 ## exec command ...
 
@@ -370,6 +381,9 @@ When used via *moocow*(1) the JSON is printed to standard output.
 *show desk*
 	Return _{"current": N}_ for the current output's active desk.
 
+*show rules*
+	Return an array of all defined rules.
+
 *show output*
 	Return an array of output objects, each with _name_, _x_, _y_,
 	_width_, _height_, and a _usable_ sub-object reflecting reserved areas.
@@ -382,7 +396,7 @@ When used via *moocow*(1) the JSON is printed to standard output.
 ## quit [-r]
 
 Without any options, *cow* quits. With *-r*, reload the configuration
-from the file *cow* was started with.
+from the file *cow* was started with, instead of quitting.
 
 Keybindings and window decorations are updated immediately on reload.
 
@@ -391,12 +405,23 @@ Keybindings and window decorations are updated immediately on reload.
 Return a JSON array of all registered commands, each with _name_ and _usage_
 fields.
 
+## set [-v] key value
+
+Set a configuration option at runtime. *-v* prints the resulting value.
+
+The specific keys/values for this command are detailed under relevant section in
+this man page.
+
+# WINDOW COMMANDS
+
+The following detail commands which operate on windows directly.
+
 ## winops [-Icilrs] [-t target]
 
 Operate on a window.
 
 *-t* _target_
-	Target window (see *TARGET SPECIFIER*). Defaults to the focused window.
+	Target window (see *COMMAND REFERENCING*). Defaults to the focused window.
 
 *-I*
 	Identify the window; returns a JSON object with geometry and state.
@@ -515,6 +540,271 @@ Move keyboard focus.
 *-i* _id_
 	Focus the window with River identifier _id_.
 
+## window-expand [-t target] [-d dir] [-T]
+
+Expand a window to fill available space between windows, or the whole monitor if
+the window is the only window on that monitor.
+
+*-t* _target_
+	Target window.
+
+*-d* _dir_
+	Expand in direction _dir_ (_up_, _down_, _left_, _right_). Omit to
+	expand in all directions.
+
+*-T*
+	Toggle: restore original geometry if the window is already expanded.
+
+## window-maximize [-t target] [-T] [-m] [-u]
+
+Maximize or restore a window.
+
+*-t* _target_
+	Target window.
+
+*-T*
+	Toggle between maximized and restored.
+
+*-m*
+	Maximize the window (default if no flag is given).
+
+*-u*
+	Restore (unmaximize) the window.
+
+## window-shade [-t target] -d dir
+
+Shade (roll up) a window in a given direction, hiding its content but leaving
+its border visible.
+
+*-t* _target_
+	Target window.
+
+*-d* _dir_
+	Shade direction: _north_, _south_, _east_, _west_, _nw_, _ne_, _sw_,
+	_se_. Required.
+
+# WINDOW DECORATION SETTINGS
+
+The following tables show which settings are available to control the look and
+feel of a window.  All of these can be used with the *set* command.
+
+*General / Misc:*
+
+[[ *Key*
+:< *Description*
+|  *border*
+:  Border thickness in pixels (default: 1).
+|  *step*
+:  Move/resize step in pixels (default: 100).
+|  *corner\_length*
+:  Length of border corner handles in pixels (default: 20).
+|  *icon.size*
+:  Iconified window icon size in pixels (default: 64).
+|  *snap\_distance*
+:  Snap attraction distance in pixels; 0 disables (default: 10).
+
+*Border Colour Settings* (values are hexadecimal RGB, e.g. *0xFF0000*):
+
+[[ *Key*
+:< *Description*
+|  *colour.active*
+:  Active (focused) window border colour.
+|  *colour.active.n*
+:  Active border: north edge.
+|  *colour.active.s*
+:  Active border: south edge.
+|  *colour.active.e*
+:  Active border: east edge.
+|  *colour.active.w*
+:  Active border: west edge.
+|  *colour.active.nw*
+:  Active border: north-west corner.
+|  *colour.active.ne*
+:  Active border: north-east corner.
+|  *colour.active.sw*
+:  Active border: south-west corner.
+|  *colour.active.se*
+:  Active border: south-east corner.
+|  *colour.inactive*
+:  Inactive (unfocused) border colour.
+|  *colour.inactive.n*
+:  Inactive border: north edge.
+|  *colour.inactive.s*
+:  Inactive border: south edge.
+|  *colour.inactive.e*
+:  Inactive border: east edge.
+|  *colour.inactive.w*
+:  Inactive border: west edge.
+
+
+*Titlebar Colour Settings* (values are hexadecimal RGB, e.g. *0xFF0000*):
+[[ *Key*
+:< *Description*
+|  *titlebar.active\_colour*
+:  Titlebar background when focused.
+|  *titlebar.inactive\_colour*
+:  Titlebar background when unfocused.
+|  *titlebar.fg\_active*
+:  Titlebar foreground (text) when focused.
+|  *titlebar.fg\_inactive*
+:  Titlebar foreground (text) when unfocused.
+
+*Window Decoration Settings:*
+
+[[ *Key*
+:[ *Values*
+:< *Description*
+|  *border\_style*
+:  _fvwm_ | _mwm_ | _none_
+:  Border rendering style. Default: _none_.
+|  *focus*
+:  _sloppy_ | _click_
+:  Focus model. Default: _click_.
+|  *placement*
+:  _cascade_ | _undermouse_ | _centre_ | _center_
+:  New window placement. Default: _cascade_.
+|  *font* _name_
+:  Pango font string
+:  Font for titlebars. Default: _monospace 10_.
+|  *handles*
+:  _true_ | _1_
+:  Draw handle marks on border corners.
+|  *titlebar.enabled*
+:  _true_ | _1_
+:  Show titlebars.
+|  *titlebar.height*
+:  integer (pixels)
+:  Fix the titlebar height in pixels. When set to 0 (the default) the
+   height is derived from the font size.
+|  *titlebar.button\_left.vector*
+:  vector string
+:  Geometry of the left titlebar button.
+|  *titlebar.button\_left.action*
+:  command string
+:  Action for the left titlebar button.
+|  *titlebar.button\_right.vector*
+:  vector string
+:  Geometry of the right titlebar button.
+|  *titlebar.button\_right.action*
+:  command string
+:  Action for the right titlebar button.
+|  *titlebar.button\_right2.vector*
+:  vector string
+:  Geometry of the second right titlebar button.
+|  *titlebar.button\_right2.action*
+:  command string
+:  Action for the second right titlebar button.
+|  *titlebar.squeeze*
+:  _none_ | _natural_ | _fixed_
+:  Shrink the titlebar down to a minimum size.
+   
+   Remaining pixels of the titlebar
+   strip are transparent and pass clicks through.  _none_ is the
+   default (full-width titlebar); _natural_ sizes the titlebar to
+   the title text + buttons; _fixed_ uses _titlebar.squeeze.width_.
+|  *titlebar.squeeze.justify*
+:  _left_ | _centre_ | _right_
+:  Horizontal alignment of the squeezed titlebar within the
+   full-width strip.  Default: _left_.  _center_ is accepted as a
+   synonym for _centre_.
+|  *titlebar.squeeze.width*
+:  integer (pixels)
+:  Width of the squeezed titlebar when
+   _titlebar.squeeze_ is _fixed_.  Default: _300_.
+|  *titlebar.squeeze.offset*
+:  integer (pixels; may be negative)
+:  Horizontal nudge applied after _justify_.  Useful for e.g.
+   positioning the titlebar 40px in from the left edge.  Default: _0_.
+|  *titlebar.squeeze.min\_width*
+:  integer (pixels)
+:  Minimum width for _natural_ mode (floor applied after
+   measurement).  Default: _80_.
+
+*Button vector format:* _N_ _x1_*X*_y1_*@*_c1_ _x2_*X*_y2_*@*_c2_ *...* where _N_ is
+the number of points, coordinates are 0-100 (percentages of the button area),
+and *@*_c_ is a colour index (0 or 1).
+
+# WINDOW CONTAINERS
+
+Group windows into a tabbed container. A container is a meta-window that holds
+multiple application windows as tabs. Only the active tab's content is visible;
+all tabs share the container's position, size, and frame. The titlebar shows a
+clickable label for each member. Clicking a label activates that tab.
+
+## window-container [-t target] [-s source] [-arnpNP]
+
+*window-container -a*
+	Add _source_ to _target_'s container. If neither window is already in
+	a container, a new container is created.
+
+	_source_ defaults to the focused window. _target_ defaults to the
+	focused window when *-t* is given explicitly.
+
+	When neither *-t* nor *-s* is given, _source_ is the focused window
+	and _target_ is the next focusable window in stacking order. This
+	means *container add* with no arguments is a self-contained
+	keyboard-only action: it groups the focused window with the one below
+	it in the stack. This is useful in environments where mouse modifier
+	combinations are unavailable (e.g. VNC).
+
+*window-container -r* [-t _target_]
+	Remove _target_ from its container. The detached window reappears
+	offset from the container position. If the container drops to one
+	member, the container is dissolved.
+
+*window-container -n* [-t _target_]
+	Activate the next tab in the container that holds _target_.
+
+*window-container -p* [-t _target_]
+	Activate the previous tab in the container that holds _target_.
+
+*window-container -N* [-t _target_]
+	Move the tab containing _target_ one position to the right in the tab
+	strip. The tab remains active. No-op if it is already the last tab.
+
+*window-container -P* [-t _target_]
+	Move the tab containing _target_ one position to the left in the tab
+	strip. The tab remains active. No-op if it is already the first tab.
+
+See also *window-move -C*, which allows containers to be formed
+interactively by dragging a window's titlebar onto another. In
+environments where mouse modifier combinations are unreliable (e.g. VNC),
+bind *container add* to a key instead:
+
+```
+bind L+g   window-container -a
+bind LS+g  window-container -r
+bind L+Tab window-container -n
+```
+
+## Container Settings
+
+The following options can be used with the *set* command to change the behaviour
+of containers:
+
+[[ *Key*
+:[ *Values*
+:< *Description*
+|  *container.tab.active\_colour*
+:  hex colour (_0xRRGGBB_)
+:  Background colour of the active tab label. Default: _0xC0C0C0_.
+|  *container.tab.inactive\_colour*
+:  hex colour (_0xRRGGBB_)
+:  Background colour of inactive tab labels. Default: _0x808080_.
+|  *container.tab.fg\_active*
+:  hex colour (_0xRRGGBB_)
+:  Foreground (text) colour of the active tab label. Default: _0x000000_.
+|  *container.tab.fg\_inactive*
+:  hex colour (_0xRRGGBB_)
+:  Foreground (text) colour of inactive tab labels. Default: _0x202020_.
+|  *container.tab.sunken*
+:  _true_ | _1_ | _false_ | _0_
+:  Draw inactive tabs with a sunken (depressed) bevel. Default: _false_ (flat).
+
+# DESKTOP / OUTPUT COMMANDS
+
+This section details commands which affect desktops/pages often per-output.
+
 ## page [-t output] [-n] [-p] [-d dir] [-c col row]
 
 Navigate the virtual page grid within the current desk.
@@ -559,216 +849,57 @@ Switch or manipulate virtual desks.
 	Toggle collection of desk _0-9_: overlay its windows on top of the
 	current desk without switching.
 
-## window-expand [-t target] [-d dir] [-T]
+## Desktop / Page Settings
 
-Expand a window to fill available space between windows, or the whole monitor if
-the window is the only window on that monitor.
+The following options can be used with the *set* command to change the
+behaviour of desktops and pages:
 
-*-t* _target_
-	Target window.
+[[ *Key*
+:[ *Values*
+:< *Description*
+|  *desktop-configuration*
+:  _global_ | _per-output_ | _shared_
+:  Desk layout mode.
+|  *desktop\_size* _N_ _M_
+:  N × M integer
+:  Virtual page grid: N columns × M rows per desk. Default: _1 1_
+   (no pages). Set e.g. _3 2_ for three columns and two rows.
+|  *page\_scroll\_animate*
+:  _true_ | _false_
+:  Animate page transitions. Default: _false_ (instant cut).
+|  *page\_scroll\_ms*
+:  integer (ms)
+:  Page scroll animation duration. Default: _200_.
+|  *edge\_scroll*
+:  _true_ | _false_
+:  Enable edge scroll: dwell at a screen edge to switch page.
+   Default: _false_.
+|  *edge\_scroll\_delay\_ms*
+:  integer (ms)
+:  Time the pointer must dwell at an edge before a page switch fires.
+   Default: _300_.
+|  *output.colour.background*
+:  hex colour (_0xRRGGBB_)
+:  Background colour for all outputs.
+|  *output.colour.background.*_name_
+:  hex colour (_0xRRGGBB_)
+:  Background colour for the named output.
+|  *reserved.top*
+:  integer (default: 0)
+:  Pixels reserved at the top of each output.
+|  *reserved.bottom*
+:  integer (default: 0)
+:  Pixels reserved at the bottom of each output.
+|  *reserved.left*
+:  integer (default: 0)
+:  Pixels reserved at the left of each output.
+|  *reserved.right*
+:  integer (default: 0)
+:  Pixels reserved at the right of each output.
 
-*-d* _dir_
-	Expand in direction _dir_ (_up_, _down_, _left_, _right_). Omit to
-	expand in all directions.
-
-*-T*
-	Toggle: restore original geometry if the window is already expanded.
-
-## window-maximize [-t target] [-T] [-m] [-u]
-
-Maximize or restore a window.
-
-*-t* _target_
-	Target window.
-
-*-T*
-	Toggle between maximized and restored.
-
-*-m*
-	Maximize the window (default if no flag is given).
-
-*-u*
-	Restore (unmaximize) the window.
-
-## container [-t target] [-s source] [-arnpNP]
-
-Group windows into a tabbed container. A container is a meta-window that holds
-multiple application windows as tabs. Only the active tab's content is visible;
-all tabs share the container's position, size, and frame. The titlebar shows a
-clickable label for each member. Clicking a label activates that tab.
-
-*window-container -a*
-	Add _source_ to _target_'s container. If neither window is already in
-	a container, a new container is created.
-
-	_source_ defaults to the focused window. _target_ defaults to the
-	focused window when *-t* is given explicitly.
-
-	When neither *-t* nor *-s* is given, _source_ is the focused window
-	and _target_ is the next focusable window in stacking order. This
-	means *container add* with no arguments is a self-contained
-	keyboard-only action: it groups the focused window with the one below
-	it in the stack. This is useful in environments where mouse modifier
-	combinations are unavailable (e.g. VNC).
-
-*window-container -r* [-t _target_]
-	Remove _target_ from its container. The detached window reappears
-	offset from the container position. If the container drops to one
-	member, the container is dissolved.
-
-*window-container -n* [-t _target_]
-	Activate the next tab in the container that holds _target_.
-
-*window-container -p* [-t _target_]
-	Activate the previous tab in the container that holds _target_.
-
-*window-container -N* [-t _target_]
-	Move the tab containing _target_ one position to the right in the tab
-	strip. The tab remains active. No-op if it is already the last tab.
-
-*window-container -P* [-t _target_]
-	Move the tab containing _target_ one position to the left in the tab
-	strip. The tab remains active. No-op if it is already the first tab.
-
-See also *window-move* *-C*, which allows containers to be formed
-interactively by dragging a window's titlebar onto another. In
-environments where mouse modifier combinations are unreliable (e.g. VNC),
-bind *container add* to a key instead:
-
-```
-bind L+g   window-container -a
-bind LS+g  window-container -r
-bind L+Tab window-container -n
-```
-
-## window-shade [-t target] -d dir
-
-Shade (roll up) a window in a given direction, hiding its content but leaving
-its border visible.
-
-*-t* _target_
-	Target window.
-
-*-d* _dir_
-	Shade direction: _north_, _south_, _east_, _west_, _nw_, _ne_, _sw_,
-	_se_. Required.
-
-# TARGET SPECIFIER
-
-Many commands accept *-t* _target_ to identify a window. The format is:
-
-```
-[output]:[desk].[window]
-```
-
-All three components are optional. Components:
-
-*output*
-	Output name, *@next*, or *@prev*.
-
-*desk*
-	Desk number (0-9), *@next*, or *@prev*.
-
-*window*
-	One of:
-
-	- *%*_app\_id_ - match by app\_id
-	- */*_substring_*/* - match by title substring
-	- *#*_id_ - match by River identifier
-	- *@focused* - the currently focused window (default)
-	- *@next* - next window in stacking order
-	- *@prev* - previous window in stacking order
-
-Examples:
-
-```
--t @focused
--t ::.@next
--t DP-1:2.%foot
--t :/term/
-```
-
-# KEY BINDINGS
-
-Key bindings are specified as a modifier string immediately followed by *+* and
-a keysym name, or *-* and a numeric keycode:
-
-```
-bind MODIFIERS+keysym  command
-bind MODIFIERS-keycode command
-```
-
-*Modifier characters:*
-
-[[ *Character*
-:< *Modifier*
-|  *L*
-:  Logo (Super / Windows key).
-|  *S*
-:  Shift.
-|  *C*
-:  Control.
-|  *A*
-:  Alt (Mod1).
-|  *5*
-:  AltGr (Mod5).
-
-Modifiers are combined by concatenation: *LS* means Logo+Shift, *LCA* means
-Logo+Control+Alt. Use *0* to specify no modifier.
-
-Key symbols and codes can be determined with *wev*(1).
-
-Examples:
-
-```
-bind L+Return  action-terminal
-bind LS+a      winops -c
-bind LCA+q     quit
-bind 0+F1      action-help
-```
-
-# MOUSE BINDINGS
-
-Mouse bindings use the same modifier format as key bindings. The button name
-replaces the keysym:
-
-```
-mouse MODIFIERS+button command
-```
-
-Button names: *left*, *right*, *middle*, *side*, *extra*, *forward*, *back*,
-*task*.
-
-Examples:
-
-```
-mouse L+left   window-move
-mouse L+right  resize
-mouse L+middle window-move -C
-```
-
-The conventional cow mouse binding for container formation is
-*L+middle* (*window-move -C*): hold Super and middle-drag a window's
-titlebar onto another window's titlebar to group them into a container.
-*LS+left* provides a keyboard-accessible alternative for the same operation.
-
-# IPC
-
-*cow* listens on a Unix domain socket for commands. The socket path is
-_$XDG\_RUNTIME\_DIR/cow-cmd.sock_. Each connection sends one newline-terminated
-command line; *cow* responds with a newline-terminated JSON object:
-
-```
-{"data": ...}
-{"error": "message"}
-```
-
-Use *moocow*(1) to send commands from the shell or scripts.
-
-*cow* also broadcasts state snapshots on a second socket,
-_$XDG\_RUNTIME\_DIR/cow-status.sock_. Each snapshot is a newline-terminated JSON
-object emitted whenever window or desk state changes. Use *cowbar*(1) to
-consume this stream.
+*NOT£:* The _reserved._ settings are akin to X11's concept of a working-area.
+That is to say, these settings will reserve parts of the screen to be able to
+put taskbars, etc.
 
 # SIGNALS
 
@@ -815,42 +946,6 @@ _$XDG\_RUNTIME\_DIR/cow-cmd.sock_
 
 _$XDG\_RUNTIME\_DIR/cow-status.sock_
 	Status broadcast socket. Emits a JSON state snapshot on each change.
-
-# SCREEN SHARING
-
-Screen sharing in browsers (e.g. Google Chrome, Firefox) on Wayland requires
-three components beyond *cow* and River:
-
-*pipewire*(1)
-	Provides the media transport for screen capture. Managed by the session;
-	do not start it from _cow.conf_ - duplicate instances break audio,
-	camera, and microphone.
-
-*xdg-desktop-portal*(1)
-	The portal daemon. Brokers the _org.freedesktop.portal.ScreenCast_
-	interface that browsers call when requesting a screen share session.
-
-*xdg-desktop-portal-wlr*(1)
-	The wlroots backend for xdg-desktop-portal. Implements _ScreenCast_
-	using River's _zwlr\_screencopy\_manager\_v1_ protocol. Must be
-	installed separately from xdg-desktop-portal.
-
-Both portal components are D-Bus socket-activated - they start on demand when
-first requested. They do not need to be started explicitly; they only need the
-correct environment to be in place before they are first activated.
-
-## Clipboard persistence
-
-On Wayland, clipboard content is owned by the application that set it and is
-lost when that application exits. To persist clipboard content across
-application lifetimes, run a clipboard manager such as *wl-clip-persist*(1):
-
-```
-exec wl-clip-persist --clipboard regular
-```
-
-*wl-clip-persist* uses the _wlr-data-control_ protocol, which River exposes,
-to hold clipboard content after the owning application closes.
 
 # SEE ALSO
 
