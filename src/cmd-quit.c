@@ -27,6 +27,7 @@
 #include "cow/ipc.h"
 #include "cow/keybinding.h"
 #include "cow/output.h"
+#include "cow/rule.h"
 #include "cow/seat.h"
 #include "cow/view.h"
 #include "cow/wm.h"
@@ -79,6 +80,11 @@ do_reload(struct cmd_q *cmdq)
 	cow_config	       = cow_config_create();
 	cow_config_destroy(old);
 
+	/*
+	 * Drop the previous load's rules.
+	 * */
+	cow_rule_fini();
+
 	if (!cow_ipc_load_config(path)) {
 		cmdq_error(cmdq, "quit -r: config load failed");
 		return;
@@ -114,6 +120,25 @@ do_reload(struct cmd_q *cmdq)
 		output->usable_area.height = output->height;
 		cow_output_apply_reserved_area(output);
 		output->bg_dirty = true;
+	}
+
+	/* Apply rules here which could affect styling.
+	 *
+	 * Run on-map per view first, then on-desk per
+	 * output's current desk.  The rule subsystem fans on-desk
+	 * out across each view on the matching desk internally.
+	 */
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (view->closed)
+			continue;
+		cow_rule_fire(COW_RULE_ON_MAP, view, view->desk, view->output);
+	}
+	wl_list_for_each(output, &cow_wm.outputs, wm_link)
+	{
+		if (output->current_desk != NULL)
+			cow_rule_fire(COW_RULE_ON_DESK, NULL,
+			    output->current_desk, output);
 	}
 
 	cow_wm_request_manage_dirty();
