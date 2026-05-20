@@ -124,6 +124,25 @@ do_show_windows(int fd)
 		cJSON_AddNumberToObject(w, "raise_seq",
 		    (double)view->raise_seq);
 
+		/* Container membership.  Emit the first member's id as
+		 * the container_id (stable per-container key) and
+		 * container_active (true when this view is the visible
+		 * member).  Lets cowrearrange and similar consumers
+		 * dedupe a container's members down to a single layout
+		 * entity. */
+		if (view->container_member != NULL) {
+			struct cow_container *ctr =
+			    view->container_member->container;
+			struct cow_container_member *first =
+			    wl_container_of(ctr->members.next, first, link);
+			if (first->view != NULL &&
+			    first->view->identifier != NULL)
+				cJSON_AddStringToObject(w, "container_id",
+				    first->view->identifier);
+			cJSON_AddBoolToObject(w, "container_active",
+			    ctr->active == view->container_member);
+		}
+
 		/* Decoration / squeeze diagnostics. */
 		cJSON_AddBoolToObject(w, "use_ssd", view->use_ssd);
 		cJSON_AddNumberToObject(w, "title_thickness",

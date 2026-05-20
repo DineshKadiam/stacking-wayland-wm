@@ -1,0 +1,126 @@
+cowrearrange(1) "@VERSION@" "cowrearrange - rearrange windows on a given desk"
+
+# NAME
+
+cowrearrange - tile or cascade the windows on a given desk
+
+# SYNOPSIS
+
+*cowrearrange tile* [*-o* _output_] [*-d* _desk_] [*--rows* _N_] [*--cols* _N_] [*-r*|*-R*] [*-i*] [*-x* _SELECTOR_ ...]++
+*cowrearrange cascade* [*-o* _output_] [*-d* _desk_] [*--dx* _N_] [*--dy* _N_] [*-r*|*-R*] [*-i*] [*-x* _SELECTOR_ ...]
+
+# DESCRIPTION
+
+*cowrearrange* arranges the windows on a desk into a *tile* (grid) or
+*cascade* layout.
+
+Two subcommands are supported:
+
+*tile*
+	Fill the area with a grid of non-overlapping windows, one per window.
+	By default the grid is approximately square;
+	a partially-filled last row stretches its cells to use the full
+	width.  *-r* (default for *tile*) resizes each window to fill its
+	cell; *-R* preserves the current window sizes and only repositions.
+
+*cascade*
+	Stack the windows diagonally with a fixed pixel step
+	between consecutive windows.  The default step is taken from the
+	first window's title-bar thickness plus border width so each
+	cascaded window's titlebar peeks out below the previous one.
+	*-R* (default for *cascade*) preserves each window's current size;
+	*-r* resizes every window to the same dimensions so the last
+	cascaded window's bottom-right edge meets the bottom-right of the
+	workarea.
+
+By default only the current output's desk is rearranged.
+
+# OPTIONS
+
+*-o* _output_
+	Target the named output (as reported by *moocow show output*).
+	Defaults to the current output.
+
+*-d* _desk_
+	Target the desk number _desk_ (0-indexed) on the chosen output.
+	Defaults to the current desk.
+
+*--rows* _N_
+	*tile* only: fix the number of rows.  When only *--rows* is given,
+	the number of columns is computed from the window count and *N*.
+	Combine with *--cols* to specify the grid exactly.
+
+*--cols* _N_
+	*tile* only: fix the number of columns.  When only *--cols* is
+	given, rows are computed from the window count and *N*.
+
+*--dx* _N_
+	*cascade* only: horizontal pixel step between successive windows.
+	Default: first window's _title\_thickness_ + _border\_width_.
+
+*--dy* _N_
+	*cascade* only: vertical pixel step between successive windows.
+	Default: first window's _title\_thickness_ + _border\_width_.
+
+*-r*
+	Resize windows to fit the layout.  Default for *tile*.
+
+*-R*
+	Place only, do not resize.  Default for *cascade*.
+
+*-i*
+	Include maximised and shaded windows.  By default these are
+	skipped because their geometry is owned by the maximise / shade
+	state and a plain move would silently break the invariant.
+
+*-x* _SELECTOR_, *--exclude* _SELECTOR_
+	Exclude any window matching _SELECTOR_ from the candidate set.
+	Repeatable: a window is dropped if it matches the selector on
+	any *-x* occurrence.  _SELECTOR_ follows the same window-selector
+	syntax cow uses for *-t* on its own commands:
+
+	- *%*_app\_id_  -- exact match against the window's _app\_id_.
+	- *#*_id_       -- exact match against the river window _id_
+	  (the value reported as "id" by *moocow show windows*).
+	- */*_text_*/*  -- title substring match.  Trailing _/_ optional;
+	  */foo* and */foo/* behave identically.
+
+	If a container member is excluded by app\_id or title, the rest
+	of the container's members are NOT pulled in as a substitute --
+	containers still count as a single layout entity, and excluding
+	the active member excludes the container.
+
+# EXAMPLES
+
+```
+# Tile the current desk into an approximately square grid.
+cowrearrange tile
+
+# Tile into exactly three columns, preserving window sizes.
+cowrearrange tile --cols 3 -R
+
+# Cascade the current desk's windows, resizing them all to the same
+# size so the last window's bottom-right lines up with the workarea.
+cowrearrange cascade -r
+
+# Cascade only on the right-hand monitor.
+cowrearrange cascade -o DP-2
+
+# Tile desk 2 on DP-1, including maximised / shaded windows.
+cowrearrange tile -o DP-1 -d 2 -i
+
+# Tile the current desk but leave the firefox window alone.
+cowrearrange tile -x %firefox
+
+# Cascade everything except Slack and any window with "Preferences"
+# in its title.
+cowrearrange cascade --exclude %Slack --exclude /Preferences/
+```
+
+# SEE ALSO
+
+*cow*(1), *moocow*(1), *cowpager*(1), *cowident*(1)
+
+# AUTHORS
+
+Thomas Adam <thomas@xteddy.org>

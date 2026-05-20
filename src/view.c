@@ -1857,8 +1857,20 @@ cow_view_sync_container_pos(struct cow_view *view)
 	{
 		if (m->view == view)
 			continue;
-		m->view->x	   = c->x;
-		m->view->y	   = c->y;
+		m->view->x = c->x;
+		m->view->y = c->y;
+
+		/*
+		 * Keep the sibling's virtual (vx/vy) coords in step with
+		 * its global ones.  Without this, cow_view_apply_render
+		 * later recomputes x/y from the stale vx/vy
+		 */
+		if (m->view->output != NULL && m->view->desk != NULL) {
+			m->view->vx = (m->view->x - m->view->output->x) +
+			    m->view->desk->page_vx;
+			m->view->vy = (m->view->y - m->view->output->y) +
+			    m->view->desk->page_vy;
+		}
 		m->view->dec.dirty = true;
 	}
 }
@@ -1882,8 +1894,15 @@ cow_view_sync_container_geometry(struct cow_view *view, int x, int y, int w,
 	{
 		if (m->view == view)
 			continue;
-		m->view->x	   = x;
-		m->view->y	   = y;
+		m->view->x = x;
+		m->view->y = y;
+
+		if (m->view->output != NULL && m->view->desk != NULL) {
+			m->view->vx = (m->view->x - m->view->output->x) +
+			    m->view->desk->page_vx;
+			m->view->vy = (m->view->y - m->view->output->y) +
+			    m->view->desk->page_vy;
+		}
 		m->view->dec.dirty = true;
 		cow_view_set_pending_geometry(m->view, x, y, w, h);
 	}
