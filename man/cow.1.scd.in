@@ -555,7 +555,7 @@ the window is the only window on that monitor.
 *-T*
 	Toggle: restore original geometry if the window is already expanded.
 
-## window-maximize [-t target] [-T] [-m] [-u]
+## window-maximize [-t target] [-T] [-m] [-u] [-h] [-v]
 
 Maximize or restore a window.
 
@@ -563,13 +563,39 @@ Maximize or restore a window.
 	Target window.
 
 *-T*
-	Toggle between maximized and restored.
+	Toggle between maximized and restored.  Combined with *-h* / *-v*,
+	toggles only that axis; toggling an unmaxed axis maximises it.
 
 *-m*
 	Maximize the window (default if no flag is given).
 
 *-u*
-	Restore (unmaximize) the window.
+	Restore (unmaximize) the window.  Combined with *-h* / *-v*,
+	restores only that axis; a window can stay maximised on the
+	other axis.
+
+*-h*
+	Maximize horizontally only -- the window's width grows to the
+	output's usable area.
+
+*-v*
+	Maximize vertically only -- the window's height grows to the
+	output's usable area.
+
+Per-axis maximised state is independent: *window-maximize -h*
+followed by *window-maximize -v* leaves the window maximised on
+both axes, and each axis can be restored separately with *-T -h* and *-T -v*.
+
+Examples:
+
+```
+window-maximize        # full maximise
+window-maximize -T     # toggle full maximise
+window-maximize -h     # horizontal only
+window-maximize -v     # vertical only
+window-maximize -T -h  # toggle horizontal maximised state only
+window-maximize -u -v  # un-maximise vertical only, keep horizontal
+```
 
 ## window-shade [-t target] -d dir
 

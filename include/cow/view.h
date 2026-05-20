@@ -216,7 +216,24 @@ struct cow_view {
 	bool configured; /* true after first propose_dimensions */
 	bool use_ssd;	 /* true if we want server-side decorations */
 	bool fullscreen;
+	/*
+	 * Per-axis maximised state.  maximized is the OR of the two
+	 * and is the field every non-maximise call site already reads
+	 * (drag-to-unmax, state save / restore, status output, pan
+	 * frames, icon-button highlight).  cmd-window keeps the two
+	 * narrow flags in sync with the unified one so external
+	 * readers don't have to care which axes are involved.
+	 *
+	 * Horizontal-only or vertical-only maximise is initiated by
+	 * `window-maximize -h` / `-v`; either path saves only the
+	 * affected axis's geometry into saved_x/saved_width or
+	 * saved_y/saved_height, and -u / -T -h / -T -v restores just
+	 * that axis.  When both axes are maximised the saved geometry
+	 * is the full pre-maximise box.
+	 */
 	bool maximized;
+	bool maximized_h;
+	bool maximized_v;
 	bool needs_raise; /* set during manage, applied in render */
 
 	/*
@@ -353,6 +370,15 @@ bool cow_view_focusable(const struct cow_view *);
  * Save current geometry for later restore (maximize/expand undo).
  */
 void cow_view_save_geometry(struct cow_view *);
+
+/*
+ * Set or clear the unified `maximized` flag and the per-axis
+ * (maximized_h, maximized_v) bits in lockstep.  Callers in code
+ * paths that don't track an axis (state restore, drag-to-unmax,
+ * fullscreen toggle, etc.) should use this rather than poking the
+ * fields directly so per-axis consumers stay consistent.
+ */
+void cow_view_set_maximized(struct cow_view *, bool);
 
 /*
  * Set pending geometry change (deferred to manage callback).

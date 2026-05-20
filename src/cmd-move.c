@@ -163,7 +163,7 @@ unmax_if_needed(struct cow_view *view)
 {
 	if (!view->maximized)
 		return;
-	view->maximized		   = false;
+	cow_view_set_maximized(view, false);
 	view->icon_inverted_button = -1;
 	view->dec.dirty		   = true;
 }

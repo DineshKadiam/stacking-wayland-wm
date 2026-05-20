@@ -34,6 +34,18 @@ enum maximize_type {
 	MAX_TOGGLE,
 };
 
+/*
+ * Axis selector for the maximise operation.  MAX_AXIS_BOTH is the
+ * historic "fill the usable area" behaviour; MAX_AXIS_H / MAX_AXIS_V
+ * are the fvwm-style horizontal-only / vertical-only variants from
+ * the -h / -v flags.
+ */
+enum maximize_axis {
+	MAX_AXIS_BOTH,
+	MAX_AXIS_H,
+	MAX_AXIS_V,
+};
+
 enum expand_dir {
 	EXPAND_ERROR = -1,
 	EXPAND_ALL   = 0,
@@ -52,7 +64,8 @@ static void		    do_identify(struct cow_view *, struct cmd_q *);
 static void		    do_raise(struct cow_view *);
 static void		    do_lower(struct cow_view *);
 static void		    do_expand(struct cow_view *, enum expand_dir, bool);
-static void		    do_maximize(struct cow_view *, enum maximize_type);
+static void		    do_maximize(struct cow_view *, enum maximize_type,
+		    enum maximize_axis);
 static void		    do_shade(struct cow_view *, const char *);
 static enum expand_dir	    resolve_direction(const char *);
 static enum shade_direction resolve_shade_direction(const char *);
@@ -159,10 +172,10 @@ cmd_window_expand_exec(struct cmd *self, struct cmd_q *cmdq)
 
 struct cmd_entry cmd_window_maximize_entry = {
 	"window-maximize",
-	"t:Tmu",
+	"t:Tmuhv",
 	0,
 	0,
-	"window-maximize [-t target] [-T toggle] [-m maximize] [-u unmaximize]",
+	"window-maximize [-t target] [-T] [-m] [-u] [-h] [-v]",
 	cmd_window_maximize_exec,
 };
 
@@ -176,12 +189,29 @@ cmd_window_maximize_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (view == NULL)
 		return (CMD_RETURN_ERROR);
 
-	if (args_has(args, 'T'))
-		do_maximize(view, MAX_TOGGLE);
-	else if (args_has(args, 'u'))
-		do_maximize(view, UNMAXIMIZE);
+	/*
+	 * Axis selector: -h and -v are independent flags.  Neither
+	 * given, or both given, means full maximise (historic
+	 * behaviour); just -h is horizontal-only, just -v is
+	 * vertical-only.  Modelled on fvwm's `Maximize <x> <y>`
+	 * where 100/0 means full-horizontal-only etc.
+	 */
+	bool		   want_h = args_has(args, 'h');
+	bool		   want_v = args_has(args, 'v');
+	enum maximize_axis axis;
+	if (want_h && !want_v)
+		axis = MAX_AXIS_H;
+	else if (want_v && !want_h)
+		axis = MAX_AXIS_V;
 	else
-		do_maximize(view, MAXIMIZE);
+		axis = MAX_AXIS_BOTH;
+
+	if (args_has(args, 'T'))
+		do_maximize(view, MAX_TOGGLE, axis);
+	else if (args_has(args, 'u'))
+		do_maximize(view, UNMAXIMIZE, axis);
+	else
+		do_maximize(view, MAXIMIZE, axis);
 
 	cow_wm_request_manage_dirty();
 	view->dec.dirty = true;
@@ -231,32 +261,140 @@ do_lower(struct cow_view *view)
 	cow_wm_request_manage_dirty();
 }
 
+/*
+ * Map an axis selector + the current per-axis maximised state to
+ * the two booleans (touch_h, touch_v) describing which axes a
+ * MAX_TOGGLE or UNMAXIMIZE operation should restore.  Returns true
+ * if either axis is currently maximised on the requested side
+ * (i.e. there is something to restore).
+ *
+ *   axis = BOTH: restore every axis that's currently maxed.
+ *   axis = H:    restore only horizontal if currently maxed.
+ *   axis = V:    restore only vertical if currently maxed.
+ */
+static bool
+maxaxis_to_restore(const struct cow_view *view, enum maximize_axis axis,
+    bool *touch_h, bool *touch_v)
+{
+	switch (axis) {
+	case MAX_AXIS_BOTH:
+		*touch_h = view->maximized_h;
+		*touch_v = view->maximized_v;
+		break;
+	case MAX_AXIS_H:
+		*touch_h = view->maximized_h;
+		*touch_v = false;
+		break;
+	case MAX_AXIS_V:
+		*touch_h = false;
+		*touch_v = view->maximized_v;
+		break;
+	}
+	return *touch_h || *touch_v;
+}
+
 static void
-do_maximize(struct cow_view *view, enum maximize_type mt)
+do_maximize(struct cow_view *view, enum maximize_type mt,
+    enum maximize_axis axis)
 {
 	if (view->output == NULL)
 		return;
 
-	if ((mt == UNMAXIMIZE || mt == MAX_TOGGLE) && view->maximized) {
-		cow_view_restore_saved_geometry(view);
-		return;
+	/*
+	 * UNMAXIMIZE / MAX_TOGGLE restore path.  Toggle only restores
+	 * if the requested axis (or any axis, for AXIS_BOTH) is
+	 * currently maximised.  When only one of the two axes is being
+	 * restored, mix the saved value for that axis with the current
+	 * value for the other so the user's intervening edits to the
+	 * un-restored axis are preserved.
+	 */
+	if (mt == UNMAXIMIZE || mt == MAX_TOGGLE) {
+		bool touch_h, touch_v;
+		if (maxaxis_to_restore(view, axis, &touch_h, &touch_v)) {
+			/* Build target geom: start from current frame
+			 * (so non-restored axis stays put), substitute
+			 * saved values for axes we're restoring. */
+			int gx = view->x;
+			int gy = view->y;
+			int gw = view->content_width;
+			int gh = view->content_height;
+			if (touch_h && view->output != NULL &&
+			    view->desk != NULL) {
+				gx = view->output->x +
+				    (view->saved_x - view->desk->page_vx);
+				gw = view->saved_width;
+			}
+			if (touch_v && view->output != NULL &&
+			    view->desk != NULL) {
+				gy = view->output->y +
+				    (view->saved_y - view->desk->page_vy);
+				gh = view->saved_height;
+			}
+			cow_view_set_pending_geometry(view, gx, gy, gw, gh);
+			if (touch_h)
+				view->maximized_h = false;
+			if (touch_v)
+				view->maximized_v = false;
+			view->maximized = view->maximized_h ||
+			    view->maximized_v;
+			if (!view->maximized)
+				view->icon_inverted_button = -1;
+			return;
+		}
+		/*
+		 * MAX_TOGGLE with nothing maximised in the requested
+		 * axis falls through to the maximise path below, so a
+		 * lone `-T -h` on an unmaxed window grows horizontally.
+		 * UNMAXIMIZE without state to restore is a no-op.
+		 */
+		if (mt == UNMAXIMIZE)
+			return;
 	}
 
 	struct cow_box *ua = &view->output->usable_area;
 	int		bw = view->dec.border_width;
 	int		tt = view->dec.title_thickness;
 
-	cow_view_save_geometry(view);
+	/*
+	 * Save geometry for the axes we're about to maximise.  When
+	 * promoting an already-h-maxed window to v-max (or vice
+	 * versa), don't overwrite the side that already holds a
+	 * pre-maximise value -- we want to remember the original
+	 * "before any maximise" geom for each axis.
+	 */
+	if ((axis == MAX_AXIS_BOTH || axis == MAX_AXIS_H) &&
+	    !view->maximized_h) {
+		view->saved_x	  = view->vx;
+		view->saved_width = view->content_width;
+	}
+	if ((axis == MAX_AXIS_BOTH || axis == MAX_AXIS_V) &&
+	    !view->maximized_v) {
+		view->saved_y	   = view->vy;
+		view->saved_height = view->content_height;
+	}
 
 	if (mt != MAXIMIZE_KEEP) {
-		int w = ua->width - 2 * bw;
-		int h = ua->height - 2 * bw - tt;
-		cow_clamp_dimensions(&w, &h);
-
-		cow_view_set_pending_geometry(view, ua->x + bw, ua->y + bw + tt,
-		    w, h);
+		int new_x = view->x;
+		int new_y = view->y;
+		int new_w = view->content_width;
+		int new_h = view->content_height;
+		if (axis == MAX_AXIS_BOTH || axis == MAX_AXIS_H) {
+			new_x = ua->x + bw;
+			new_w = ua->width - 2 * bw;
+		}
+		if (axis == MAX_AXIS_BOTH || axis == MAX_AXIS_V) {
+			new_y = ua->y + bw + tt;
+			new_h = ua->height - 2 * bw - tt;
+		}
+		cow_clamp_dimensions(&new_w, &new_h);
+		cow_view_set_pending_geometry(view, new_x, new_y, new_w, new_h);
 	}
-	view->maximized = true;
+
+	if (axis == MAX_AXIS_BOTH || axis == MAX_AXIS_H)
+		view->maximized_h = true;
+	if (axis == MAX_AXIS_BOTH || axis == MAX_AXIS_V)
+		view->maximized_v = true;
+	view->maximized = view->maximized_h || view->maximized_v;
 
 	int mbi = cow_view_maximize_button_index(view);
 	if (mbi >= 0)
@@ -400,7 +538,7 @@ do_expand(struct cow_view *view, enum expand_dir dir, bool toggle)
 		new_h = 50;
 
 	cow_view_set_pending_geometry(view, new_x, new_y, new_w, new_h);
-	view->maximized = true;
+	cow_view_set_maximized(view, true);
 
 	int mbi = cow_view_maximize_button_index(view);
 	if (mbi >= 0)

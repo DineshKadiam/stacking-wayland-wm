@@ -913,6 +913,19 @@ cow_view_save_geometry(struct cow_view *view)
 	view->saved_height = view->content_height;
 }
 
+void
+cow_view_set_maximized(struct cow_view *view, bool max)
+{
+	/* Keep the per-axis flags in step with the unified one for
+	 * call sites that don't model an axis -- drag-to-unmax,
+	 * fullscreen toggle, state restore on session reload, etc.
+	 * The cmd-window per-axis paths set maximized_h / maximized_v
+	 * directly and then derive maximized from their OR. */
+	view->maximized	  = max;
+	view->maximized_h = max;
+	view->maximized_v = max;
+}
+
 struct cow_box
 cow_view_frame_box(const struct cow_view *v)
 {
@@ -987,7 +1000,7 @@ cow_view_maximize(struct cow_view *view)
 	cow_clamp_dimensions(&w, &h);
 	river_window_v1_propose_dimensions(view->river_window, w, h);
 	river_window_v1_inform_maximized(view->river_window);
-	view->maximized = true;
+	cow_view_set_maximized(view, true);
 
 	/*
 	 * Sync the container with the maximized geometry.  Use the proposed
@@ -1014,7 +1027,7 @@ cow_view_unmaximize(struct cow_view *view)
 	if (!view->placed) {
 		/* Placement hasn't run yet; just drop the maximized state
 		 * and let cow_view_apply_render place the window normally. */
-		view->maximized = false;
+		cow_view_set_maximized(view, false);
 		river_window_v1_propose_dimensions(view->river_window,
 		    view->saved_width, view->saved_height);
 		river_window_v1_inform_unmaximized(view->river_window);
@@ -1034,7 +1047,7 @@ cow_view_unmaximize(struct cow_view *view)
 	river_window_v1_propose_dimensions(view->river_window,
 	    view->saved_width, view->saved_height);
 	river_window_v1_inform_unmaximized(view->river_window);
-	view->maximized = false;
+	cow_view_set_maximized(view, false);
 
 	/* Restore container geometry to the saved (pre-maximize) values.
 	 * Use view->x/y (already recomputed from vx/vy) as the global coord. */
@@ -1901,7 +1914,7 @@ cow_view_restore_saved_geometry(struct cow_view *view)
 	}
 	cow_view_set_pending_geometry(view, gx, gy, view->saved_width,
 	    view->saved_height);
-	view->maximized		   = false;
+	cow_view_set_maximized(view, false);
 	view->icon_inverted_button = -1;
 }
 

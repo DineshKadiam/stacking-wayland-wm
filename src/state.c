@@ -115,6 +115,12 @@ cow_state_save(void)
 		}
 
 		cJSON_AddBoolToObject(v, "maximized", view->maximized);
+		/* Per-axis bits (for window-maximize -h / -v).  Older
+		 * state files without these keys restore as both-axis
+		 * maximised via the maximized key alone -- see the
+		 * cow_view_set_maximized fallback below. */
+		cJSON_AddBoolToObject(v, "maximized_h", view->maximized_h);
+		cJSON_AddBoolToObject(v, "maximized_v", view->maximized_v);
 		if (view->maximized) {
 			cJSON_AddNumberToObject(v, "saved_x", view->saved_x);
 			cJSON_AddNumberToObject(v, "saved_y", view->saved_y);
@@ -403,7 +409,23 @@ cow_state_restore(void)
 					view->saved_y	   = (int)sy;
 					view->saved_width  = (int)sw;
 					view->saved_height = (int)sh;
-					view->maximized	   = true;
+					/*
+					 * Honour per-axis bits when the
+					 * state file has them; default to
+					 * both-axis maxed otherwise so
+					 * pre-split state files keep their
+					 * behaviour.  cow_view_set_maximized
+					 * stamps both axes; refine after.
+					 */
+					cow_view_set_maximized(view, true);
+					bool mh = true, mv = true;
+					cow_json_get_bool(vs, "maximized_h",
+					    &mh);
+					cow_json_get_bool(vs, "maximized_v",
+					    &mv);
+					view->maximized_h = mh;
+					view->maximized_v = mv;
+					view->maximized	  = mh || mv;
 				}
 			}
 
