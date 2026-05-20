@@ -18,6 +18,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <time.h>
 #include <wayland-client.h>
 #include <xkbcommon/xkbcommon.h>
 
@@ -33,6 +34,17 @@ typedef void (*cow_action_fn)(void *);
 
 /*
  * A key binding registered with river.
+ *
+ * Repeat state:
+ *   repeatable   -- the user registered this with `bind -r`.
+ *   held         -- river reported `pressed` and we have not yet
+ *                   seen `released` or `stop_repeat`.
+ *   last_fire_ms -- monotonic ms of the most recent fire of this
+ *                   binding; used by cow_seat_process_bindings to
+ *                   decide whether the next repeat is due.
+ *   first_repeat -- true between the first fire (on press) and the
+ *                   first repeat; gates the initial repeat_delay_ms
+ *                   dwell vs. the steady-state repeat_interval_ms.
  */
 struct cow_keybinding {
 	struct wl_list link; /* cow_seat.keybindings */
@@ -48,6 +60,11 @@ struct cow_keybinding {
 	struct cow_seat *seat;
 	bool		 enabled;
 	bool pending; /* pressed event received, waiting for manage */
+
+	bool repeatable;
+	bool held;
+	bool first_repeat;
+	long last_fire_ms;
 };
 
 /*
@@ -70,10 +87,13 @@ struct cow_pointer_binding {
 };
 
 /*
- * Create a key binding for the given seat.
+ * Create a key binding for the given seat.  When `repeatable` is
+ * true the binding's action will be re-fired while the triggering
+ * key is held, paced by cow_config->repeat_delay_ms /
+ * repeat_interval_ms.
  */
 struct cow_keybinding *cow_keybinding_create(struct cow_seat *, xkb_keysym_t,
-    uint32_t, cow_action_fn, void *);
+    uint32_t, cow_action_fn, void *, bool repeatable);
 
 /*
  * Create a pointer binding for the given seat.
@@ -112,5 +132,15 @@ void cow_seat_destroy_bindings(struct cow_seat *);
  * Teardown and re-register bindings on all seats from config.
  */
 void cow_rebind_all_seats(void);
+
+/*
+ * Return ms-from-now until the next held repeatable binding is due
+ * to re-fire, across all seats.  Returns -1 if no repeatable
+ * binding is currently held (in which case the main loop can
+ * poll() without a timeout from this source).  Used by the main
+ * loop to shorten its poll timeout so the next repeat fires
+ * promptly instead of waiting for an unrelated river event.
+ */
+int cow_seat_next_repeat_ms(void);
 
 #endif

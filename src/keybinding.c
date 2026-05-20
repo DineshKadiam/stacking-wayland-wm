@@ -30,6 +30,7 @@
 #include "cow/output.h"
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
+#include "cow/util.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
@@ -46,18 +47,44 @@ xkb_binding_handle_pressed(void		 *data,
 {
 	struct cow_keybinding *kb = data;
 	kb->pending		  = true;
+	/*
+	 * Track the press for repeat scheduling.  The action is fired
+	 * the next manage cycle (via the `pending` flag); we'll stamp
+	 * last_fire_ms there so the repeat clock starts when the
+	 * action actually runs, not when river told us about the
+	 * keypress.
+	 */
+	if (kb->repeatable) {
+		kb->held	 = true;
+		kb->first_repeat = true;
+	}
 }
 
 static void
-xkb_binding_handle_released(__unused void *data,
-    __unused struct river_xkb_binding_v1  *river_binding)
+xkb_binding_handle_released(void	 *data,
+    __unused struct river_xkb_binding_v1 *river_binding)
 {
+	struct cow_keybinding *kb = data;
+	/* End the repeat sequence; the loop in cow_seat_process_bindings
+	 * will stop scheduling further fires. */
+	kb->held	 = false;
+	kb->first_repeat = false;
 }
 
 static void
-xkb_binding_handle_stop_repeat(__unused void *data,
-    __unused struct river_xkb_binding_v1     *river_binding)
+xkb_binding_handle_stop_repeat(void	 *data,
+    __unused struct river_xkb_binding_v1 *river_binding)
 {
+	struct cow_keybinding *kb = data;
+	/*
+	 * River's hint that repetition should stop -- typically when
+	 * the modifier set changes mid-press (e.g. user pressed
+	 * Super+Down, then released Super while Down still down: the
+	 * binding's combination no longer matches so the repeat must
+	 * end even though the key itself is still physically held).
+	 */
+	kb->held	 = false;
+	kb->first_repeat = false;
 }
 
 static const struct river_xkb_binding_v1_listener xkb_binding_listener = {
@@ -92,17 +119,21 @@ static const struct river_pointer_binding_v1_listener
 
 struct cow_keybinding *
 cow_keybinding_create(struct cow_seat *seat, xkb_keysym_t keysym,
-    uint32_t modifiers, cow_action_fn action, void *action_arg)
+    uint32_t modifiers, cow_action_fn action, void *action_arg, bool repeatable)
 {
 	struct cow_keybinding *kb = xcalloc(1, sizeof(*kb));
 
-	kb->keysym     = keysym;
-	kb->modifiers  = modifiers;
-	kb->action     = action;
-	kb->action_arg = action_arg;
-	kb->seat       = seat;
-	kb->enabled    = false;
-	kb->pending    = false;
+	kb->keysym	 = keysym;
+	kb->modifiers	 = modifiers;
+	kb->action	 = action;
+	kb->action_arg	 = action_arg;
+	kb->seat	 = seat;
+	kb->enabled	 = false;
+	kb->pending	 = false;
+	kb->repeatable	 = repeatable;
+	kb->held	 = false;
+	kb->first_repeat = false;
+	kb->last_fire_ms = 0;
 
 	kb->river_binding = river_xkb_bindings_v1_get_xkb_binding(
 	    cow_wm.xkb_bindings, seat->river_seat, keysym, modifiers);
@@ -167,16 +198,71 @@ cow_seat_enable_all_bindings(struct cow_seat *seat)
 	seat->bindings_enabled = true;
 }
 
+/*
+ * How long to wait between consecutive fires of a held repeatable
+ * binding.  The first repeat after the initial press waits
+ * repeat_delay_ms; subsequent repeats use repeat_interval_ms.  Both
+ * fall back to the COW_CFG_DEFAULT_* values when cow_config isn't
+ * available or carries non-positive values.
+ */
+static long
+repeat_wait_ms(const struct cow_keybinding *kb)
+{
+	int delay    = COW_CFG_DEFAULT_REPEAT_DELAY_MS;
+	int interval = COW_CFG_DEFAULT_REPEAT_INTERVAL_MS;
+	if (cow_config != NULL) {
+		if (cow_config->repeat_delay_ms > 0)
+			delay = cow_config->repeat_delay_ms;
+		if (cow_config->repeat_interval_ms > 0)
+			interval = cow_config->repeat_interval_ms;
+	}
+	return kb->first_repeat ? (long)delay : (long)interval;
+}
+
 void
 cow_seat_process_bindings(struct cow_seat *seat)
 {
+	long now_ms = cow_mono_ms();
+
 	struct cow_keybinding *kb;
 	wl_list_for_each(kb, &seat->keybindings, link)
 	{
-		if (kb->pending) {
+		/*
+		 * Fire on a fresh press (kb->pending), or on a scheduled
+		 * repeat tick for a held repeatable binding.  Repeat-only
+		 * fires (held but not pending) check the elapsed wait
+		 * against the appropriate delay/interval.
+		 */
+		/*
+		 * Two fire reasons: a fresh press (pending), or a
+		 * repeat tick on a held repeatable binding.  Track which
+		 * so the post-fire bookkeeping can advance the repeat
+		 * phase (first_repeat -> steady-state) only after the
+		 * first repeat actually runs.
+		 */
+		bool fire_press	 = kb->pending;
+		bool fire_repeat = false;
+		if (!fire_press && kb->held && kb->repeatable) {
+			long wait = repeat_wait_ms(kb);
+			if (now_ms - kb->last_fire_ms >= wait)
+				fire_repeat = true;
+		}
+
+		if (fire_press || fire_repeat) {
 			kb->pending = false;
 			if (kb->action != NULL)
 				kb->action(kb->action_arg);
+			/*
+			 * Stamp the fire time AFTER the action runs so
+			 * the delay clock counts from the user-visible
+			 * event.  Clear first_repeat only on a true
+			 * repeat fire -- the press path leaves it true
+			 * so the very first repeat waits repeat_delay_ms,
+			 * not repeat_interval_ms.
+			 */
+			kb->last_fire_ms = cow_mono_ms();
+			if (fire_repeat)
+				kb->first_repeat = false;
 		}
 	}
 
@@ -189,6 +275,30 @@ cow_seat_process_bindings(struct cow_seat *seat)
 				pb->action(pb->action_arg);
 		}
 	}
+}
+
+int
+cow_seat_next_repeat_ms(void)
+{
+	long		 now_ms = cow_mono_ms();
+	long		 min	= -1;
+	struct cow_seat *seat;
+	wl_list_for_each(seat, &cow_wm.seats, wm_link)
+	{
+		struct cow_keybinding *kb;
+		wl_list_for_each(kb, &seat->keybindings, link)
+		{
+			if (!kb->held || !kb->repeatable)
+				continue;
+			long due   = kb->last_fire_ms + repeat_wait_ms(kb);
+			long delta = due - now_ms;
+			if (delta < 0)
+				delta = 0;
+			if (min < 0 || delta < min)
+				min = delta;
+		}
+	}
+	return (min < 0) ? -1 : (int)min;
 }
 
 /*
@@ -404,7 +514,8 @@ register_config_keyboard_bindings(struct cow_seat *seat)
 		if (!cow_resolve_action(entry->action_string, &fn, &arg))
 			continue;
 
-		cow_keybinding_create(seat, keysym, modifiers, fn, arg);
+		cow_keybinding_create(seat, keysym, modifiers, fn, arg,
+		    entry->repeatable);
 	}
 }
 
@@ -518,7 +629,8 @@ register_default_bindings(struct cow_seat *seat)
 			cow_pointer_binding_create(seat, db->button, mods, fn,
 			    arg);
 		else
-			cow_keybinding_create(seat, db->key, mods, fn, arg);
+			cow_keybinding_create(seat, db->key, mods, fn, arg,
+			    /* repeatable = */ false);
 	}
 
 	/* Desk switching: Super+1..9 -> desk -d N
@@ -531,9 +643,11 @@ register_default_bindings(struct cow_seat *seat)
 		xasprintf(&switch_cmd, "desk -d %d", i + 1);
 		xasprintf(&move_cmd, "window-move -k %d", i + 1);
 		cow_keybinding_create(seat, desk_syms[i], super,
-		    action_execute_cmd_string, switch_cmd);
+		    action_execute_cmd_string, switch_cmd,
+		    /* repeatable = */ false);
 		cow_keybinding_create(seat, desk_syms[i], super_shift,
-		    action_execute_cmd_string, move_cmd);
+		    action_execute_cmd_string, move_cmd,
+		    /* repeatable = */ false);
 	}
 }
 

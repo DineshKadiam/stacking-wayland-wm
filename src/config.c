@@ -158,6 +158,8 @@ cow_config_create(void)
 	config->raise_on_focus	     = true;
 	config->default_layer	     = COW_CFG_DEFAULT_LAYER;
 	config->max_layer	     = COW_CFG_MAX_LAYER;
+	config->repeat_delay_ms	     = COW_CFG_DEFAULT_REPEAT_DELAY_MS;
+	config->repeat_interval_ms   = COW_CFG_DEFAULT_REPEAT_INTERVAL_MS;
 	config->icon_size	     = COW_CFG_DEFAULT_ICON_SIZE;
 	config->snap_distance	     = COW_CFG_DEFAULT_SNAP_DISTANCE;
 

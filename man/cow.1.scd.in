@@ -321,7 +321,7 @@ The following details those commands which just operate on general settings.
 Note that the same command might also contain window/output settings, which will
 be also be added under the relevant section.
 
-## bind modifier+key action ...
+## bind [-r] modifier+key action ...
 
 Key bindings are specified as a modifier string immediately followed by *+* and
 a keysym name, or *-* and a numeric keycode:
@@ -330,6 +330,11 @@ a keysym name, or *-* and a numeric keycode:
 bind MODIFIERS+keysym  command
 bind MODIFIERS-keycode command
 ```
+
+*-r*
+	Mark the binding as repeatable.  While the triggering key is held
+	the action re-fires every _repeat\_interval\_ms_ milliseconds after
+	an initial _repeat\_delay\_ms_ dwell (see *set*).
 
 *Modifier characters:*
 
@@ -354,10 +359,11 @@ Key symbols and codes can be determined with *wev*(1).
 Examples:
 
 ```
-bind L+Return  exec xterm
-bind LS+a      winops -c
-bind LCA+q     quit
-bind 0+F1      action-help
+bind L+Return     exec xterm
+bind LS+a         winops -c
+bind LCA+q        quit
+bind 0+F1         action-help
+bind -r L+Right   scroll -n           # hold Super+Right to keep paging
 ```
 
 ## mouse key action ...
@@ -1207,6 +1213,26 @@ behaviour of desktops and pages:
 *NOT£:* The _reserved._ settings are akin to X11's concept of a working-area.
 That is to say, these settings will reserve parts of the screen to be able to
 put taskbars, etc.
+
+## Keyboard Settings
+
+The following options can be used with the *set* command to tune
+keybinding behaviour:
+
+[[ *Key*
+:[ *Values*
+:< *Description*
+|  *repeat\_delay\_ms*
+:  integer (ms)
+:  Time the user must hold a *bind -r* repeatable key before the
+   action starts repeating after its first fire.  Default: _400_.
+|  *repeat\_interval\_ms*
+:  integer (ms, >= 1)
+:  Gap between consecutive repeats of a held *bind -r* binding once
+   the initial dwell has elapsed.  Default: _40_ (= 25 fires / s).
+
+A binding registered without *-r* fires exactly once per press,
+regardless of either setting.
 
 # SIGNALS
 

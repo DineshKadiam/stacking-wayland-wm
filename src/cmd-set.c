@@ -395,6 +395,39 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_NORMAL);
 	}
 
+	if (strcmp(key, "repeat_delay_ms") == 0) {
+		const char *errstr;
+		long long   v = strtonum(val, 0, 10000, &errstr);
+		if (errstr != NULL) {
+			cmdq_error(cmdq, "set: repeat_delay_ms: %s: %s", val,
+			    errstr);
+			xfree(val);
+			return (CMD_RETURN_ERROR);
+		}
+		if (cow_config != NULL)
+			cow_config->repeat_delay_ms = (int)v;
+		xfree(val);
+		return (CMD_RETURN_NORMAL);
+	}
+
+	if (strcmp(key, "repeat_interval_ms") == 0) {
+		const char *errstr;
+		/* Floor at 1ms; 0 would mean "fire every loop iteration"
+		 * which is busy-loopable, and the protocol doesn't sync
+		 * fast enough for sub-ms repeats to be meaningful. */
+		long long v = strtonum(val, 1, 10000, &errstr);
+		if (errstr != NULL) {
+			cmdq_error(cmdq, "set: repeat_interval_ms: %s: %s", val,
+			    errstr);
+			xfree(val);
+			return (CMD_RETURN_ERROR);
+		}
+		if (cow_config != NULL)
+			cow_config->repeat_interval_ms = (int)v;
+		xfree(val);
+		return (CMD_RETURN_NORMAL);
+	}
+
 	if (strcmp(key, "raise_on_focus") == 0) {
 		bool b;
 		if (cow_config != NULL && cmd_parse_bool(val, &b)) {

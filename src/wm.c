@@ -1300,6 +1300,20 @@ cow_wm_run(void)
 			}
 		}
 
+		/*
+		 * Shorten the poll timeout to the next held repeatable
+		 * binding's due instant so the next repeat fires on
+		 * schedule even when river is otherwise silent.  Floor
+		 * at 1ms so a binding whose due instant is in the past
+		 * doesn't busy-loop with poll(...,0).
+		 */
+		int repeat_ms = cow_seat_next_repeat_ms();
+		if (repeat_ms >= 0) {
+			int wait = repeat_ms < 1 ? 1 : repeat_ms;
+			if (poll_timeout < 0 || wait < poll_timeout)
+				poll_timeout = wait;
+		}
+
 		int ret = poll(fds, total_fds, poll_timeout);
 		if (ret < 0) {
 			if (errno == EINTR) {
@@ -1321,8 +1335,10 @@ cow_wm_run(void)
 		}
 		wl_display_dispatch_pending(cow_wm.display);
 
-		/* Poll timeout with armed pan edge: kick a manage cycle so
-		 * cow_output_pan_frame_tick() can fire the page switch. */
+		/* Poll timeout: kick a manage cycle so dwell-based
+		 * mechanisms (pan-frame edge scroll, key-repeat) can
+		 * fire promptly without waiting for an unrelated river
+		 * event. */
 		if (ret == 0 && poll_timeout > 0)
 			cow_wm.needs_manage_dirty = true;
 

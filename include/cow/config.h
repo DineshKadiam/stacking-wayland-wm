@@ -44,6 +44,14 @@ struct cow_desk;
 #define COW_CFG_DEFAULT_EDGE_SCROLL_DELAY 300
 #define COW_CFG_DEFAULT_SQUEEZE_WIDTH 300
 #define COW_CFG_DEFAULT_SQUEEZE_MIN_WIDTH 80
+/*
+ * Key-repeat timing for bindings registered with `bind -r`.  Defaults
+ * match the X11 / GNOME / KDE consensus (400ms initial dwell, then a
+ * repeat every 40ms = 25 Hz).  Both are in milliseconds for
+ * consistency with the other `_ms` knobs in the config.
+ */
+#define COW_CFG_DEFAULT_REPEAT_DELAY_MS 400
+#define COW_CFG_DEFAULT_REPEAT_INTERVAL_MS 40
 
 /*
  * Layer model (FvwmLayers-compatible).  Each window lives in a
@@ -85,11 +93,17 @@ struct cow_border_colour {
 
 /*
  * A single parsed keybinding action string from the config.
+ *
+ * repeatable: set by `bind -r`.  While the triggering key is held
+ * the bound action re-fires every cow_config->repeat_interval_ms
+ * after an initial cow_config->repeat_delay_ms dwell.  When false
+ * the binding fires exactly once per press.
  */
 struct cow_binding_entry {
 	struct wl_list link;
 	char	      *key_string; /* e.g. "L+Return", "LS+q" */
 	char *action_string; /* e.g. "action-terminal", "quit", "view-quit" */
+	bool  repeatable;
 };
 
 /*
@@ -273,6 +287,16 @@ struct cow_config {
 	 * Default false (disabled). */
 	bool edge_scroll;
 	int  edge_scroll_delay_ms; /* delay before scroll fires, default 300 */
+
+	/*
+	 * Key-repeat timing for bindings declared `bind -r`.
+	 * repeat_delay_ms: how long the user must hold the key before
+	 *   the action starts repeating after its first fire.
+	 * repeat_interval_ms: gap between consecutive repeats once
+	 *   repetition has started.
+	 */
+	int repeat_delay_ms;
+	int repeat_interval_ms;
 
 	/* Raise on focus: raise window when focused (default: on) */
 	bool raise_on_focus;
