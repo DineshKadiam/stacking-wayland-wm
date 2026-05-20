@@ -331,6 +331,10 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 				gh = view->saved_height;
 			}
 			cow_view_set_pending_geometry(view, gx, gy, gw, gh);
+
+			if (view->container_member != NULL)
+				cow_view_sync_container_geometry(view, gx, gy,
+				    gw, gh);
 			if (touch_h)
 				view->maximized_h = false;
 			if (touch_v)
@@ -388,6 +392,10 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 		}
 		cow_clamp_dimensions(&new_w, &new_h);
 		cow_view_set_pending_geometry(view, new_x, new_y, new_w, new_h);
+
+		if (view->container_member != NULL)
+			cow_view_sync_container_geometry(view, new_x, new_y,
+			    new_w, new_h);
 	}
 
 	if (axis == MAX_AXIS_BOTH || axis == MAX_AXIS_H)
@@ -538,6 +546,12 @@ do_expand(struct cow_view *view, enum expand_dir dir, bool toggle)
 		new_h = 50;
 
 	cow_view_set_pending_geometry(view, new_x, new_y, new_w, new_h);
+	/* Container parity: see do_maximize.  Without this, expand on a
+	 * container member leaves the container's stored origin stale
+	 * and the expanded content renders at the wrong position. */
+	if (view->container_member != NULL)
+		cow_view_sync_container_geometry(view, new_x, new_y, new_w,
+		    new_h);
 	cow_view_set_maximized(view, true);
 
 	int mbi = cow_view_maximize_button_index(view);
