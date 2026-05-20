@@ -77,11 +77,20 @@ xkb_binding_handle_stop_repeat(void	 *data,
 {
 	struct cow_keybinding *kb = data;
 	/*
-	 * River's hint that repetition should stop -- typically when
-	 * the modifier set changes mid-press (e.g. user pressed
-	 * Super+Down, then released Super while Down still down: the
-	 * binding's combination no longer matches so the repeat must
-	 * end even though the key itself is still physically held).
+	 * River's hint that repetition should stop.  Per the
+	 * river_xkb_binding_v1.stop_repeat protocol docs this is
+	 * "generally sent when some other (possibly unbound) key is
+	 * pressed after the pressed event is sent and before the
+	 * released event is sent for this binding" -- i.e. the user
+	 * has moved on to another action while the original key is
+	 * still held, so we should stop firing the bound action even
+	 * though `released` has not yet arrived.
+	 *
+	 * Modifier-only changes (e.g. releasing Super while Down is
+	 * still held on a Super+Down binding) do NOT trigger
+	 * `released` per the protocol; observing those would require
+	 * river_xkb_bindings_seat_v1.modifiers_watch (v3) which we
+	 * don't currently use.
 	 */
 	kb->held	 = false;
 	kb->first_repeat = false;
