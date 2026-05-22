@@ -1934,4 +1934,6 @@ cow_view_json_add_placement(struct cJSON *obj, const struct cow_view *view)
 	cJSON_AddNumberToObject(obj, "desk", view->desk ? view->desk->nr : -1);
 	cJSON_AddStringToObject(obj, "output",
 	    (view->output && view->output->name) ? view->output->name : "");
+	cJSON_AddNumberToObject(obj, "output_number",
+	    view->output ? view->output->number : 0);
 }

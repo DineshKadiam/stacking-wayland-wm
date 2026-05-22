@@ -166,6 +166,7 @@ cow_status_emit(void)
 		cJSON *out = cJSON_CreateObject();
 		cJSON_AddStringToObject(out, "name",
 		    output->name ? output->name : "");
+		cJSON_AddNumberToObject(out, "number", output->number);
 		cJSON_AddNumberToObject(out, "current_desk",
 		    output->current_desk->nr);
 

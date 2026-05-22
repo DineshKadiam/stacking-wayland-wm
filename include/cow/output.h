@@ -78,6 +78,17 @@ struct cow_output {
 	/* Human-readable output name (e.g. "DP-1", "HDMI-A-1") */
 	char *name;
 
+	/*
+	 * Stable 1-based ordinal assigned by cow_outputs_renumber().
+	 * Outputs are sorted top-to-bottom (by y), then left-to-right
+	 * (by x), then by insertion order as a tiebreaker; the result
+	 * is rank 1..N.  Recomputed whenever an output is added,
+	 * removed, or repositioned.  Surfaced as "number" in IPC so
+	 * external tools (cowpager) can refer to monitors by the same
+	 * digit users see.
+	 */
+	int number;
+
 	/* Per-output background colour (overrides global if set) */
 	float bg_colour[4];
 	bool  has_bg_colour;
@@ -201,6 +212,15 @@ struct cow_output *cow_output_find_by_name(const char *);
 int cow_outputs_max_bottom(void);
 
 void cow_output_update_current(void);
+
+/*
+ * Recompute every output's `number` field in raster-scan order
+ * (top-to-bottom by y, then left-to-right by x, then by current
+ * list order as a stable tiebreaker).  Cheap (O(n log n) where n
+ * is the number of outputs, typically <= 8); safe to call from any
+ * code path that mutates output geometry or membership.
+ */
+void cow_outputs_renumber(void);
 
 /*
  * Pan frame management API lives in cow/pan_frames.h.

@@ -114,6 +114,9 @@ output_handle_position(void	    *data,
 	output->usable_area.width  = output->width;
 	output->usable_area.height = output->height;
 	cow_output_apply_reserved_area(output);
+
+	/* A monitor moved -- the raster-scan order may have changed. */
+	cow_outputs_renumber();
 }
 
 static void
@@ -180,6 +183,11 @@ cow_output_create(struct river_output_v1 *river_output)
 	/* Register with layer shell for non_exclusive_area events */
 	cow_layer_shell_init_output(output);
 
+	/* Assign a tentative ordinal.  The compositor will follow this
+	 * with `position` and `dimensions` events; renumber again
+	 * there so the ordering reflects the final geometry. */
+	cow_outputs_renumber();
+
 	return output;
 }
 
@@ -213,6 +221,9 @@ cow_output_destroy(struct cow_output *output)
 	xfree(output->name);
 	river_output_v1_destroy(output->river_output);
 	xfree(output);
+
+	/* Numbering shifts when an output disappears. */
+	cow_outputs_renumber();
 }
 
 void
@@ -353,6 +364,53 @@ cow_output_find_by_name(const char *name)
 	return NULL;
 }
 
+/*
+ * Stable raster-scan compare for cow_outputs_renumber's qsort:
+ *   primary key   = y  (smaller wins -> higher up the screen)
+ *   secondary key = x  (smaller wins -> further left)
+ *   tertiary key  = original list position (stable for identical
+ *                   coordinates, e.g. two outputs mirrored at (X, Y))
+ */
+struct renumber_item {
+	struct cow_output *output;
+	int		   seq;
+};
+
+static int
+renumber_cmp(const void *a, const void *b)
+{
+	const struct renumber_item *ra = a;
+	const struct renumber_item *rb = b;
+	if (ra->output->y != rb->output->y)
+		return (ra->output->y < rb->output->y) ? -1 : 1;
+	if (ra->output->x != rb->output->x)
+		return (ra->output->x < rb->output->x) ? -1 : 1;
+	return ra->seq - rb->seq;
+}
+
+void
+cow_outputs_renumber(void)
+{
+	int		   n = 0;
+	struct cow_output *o;
+	wl_list_for_each(o, &cow_wm.outputs, wm_link) n++;
+	if (n == 0)
+		return;
+
+	struct renumber_item *items = xcalloc((size_t)n, sizeof(*items));
+	int		      i	    = 0;
+	wl_list_for_each(o, &cow_wm.outputs, wm_link)
+	{
+		items[i].output = o;
+		items[i].seq	= i;
+		i++;
+	}
+	qsort(items, (size_t)n, sizeof(*items), renumber_cmp);
+	for (i = 0; i < n; i++)
+		items[i].output->number = i + 1;
+	xfree(items);
+}
+
 int
 cow_outputs_max_bottom(void)
 {
@@ -393,4 +451,3 @@ cow_output_update_current(void)
 		}
 	}
 }
-

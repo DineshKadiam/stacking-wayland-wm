@@ -46,6 +46,15 @@ is a shell-script, contains the relevant commands to set the output layout.
 *NOTE:* in this example, it is assumed that *$XDG\_CONFIG\_HOME* is set to
 _~/.config_.
 
+*cow* will assign all outputs a number to a tree with a defined order.  That
+order is top-down, left-to-right, so far example, the following diagram
+illustrates output configuration and their assigned number:
+
+```
+out1 (0)
+out2 (1)    out3 (2)    out4 (3)
+```
+
 # ANATOMY OF A WINDOW
 
 *cow* puts a decorative border around windows.  This border consists of a bar on
