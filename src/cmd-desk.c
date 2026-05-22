@@ -37,6 +37,7 @@ struct cmd_entry cmd_desk_entry = {
 	0,
 	"[-t target output] [-d 0-9] [-c 0-9] [-n] [-p]",
 	cmd_desk_exec,
+	0,
 };
 
 static enum cmd_retval

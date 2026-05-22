@@ -50,6 +50,7 @@ struct cmd_entry cmd_move_entry = {
 	0,
 	"[-C] [-d dir [-n]] [-o output] [-c] [-k 0-9] [-x X] [-y Y]",
 	cmd_move_exec,
+	0,
 };
 
 static enum cmd_retval

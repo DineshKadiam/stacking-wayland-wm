@@ -50,6 +50,7 @@ struct cmd_entry cmd_show_entry = {
 	2,
 	"show topic",
 	cmd_show_exec,
+	0,
 };
 
 static enum cmd_retval

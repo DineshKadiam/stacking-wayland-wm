@@ -57,6 +57,7 @@ struct cmd_entry cmd_rule_entry = {
 	"rule -g | -t output[:desk] -n <name> -T <event> [-s sel] cmd...\n"
 	"rule -d -n <name>",
 	cmd_rule_exec,
+	CMD_OWN_TS,
 };
 
 static enum cmd_retval

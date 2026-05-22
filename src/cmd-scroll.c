@@ -92,6 +92,7 @@ struct cmd_entry cmd_scroll_entry = {
 	"[-t output] [-w] [-p] H V | -a col,row | -d DIR | -n | -P | "
 	"[-R] -r",
 	cmd_scroll_exec,
+	0,
 };
 
 static enum cmd_retval

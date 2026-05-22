@@ -131,6 +131,18 @@ enum cmd_retval {
 	CMD_RETURN_NORMAL = 0,
 };
 
+/*
+ * Command flags.
+ *
+ * CMD_OWN_TS - the command parses -t / -s itself with its own semantics
+ *              (e.g. `rule` uses -t for output[:desk] scope and -s for a
+ *              deferred view selector).  The queue dispatcher must not
+ *              pre-resolve these as ctx specifiers before running the
+ *              command, or registration would fail at parse time when
+ *              the target view doesn't yet exist.
+ */
+#define CMD_OWN_TS (1u << 0)
+
 /* Command definition. */
 struct cmd_entry {
 	const char *name;
@@ -142,6 +154,8 @@ struct cmd_entry {
 	const char *usage;
 
 	enum cmd_retval (*exec)(struct cmd *, struct cmd_q *);
+
+	unsigned int flags;
 };
 
 /* A parsed command instance. */

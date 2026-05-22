@@ -46,6 +46,7 @@ struct cmd_entry cmd_focus_entry = {
 	0,
 	"focus [-npw] [-d dir] [-o output] [-t %app|/title/|#id]",
 	cmd_focus_exec,
+	0,
 };
 
 /*

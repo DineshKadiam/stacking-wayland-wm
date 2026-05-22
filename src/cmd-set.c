@@ -105,6 +105,7 @@ struct cmd_entry cmd_set_entry = {
 	-1,
 	"set [-v] key value",
 	cmd_set_exec,
+	0,
 };
 
 static enum cmd_retval

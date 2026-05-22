@@ -34,6 +34,7 @@ struct cmd_entry cmd_list_commands_entry = {
 	0,
 	"list-commands",
 	cmd_list_commands_exec,
+	0,
 };
 
 static enum cmd_retval

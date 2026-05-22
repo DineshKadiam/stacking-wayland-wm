@@ -44,6 +44,7 @@ struct cmd_entry cmd_quit_entry = {
 	0,
 	"quit [-r]",
 	cmd_quit_exec,
+	0,
 };
 
 static enum cmd_retval

@@ -33,6 +33,7 @@ struct cmd_entry cmd_bind_entry = {
 	-1,
 	"bind key action ...",
 	cmd_bind_exec,
+	0,
 };
 
 static enum cmd_retval

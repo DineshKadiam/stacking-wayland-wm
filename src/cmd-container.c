@@ -29,6 +29,7 @@ struct cmd_entry cmd_container_entry = {
 	0,
 	"[-t target] [-s source] [-arnpNS]",
 	cmd_container_exec,
+	0,
 };
 
 static enum cmd_retval

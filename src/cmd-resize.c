@@ -40,6 +40,7 @@ struct cmd_entry cmd_resize_entry = {
 	0,
 	"[-gs] [-d dir] [-w width] [-h height]",
 	cmd_resize_exec,
+	0,
 };
 
 static enum cmd_retval

@@ -77,6 +77,7 @@ struct cmd_entry cmd_winops_entry = {
 	0,
 	"[-Icilrs] [-t target window]",
 	cmd_winops_exec,
+	0,
 };
 
 static enum cmd_retval
@@ -141,6 +142,7 @@ struct cmd_entry cmd_window_expand_entry = {
 	0,
 	"[-t target] [-d direction] [-T]",
 	cmd_window_expand_exec,
+	0,
 };
 
 static enum cmd_retval
@@ -177,6 +179,7 @@ struct cmd_entry cmd_window_maximize_entry = {
 	0,
 	"window-maximize [-t target] [-T] [-m] [-u] [-h] [-v]",
 	cmd_window_maximize_exec,
+	0,
 };
 
 static enum cmd_retval
@@ -226,6 +229,7 @@ struct cmd_entry cmd_window_shade_entry = {
 	0,
 	"window-shade [-t target] [-d direction]",
 	cmd_window_shade_exec,
+	0,
 };
 
 static enum cmd_retval

@@ -18,6 +18,7 @@
 #include <sys/types.h>
 
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -130,12 +131,25 @@ cmdq_continue(struct cmd_q *cmdq)
 			cmdq->time = time(NULL);
 			cmdq->number++;
 
-			/* Resolve -t/-s context specifiers */
+			/* Resolve -t/-s context specifiers.
+			 *
+			 * Commands marked CMD_OWN_TS (e.g. `rule`) interpret
+			 * -t / -s with their own semantics and must not have
+			 * them pre-resolved as ctx specifiers, because the
+			 * referenced view typically does not exist at
+			 * registration time. */
 			memset(&cmdq->target, 0, sizeof(cmdq->target));
 			memset(&cmdq->source, 0, sizeof(cmdq->source));
 
-			const char *t_spec    = args_get(cmdq->cmd->args, 't');
-			const char *s_spec    = args_get(cmdq->cmd->args, 's');
+			bool own_ts = (cmdq->cmd->entry->flags & CMD_OWN_TS) !=
+			    0;
+
+			const char *t_spec    = own_ts ?
+			       NULL :
+			       args_get(cmdq->cmd->args, 't');
+			const char *s_spec    = own_ts ?
+			       NULL :
+			       args_get(cmdq->cmd->args, 's');
 			char	   *ctx_cause = NULL;
 
 			if (t_spec != NULL) {
@@ -146,7 +160,7 @@ cmdq_continue(struct cmd_q *cmdq)
 					retval = CMD_RETURN_ERROR;
 					break;
 				}
-			} else {
+			} else if (!own_ts) {
 				/*
 				 * No -t given.  If a default target was
 				 * seeded on the queue (by the rule
