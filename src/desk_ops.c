@@ -316,9 +316,20 @@ switch_output_page(struct cow_output *output, int new_vx, int new_vy)
 	{
 		if (view->closed || view->output != output)
 			continue;
-		if (view->desk != desk &&
-		    !(view->flags & COW_VIEW_STICKY_PAGE_FLAG))
+
+		/*
+		 * Only views on the desk being scrolled are affected by
+		 * the page change.  Page-sticky views whose *home desk*
+		 * is some other desk on the same output (e.g. a window
+		 * that's both desk-sticky and page-sticky) must NOT be
+		 * shifted here: their on-screen position is computed
+		 * from their home desk's page_vx, which doesn't move
+		 * when we scroll a different desk.  Shifting them by
+		 * this desk's delta would push them off-screen.
+		 */
+		if (view->desk != desk)
 			continue;
+
 		/*
 		 * Page-sticky windows must follow the viewport so their
 		 * screen position stays constant.  Shift the view's vx /

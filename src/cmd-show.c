@@ -180,6 +180,7 @@ do_show_output(int fd)
 	{
 		cJSON *o = cJSON_CreateObject();
 		cJSON_AddStringToObject(o, "name", out->name ? out->name : "");
+		cJSON_AddNumberToObject(o, "number", out->number);
 		struct cow_box geom = {
 			.x	= out->x,
 			.y	= out->y,

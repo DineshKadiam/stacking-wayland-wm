@@ -17,6 +17,7 @@ executable('cowpager',
     include_directories: [
         include_directories('..'),
         include_directories('../vendor'),
+        include_directories('../include'),
     ],
     dependencies: pager_deps,
     install: true,

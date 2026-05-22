@@ -2,79 +2,108 @@ cowpager(1) "@VERSION@" "cowpager - cow pager"
 
 # NAME
 
-cowpager - Visual pager for the cow window manager
+cowpager - FvwmPager-style visual pager for the cow window manager
 
 # SYNOPSIS
 
-*cowpager* [*-o* _output_] [*-h*]
+*cowpager* [*-r* _rows_] [*-c* _cols_] [*-m* _mon_[,_mon_...]] [*-1*] [*-h*]
 
 # DESCRIPTION
 
-*cowpager* shows an overview of windows on desks.  Windows are drawn
-as miniature representations on their specific desk.
+*cowpager* is a small graphical pager that displays desks tracked by
+and the windows on them.  Each desk is drawn as one unified
+canvas containing every windoW.
 
-
-
-*cowpager* requires cow to be running and accessible via
-_$XDG\_RUNTIME\_DIR/cow-status.sock_ and
-_$XDG\_RUNTIME\_DIR/cow-cmd.sock_.
+Without any options, *cowpager* will show all desks and windows across all
+outputs.
 
 # OPTIONS
 
-*-o* output
-	The specific output name *cowpager* should use when displaying
-	desks, windows.
+*-r* _ROWS_
+	Arrange desks in _ROWS_ rows.  If only *-r* is given, the
+	number of columns is computed from the number of desks.
+
+*-c* _COLS_
+	Arrange desks in _COLS_ columns.  If only *-c* is given, the
+	number of rows is computed from the number of desks.  When
+	neither *-r* nor *-c* is given, all desks are arranged in a single row.
+
+*-m* _LIST_
+	Restrict the pager to the listed outputss.  _LIST_ is one or
+	more output names separated by commas (e.g.
+	*-m HDMI-A-1,DP-1*).  Both the tab strip and the windows
+	drawn on the page grid are filtered to this set; tabs appear
+	in the order given on the command line.
+
+	When *-m* names a *single* output, the tab strip is not shown.
+
+	Without *-m*, all outputs are shown in the way *cow* manages them.  See
+	*cow(1)* -- _OUTPUT MANAGEMENT_.
+
+*-1*
+	Display only the currently active desk.
 
 *-h*
 	Print usage and exit.
 
 # DISPLAY
 
-Each desk is shown as a rounded rectangle labelled with its desk
-number.  The currently active desk is highlighted in blue.
+## OUTPUT TABS
 
-When the page grid is larger than 1×1 (configured via
-*set desktop\_size N M*), each desk cell is subdivided into a grid of
-page sub-cells.  The currently visible page is highlighted in green.
+Each tab in a desk cell will show the following information:
 
-Miniature window positions are drawn within each page sub-cell at
-proportional coordinates.  The focused window is shown in orange;
-other windows in grey.
+- *focused* -- this output holds the focused window *and* that
+  window lives on this desk.  Shown as a bright green background.
+- *active* -- this output's current desk is this desk (but the
+  focused window is elsewhere).  Shown as a light-grey background.
+- *present* -- this output is on a different desk, but this desk
+  contains at least one window owned by it.  Shown as a thin blue
+  accent stripe along the bottom of the tab.
+- *empty* -- No windows at all, shown as a light-grey background.
+
+The tab label is the output's name when it fits, falling back to its
+cow-assigned *number* when the name would overflow the slot.
+
+## PAGE GRID AND VIEWPORTS
+
+Window miniatures are placed on the grid.  Windows are coloured by their id.
+The focused window is drawn in yellow.
+
+For every output currently on the active desk, a translucent yellow
+rectangle marks that output's viewport position within the page
+grid.  When two outputs share a desk but sit on different pages,
+both rectangles are drawn.
 
 # USE
 
-- *Click a desk cell*: sends *desk -d N* to switch to that desk.
-- *Click a page sub-cell*: sends *page -c col row* to switch to that
-  page (only meaningful when the page grid is larger than 1×1).
+- *Click a window thumbnail*: navigates to that window's desk and page.
+- *Click an output tab*: Focuses that output.  In *global* mode, the desk is
+  switched to.
+- *Click a desk label band*: switches to that desk.
 
-# ENVIRONMENT
+# EXAMPLES
 
-*XDG\_RUNTIME\_DIR*
-	Used to locate the cow status and command sockets.
-
-# EXAMPLE
-
-Start cowpager in the top-right corner (the default):
+Show every output and every desk (the default):
 
 ```
 cowpager &
 ```
 
-Bind to a specific output:
+Limit the pager to two specific outputs, arranged in two rows:
 
 ```
-cowpager -o DVI-I-3 &
+cowpager -r 2 -m HDMI-A-1,DP-1 &
 ```
 
-Launch from *cow.conf* so it starts with the session:
+Single-output pager pinned to *DP-1*, showing only the active desk:
 
 ```
-exec cowpager
+cowpager -1 -m DP-1 &
 ```
 
 # SEE ALSO
 
-*cow*(1), *cowbar*(1), *moocow*(1)
+*cow*(1)
 
 # AUTHORS
 

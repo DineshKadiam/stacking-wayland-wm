@@ -87,21 +87,10 @@
 #endif
 
 /*
- * Attribute macros.
+ * Attribute macros live in their own header so cow's companion utilities
+ * can pull them in without dragging in the rest of this portability
+ * shim.
  */
-#ifndef __unused
-#define __unused __attribute__((__unused__))
-#endif
-
-#ifndef printflike1
-#define printflike1 __attribute__((format(printf, 1, 2)))
-#endif
-#ifndef printflike2
-#define printflike2 __attribute__((format(printf, 2, 3)))
-#endif
-
-#ifndef nitems
-#define nitems(n) (sizeof(n) / sizeof(*(n)))
-#endif
+#include "cow/attrs.h"
 
 #endif
