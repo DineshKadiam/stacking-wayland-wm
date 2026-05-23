@@ -323,11 +323,6 @@ against that window.
 	carry one single-click binding and one double-click binding
 	simultaneously.
 
-*-2*
-	Double-click binding (default is single-click).  A region can
-	carry one single-click binding and one double-click binding
-	simultaneously; they're tracked as separate keys.
-
 The _region_ argument is case-insensitive and accepts both the compass
 shorthands and the long form:
 
