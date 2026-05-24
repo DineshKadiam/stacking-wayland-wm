@@ -144,9 +144,12 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 {
 	struct cow_view *view = data;
 
+	bool changed = (view->content_width != width ||
+	    view->content_height != height);
+
 	/* Mark decoration dirty if dimensions changed so the frame
 	 * gets redrawn on the next render cycle. */
-	if (view->content_width != width || view->content_height != height) {
+	if (changed) {
 		view->dec.dirty = true;
 		cow_wm_request_manage_dirty();
 	}
@@ -154,6 +157,22 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 	view->content_width  = width;
 	view->content_height = height;
 	view->has_dimensions = true;
+
+	/*
+	 * Notify status clients (cowpager, cowbar, ...) so that
+	 * window-thumbnail miniatures and any size-derived UI track
+	 * the new dimensions promptly.  Without this, a window's
+	 * IPC-reported `width` / `height` only refreshes when some
+	 * unrelated status event (focus change, desk switch, view
+	 * add/destroy) happens to fire next, which can leave a
+	 * just-unmaximized window still looking maximized in the
+	 * pager for an arbitrary stretch of time.
+	 *
+	 * Skip the no-op case so identical-size redraws don't
+	 * needlessly re-broadcast the entire snapshot.
+	 */
+	if (changed)
+		cow_status_emit();
 }
 
 static void
@@ -916,6 +935,8 @@ cow_view_save_geometry(struct cow_view *view)
 void
 cow_view_set_maximized(struct cow_view *view, bool max)
 {
+	bool changed = (view->maximized != max);
+
 	/* Keep the per-axis flags in step with the unified one for
 	 * call sites that don't model an axis -- drag-to-unmax,
 	 * fullscreen toggle, state restore on session reload, etc.
@@ -924,6 +945,16 @@ cow_view_set_maximized(struct cow_view *view, bool max)
 	view->maximized	  = max;
 	view->maximized_h = max;
 	view->maximized_v = max;
+
+	/*
+	 * Notify status clients of the flip so per-window UI (the
+	 * pager's maximized hint, status bars, etc.) update without
+	 * having to wait for an unrelated status event.  The
+	 * dimensions handler will emit again once the client acks the
+	 * resize; that's fine, status snapshots are cheap.
+	 */
+	if (changed)
+		cow_status_emit();
 }
 
 struct cow_box

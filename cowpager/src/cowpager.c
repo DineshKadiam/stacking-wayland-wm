@@ -109,6 +109,29 @@ static struct wl_surface    *surface;
 static struct xdg_surface   *xdg_surface;
 static struct xdg_toplevel  *xdg_toplevel;
 
+/*
+ * Tracked wl_outputs.  We bind every output the compositor advertises
+ * so that wl_surface.enter / wl_surface.leave events on cowpager's
+ * own toplevel.
+ */
+struct cp_output {
+	struct wl_output *wl_output;
+	uint32_t	  global_name;
+	char		  name[64];
+	int		  on_surface; /* 1 if cowpager's surface entered it */
+};
+
+#define CP_MAX_TRACKED_OUTPUTS 16
+static struct cp_output cp_outputs[CP_MAX_TRACKED_OUTPUTS];
+static int		cp_n_outputs;
+
+/*
+ * Sticky cache of the last "user-relevant" current output observed.
+ * Updated only when cow reports current=true
+ * for an output that cowpager's surface is NOT currently sitting on.
+ */
+static char cp_user_output[64];
+
 static int    surface_configured;
 static int    win_w, win_h; /* current window size from configure */
 static double ptr_x, ptr_y;
@@ -118,6 +141,32 @@ static char   cmd_sock[4096];
 static int    opt_rows = 0;	/* -r ROWS; 0 = auto */
 static int    opt_cols = 0;	/* -c COLS; 0 = auto */
 static int    opt_current_only; /* -1: only show the active desk */
+
+/*
+ * Drag-an-overlay-plate handles.  The page-grid drawing publishes one
+ * record per monitor name plate it renders; press-based hit-testing
+ * uses these to decide whether a press starts a monitor drag (rather
+ * than a plain page click or a window-thumbnail click).
+ */
+struct overlay_handle {
+	char   name[64];       /* monitor name (output->name) */
+	double px, py, pw, ph; /* plate rectangle in cowpager pixels */
+};
+
+#define MAX_OVERLAY_HANDLES (MAX_OUTS * MAX_DESKS)
+static struct overlay_handle overlay_handles[MAX_OVERLAY_HANDLES];
+static int		     n_overlay_handles;
+
+/* Drag state.  When dragging != 0 the press initially hit a plate; on
+ * release we resolve the destination and dispatch.  The `start_*`
+ * fields capture the drag origin so the rendering code can sanity-check
+ * threshold (small motions don't open a drag).
+ */
+static int    dragging;
+static char   drag_monitor[64];
+static double drag_start_x, drag_start_y;
+static double drag_cur_x, drag_cur_y;
+static int    opt_verbose; /* -v: log click decisions to stderr */
 
 /*
  * -m NAME[,NAME,...] restricts the pager to a subset of monitors.
@@ -142,6 +191,9 @@ static int	       wake_pipe[2];
 static void
 ipc_send(const char *cmd)
 {
+	if (opt_verbose)
+		fprintf(stderr, "cowpager: ipc_send: %s\n", cmd);
+
 	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd < 0)
 		return;
@@ -290,7 +342,61 @@ window_colour(const char *id, double *r, double *g, double *b)
 	hsv_to_rgb(hue, 0.55, 0.78, r, g, b);
 }
 
+/*
+ * Stable colour per monitor name.  Used to colour-code the
+ * per-monitor tab in the chrome strip and the viewport overlay drawn
+ * in each desk's page grid, so the user can read the monitor->page
+ * relationship at a glance.
+ */
+static void
+monitor_hue(const char *name, double *hue_out)
+{
+	if (name == NULL || name[0] == '\0') {
+		*hue_out = -1.0;
+		return;
+	}
+	uint32_t h = str_hash(name);
+	*hue_out   = (double)((h * 7919u) % 360);
+}
+
+static void
+monitor_colour(const char *name, double *r, double *g, double *b)
+{
+	double hue;
+	monitor_hue(name, &hue);
+	if (hue < 0.0) {
+		*r = 0.85;
+		*g = 0.85;
+		*b = 0.85;
+		return;
+	}
+	hsv_to_rgb(hue, 0.70, 0.92, r, g, b);
+}
+
+static void
+monitor_colour_muted(const char *name, double *r, double *g, double *b)
+{
+	double hue;
+	monitor_hue(name, &hue);
+	if (hue < 0.0) {
+		*r = 0.50;
+		*g = 0.50;
+		*b = 0.55;
+		return;
+	}
+	/* Same hue as monitor_colour, but lower saturation and
+	 * darker -- the border becomes a quiet edge rather than a
+	 * loud frame.  Still legible against any per-window fill
+	 * because we keep enough chroma for hue identity.
+	 */
+	hsv_to_rgb(hue, 0.45, 0.55, r, g, b);
+}
+
 static const char *single_pinned_output(void);
+static const char *cp_host_output(void);
+static int	   cp_surface_on_output(const char *name);
+static int hit_test_page(const state_t *st, double x, double y, int *desk_nr,
+    int *pc_out, int *pr_out, int *tab_out, const char **out_for_cmd);
 
 /* True if the desktop configuration gives each output its own desks
  * (i.e. monitor sub-columns are meaningful). */
@@ -408,6 +514,21 @@ reference_output(const state_t *st)
 	if (n > 0)
 		return tmp[0];
 	return st->n_outs ? &st->outs[0] : NULL;
+}
+
+/*
+ * Look up a window's own output by name.  Falls back to NULL when the
+ * window's output field is empty or the named output isn't tracked.
+ */
+static const pout_t *
+output_for_window(const state_t *st, const pwin_t *w)
+{
+	if (w == NULL || w->output[0] == '\0')
+		return NULL;
+	for (int i = 0; i < st->n_outs; i++)
+		if (strcmp(st->outs[i].name, w->output) == 0)
+			return &st->outs[i];
+	return NULL;
 }
 
 static void
@@ -644,31 +765,34 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 	}
 
 	/*
-	 * Window miniatures.  Windows on this desk are drawn for the
-	 * set of monitors the user opted into via -m (or all monitors
-	 * if -m isn't given).  This is the FvwmPager "everywhere"
-	 * view across the visible monitor set.
+	 * Each window's thumbnail is sized in terms of its OWN
+	 * monitor's pixel dimensions, not the reference monitor's.
 	 */
+	double cell_w = (double)sw / pcols;
+	double cell_h = (double)sh / prows;
 	for (int wi = 0; wi < st->n_wins; wi++) {
 		const pwin_t *w = &st->wins[wi];
 		if (w->desk != d->nr)
 			continue;
 		if (!monitor_visible(w->output))
 			continue;
-		/* Desk pixel-space dimensions. */
-		int desk_w = pcols * ow;
-		int desk_h = prows * oh;
-		if (desk_w <= 0 || desk_h <= 0)
+
+		const pout_t *wo = output_for_window(st, w);
+		int wow		 = (wo && wo->output_w > 0) ? wo->output_w : ow;
+		int woh		 = (wo && wo->output_h > 0) ? wo->output_h : oh;
+		if (wow <= 0 || woh <= 0)
 			continue;
+		int desk_w = pcols * wow;
+		int desk_h = prows * woh;
 		if (w->vx < 0 || w->vx >= desk_w)
 			continue;
 		if (w->vy < 0 || w->vy >= desk_h)
 			continue;
 
-		double wx = sx + (double)w->vx / desk_w * sw;
-		double wy = sy + (double)w->vy / desk_h * sh;
-		double ww = (double)w->w / desk_w * sw;
-		double wh = (double)w->h / desk_h * sh;
+		double wx = sx + ((double)w->vx / wow) * cell_w;
+		double wy = sy + ((double)w->vy / woh) * cell_h;
+		double ww = ((double)w->w / wow) * cell_w;
+		double wh = ((double)w->h / woh) * cell_h;
 
 		if (ww < 3)
 			ww = 3;
@@ -692,7 +816,15 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		cairo_rectangle(cr, wx, wy, ww, wh);
 		cairo_fill(cr);
 
-		cairo_set_source_rgba(cr, 0.08, 0.08, 0.10, 1.0);
+		double br, bg_, bb;
+		if (wo != NULL && wo->name[0] != '\0') {
+			monitor_colour_muted(wo->name, &br, &bg_, &bb);
+		} else {
+			br  = 0.08;
+			bg_ = 0.08;
+			bb  = 0.10;
+		}
+		cairo_set_source_rgba(cr, br, bg_, bb, 1.0);
 		cairo_set_line_width(cr, 1.0);
 		cairo_set_dash(cr, NULL, 0, 0);
 		cairo_rectangle(cr, wx + 0.5, wy + 0.5, ww - 1, wh - 1);
@@ -700,31 +832,121 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 	}
 
 	/*
-	 * Sub-page viewport overlays.  Draw a translucent yellow rect
-	 * at each monitor's viewport position within this desk -- but
-	 * only for monitors currently on this desk.
+	 * Sub-page viewport overlays -- one per monitor currently on
+	 * this desk -- coloured by the monitor's stable palette entry
+	 * and labelled with the monitor's name when there's room.
 	 */
-	double desk_w = (double)pcols * ow;
-	double desk_h = (double)prows * oh;
-	if (desk_w > 0 && desk_h > 0) {
-		for (int oi = 0; oi < st->n_outs; oi++) {
-			const pout_t *o = &st->outs[oi];
-			if (o->current_desk != d->nr)
+	struct overlay_rec {
+		const pout_t *o;
+		double	      ax, ay, aw, ah;
+	};
+	struct overlay_rec ov[MAX_OUTS];
+	int		   n_ov = 0;
+
+	for (int oi = 0; oi < st->n_outs; oi++) {
+		const pout_t *o = &st->outs[oi];
+		if (o->current_desk != d->nr)
+			continue;
+		if (!monitor_visible(o->name))
+			continue;
+		int oow = o->output_w > 0 ? o->output_w : ow;
+		int ooh = o->output_h > 0 ? o->output_h : oh;
+		if (oow <= 0 || ooh <= 0)
+			continue;
+		double ax = sx + ((double)o->page_vx / oow) * cell_w;
+		double ay = sy + ((double)o->page_vy / ooh) * cell_h;
+		double aw = cell_w;
+		double ah = cell_h;
+
+		double mr, mg, mb;
+		monitor_colour(o->name, &mr, &mg, &mb);
+
+		cairo_set_source_rgba(cr, mr, mg, mb, 0.22);
+		cairo_rectangle(cr, ax, ay, aw, ah);
+		cairo_fill(cr);
+		cairo_set_source_rgba(cr, mr, mg, mb, 0.95);
+		cairo_set_line_width(cr, 1.5);
+		cairo_set_dash(cr, NULL, 0, 0);
+		cairo_rectangle(cr, ax + 0.75, ay + 0.75, aw - 1.5, ah - 1.5);
+		cairo_stroke(cr);
+
+		if (n_ov < (int)(sizeof(ov) / sizeof(ov[0]))) {
+			ov[n_ov].o  = o;
+			ov[n_ov].ax = ax;
+			ov[n_ov].ay = ay;
+			ov[n_ov].aw = aw;
+			ov[n_ov].ah = ah;
+			n_ov++;
+		}
+	}
+
+	/*
+	 * Caption pass.  Skip wh*/
+	if (mon_tab_count(st) > 1) {
+		set_font(cr, 10.0, 1);
+		const double label_pad_x = 3.0;
+		const double label_pad_y = 3.0;
+		const double inter_gap	 = 2.0;
+
+		for (int i = 0; i < n_ov; i++) {
+			struct overlay_rec *ovi = &ov[i];
+			if (ovi->o->name[0] == '\0')
 				continue;
-			if (!monitor_visible(o->name))
+			if (ovi->aw < 28 || ovi->ah < 14)
 				continue;
-			double ax = sx + ((double)o->page_vx / desk_w) * sw;
-			double ay = sy + ((double)o->page_vy / desk_h) * sh;
-			double aw = ((double)ow / desk_w) * sw;
-			double ah = ((double)oh / desk_h) * sh;
-			cairo_set_source_rgba(cr, 0.95, 0.85, 0.30, 0.18);
-			cairo_rectangle(cr, ax, ay, aw, ah);
+
+			cairo_text_extents_t te;
+			cairo_text_extents(cr, ovi->o->name, &te);
+			if (te.width > ovi->aw - 2 * label_pad_x)
+				continue;
+			if (te.height > ovi->ah - 2 * label_pad_y)
+				continue;
+
+			double plate_w = te.width + 2 * label_pad_x;
+			double plate_h = te.height + 4;
+
+			/* Count earlier captions sharing this overlay
+			 * position so this one slides below them. */
+			int stack = 0;
+			for (int j = 0; j < i; j++) {
+				if (fabs(ov[j].ax - ovi->ax) < 0.5 &&
+				    fabs(ov[j].ay - ovi->ay) < 0.5)
+					stack++;
+			}
+
+			double plate_x = ovi->ax + label_pad_x;
+			double plate_y = ovi->ay + label_pad_y +
+			    stack * (plate_h + inter_gap);
+
+			/* If the stacked caption would fall outside the
+			 * overlay, give up rather than overlap a window
+			 * thumbnail or the next page cell. */
+			if (plate_y + plate_h > ovi->ay + ovi->ah - 1)
+				continue;
+
+			cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.6);
+			cairo_rectangle(cr, plate_x, plate_y, plate_w, plate_h);
 			cairo_fill(cr);
-			cairo_set_source_rgba(cr, 0.95, 0.85, 0.30, 0.95);
-			cairo_set_line_width(cr, 1.0);
-			cairo_set_dash(cr, NULL, 0, 0);
-			cairo_rectangle(cr, ax + 0.5, ay + 0.5, aw - 1, ah - 1);
-			cairo_stroke(cr);
+			cairo_set_source_rgba(cr, 0.98, 0.98, 0.98, 0.98);
+			cairo_move_to(cr, plate_x + label_pad_x - te.x_bearing,
+			    plate_y + plate_h - 2);
+			cairo_show_text(cr, ovi->o->name);
+
+			/*
+			 * Publish a draggable handle for this plate.
+			 */
+			if (n_overlay_handles < MAX_OVERLAY_HANDLES) {
+				struct overlay_handle *h =
+				    &overlay_handles[n_overlay_handles++];
+				strncpy(h->name, ovi->o->name,
+				    sizeof(h->name) - 1);
+				h->name[sizeof(h->name) - 1] = '\0';
+				const double slack	     = 2.0;
+				h->px			     = plate_x - slack;
+				h->py			     = plate_y - slack;
+				h->pw = plate_w + 2 * slack;
+				h->ph = plate_h + 2 * slack;
+			}
 		}
 	}
 
@@ -739,8 +961,9 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 	if (pcols > 1 || prows > 1) {
 		double dashes[2] = { 2.0, 2.0 };
 		/* Brighter than the page-cell background
-		 * (rgba(0.28,0.28,0.31)) and fully opaque so the dashes
-		 * are clearly visible without washing into the fill. */
+		 * (rgba(0.28,0.28,0.31)) and fully opaque so the
+		 * dashes are clearly visible without washing into the
+		 * fill. */
 		cairo_set_source_rgba(cr, 0.78, 0.78, 0.82, 1.0);
 		cairo_set_line_width(cr, 1.0);
 		cairo_set_dash(cr, dashes, 2, 0);
@@ -913,6 +1136,13 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 		    L->mon_tab_h - 1);
 		cairo_stroke(cr);
 
+		/* Per-monitor colour stripe along the top of every tab. */
+		double mr, mg, mb;
+		monitor_colour(tab[i]->name, &mr, &mg, &mb);
+		cairo_set_source_rgba(cr, mr, mg, mb, 1.0);
+		cairo_rectangle(cr, tx + 1, tab_y + 1, tw - 2, 2.5);
+		cairo_fill(cr);
+
 		/* Subtle accent stripe along the bottom of "present"
 		 * tabs -- a quiet hint that this monitor has work
 		 * parked on this desk without competing with the bold
@@ -966,6 +1196,14 @@ do_render(const state_t *st)
 {
 	if (!surface_configured || win_w <= 0 || win_h <= 0)
 		return;
+
+	/*
+	 * Reset the overlay-handle registry; the page-grid pass
+	 * republishes plate hit-rects as it draws them.  This makes
+	 * press-based hit-testing always agree with what's currently
+	 * on screen, even when the layout reflows mid-session.
+	 */
+	n_overlay_handles = 0;
 
 	void		 *px  = NULL;
 	struct wl_buffer *buf = shm_buf(win_w, win_h, &px);
@@ -1069,6 +1307,46 @@ do_render(const state_t *st)
 		}
 	}
 
+	/*
+	 * Drag ghost: while a monitor-plate drag is in flight, paint
+	 * a translucent rectangle in the dragged monitor's hue at
+	 * the cursor's current page-cell.
+	 */
+	if (dragging && drag_monitor[0] != '\0') {
+		int	    desk_nr, pc, pr, tab_idx;
+		const char *out_dummy = NULL;
+		if (hit_test_page(st, drag_cur_x, drag_cur_y, &desk_nr, &pc,
+			&pr, &tab_idx, &out_dummy) &&
+		    desk_nr >= 0 && pc >= 0 && pr >= 0) {
+			int row, col;
+			desk_index_to_rc(&L, desk_nr, &row, &col);
+			int gdx, gdy;
+			desk_cell_origin(&L, row, col, &gdx, &gdy);
+
+			int    gx     = gdx;
+			int    gy     = gdy + L.chrome_h;
+			int    gw     = L.cell_w;
+			int    gh     = L.cell_h - L.chrome_h;
+			int    gpcols = ref->page_cols > 0 ? ref->page_cols : 1;
+			int    gprows = ref->page_rows > 0 ? ref->page_rows : 1;
+			double cw     = (double)gw / gpcols;
+			double ch     = (double)gh / gprows;
+
+			double mr, mg, mb;
+			monitor_colour(drag_monitor, &mr, &mg, &mb);
+			cairo_set_source_rgba(cr, mr, mg, mb, 0.35);
+			cairo_rectangle(cr, gx + pc * cw, gy + pr * ch, cw, ch);
+			cairo_fill(cr);
+
+			cairo_set_source_rgba(cr, mr, mg, mb, 1.0);
+			cairo_set_line_width(cr, 2.0);
+			cairo_set_dash(cr, NULL, 0, 0);
+			cairo_rectangle(cr, gx + pc * cw + 1, gy + pr * ch + 1,
+			    cw - 2, ch - 2);
+			cairo_stroke(cr);
+		}
+	}
+
 commit:
 	cairo_destroy(cr);
 	cairo_surface_destroy(cs);
@@ -1150,8 +1428,15 @@ resolve_visible_desk(const pout_t *ref, int vis_idx)
 	return &ref->desks[vis_idx];
 }
 
+/*
+ * `prefer_output`, when non-NULL, is the user's currently-active
+ * monitor (cowpager's sticky `cp_user_output`).  When several stacked
+ * thumbnails contain the click point, a hit on that monitor wins over
+ * hits on others.  
+ */
 static const pwin_t *
-hit_test_window(const state_t *st, double x, double y)
+hit_test_window(const state_t *st, double x, double y,
+    const char *prefer_output)
 {
 	if (!st->n_outs)
 		return NULL;
@@ -1181,38 +1466,122 @@ hit_test_window(const state_t *st, double x, double y)
 	int sw = L.cell_w;
 	int sh = L.cell_h - L.chrome_h;
 
-	int pcols  = ref->page_cols > 0 ? ref->page_cols : 1;
-	int prows  = ref->page_rows > 0 ? ref->page_rows : 1;
-	int ow	   = ref->output_w > 0 ? ref->output_w : 1920;
-	int oh	   = ref->output_h > 0 ? ref->output_h : 1080;
-	int desk_w = pcols * ow;
-	int desk_h = prows * oh;
-	if (desk_w <= 0 || desk_h <= 0)
+	int pcols = ref->page_cols > 0 ? ref->page_cols : 1;
+	int prows = ref->page_rows > 0 ? ref->page_rows : 1;
+	int ow	  = ref->output_w > 0 ? ref->output_w : 1920;
+	int oh	  = ref->output_h > 0 ? ref->output_h : 1080;
+	if (sw <= 0 || sh <= 0)
 		return NULL;
 
-	const pwin_t *found = NULL;
+	double cell_w = (double)sw / pcols;
+	double cell_h = (double)sh / prows;
+
+	/*
+	 * Collect every window whose thumbnail rect contains the
+	 * click.  Stacked maximized windows on the same desk all draw
+	 * at the same coordinates, so the loop typically yields more
+	 * than one hit; cycling between them on repeat clicks at the
+	 * same point (below) lets the user pick a specific one.
+	 */
+	const pwin_t *hits[64];
+	int	      n_hits = 0;
 	for (int wi = 0; wi < st->n_wins; wi++) {
 		const pwin_t *w = &st->wins[wi];
 		if (w->desk != d->nr)
 			continue;
 		if (!monitor_visible(w->output))
 			continue;
+
+		const pout_t *wo = output_for_window(st, w);
+		int wow		 = (wo && wo->output_w > 0) ? wo->output_w : ow;
+		int woh		 = (wo && wo->output_h > 0) ? wo->output_h : oh;
+		if (wow <= 0 || woh <= 0)
+			continue;
+		int desk_w = pcols * wow;
+		int desk_h = prows * woh;
 		if (w->vx < 0 || w->vx >= desk_w)
 			continue;
 		if (w->vy < 0 || w->vy >= desk_h)
 			continue;
-		double wx_ = sx + (double)w->vx / desk_w * sw;
-		double wy_ = sy + (double)w->vy / desk_h * sh;
-		double ww  = (double)w->w / desk_w * sw;
-		double wh  = (double)w->h / desk_h * sh;
+
+		double wx_ = sx + ((double)w->vx / wow) * cell_w;
+		double wy_ = sy + ((double)w->vy / woh) * cell_h;
+		double ww  = ((double)w->w / wow) * cell_w;
+		double wh  = ((double)w->h / woh) * cell_h;
 		if (ww < 3)
 			ww = 3;
 		if (wh < 3)
 			wh = 3;
-		if (x >= wx_ && x < wx_ + ww && y >= wy_ && y < wy_ + wh)
-			found = w;
+		if (opt_verbose) {
+			fprintf(stderr,
+			    "cowpager:   win id=%s desk=%d out=%s vx=%d "
+			    "vy=%d w=%d h=%d -> rect [%.0f,%.0f %.0fx%.0f] "
+			    "click=(%.0f,%.0f)\n",
+			    w->id, w->desk, w->output, w->vx, w->vy, w->w, w->h,
+			    wx_, wy_, ww, wh, x, y);
+		}
+		if (x >= wx_ && x < wx_ + ww && y >= wy_ && y < wy_ + wh) {
+			if (n_hits < (int)(sizeof(hits) / sizeof(hits[0])))
+				hits[n_hits++] = w;
+		}
 	}
-	return found;
+
+	if (n_hits == 0)
+		return NULL;
+	if (n_hits == 1)
+		return hits[0];
+
+	/*
+	 * Stacked-thumbnail tie-breaking.  Several windows on the
+	 * same desk routinely have identical thumbnail rectangles
+	 * (e.g. all maximized on different outputs but on the same
+	 * desk -- they overlap pixel-for-pixel in the page grid).
+	 */
+	static double last_x = -1, last_y = -1;
+	static int    last_cycle;
+	const int     JITTER = 4;
+
+	int same_point = (last_x >= 0 && fabs(x - last_x) <= JITTER &&
+	    fabs(y - last_y) <= JITTER);
+
+	int pick;
+	if (same_point) {
+		pick = (last_cycle + 1) % n_hits;
+	} else {
+		pick = -1;
+		if (prefer_output != NULL && prefer_output[0] != '\0') {
+			for (int i = 0; i < n_hits; i++) {
+				if (strcmp(hits[i]->output, prefer_output) ==
+				    0) {
+					pick = i;
+					break;
+				}
+			}
+		}
+		if (pick < 0 && st->focused_id[0] != '\0') {
+			for (int i = 0; i < n_hits; i++) {
+				if (strcmp(hits[i]->id, st->focused_id) == 0) {
+					pick = i;
+					break;
+				}
+			}
+		}
+		if (pick < 0)
+			pick = n_hits - 1;
+	}
+	last_x	   = x;
+	last_y	   = y;
+	last_cycle = pick;
+
+	if (opt_verbose) {
+		fprintf(stderr,
+		    "cowpager:   stacked %d hits; %s pick=%d id=%s "
+		    "out=%s prefer=%s\n",
+		    n_hits, same_point ? "cycling" : "fresh", pick,
+		    hits[pick]->id, hits[pick]->output,
+		    prefer_output ? prefer_output : "(none)");
+	}
+	return hits[pick];
 }
 
 /*
@@ -1376,27 +1745,158 @@ ptr_motion(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t t,
 {
 	ptr_x = wl_fixed_to_double(x);
 	ptr_y = wl_fixed_to_double(y);
+
+	/*
+	 * If a monitor-drag is in flight, ask the main loop to
+	 * re-render so the ghost rectangle tracks the cursor.  This
+	 * is cheap because do_render() is the only renderer and it
+	 * already runs on g_dirty.
+	 */
+	if (dragging) {
+		drag_cur_x = ptr_x;
+		drag_cur_y = ptr_y;
+		g_dirty	   = 1;
+		char b	   = 1;
+		(void)write(wake_pipe[1], &b, 1);
+	}
+}
+
+/*
+ * Hit-test the overlay-plate registry.  Returns the monitor name of
+ * the plate under (x,y), or NULL.
+ */
+static const char *
+hit_overlay_plate(double x, double y)
+{
+	for (int i = 0; i < n_overlay_handles; i++) {
+		const struct overlay_handle *h = &overlay_handles[i];
+		if (x >= h->px && x < h->px + h->pw && y >= h->py &&
+		    y < h->py + h->ph)
+			return h->name;
+	}
+	return NULL;
 }
 
 static void
 ptr_button(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t s,
     __unused uint32_t t, __unused uint32_t btn, uint32_t state)
 {
-	if (state != WL_POINTER_BUTTON_STATE_PRESSED)
-		return;
-
 	pthread_mutex_lock(&g_lock);
 	state_t st = g_state;
+	char	user_out[64];
+	strncpy(user_out, cp_user_output, sizeof(user_out) - 1);
+	user_out[sizeof(user_out) - 1] = '\0';
 	pthread_mutex_unlock(&g_lock);
+
+	/*
+	 * Press path: maybe start a monitor-drag from an overlay
+	 * plate; otherwise fall through to the click-handling code
+	 * below.
+	 *
+	 * Release path: if a drag is in flight, resolve the drop
+	 * target and emit the IPC commands; consume the release.
+	 * Otherwise do nothing (the press already did the work).
+	 */
+	if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+		const char *plate_mon = hit_overlay_plate(ptr_x, ptr_y);
+		if (plate_mon != NULL) {
+			dragging     = 1;
+			drag_start_x = ptr_x;
+			drag_start_y = ptr_y;
+			drag_cur_x   = ptr_x;
+			drag_cur_y   = ptr_y;
+			strncpy(drag_monitor, plate_mon,
+			    sizeof(drag_monitor) - 1);
+			drag_monitor[sizeof(drag_monitor) - 1] = '\0';
+			if (opt_verbose)
+				fprintf(stderr,
+				    "cowpager: drag-start mon=%s at "
+				    "(%.0f,%.0f)\n",
+				    drag_monitor, ptr_x, ptr_y);
+			g_dirty = 1;
+			char b	= 1;
+			(void)write(wake_pipe[1], &b, 1);
+			return;
+		}
+		/* not a plate press: fall through to plain-click logic */
+	} else {
+		/* RELEASED */
+		if (dragging) {
+			int desk_nr = -1, pc = -1, pr = -1, tab_idx = -1;
+			const char *out_dummy = NULL;
+			(void)hit_test_page(&st, ptr_x, ptr_y, &desk_nr, &pc,
+			    &pr, &tab_idx, &out_dummy);
+
+			int dx	  = (int)(ptr_x - drag_start_x);
+			int dy	  = (int)(ptr_y - drag_start_y);
+			int moved = (dx * dx + dy * dy) > 9; /* >3px */
+
+			if (opt_verbose)
+				fprintf(stderr,
+				    "cowpager: drag-end mon=%s -> desk=%d "
+				    "pc=%d pr=%d (moved=%d)\n",
+				    drag_monitor, desk_nr, pc, pr, moved);
+
+			if (moved && desk_nr >= 0 && drag_monitor[0] != '\0') {
+				/* desk -t <mon> -d <desk> */
+				char cmd[160];
+				snprintf(cmd, sizeof(cmd), "desk -t %s -d %d",
+				    drag_monitor, desk_nr);
+				ipc_send(cmd);
+
+				/* scroll only if a specific page was hit
+				 * (not just the desk-label band). */
+				if (pc >= 0 && pr >= 0) {
+					snprintf(cmd, sizeof(cmd),
+					    "scroll -t %s -a %d,%d",
+					    drag_monitor, pc, pr);
+					ipc_send(cmd);
+				}
+			}
+
+			dragging	= 0;
+			drag_monitor[0] = '\0';
+			g_dirty		= 1;
+			char b		= 1;
+			(void)write(wake_pipe[1], &b, 1);
+			return;
+		}
+		/* Plain release with no drag: nothing else to do.  The
+		 * actual click was handled on press. */
+		return;
+	}
+
+	/*
+	 * Pick a default target output for click commands that don't
+	 * already point at a specific monitor.
+	 */
+	const char *default_out = cp_host_output();
+	if (default_out == NULL && user_out[0] != '\0')
+		default_out = user_out;
+	if (default_out == NULL) {
+		const pout_t *r = reference_output(&st);
+		if (r != NULL)
+			default_out = r->name;
+	}
+
+	if (opt_verbose)
+		fprintf(stderr,
+		    "cowpager: click at (%.0f, %.0f) win=%dx%d "
+		    "default_out=%s\n",
+		    ptr_x, ptr_y, win_w, win_h,
+		    default_out ? default_out : "(none)");
 
 	/* Window miniature wins over page click.  Navigate to the
 	 * window's desk/page first so fullscreen/maximized windows on a
 	 * different page actually become visible; then focus it.
 	 */
-	const pwin_t *hw = hit_test_window(&st, ptr_x, ptr_y);
+	const pwin_t *hw = hit_test_window(&st, ptr_x, ptr_y, default_out);
+	if (opt_verbose)
+		fprintf(stderr, "cowpager: hit_test_window -> %s\n",
+		    (hw && hw->id[0]) ? hw->id : "(none)");
 	if (hw && hw->id[0]) {
 		/* Find which output the window lives on.  Fall back to
-		 * the pinned/reference output if the IPC didn't tell us.
+		 * the user's sticky output if the IPC didn't tell us.
 		 */
 		const pout_t *target = NULL;
 		if (hw->output[0]) {
@@ -1406,11 +1906,24 @@ ptr_button(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t s,
 					break;
 				}
 		}
+		if (!target && default_out != NULL) {
+			for (int i = 0; i < st.n_outs; i++)
+				if (strcmp(st.outs[i].name, default_out) == 0) {
+					target = &st.outs[i];
+					break;
+				}
+		}
 		if (!target)
 			target = reference_output(&st);
 
-		int	    per_out = is_per_output_mode(&st);
-		const char *tname   = (target && per_out) ? target->name : NULL;
+		/*
+		 * Always pass -t to desk and scroll: even in global
+		 * mode, scroll is per-output, and naming the target
+		 * explicitly insulates us from cow's current_output
+		 * having become cowpager's own monitor as a side
+		 * effect of this very click.
+		 */
+		const char *tname = (target != NULL) ? target->name : NULL;
 
 		/* Switch desk if the window isn't on the current one. */
 		if (target && hw->desk != target->current_desk) {
@@ -1452,7 +1965,7 @@ ptr_button(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t s,
 		}
 
 		char cmd[256];
-		snprintf(cmd, sizeof(cmd), "focus -i %s", hw->id);
+		snprintf(cmd, sizeof(cmd), "focus -t '#%s'", hw->id);
 		ipc_send(cmd);
 		return;
 	}
@@ -1462,6 +1975,12 @@ ptr_button(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t s,
 	if (!hit_test_page(&st, ptr_x, ptr_y, &desk_nr, &pc, &pr, &tab_idx,
 		&out_name))
 		return;
+
+	if (opt_verbose)
+		fprintf(stderr,
+		    "cowpager: hit_test_page -> desk=%d pc=%d pr=%d "
+		    "tab=%d out=%s\n",
+		    desk_nr, pc, pr, tab_idx, out_name ? out_name : "(none)");
 
 	/*
 	 * Tab click: move that monitor to the clicked desk (and no
@@ -1490,25 +2009,31 @@ ptr_button(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t s,
 	}
 
 	/*
-	 * Page-area click: switch the active output (or the -o pinned
-	 * output) to this desk/page.
+	 * Page-area click: switch the active output to this desk/page.
 	 */
+	const char *target_name = out_name;
+	if (target_name == NULL || target_name[0] == '\0')
+		target_name = default_out;
+
+	const pout_t *target = NULL;
+	if (target_name != NULL) {
+		for (int i = 0; i < st.n_outs; i++)
+			if (strcmp(st.outs[i].name, target_name) == 0) {
+				target = &st.outs[i];
+				break;
+			}
+	}
+	if (target == NULL)
+		target = reference_output(&st);
+	if (target != NULL)
+		target_name = target->name;
+
 	if (desk_nr >= 0) {
-		const pout_t *target = NULL;
-		if (out_name) {
-			for (int i = 0; i < st.n_outs; i++)
-				if (strcmp(st.outs[i].name, out_name) == 0) {
-					target = &st.outs[i];
-					break;
-				}
-		}
-		if (!target)
-			target = reference_output(&st);
 		if (target && desk_nr != target->current_desk) {
 			char cmd[128];
-			if (out_name && is_per_output_mode(&st))
+			if (target_name != NULL)
 				snprintf(cmd, sizeof(cmd), "desk -t %s -d %d",
-				    out_name, desk_nr);
+				    target_name, desk_nr);
 			else
 				snprintf(cmd, sizeof(cmd), "desk -d %d",
 				    desk_nr);
@@ -1518,9 +2043,9 @@ ptr_button(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t s,
 
 	if (pc >= 0 && pr >= 0) {
 		char cmd[128];
-		if (out_name && is_per_output_mode(&st))
+		if (target_name != NULL)
 			snprintf(cmd, sizeof(cmd), "scroll -t %s -a %d,%d",
-			    out_name, pc, pr);
+			    target_name, pc, pr);
 		else
 			snprintf(cmd, sizeof(cmd), "scroll -a %d,%d", pc, pr);
 		ipc_send(cmd);
@@ -1589,9 +2114,87 @@ static const struct wl_seat_listener seat_listener = {
 	.name	      = seat_name,
 };
 
+/* ----------------------------------------------------------------------
+ * wl_output: track each advertised output and its name.
+ *
+ * We only need wl_output's `name` event (v4); the rest of the
+ * geometry/mode/scale stream is irrelevant for the pager.
+ * ---------------------------------------------------------------------- */
+
+static struct cp_output *
+cp_output_for_wl(const struct wl_output *wo)
+{
+	for (int i = 0; i < cp_n_outputs; i++)
+		if (cp_outputs[i].wl_output == wo)
+			return &cp_outputs[i];
+	return NULL;
+}
+
+static struct cp_output *
+cp_output_by_name(const char *n)
+{
+	if (n == NULL || n[0] == '\0')
+		return NULL;
+	for (int i = 0; i < cp_n_outputs; i++)
+		if (strcmp(cp_outputs[i].name, n) == 0)
+			return &cp_outputs[i];
+	return NULL;
+}
+
+static void
+out_geometry(__unused void *d, __unused struct wl_output *wo,
+    __unused int32_t x, __unused int32_t y, __unused int32_t pw,
+    __unused int32_t ph, __unused int32_t sub, __unused const char *make,
+    __unused const char *model, __unused int32_t transform)
+{
+}
+
+static void
+out_mode(__unused void *d, __unused struct wl_output *wo,
+    __unused uint32_t flags, __unused int32_t w, __unused int32_t h,
+    __unused int32_t refresh)
+{
+}
+
+static void
+out_done(__unused void *d, __unused struct wl_output *wo)
+{
+}
+
+static void
+out_scale(__unused void *d, __unused struct wl_output *wo,
+    __unused int32_t scale)
+{
+}
+
+static void
+out_name(__unused void *d, struct wl_output *wo, const char *name)
+{
+	struct cp_output *o = cp_output_for_wl(wo);
+	if (o == NULL || name == NULL)
+		return;
+	strncpy(o->name, name, sizeof(o->name) - 1);
+	o->name[sizeof(o->name) - 1] = '\0';
+}
+
+static void
+out_description(__unused void *d, __unused struct wl_output *wo,
+    __unused const char *desc)
+{
+}
+
+static const struct wl_output_listener out_listener = {
+	.geometry    = out_geometry,
+	.mode	     = out_mode,
+	.done	     = out_done,
+	.scale	     = out_scale,
+	.name	     = out_name,
+	.description = out_description,
+};
+
 static void
 reg_global(__unused void *d, struct wl_registry *reg, uint32_t name,
-    const char *iface, __unused uint32_t ver)
+    const char *iface, uint32_t ver)
 {
 	if (!strcmp(iface, wl_compositor_interface.name))
 		compositor = wl_registry_bind(reg, name,
@@ -1606,20 +2209,97 @@ reg_global(__unused void *d, struct wl_registry *reg, uint32_t name,
 	} else if (!strcmp(iface, wl_seat_interface.name)) {
 		seat = wl_registry_bind(reg, name, &wl_seat_interface, 5);
 		wl_seat_add_listener(seat, &seat_listener, NULL);
+	} else if (!strcmp(iface, wl_output_interface.name)) {
+		if (cp_n_outputs >= CP_MAX_TRACKED_OUTPUTS)
+			return;
+		/* Bind v4 (so we get wl_output.name); fall back to
+		 * lower if the compositor doesn't support it.  cow
+		 * advertises wl_output via river so v4 is expected. */
+		uint32_t	  bind_ver = ver >= 4 ? 4 : ver;
+		struct cp_output *po	   = &cp_outputs[cp_n_outputs];
+		po->wl_output		   = wl_registry_bind(reg, name,
+				 &wl_output_interface, bind_ver);
+		po->global_name		   = name;
+		po->name[0]		   = '\0';
+		po->on_surface		   = 0;
+		if (po->wl_output != NULL) {
+			wl_output_add_listener(po->wl_output, &out_listener,
+			    NULL);
+			cp_n_outputs++;
+		}
 	}
 }
 
 static void
-reg_remove(__unused void *d, __unused struct wl_registry *r,
-    __unused uint32_t n)
+reg_remove(__unused void *d, __unused struct wl_registry *r, uint32_t n)
 {
-	return;
+	for (int i = 0; i < cp_n_outputs; i++) {
+		if (cp_outputs[i].global_name != n)
+			continue;
+		if (cp_outputs[i].wl_output != NULL)
+			wl_output_destroy(cp_outputs[i].wl_output);
+		/* Compact the array so the index slots stay dense. */
+		int last = cp_n_outputs - 1;
+		if (i != last)
+			cp_outputs[i] = cp_outputs[last];
+		memset(&cp_outputs[last], 0, sizeof(cp_outputs[last]));
+		cp_n_outputs--;
+		break;
+	}
 }
 
 static const struct wl_registry_listener reg_listener = {
 	.global	       = reg_global,
 	.global_remove = reg_remove,
 };
+
+static void
+surface_enter(__unused void *d, __unused struct wl_surface *s,
+    struct wl_output *wo)
+{
+	struct cp_output *po = cp_output_for_wl(wo);
+	if (po != NULL)
+		po->on_surface = 1;
+}
+
+static void
+surface_leave(__unused void *d, __unused struct wl_surface *s,
+    struct wl_output *wo)
+{
+	struct cp_output *po = cp_output_for_wl(wo);
+	if (po != NULL)
+		po->on_surface = 0;
+}
+
+static const struct wl_surface_listener surface_listener = {
+	.enter = surface_enter,
+	.leave = surface_leave,
+};
+
+/*
+ * Is cowpager's own surface currently sitting on the named output?
+ */
+static int
+cp_surface_on_output(const char *name)
+{
+	struct cp_output *po = cp_output_by_name(name);
+	return po != NULL && po->on_surface;
+}
+
+/*
+ * Return the name of the output cowpager's surface is currently
+ * sitting on, or NULL if no enter event has arrived yet (or every
+ * tracked output is unnamed).
+ */
+static const char *
+cp_host_output(void)
+{
+	for (int i = 0; i < cp_n_outputs; i++) {
+		if (cp_outputs[i].on_surface && cp_outputs[i].name[0] != '\0')
+			return cp_outputs[i].name;
+	}
+	return NULL;
+}
 
 static void
 parse_status(const char *json)
@@ -1702,7 +2382,29 @@ parse_status(const char *json)
 	}
 	cJSON_Delete(root);
 
+	/*
+	 * Maintain the "user current output" sticky.  Pick the output
+	 * cow has flagged as current=true UNLESS that output is the
+	 * one cowpager's own surface is currently sitting on -- in
+	 * which case the user just clicked the pager and we want to
+	 * preserve the previous value so subsequent desk/scroll
+	 * commands target the user's actual workspace, not cowpager's.
+	 *
+	 * If no output is current (rare, transient), or every current
+	 * output is cowpager's own, leave the sticky alone -- the
+	 * previously cached value is the best guess.
+	 */
 	pthread_mutex_lock(&g_lock);
+	for (int i = 0; i < st.n_outs; i++) {
+		if (!st.outs[i].current)
+			continue;
+		if (cp_surface_on_output(st.outs[i].name))
+			continue;
+		strncpy(cp_user_output, st.outs[i].name,
+		    sizeof(cp_user_output) - 1);
+		cp_user_output[sizeof(cp_user_output) - 1] = '\0';
+		break;
+	}
 	st.n_wins = g_state.n_wins;
 	memcpy(st.wins, g_state.wins, sizeof(st.wins));
 	g_state = st;
@@ -1817,7 +2519,7 @@ int
 main(int argc, char *argv[])
 {
 	int opt;
-	while ((opt = getopt(argc, argv, "r:c:m:1h")) != -1) {
+	while ((opt = getopt(argc, argv, "r:c:m:1vh")) != -1) {
 		switch (opt) {
 		case 'r':
 			opt_rows = atoi(optarg);
@@ -1861,10 +2563,13 @@ main(int argc, char *argv[])
 		case '1':
 			opt_current_only = 1;
 			break;
+		case 'v':
+			opt_verbose = 1;
+			break;
 		case 'h':
 			fprintf(stderr,
 			    "usage: cowpager [-r rows] [-c cols] "
-			    "[-m mon[,mon...]] [-1] [-h]\n"
+			    "[-m mon[,mon...]] [-1] [-v] [-h]\n"
 			    "  -r ROWS   arrange desks in ROWS rows\n"
 			    "  -c COLS   arrange desks in COLS columns\n"
 			    "  -m LIST   restrict pager to the listed\n"
@@ -1873,6 +2578,7 @@ main(int argc, char *argv[])
 			    "            page grid are filtered.  A single\n"
 			    "            monitor suppresses the tab strip\n"
 			    "  -1        show only the currently active desk\n"
+			    "  -v        log click decisions to stderr\n"
 			    "  -h        show this help\n");
 			return 0;
 		default:
@@ -1918,7 +2624,8 @@ main(int argc, char *argv[])
 	win_w = INIT_W;
 	win_h = INIT_H;
 
-	surface	    = wl_compositor_create_surface(compositor);
+	surface = wl_compositor_create_surface(compositor);
+	wl_surface_add_listener(surface, &surface_listener, NULL);
 	xdg_surface = xdg_wm_base_get_xdg_surface(xdg_wm_base, surface);
 	xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, NULL);
 	xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);

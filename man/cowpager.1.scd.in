@@ -76,10 +76,16 @@ both rectangles are drawn.
 
 # USE
 
-- *Click a window thumbnail*: navigates to that window's desk and page.
-- *Click an output tab*: Focuses that output.  In *global* mode, the desk is
-  switched to.
-- *Click a desk label band*: switches to that desk.
+- *Click a page cell*: switches the *host* monitor (the one
+	*cowpager* itself is sitting on) to that desk and page. 
+- *Drag a coloured monitor name plate*: grabs the small dark
+	pill at the top-left of a monitor's coloured viewport overlay
+	and drags it to another page cell.  When you release, that
+	monitor moves to the page selected.
+- *Click a window thumbnail*: navigates that window's monitor to
+	the window's desk and page, then focuses the window.  Other
+	monitors are not affected.
+- *Click an output tab*: switches that monitor to the clicked desk.
 
 # EXAMPLES
 
