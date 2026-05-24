@@ -51,7 +51,7 @@ static bool	       parse_scope_t(const char *, char **, int *, char **);
 
 struct cmd_entry cmd_rule_entry = {
 	"rule",
-	"dgn:T:t:s:",
+	"+dgn:T:t:s:",
 	0,
 	-1,
 	"rule -g | -t output[:desk] -n <name> -T <event> [-s sel] cmd...\n"
