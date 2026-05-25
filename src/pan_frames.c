@@ -581,7 +581,16 @@ pan_dwell_delay(const struct cow_output *output, long now_ms)
 }
 
 /* Find the view being dragged (if any).  Used to consider view-edge
- * arming during a drag. */
+ * arming during a drag.
+ *
+ * Excludes container drags (-C): during a containerise/uncontainerise
+ * the source view's frame is dragged freely around the screen as the
+ * user positions the cursor over a drop target.  The drag is the
+ * user's hand placement, not a deliberate page approach -- using the
+ * view's frame edges for arming there causes spurious page-switches
+ * whenever the dragged frame happens to slide past a screen edge,
+ * even with the pointer well inside the output.  Cursor-only arming
+ * still works (handled by px/py checks alongside the view checks). */
 static struct cow_view *
 pan_find_drag_view(void)
 {
@@ -589,7 +598,8 @@ pan_find_drag_view(void)
 	wl_list_for_each(s, &cow_wm.seats, wm_link)
 	{
 		if (s->op_in_progress && s->op.type == COW_POINTER_OP_MOVE &&
-		    s->op.view != NULL && !s->op.view->closed)
+		    !s->container_drag && s->op.view != NULL &&
+		    !s->op.view->closed)
 			return s->op.view;
 	}
 	return NULL;

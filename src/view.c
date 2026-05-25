@@ -1627,7 +1627,25 @@ cow_container_activate(struct cow_container *c,
 	member->view->use_ssd	  = true;
 	member->view->dec.dirty	  = true;
 	member->view->needs_raise = true;
-	cow_wm.pending_focus	  = member->view;
+
+	/*
+	 * Re-sync the new active member's geometry to the container's
+	 * authoritative position.  Without this, a member whose vx/vy
+	 * was set on a different page (e.g. the container was scrolled
+	 * to another page after the member joined) would be deemed
+	 * off-page by cow_view_visible() and silently hidden, making
+	 * the tab click appear to do nothing while the user-visible
+	 * focus appears to land on the wrong window.
+	 */
+	struct cow_view *nv = member->view;
+	if (nv->output != NULL && nv->desk != NULL) {
+		nv->x  = c->x;
+		nv->y  = c->y;
+		nv->vx = (nv->x - nv->output->x) + nv->desk->page_vx;
+		nv->vy = (nv->y - nv->output->y) + nv->desk->page_vy;
+	}
+
+	cow_wm.pending_focus = member->view;
 	cow_wm_request_manage_dirty();
 }
 

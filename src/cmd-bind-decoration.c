@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include <stdio.h>
+#include <string.h>
 
 #include "cow/cmd.h"
 #include "cow/config.h"
@@ -22,28 +23,45 @@
 
 static enum cmd_retval cmd_bind_decoration_exec(struct cmd *, struct cmd_q *);
 
-struct cmd_entry cmd_bind_decoration_entry = {
-	"bind-decoration",
-	"2",
-	2,
-	-1,
+/*
+ * bind-decoration uses an empty getopt template because the bound
+ * command's argv (everything after REGION) contains its own flags
+ * (-e, -d, -m, ...) that must NOT be interpreted by bind-decoration's
+ * own option parser.  We parse the optional leading -2 flag manually
+ * by inspecting args->argv[0].
+ *
+ * Accepted shapes:
+ *   bind-decoration REGION cmd [args...]
+ *   bind-decoration -2 REGION cmd [args...]
+ */
+struct cmd_entry cmd_bind_decoration_entry = { "bind-decoration", "", 2, -1,
 	"bind-decoration [-2] REGION command [args ...]",
-	cmd_bind_decoration_exec,
-	0
-};
+	cmd_bind_decoration_exec, 0 };
 
 static enum cmd_retval
 cmd_bind_decoration_exec(struct cmd *self, struct cmd_q *cmdq)
 {
-	struct args	   *args   = self->args;
-	enum cow_dec_region region = cow_dec_region_parse(args->argv[0]);
-	int		    clicks = args_has(args, '2') ? 2 : 1;
+	struct args *args   = self->args;
+	int	     clicks = 1;
+	int	     idx    = 0;
 
+	if (args->argc >= 1 && strcmp(args->argv[0], "-2") == 0) {
+		clicks = 2;
+		idx    = 1;
+	}
+
+	if (args->argc < idx + 2) {
+		cmdq_error(cmdq,
+		    "bind-decoration: usage: [-2] REGION command [args ...]");
+		return (CMD_RETURN_ERROR);
+	}
+
+	enum cow_dec_region region = cow_dec_region_parse(args->argv[idx]);
 	if (region == COW_DEC_REGION_NONE) {
 		cmdq_error(cmdq,
 		    "bind-decoration: unknown region '%s' "
 		    "(expected N|S|E|W|NE|NW|SE|SW|titlebar)",
-		    args->argv[0]);
+		    args->argv[idx]);
 		return (CMD_RETURN_ERROR);
 	}
 
@@ -53,7 +71,8 @@ cmd_bind_decoration_exec(struct cmd *self, struct cmd_q *cmdq)
 	 */
 	struct cow_dec_binding_entry *existing, *tmp;
 	wl_list_for_each_safe(existing, tmp, &cow_config->decoration_bindings,
-	    link) {
+	    link)
+	{
 		if (existing->region == region && existing->clicks == clicks) {
 			wl_list_remove(&existing->link);
 			xfree(existing->action_string);
@@ -64,7 +83,8 @@ cmd_bind_decoration_exec(struct cmd *self, struct cmd_q *cmdq)
 	struct cow_dec_binding_entry *entry = xcalloc(1, sizeof(*entry));
 	entry->region			    = region;
 	entry->clicks			    = clicks;
-	entry->action_string = cmd_argv_to_string(args->argc, args->argv, 1);
+	entry->action_string = cmd_argv_to_string(args->argc, args->argv,
+	    idx + 1);
 
 	wl_list_insert(&cow_config->decoration_bindings, &entry->link);
 
@@ -73,7 +93,7 @@ cmd_bind_decoration_exec(struct cmd *self, struct cmd_q *cmdq)
 
 /*
  * Insert a (region, clicks) binding directly, bypassing the cmd
- * surface.  
+ * surface.
  */
 static void
 register_default(enum cow_dec_region region, int clicks, const char *action)
