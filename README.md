@@ -152,7 +152,7 @@ to set monitors directly.  To get a more visual overview of things, the
 
 Meet our mascot, Anvil Cow.
 
-![](./logos/Only-CoW.svg)  ![](./logos/Only-CoW-inverted.svg)
+![](./logos/Only-CoW.svg)
 
 Luis Sobalvarro kindly created the CoW logo for this project.
 
