@@ -38,14 +38,6 @@ enum cow_rule_type {
 	COW_RULE_ON_UNSHADE,
 	COW_RULE_ON_ICONIFY,
 	COW_RULE_ON_DEICONIFY,
-	/*
-	 * Fired when a view's layer changes (winops -L, including the
-	 * top/bottom toggles, rule-driven assignments at on-map, and
-	 * the implicit fan-out across container members).  The view's
-	 * `layer` field is already updated to the new value at fire
-	 * time.  No-op assignments (layer unchanged after clamping)
-	 * do not fire.
-	 */
 	COW_RULE_ON_LAYER_CHANGE,
 	COW_RULE_ON_NEW_DESK,
 	COW_RULE_ON_NEW_PAGE,
@@ -120,8 +112,19 @@ bool cow_rule_remove_by_name(const char *);
  * 'view' / 'desk' / 'output' may be NULL when the event has no
  * associated view (on-restart) or no associated output (some
  * iconify paths).
+ *
+ * Most call sites use the cow_rule_fire() wrapper.  Events that
+ * carry structured per-fire information (e.g. on-layer-change's
+ * previous + current layer) call cow_rule_fire_json() instead and
+ * pass a JSON object string; rule bodies see it via
+ * cmd_q->event_json (cmd-exec exposes it as $COW_EVENT to the
+ * spawned shell).  Ownership of `event_json` stays with the caller:
+ * cow_rule_fire_json() copies it once per fire into each rule
+ * body's cmd_q.
  */
 void cow_rule_fire(enum cow_rule_type, struct cow_view *, struct cow_desk *,
     struct cow_output *);
+void cow_rule_fire_json(enum cow_rule_type, struct cow_view *,
+    struct cow_desk *, struct cow_output *, const char *event_json);
 
 #endif

@@ -18,4 +18,9 @@
 
 void cow_command_execute(const char *);
 
+/*
+ * Sets COW_EVENT to a json fragment with information about the rule.
+ */
+void cow_command_execute_with_event(const char *cmd, const char *event_json);
+
 #endif

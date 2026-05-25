@@ -201,14 +201,19 @@ rule_scope_matches(const struct cow_rule *rule, const struct cow_desk *desk,
 	return true;
 }
 
-/* Run a single rule's command body against the supplied context. */
+/* Run a single rule's command body against the supplied context.
+ * `event_json` (if non-NULL) is copied onto the cmd_q so commands
+ * inside the body can read the per-firing payload (cmd-exec exposes
+ * it via $COW_EVENT). */
 static void
 rule_run(struct cow_rule *rule, struct cow_view *view, struct cow_desk *desk,
-    struct cow_output *output)
+    struct cow_output *output, const char *event_json)
 {
 	struct cmd_q *cmdq = cmdq_new();
 	cmdq->client_fd	   = -1;
 	cmdq_set_default_target(cmdq, view, desk, output);
+	if (event_json != NULL)
+		cmdq_set_event_json(cmdq, xstrdup(event_json));
 	cmdq_run(cmdq, rule->cmdlist);
 	cmdq_free(cmdq);
 }
@@ -288,6 +293,13 @@ void
 cow_rule_fire(enum cow_rule_type type, struct cow_view *view,
     struct cow_desk *desk, struct cow_output *output)
 {
+	cow_rule_fire_json(type, view, desk, output, NULL);
+}
+
+void
+cow_rule_fire_json(enum cow_rule_type type, struct cow_view *view,
+    struct cow_desk *desk, struct cow_output *output, const char *event_json)
+{
 	if (type <= COW_RULE_NONE || type >= COW_RULE_TYPE_COUNT)
 		return;
 	if (!rules_initialised)
@@ -307,7 +319,7 @@ cow_rule_fire(enum cow_rule_type type, struct cow_view *view,
 				continue;
 			if (!rule_view_matches(rule, view))
 				continue;
-			rule_run(rule, view, desk, output);
+			rule_run(rule, view, desk, output, event_json);
 		}
 		wl_list_for_each(rule, &rules, link)
 		{
@@ -317,7 +329,7 @@ cow_rule_fire(enum cow_rule_type type, struct cow_view *view,
 				continue;
 			if (!rule_view_matches(rule, view))
 				continue;
-			rule_run(rule, view, desk, output);
+			rule_run(rule, view, desk, output, event_json);
 		}
 		return;
 	}
@@ -351,7 +363,7 @@ cow_rule_fire(enum cow_rule_type type, struct cow_view *view,
 			 * the body issues that consult the desk / output
 			 * context see the view's own (desk, output), not
 			 * the event's narrower one. */
-			rule_run(rule, v, v->desk, v->output);
+			rule_run(rule, v, v->desk, v->output, event_json);
 		}
 	}
 }

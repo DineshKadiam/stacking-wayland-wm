@@ -52,8 +52,22 @@ cmdq_free(struct cmd_q *cmdq)
 		return (cmdq->dead);
 
 	cmdq_flush(cmdq);
+	xfree(cmdq->event_json);
 	xfree(cmdq);
 	return (1);
+}
+
+/*
+ * Attach (or replace) the per-event JSON payload on the queue.
+ * Takes ownership of `json` (caller must not free).
+ */
+void
+cmdq_set_event_json(struct cmd_q *cmdq, char *json)
+{
+	if (cmdq == NULL)
+		return;
+	xfree(cmdq->event_json);
+	cmdq->event_json = json;
 }
 
 /* Show error from command. */

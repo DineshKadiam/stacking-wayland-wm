@@ -1002,11 +1002,12 @@ cow_view_set_layer(struct cow_view *view, int requested)
 		requested = max;
 	uint8_t new_layer = (uint8_t)requested;
 
-	/*
-	 * Container members all live in the same layer.  Fan the
-	 * assignment out so a contained group stays atomic in the
-	 * global stack.  Per-member on-layer-change rules fire only
-	 * for members whose layer value actually changed.
+	/* The rule payload is a small JSON object describing the
+	 * transition; rule bodies can read it via $COW_EVENT in an
+	 * `exec` line, e.g.:
+	 *
+	 *   rule -g -n log-layer -T on-layer-change \
+	 *       exec sh -c 'echo "$COW_EVENT" >> ~/cow-layer.log'
 	 */
 	bool any_changed = false;
 	if (view->container_member != NULL) {
@@ -1018,16 +1019,28 @@ cow_view_set_layer(struct cow_view *view, int requested)
 				continue;
 			if (m->view->layer == new_layer)
 				continue;
+			uint8_t prev   = m->view->layer;
 			m->view->layer = new_layer;
 			any_changed    = true;
-			cow_rule_fire(COW_RULE_ON_LAYER_CHANGE, m->view,
-			    m->view->desk, m->view->output);
+
+			char payload[64];
+
+			/* FIXME: we can/should use cJSOJ here. */
+			snprintf(payload, sizeof payload,
+			    "{\"prev\":%u,\"current\":%u}", prev, new_layer);
+			cow_rule_fire_json(COW_RULE_ON_LAYER_CHANGE, m->view,
+			    m->view->desk, m->view->output, payload);
 		}
 	} else if (view->layer != new_layer) {
-		view->layer = new_layer;
-		any_changed = true;
-		cow_rule_fire(COW_RULE_ON_LAYER_CHANGE, view, view->desk,
-		    view->output);
+		uint8_t prev = view->layer;
+		view->layer  = new_layer;
+		any_changed  = true;
+
+		char payload[64];
+		snprintf(payload, sizeof payload,
+		    "{\"prev\":%u,\"current\":%u}", prev, new_layer);
+		cow_rule_fire_json(COW_RULE_ON_LAYER_CHANGE, view, view->desk,
+		    view->output, payload);
 	}
 
 	if (any_changed) {

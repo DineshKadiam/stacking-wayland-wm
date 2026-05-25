@@ -214,6 +214,16 @@ struct cmd_q {
 	 * cmdq_set_default_target().
 	 */
 	struct cmd_ctx default_target;
+
+	/*
+	 * Per-event JSON payload, set by the rule subsystem before
+	 * running a rule body.  Commands inside the body can read it
+	 * (e.g. cmd-exec exposes it as the COW_EVENT environment
+	 * variable to the spawned shell, so an `exec` body can `jq`
+	 * the payload).  Owned by the cmd_q; freed in cmdq_free.
+	 * NULL when the firing event has no structured payload.
+	 */
+	char *event_json;
 };
 
 /* Error cause list. */
@@ -363,6 +373,11 @@ int		 cmdq_continue(struct cmd_q *);
 void		 cmdq_flush(struct cmd_q *);
 void		 cmdq_set_default_target(struct cmd_q *, struct cow_view *,
 		struct cow_desk *, struct cow_output *);
+/*
+ * Attach (or replace) a per-event JSON payload on the queue.  Takes
+ * ownership of `json` (caller must not free).  Pass NULL to clear.
+ */
+void cmdq_set_event_json(struct cmd_q *, char *json);
 
 /* Memory wrappers -- declared in cow/memory.h */
 #include "cow/memory.h"

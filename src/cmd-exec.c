@@ -49,7 +49,7 @@ static int    num_deferred;
 static int    deferred_cap;
 
 static enum cmd_retval
-cmd_exec_exec(struct cmd *self, __unused struct cmd_q *cmdq)
+cmd_exec_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	struct args *args    = self->args;
 	char	    *command = cmd_argv_to_string(args->argc, args->argv, 0);
@@ -63,7 +63,13 @@ cmd_exec_exec(struct cmd *self, __unused struct cmd_q *cmdq)
 		}
 		deferred_execs[num_deferred++] = command;
 	} else {
-		cow_command_execute(command);
+		/*
+		 * Forward the per-event JSON payload (if any) from the
+		 * cmd_q so the spawned shell can read it as $COW_EVENT.
+		 * Set by the rule subsystem for events that carry a
+		 * structured payload (e.g. on-layer-change).
+		 */
+		cow_command_execute_with_event(command, cmdq->event_json);
 		xfree(command);
 	}
 

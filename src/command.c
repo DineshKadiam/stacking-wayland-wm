@@ -75,6 +75,12 @@ find_xwayland_display(void)
 void
 cow_command_execute(const char *cmd)
 {
+	cow_command_execute_with_event(cmd, NULL);
+}
+
+void
+cow_command_execute_with_event(const char *cmd, const char *event_json)
+{
 	pid_t outer, inner;
 	int   status;
 
@@ -106,6 +112,16 @@ cow_command_execute(const char *cmd)
 				if (xdisplay != NULL)
 					setenv("DISPLAY", xdisplay, 0);
 			}
+
+			/*
+			 * Per-event payload: expose the rule subsystem's
+			 * JSON payload as $COW_EVENT for the spawned
+			 * shell.  setenv happens in the grandchild only,
+			 * so no other process (cow itself or any
+			 * concurrent rule fire) ever sees this variable.
+			 */
+			if (event_json != NULL && event_json[0] != '\0')
+				setenv("COW_EVENT", event_json, 1);
 
 			execl("/bin/sh", "/bin/sh", "-c", cmd, (char *)NULL);
 			_exit(127); /* exec failed */
