@@ -238,11 +238,27 @@ struct cow_view {
 
 	/*
 	 * Monotonic z-order counter: incremented from cow_wm.raise_seq
-	 * each time the view is raised to top.  Higher = on top.
+	 * each time the view is raised to top.  Higher = on top WITHIN
+	 * the view's own layer.  Cross-layer ordering is governed by
+	 * the `layer` field below: the global stack is sorted by
+	 * (layer ASC, raise_seq ASC) by stack.c.
+	 *
 	 * Exposed via 'show windows' for clients that need to pick the
 	 * topmost window at a point (e.g. cowident).
 	 */
 	uint64_t raise_seq;
+
+	/*
+	 * Layer membership (0..COW_CFG_MAX_LAYER).  Higher number =
+	 * stacks above lower.  Default is cow_config->default_layer at
+	 * view-create time.  Within the same layer the raise_seq
+	 * counter orders members; cross-layer order is invariant
+	 * regardless of raise_seq.
+	 *
+	 * Container members all share the same layer: cow_view_set_layer
+	 * fans the assignment out across the container.
+	 */
+	uint8_t layer;
 
 	/* Window shade state */
 	enum shade_direction sd;
@@ -365,6 +381,25 @@ bool cow_view_visible(const struct cow_view *, const struct cow_output *);
  * Is this view a valid focus/interaction target?
  */
 bool cow_view_focusable(const struct cow_view *);
+
+/*
+ * Effective layer for stacking.  For container members this returns
+ * the container's representative layer (the active member's layer);
+ * for ungrouped views it returns view->layer directly.  Stack-sorting
+ * code should use this rather than reading view->layer to avoid
+ * splitting a container across a layer boundary.
+ */
+uint8_t cow_view_effective_layer(const struct cow_view *);
+
+/*
+ * Set this view's layer to `layer` (clamped to
+ * [0, cow_config->max_layer]).  If the view is a container member,
+ * the assignment fans out to every member of the container so the
+ * container stays atomically stacked.  Marks the global stack dirty.
+ *
+ * Returns the resulting (post-clamp) layer.
+ */
+uint8_t cow_view_set_layer(struct cow_view *, int layer);
 
 /*
  * Save current geometry for later restore (maximize/expand undo).

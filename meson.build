@@ -69,6 +69,7 @@ srcs = [
     'src/rule.c',
     'src/seat.c',
     'src/shm.c',
+    'src/stack.c',
     'src/state.c',
     'src/status.c',
     'src/titlebar.c',

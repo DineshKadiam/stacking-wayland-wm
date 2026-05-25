@@ -137,6 +137,76 @@ output, assuming _edge\_scroll_ has been enabled.  See the *set* command.
 can be raised or lowered over one another.  This can be controlled via the
 _winops_ command.
 
+# LAYERS
+
+Every window belongs to a numbered *layer*.
+The layer range is *[0, max_layer]* (default 16) and newly mapped
+windows receive *default_layer* (default 4).
+
+A window in layer 8 is always above every window in layer 4 regardless of
+focus, raise, or lower. *winops -r* and *winops -l* operate *within* the
+window's own layer:  they reorder among windows in that layer but never push
+the window across a layer boundary.
+
+For instance:
+
+- *stay-on-top* -- *winops -L top* (toggles between *max_layer* and
+  *default_layer*).
+- *stay-on-bottom* -- *winops -L bottom* (toggles between 0 and
+  *default_layer*).
+- *Always-on-top from launch* -- bind a rule:
+
+```
+rule -g -n mpv-pip -T on-map -s %mpv winops -t %mpv -L =top
+```
+
+	Use *=top* (rather than bare *top*) inside rules so a re-map
+	event never accidentally toggles the layer back to default.
+
+Iconified windows' icons are pinned to layer 0 regardless of the
+parent window's layer.
+
+Focus-on-raise (the *raise_on_focus* setting) is layer-aware: focusing
+a layer-4 window with a layer-8 window present never visually pops
+the layer-4 window above the layer-8 one.  The titlebar/border colours
+remain the only cross-layer signal of focus.
+
+The two layer-aware settings are:
+
+- *set default_layer* _N_ -- layer assigned to newly mapped windows.
+- *set max_layer* _N_ -- cap for *-L*; raising the cap re-permits
+  bigger numbers, lowering it clamps every existing window's layer.
+
+The *on-layer-change* rule event fires whenever a window's layer
+changes -- this is the hook for visual cues that depend on layer.
+For example, to tint the titlebar of any window in the top layer:
+
+```
+rule -g -n top-layer-tint -T on-layer-change \
+    set titlebar.active_colour 0xC04030
+```
+
+The rule receives the same per-view scope as other view-bearing
+events, so *-s* / *-t* selectors and per-view *set* writes all work
+as expected.
+
+When the rule body is an *exec* line, the per-firing JSON payload is
+available to the spawned shell as the *COW_EVENT* environment
+variable.  For *on-layer-change* the payload is:
+
+```
+{"prev": P, "current": N}
+```
+
+so a rule like:
+
+```
+rule -g -n log-layer -T on-layer-change \
+    exec sh -c 'printf "%s\\n" "$COW_EVENT" >> ~/cow-layer.log'
+```
+
+writes one line per layer transition.
+
 # DESKTOP BEHAVIOUR
 
 Desktops can be configured either independently of each output, or desktops are
@@ -508,7 +578,7 @@ this man page.
 
 The following detail commands which operate on windows directly.
 
-## winops [-Icilrs] [-t target]
+## winops [-Icilrs] [-L layer] [-t target]
 
 Operate on a window.
 
@@ -522,10 +592,12 @@ Operate on a window.
 	Close the window.
 
 *-r*
-	Raise the window to the top of the stacking order.
+	Raise the window to the top of the stacking order *within its
+	layer*.  See *LAYERS* below for the cross-layer invariant.
 
 *-l*
-	Lower the window to the bottom of the stacking order.
+	Lower the window to the bottom of the stacking order *within
+	its layer*.
 
 *-s*
 	Toggle desk-sticky: window appears on all desks.
@@ -536,6 +608,23 @@ Operate on a window.
 
 *-i*
 	Toggle the window's iconified (minimised) state.
+
+*-L* _layer_
+	Set the window's layer (see *LAYERS*).  Accepted forms:
+
+	- _N_ -- absolute layer (clamped to *[0, max_layer]*).
+	- _=N_ -- absolute layer, explicit (never toggles).
+	- _+N_ / _-N_ -- relative bump, clamped at edges.
+	- *top* -- shorthand for *max_layer*; toggles back to
+	  *default_layer* when the window is already at *max_layer*.
+	- *bottom* -- shorthand for 0; toggles back to *default_layer*
+	  when the window is already at 0.
+	- *=top* / *=bottom* -- non-toggling variants; useful inside
+	  rules so a re-map event doesn't accidentally revert the
+	  layer.
+
+	Container members share a single layer: setting *-L* on any
+	member updates every member of the container.
 
 ## window-move [-C] [-t target] [-d dir [-n]] [-o output] [-c] [-k 0-9] [-x X] [-y Y]
 
@@ -609,7 +698,7 @@ mouse, from the bottom-right corner.
 *-h* _height_
 	Set the window height in pixels.
 
-## focus [-npw] [-t target] [-d dir] [-o output] [-A app_id] [-T title] [-i id]
+## focus [-npwL] [-l N] [-t target] [-d dir] [-o output] [-A app_id] [-T title] [-i id]
 
 Move keyboard focus.
 
@@ -640,6 +729,19 @@ Move keyboard focus.
 
 *-i* _id_
 	Focus the window with River identifier _id_.
+
+*-L*
+	Restrict traversal to the focused window's layer (see *LAYERS*).
+	Combine with *-n*, *-p*, or *-d*; standalone *-L* is an error.
+	When no window is focused, the current layer is taken as
+	*default_layer*.
+
+*-l* _N_
+	Restrict to layer _N_.  Without *-n* or *-p*, focuses the
+	topmost focusable window in layer _N_; if the focused window
+	is already in layer _N_, cycles to the next focusable window
+	in that layer.  Combine with *-n*/*-p* to walk only within
+	_N_.  Mutually exclusive with *-L*.
 
 ## window-expand [-t target] [-d dir] [-T]
 

@@ -21,9 +21,12 @@ t*
  */
 
 #include <limits.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cow/cmd.h"
+#include "cow/compat.h"
+#include "cow/config.h"
 #include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/seat.h"
@@ -31,20 +34,41 @@ t*
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_focus_exec(struct cmd *, struct cmd_q *);
-static void	       do_next(void);
-static void	       do_prev(void);
+static void	       do_next(int target_layer);
+static void	       do_prev(int target_layer);
 static void	       do_app_id(const char *, struct cmd_q *);
 static void	       do_title(const char *, struct cmd_q *);
 static void	       do_id(const char *, struct cmd_q *);
-static void	       do_directional(enum cow_direction, struct cmd_q *);
+static void	       do_directional(enum cow_direction, int target_layer,
+	       struct cmd_q *);
 static void	       do_screen(const char *, struct cmd_q *);
+static void	       do_layer_focus(int layer, struct cmd_q *);
+
+/*
+ * File-static layer filter state.  When >= 0, the predicate
+ * focusable_layered() also requires effective_layer == target.
+ * Set immediately before invoking cow_view_walk() and cleared on
+ * function return; not multi-thread safe (the WM is single-threaded).
+ */
+static int g_layer_filter = -1;
+
+static bool
+focusable_layered(const struct cow_view *v)
+{
+	if (!cow_view_focusable(v))
+		return false;
+	if (g_layer_filter < 0)
+		return true;
+	return (int)cow_view_effective_layer(v) == g_layer_filter;
+}
 
 struct cmd_entry cmd_focus_entry = {
 	"focus",
-	"t:npwd:o:",
+	"t:npwd:o:Ll:",
 	0,
 	0,
-	"focus [-npw] [-d dir] [-o output] [-t %app|/title/|#id]",
+	"focus [-npwL] [-l N] [-d dir] [-o output] "
+	"[-t %app|/title/|#id]",
 	cmd_focus_exec,
 	0,
 };
@@ -96,10 +120,12 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	struct args *args = self->args;
 
-	const char *dir_val = args_get(args, 'd');
-	const char *scr_val = args_get(args, 'o');
-	const char *t_val   = args_get(args, 't');
-	bool	    do_warp = args_has(args, 'w');
+	const char *dir_val    = args_get(args, 'd');
+	const char *scr_val    = args_get(args, 'o');
+	const char *t_val      = args_get(args, 't');
+	const char *layer_val  = args_get(args, 'l');
+	bool	    do_warp    = args_has(args, 'w');
+	bool	    same_layer = args_has(args, 'L');
 
 	if (args->argc > 0) {
 		cmdq_error(cmdq, "focus: unexpected argument: %s",
@@ -107,10 +133,42 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_ERROR);
 	}
 
+	if (same_layer && layer_val != NULL) {
+		cmdq_error(cmdq, "focus: -L and -l are mutually exclusive");
+		return (CMD_RETURN_ERROR);
+	}
+
+	/*
+	 * Resolve target_layer for the layer-aware modifiers:
+	 *   -L      -> effective layer of the focused view (default layer
+	 *              when there is none).
+	 *   -l N    -> N (explicit).
+	 *  neither  -> -1 = "any layer" (back-compat).
+	 */
+	int target_layer = -1;
+	if (same_layer) {
+		struct cow_view *f = cow_wm.focused_view;
+		if (f != NULL && !f->closed)
+			target_layer = (int)cow_view_effective_layer(f);
+		else
+			target_layer = (cow_config != NULL) ?
+			    (int)cow_config->default_layer :
+			    COW_CFG_DEFAULT_LAYER;
+	} else if (layer_val != NULL) {
+		const char *errstr;
+		long long   v = strtonum(layer_val, 0, 255, &errstr);
+		if (errstr != NULL) {
+			cmdq_error(cmdq, "focus: -l: bad layer value: %s",
+			    layer_val);
+			return (CMD_RETURN_ERROR);
+		}
+		target_layer = (int)v;
+	}
+
 	if (args_has(args, 'n')) {
-		do_next();
+		do_next(target_layer);
 	} else if (args_has(args, 'p')) {
-		do_prev();
+		do_prev(target_layer);
 	} else if (scr_val != NULL) {
 		do_screen(scr_val, cmdq);
 		return (CMD_RETURN_NORMAL);
@@ -121,10 +179,19 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 			    dir_val);
 			return (CMD_RETURN_ERROR);
 		}
-		do_directional(dir, cmdq);
+		do_directional(dir, target_layer, cmdq);
 	} else if (t_val != NULL) {
 		if (!focus_dispatch_selector(t_val, cmdq))
 			return (CMD_RETURN_ERROR);
+	} else if (layer_val != NULL) {
+		/* `focus -l N` with no -n/-p: topmost (or cycle if
+		 * focused view is already in N). */
+		do_layer_focus(target_layer, cmdq);
+	} else if (same_layer) {
+		/* -L is a modifier; not a standalone verb. */
+		cmdq_error(cmdq,
+		    "focus: -L requires -n, -p, or -d <direction>");
+		return (CMD_RETURN_ERROR);
 	}
 
 	if (do_warp) {
@@ -145,54 +212,103 @@ defer_focus(struct cow_view *view)
  * Find the first focusable view relative to 'focused' in the given
  * direction.  If focused is NULL, search from the start/end of the
  * list.  Returns NULL if none is found.
+ *
+ * target_layer >= 0 restricts the search to views whose effective
+ * layer equals target_layer; -1 means "any layer" (back-compat).
  */
 static struct cow_view *
-find_focusable(struct cow_view *focused, bool forward)
+find_focusable(struct cow_view *focused, bool forward, int target_layer)
 {
 	if (wl_list_empty(&cow_wm.views))
 		return NULL;
 
+	g_layer_filter = target_layer;
+
+	struct cow_view *result = NULL;
 	if (focused == NULL) {
 		struct cow_view *v;
 		if (forward) {
 			wl_list_for_each(v, &cow_wm.views, wm_link)
 			{
-				if (cow_view_focusable(v))
-					return v;
+				if (focusable_layered(v)) {
+					result = v;
+					break;
+				}
 			}
 		} else {
 			wl_list_for_each_reverse(v, &cow_wm.views, wm_link)
 			{
-				if (cow_view_focusable(v))
-					return v;
+				if (focusable_layered(v)) {
+					result = v;
+					break;
+				}
 			}
 		}
-		return NULL;
+	} else {
+		result = cow_view_walk(focused, forward, focusable_layered);
 	}
 
-	return cow_view_walk(focused, forward, cow_view_focusable);
+	g_layer_filter = -1;
+	return result;
 }
 
-/* focus -n */
+/* focus -n [-L | -l N] */
 static void
-do_next(void)
+do_next(int target_layer)
 {
 	struct cow_view *focused = cow_wm.focused_view;
-	struct cow_view *next	 = find_focusable(focused, true);
+	struct cow_view *next	 = find_focusable(focused, true, target_layer);
 
 	if (next != NULL && next != focused)
 		defer_focus(next);
 }
 
-/* focus -p */
+/* focus -p [-L | -l N] */
 static void
-do_prev(void)
+do_prev(int target_layer)
 {
 	struct cow_view *focused = cow_wm.focused_view;
-	struct cow_view *prev	 = find_focusable(focused, false);
+	struct cow_view *prev	 = find_focusable(focused, false, target_layer);
 
 	if (prev != NULL && prev != focused)
 		defer_focus(prev);
+}
+
+/*
+ * focus -l N (no -n/-p): focus the most-recently-raised view in
+ * layer N.  If the focused view is already in layer N, cycle to the
+ * next layer-N view (in insertion order); when no other view exists
+ * in N, no-op.
+ */
+static void
+do_layer_focus(int layer, struct cmd_q *cmdq)
+{
+	(void)cmdq; /* no-op when layer empty; quiet rather than error */
+	struct cow_view *focused = cow_wm.focused_view;
+
+	if (focused != NULL && !focused->closed &&
+	    (int)cow_view_effective_layer(focused) == layer) {
+		/* Cycle: walk forward, stop at the next focusable in N. */
+		struct cow_view *next = find_focusable(focused, true, layer);
+		if (next != NULL && next != focused)
+			defer_focus(next);
+		return;
+	}
+
+	/* Otherwise pick the topmost (largest raise_seq) view in N. */
+	struct cow_view *best = NULL;
+	struct cow_view *v;
+	wl_list_for_each(v, &cow_wm.views, wm_link)
+	{
+		if (!cow_view_focusable(v))
+			continue;
+		if ((int)cow_view_effective_layer(v) != layer)
+			continue;
+		if (best == NULL || v->raise_seq > best->raise_seq)
+			best = v;
+	}
+	if (best != NULL)
+		defer_focus(best);
 }
 
 /* focus -A app_id */
@@ -246,7 +362,7 @@ do_id(const char *id, struct cmd_q *cmdq)
 }
 
 static void
-do_directional(enum cow_direction dir, struct cmd_q *cmdq)
+do_directional(enum cow_direction dir, int target_layer, struct cmd_q *cmdq)
 {
 	struct cow_view *focused = cow_wm.focused_view;
 
@@ -268,6 +384,9 @@ do_directional(enum cow_direction dir, struct cmd_q *cmdq)
 		if (v == focused || !cow_view_focusable(v))
 			continue;
 		if (v->output != focused->output)
+			continue;
+		if (target_layer >= 0 &&
+		    (int)cow_view_effective_layer(v) != target_layer)
 			continue;
 
 		int vx, vy;

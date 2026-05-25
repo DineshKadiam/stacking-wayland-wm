@@ -16,9 +16,11 @@
 
 #include <cJSON.h>
 #include <limits.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cow/cmd.h"
+#include "cow/compat.h"
 #include "cow/config.h"
 #include "cow/desk_ops.h"
 #include "cow/ipc.h"
@@ -63,6 +65,8 @@ static enum cmd_retval cmd_window_shade_exec(struct cmd *, struct cmd_q *);
 static void		    do_identify(struct cow_view *, struct cmd_q *);
 static void		    do_raise(struct cow_view *);
 static void		    do_lower(struct cow_view *);
+static enum cmd_retval	    do_set_layer(struct cow_view *, const char *,
+	 struct cmd_q *);
 static void		    do_expand(struct cow_view *, enum expand_dir, bool);
 static void		    do_maximize(struct cow_view *, enum maximize_type,
 		    enum maximize_axis);
@@ -72,10 +76,10 @@ static enum shade_direction resolve_shade_direction(const char *);
 
 struct cmd_entry cmd_winops_entry = {
 	"winops",
-	"t:IcrlsiS",
+	"t:IcrlsiSL:",
 	0,
 	0,
-	"[-Icilrs] [-t target window]",
+	"[-Icilrs] [-L layer] [-t target window]",
 	cmd_winops_exec,
 	0,
 };
@@ -131,6 +135,13 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	if (args_has(args, 'i'))
 		cow_view_iconify(view);
+
+	if (args_has(args, 'L')) {
+		const char     *lval = args_get(args, 'L');
+		enum cmd_retval r    = do_set_layer(view, lval, cmdq);
+		if (r != CMD_RETURN_NORMAL)
+			return (r);
+	}
 
 	return (CMD_RETURN_NORMAL);
 }
@@ -263,6 +274,80 @@ do_lower(struct cow_view *view)
 {
 	view->pending_lower = true;
 	cow_wm_request_manage_dirty();
+}
+
+/*
+ * Parse the -L argument and apply.  Grammar:
+ *
+ *   N           -- absolute layer (clamped to [0, max_layer]).
+ *   =N          -- absolute layer (explicit; never toggles).
+ *   +N / -N     -- relative bump (clamped at the edges).
+ *   top         -- shorthand for max_layer; toggles back to default
+ *                  when view->layer == max_layer.
+ *   bottom      -- shorthand for 0;         toggles back to default
+ *                  when view->layer == 0.
+ *   =top        -- max_layer, never toggles (useful inside rules).
+ *   =bottom     -- 0,         never toggles.
+ *
+ * The toggle only fires at the exact endpoint; layer 5 with `-L top`
+ * goes to max_layer, never back via the same keystroke.
+ */
+static enum cmd_retval
+do_set_layer(struct cow_view *view, const char *arg, struct cmd_q *cmdq)
+{
+	if (arg == NULL || arg[0] == '\0') {
+		cmdq_error(cmdq, "winops: -L: missing layer value");
+		return (CMD_RETURN_ERROR);
+	}
+
+	int max	 = (cow_config != NULL) ? (int)cow_config->max_layer :
+					  COW_CFG_MAX_LAYER;
+	int defl = (cow_config != NULL) ? (int)cow_config->default_layer :
+					  COW_CFG_DEFAULT_LAYER;
+	if (defl > max)
+		defl = max;
+
+	bool	    explicit_set = false;
+	const char *p		 = arg;
+	if (*p == '=') {
+		explicit_set = true;
+		p++;
+	}
+
+	int target;
+	if (strcmp(p, "top") == 0) {
+		target = max;
+		if (!explicit_set && view->layer == (uint8_t)max)
+			target = defl;
+	} else if (strcmp(p, "bottom") == 0) {
+		target = 0;
+		if (!explicit_set && view->layer == 0)
+			target = defl;
+	} else if (p[0] == '+' || p[0] == '-') {
+		const char *errstr;
+		long long   delta = strtonum(p + 1, 0, 255, &errstr);
+		if (errstr != NULL) {
+			cmdq_error(cmdq, "winops: -L: bad relative value: %s",
+			    arg);
+			return (CMD_RETURN_ERROR);
+		}
+		target = (int)view->layer +
+		    ((p[0] == '+') ? (int)delta : -(int)delta);
+	} else {
+		const char *errstr;
+		long long   v = strtonum(p, 0, 255, &errstr);
+		if (errstr != NULL) {
+			cmdq_error(cmdq,
+			    "winops: -L: expected [+|-|=]N or "
+			    "[=]top|[=]bottom, got '%s'",
+			    arg);
+			return (CMD_RETURN_ERROR);
+		}
+		target = (int)v;
+	}
+
+	cow_view_set_layer(view, target);
+	return (CMD_RETURN_NORMAL);
 }
 
 /*

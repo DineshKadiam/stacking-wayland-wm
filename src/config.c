@@ -156,6 +156,8 @@ cow_config_create(void)
 	config->edge_scroll	     = false;
 	config->edge_scroll_delay_ms = COW_CFG_DEFAULT_EDGE_SCROLL_DELAY;
 	config->raise_on_focus	     = true;
+	config->default_layer	     = COW_CFG_DEFAULT_LAYER;
+	config->max_layer	     = COW_CFG_MAX_LAYER;
 	config->icon_size	     = COW_CFG_DEFAULT_ICON_SIZE;
 	config->snap_distance	     = COW_CFG_DEFAULT_SNAP_DISTANCE;
 

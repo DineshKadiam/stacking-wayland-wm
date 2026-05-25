@@ -123,6 +123,7 @@ do_show_windows(int fd)
 		    cow_view_is_iconified(view));
 		cJSON_AddNumberToObject(w, "raise_seq",
 		    (double)view->raise_seq);
+		cJSON_AddNumberToObject(w, "layer", (double)view->layer);
 
 		/* Container membership.  Emit the first member's id as
 		 * the container_id (stable per-container key) and

@@ -36,6 +36,7 @@
 #include "cow/pointer_op.h"
 #include "cow/rule.h"
 #include "cow/seat.h"
+#include "cow/stack.h"
 #include "cow/state.h"
 #include "cow/status.h"
 #include "cow/titlebar.h"
@@ -1036,6 +1037,20 @@ handle_wm_render_start(__unused void *data,
 				cow_view_icon_render(view);
 		}
 	}
+
+	/*
+	 * Apply the global stacking pass: orders every view's
+	 * river_node_v1 by (effective_layer, raise_seq) so layer
+	 * boundaries are honoured and no per-view code path can
+	 * accidentally place a window across a layer.  Iconified
+	 * views' icon_nodes are written below all layered nodes.
+	 *
+	 * Runs after per-view apply_render (which may have set
+	 * needs_raise / pending_lower flags via stack_mark_dirty) and
+	 * before the drag_ghost handling (which deliberately keeps the
+	 * ghost on top via place_top).
+	 */
+	cow_stack_apply();
 
 	/* Render drag ghost if a container drag is in progress */
 	if (cow_wm.drag_ghost_node != NULL) {

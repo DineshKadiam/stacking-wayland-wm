@@ -46,6 +46,16 @@ struct cow_desk;
 #define COW_CFG_DEFAULT_SQUEEZE_MIN_WIDTH 80
 
 /*
+ * Layer model (FvwmLayers-compatible).  Each window lives in a
+ * numbered layer; higher number = stacks above lower.  Within a layer
+ * the existing raise/lower (raise_seq) ordering applies.  Cross-layer
+ * order is invariant: raising or lowering a window never moves it
+ * past a layer boundary.
+ */
+#define COW_CFG_DEFAULT_LAYER 4
+#define COW_CFG_MAX_LAYER 16
+
+/*
  * Border style enum (carried from original cow).
  */
 enum cow_border_style {
@@ -266,6 +276,21 @@ struct cow_config {
 
 	/* Raise on focus: raise window when focused (default: on) */
 	bool raise_on_focus;
+
+	/*
+	 * Layer assigned to newly mapped windows.  Existing windows are
+	 * unaffected by changes to this value; rules can set a different
+	 * layer at map time via `winops -L`.
+	 */
+	uint8_t default_layer;
+
+	/*
+	 * Upper bound for layer numbers.  Assignments above this cap are
+	 * clamped.  Lowering max_layer below an existing window's layer
+	 * does NOT silently rewrite that window; callers can re-run
+	 * `winops -L =top` to bring it down.
+	 */
+	uint8_t max_layer;
 
 	/* Colors */
 	struct cow_border_colour border_active;

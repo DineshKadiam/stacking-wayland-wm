@@ -36,6 +36,7 @@
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
 #include "cow/shm.h"
+#include "cow/stack.h"
 #include "cow/status.h"
 #include "cow/util.h"
 #include "cow/wm.h"
@@ -345,8 +346,12 @@ cow_view_create(struct river_window_v1 *rw)
 	view->pressed_button	   = -1;
 	view->icon_inverted_button = -1;
 
-	/* New windows start on top of the stack. */
+	/* New windows start on top of the stack within the default
+	 * layer.  Layered ordering is enforced by stack.c's pass; raising
+	 * never crosses a layer boundary. */
 	view->raise_seq = ++cow_wm.raise_seq_counter;
+	view->layer	= cow_config != NULL ? cow_config->default_layer :
+					       COW_CFG_DEFAULT_LAYER;
 
 	cow_view_cfg_init_from_global(&view->cfg);
 	cow_decoration_init(view);
@@ -678,14 +683,59 @@ view_apply_node_position(struct cow_view *view)
 	}
 	river_node_v1_set_position(view->node, render_x, render_y);
 
+	/*
+	 * Raise / lower no longer call river_node_v1_place_{top,bottom}
+	 * directly: the global stacking order is owned by stack.c and
+	 * enforced once per manage cycle.  Here we only update the
+	 * intra-layer raise_seq counter and mark the stack dirty so the
+	 * deferred pass re-issues node ordering with layer constraints
+	 * respected.
+	 */
 	if (view->needs_raise && view->node != NULL) {
-		river_node_v1_place_top(view->node);
-		view->raise_seq	  = ++cow_wm.raise_seq_counter;
+		/*
+		 * Raising any container member raises the whole
+		 * container together.  Assign a fresh raise_seq to
+		 * every member so the stack sort keeps them contiguous
+		 * within their shared layer.
+		 */
+		if (view->container_member != NULL) {
+			struct cow_container *c =
+			    view->container_member->container;
+			uint64_t seq = ++cow_wm.raise_seq_counter;
+			struct cow_container_member *m;
+			wl_list_for_each(m, &c->members, link)
+			{
+				if (m->view != NULL)
+					m->view->raise_seq = seq;
+			}
+			/* Bias the active member by +0 (already seq),
+			 * non-active members by -1 ... so the active
+			 * one sits on top of its peers.  This preserves
+			 * existing visual semantics (active member
+			 * draws on top of its container peers). */
+			if (c->active != NULL && c->active->view != NULL) {
+				wl_list_for_each(m, &c->members, link)
+				{
+					if (m->view != NULL && m != c->active &&
+					    m->view->raise_seq > 0)
+						m->view->raise_seq--;
+				}
+			}
+		} else {
+			view->raise_seq = ++cow_wm.raise_seq_counter;
+		}
 		view->needs_raise = false;
+		cow_stack_mark_dirty();
 	}
 	if (view->pending_lower && view->node != NULL) {
-		river_node_v1_place_bottom(view->node);
+		/* Push raise_seq to one below the layer's current floor so
+		 * the deferred sort renders this view bottommost within
+		 * its layer. */
+		uint64_t floor = cow_stack_min_raise_seq_in_layer(
+		    cow_view_effective_layer(view));
+		view->raise_seq	    = (floor > 0) ? floor - 1 : 0;
 		view->pending_lower = false;
+		cow_stack_mark_dirty();
 	}
 
 	/*
@@ -714,16 +764,12 @@ view_apply_show_hide(struct cow_view *view)
 
 	river_window_v1_show(view->river_window);
 
-	/* Z-ordering: ensure all container members stack together. */
-	if (view->container_member != NULL && view->needs_raise) {
-		struct cow_container *c = view->container_member->container;
-		struct cow_container_member *active = c->active;
-		if (active != NULL && active->view->node != NULL &&
-		    view != active->view) {
-			river_node_v1_place_below(view->node,
-			    active->view->node);
-		}
-	}
+	/*
+	 * Container z-ordering is owned by the global stack pass
+	 * (stack.c).  Container members share a layer and receive a
+	 * fanned raise_seq when any member is raised, so the sort
+	 * keeps them contiguous and the active member on top.
+	 */
 
 	if (view->use_ssd) {
 		bool active = (view == cow_wm.focused_view);
@@ -918,6 +964,64 @@ cow_view_focusable(const struct cow_view *v)
 {
 	return !v->closed && v->has_dimensions &&
 	    !(v->flags & COW_VIEW_ICONIFIED_FLAG);
+}
+
+uint8_t
+cow_view_effective_layer(const struct cow_view *v)
+{
+	if (v == NULL)
+		return COW_CFG_DEFAULT_LAYER;
+	/*
+	 * Container members share a single layer.  Use the container's
+	 * active member's layer when this view participates; if there's
+	 * no active member (transient), fall back to the view's own.
+	 */
+	if (v->container_member != NULL) {
+		struct cow_container *c = v->container_member->container;
+		if (c != NULL && c->active != NULL && c->active->view != NULL)
+			return c->active->view->layer;
+	}
+	return v->layer;
+}
+
+uint8_t
+cow_view_set_layer(struct cow_view *view, int requested)
+{
+	if (view == NULL)
+		return COW_CFG_DEFAULT_LAYER;
+
+	int max = (cow_config != NULL) ? (int)cow_config->max_layer :
+					 COW_CFG_MAX_LAYER;
+	if (max < 0)
+		max = 0;
+	if (max > 255)
+		max = 255;
+	if (requested < 0)
+		requested = 0;
+	if (requested > max)
+		requested = max;
+	uint8_t new_layer = (uint8_t)requested;
+
+	/*
+	 * Container members all live in the same layer.  Fan the
+	 * assignment out so a contained group stays atomic in the
+	 * global stack.
+	 */
+	if (view->container_member != NULL) {
+		struct cow_container *c = view->container_member->container;
+		struct cow_container_member *m;
+		wl_list_for_each(m, &c->members, link)
+		{
+			if (m->view != NULL)
+				m->view->layer = new_layer;
+		}
+	} else {
+		view->layer = new_layer;
+	}
+
+	cow_stack_mark_dirty();
+	cow_wm_request_manage_dirty();
+	return new_layer;
 }
 
 void

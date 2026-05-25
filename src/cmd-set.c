@@ -36,6 +36,7 @@
 #include "cow/output.h"
 #include "cow/pan_frames.h"
 #include "cow/shm.h"
+#include "cow/stack.h"
 #include "cow/status.h"
 #include "cow/titlebar.h"
 #include "cow/view.h"
@@ -405,6 +406,50 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	if (strncmp(key, "titlebar.button_", 16) == 0) {
 		do_set_button(key, val, cmdq);
+		xfree(val);
+		return (CMD_RETURN_NORMAL);
+	}
+
+	if (strcmp(key, "default_layer") == 0 ||
+	    strcmp(key, "max_layer") == 0) {
+		const char *errstr;
+		long long   v = strtonum(val, 0, 255, &errstr);
+		if (errstr != NULL) {
+			cmdq_error(cmdq, "set: %s: bad value: %s", key, val);
+			xfree(val);
+			return (CMD_RETURN_ERROR);
+		}
+		if (cow_config != NULL) {
+			if (strcmp(key, "default_layer") == 0) {
+				int max = (int)cow_config->max_layer;
+				if ((int)v > max)
+					v = max;
+				cow_config->default_layer = (uint8_t)v;
+			} else {
+				/*
+				 * max_layer: clamp every existing view's
+				 * layer to the new cap so the invariant
+				 * (view->layer <= max_layer) holds for
+				 * subsequent stacking passes.
+				 */
+				cow_config->max_layer = (uint8_t)v;
+				if (cow_config->default_layer > (uint8_t)v)
+					cow_config->default_layer = (uint8_t)v;
+				struct cow_view *vw;
+				bool		 any = false;
+				wl_list_for_each(vw, &cow_wm.views, wm_link)
+				{
+					if (vw->layer > (uint8_t)v) {
+						vw->layer = (uint8_t)v;
+						any	  = true;
+					}
+				}
+				if (any) {
+					cow_stack_mark_dirty();
+					cow_wm_request_manage_dirty();
+				}
+			}
+		}
 		xfree(val);
 		return (CMD_RETURN_NORMAL);
 	}
