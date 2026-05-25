@@ -1005,22 +1005,35 @@ cow_view_set_layer(struct cow_view *view, int requested)
 	/*
 	 * Container members all live in the same layer.  Fan the
 	 * assignment out so a contained group stays atomic in the
-	 * global stack.
+	 * global stack.  Per-member on-layer-change rules fire only
+	 * for members whose layer value actually changed.
 	 */
+	bool any_changed = false;
 	if (view->container_member != NULL) {
 		struct cow_container *c = view->container_member->container;
 		struct cow_container_member *m;
 		wl_list_for_each(m, &c->members, link)
 		{
-			if (m->view != NULL)
-				m->view->layer = new_layer;
+			if (m->view == NULL)
+				continue;
+			if (m->view->layer == new_layer)
+				continue;
+			m->view->layer = new_layer;
+			any_changed    = true;
+			cow_rule_fire(COW_RULE_ON_LAYER_CHANGE, m->view,
+			    m->view->desk, m->view->output);
 		}
-	} else {
+	} else if (view->layer != new_layer) {
 		view->layer = new_layer;
+		any_changed = true;
+		cow_rule_fire(COW_RULE_ON_LAYER_CHANGE, view, view->desk,
+		    view->output);
 	}
 
-	cow_stack_mark_dirty();
-	cow_wm_request_manage_dirty();
+	if (any_changed) {
+		cow_stack_mark_dirty();
+		cow_wm_request_manage_dirty();
+	}
 	return new_layer;
 }
 

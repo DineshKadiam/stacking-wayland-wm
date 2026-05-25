@@ -38,6 +38,15 @@ enum cow_rule_type {
 	COW_RULE_ON_UNSHADE,
 	COW_RULE_ON_ICONIFY,
 	COW_RULE_ON_DEICONIFY,
+	/*
+	 * Fired when a view's layer changes (winops -L, including the
+	 * top/bottom toggles, rule-driven assignments at on-map, and
+	 * the implicit fan-out across container members).  The view's
+	 * `layer` field is already updated to the new value at fire
+	 * time.  No-op assignments (layer unchanged after clamping)
+	 * do not fire.
+	 */
+	COW_RULE_ON_LAYER_CHANGE,
 	COW_RULE_ON_NEW_DESK,
 	COW_RULE_ON_NEW_PAGE,
 	COW_RULE_ON_RESTART,

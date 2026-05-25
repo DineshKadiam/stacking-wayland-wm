@@ -190,23 +190,6 @@ The rule receives the same per-view scope as other view-bearing
 events, so *-s* / *-t* selectors and per-view *set* writes all work
 as expected.
 
-When the rule body is an *exec* line, the per-firing JSON payload is
-available to the spawned shell as the *COW_EVENT* environment
-variable.  For *on-layer-change* the payload is:
-
-```
-{"prev": P, "current": N}
-```
-
-so a rule like:
-
-```
-rule -g -n log-layer -T on-layer-change \
-    exec sh -c 'printf "%s\\n" "$COW_EVENT" >> ~/cow-layer.log'
-```
-
-writes one line per layer transition.
-
 # DESKTOP BEHAVIOUR
 
 Desktops can be configured either independently of each output, or desktops are
@@ -490,6 +473,9 @@ The following table shows which events are available:
 :  Fired when a window is iconified.
 |  *on-deiconify*
 :  Fired when a window is deiconified.
+|  *on-layer-change*
+:  Fired when a window's layer changes (see *LAYERS*).  Fires
+   per-window for container members.  No-op assignments do not fire.
 |  *on-new-desk*
 :  Fired a new desk is switched to.
 |  *on-new-page*

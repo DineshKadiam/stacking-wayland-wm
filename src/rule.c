@@ -34,16 +34,17 @@ static const struct {
 	const char	  *name;
 } rule_type_table[] = {
 	{ COW_RULE_ON_MAP,	   "on-map"	    },
-	{ COW_RULE_ON_MOVE,	    "on-move"      },
-	{ COW_RULE_ON_RESIZE,    "on-resize"	  },
-	{ COW_RULE_ON_SHADE,     "on-shade"	},
-	{ COW_RULE_ON_UNSHADE,   "on-unshade"   },
-	{ COW_RULE_ON_ICONIFY,   "on-iconify"   },
-	{ COW_RULE_ON_DEICONIFY, "on-deiconify" },
-	{ COW_RULE_ON_NEW_DESK,	"on-new-desk"  },
-	{ COW_RULE_ON_NEW_PAGE,	"on-new-page"  },
-	{ COW_RULE_ON_RESTART,   "on-restart"   },
-	{ COW_RULE_ON_DESK,	    "on-desk"      },
+	{ COW_RULE_ON_MOVE,	    "on-move"	      },
+	{ COW_RULE_ON_RESIZE,	      "on-resize"	  },
+	{ COW_RULE_ON_SHADE,	     "on-shade"	},
+	{ COW_RULE_ON_UNSHADE,      "on-unshade"	    },
+	{ COW_RULE_ON_ICONIFY,      "on-iconify"	    },
+	{ COW_RULE_ON_DEICONIFY,	 "on-deiconify"	},
+	{ COW_RULE_ON_LAYER_CHANGE, "on-layer-change" },
+	{ COW_RULE_ON_NEW_DESK,	"on-new-desk"     },
+	{ COW_RULE_ON_NEW_PAGE,	"on-new-page"     },
+	{ COW_RULE_ON_RESTART,      "on-restart"	    },
+	{ COW_RULE_ON_DESK,	    "on-desk"	      },
 };
 
 /*
@@ -231,6 +232,7 @@ event_carries_view(enum cow_rule_type type)
 	case COW_RULE_ON_UNSHADE:
 	case COW_RULE_ON_ICONIFY:
 	case COW_RULE_ON_DEICONIFY:
+	case COW_RULE_ON_LAYER_CHANGE:
 		return true;
 	case COW_RULE_ON_NEW_DESK:
 	case COW_RULE_ON_NEW_PAGE:
