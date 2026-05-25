@@ -148,7 +148,11 @@ Note that this is controlled via river(1) and `cow` has no means of being able
 to set monitors directly.  To get a more visual overview of things, the
 `wdisplays` command is helpful, and is similar to `arandr` from xrandr.
 
-# Logo
+# Logo and mascot.
+
+Meet our mascot, Anvil Cow.
+
+![](./logos/Only-CoW.svg)  ![](./logos/Only-CoW-inverted.svg)
 
 Luis Sobalvarro kindly created the CoW logo for this project.
 
