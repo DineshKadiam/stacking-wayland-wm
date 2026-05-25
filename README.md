@@ -1,6 +1,8 @@
-# CoW -- Compostitor On Wayland
+# CoW -- Compostitor on Wayland
 
-![](./cow-image.png)
+<p align="center">
+  <img src="./CoW-final.svg">
+</p>
 
 `cow` is a stacking window manager.  Unlike other compositors based on
 wlroots, `cow` is a window manager using [river](https://codeberg.org/river/river)
@@ -145,3 +147,19 @@ run `wlr-randr` with the appropriate values.
 Note that this is controlled via river(1) and `cow` has no means of being able
 to set monitors directly.  To get a more visual overview of things, the
 `wdisplays` command is helpful, and is similar to `arandr` from xrandr.
+
+# Logo
+
+Luis Sobalvarro kindly created the CoW logo for this project.
+
+
+![](./CoW-final-inverted.svg)
+
+and...
+
+![](./CoW-final.svg)
+
+Massive thanks to you, Luis!
+
+These logos are released under the same licence as CoW itself -- that is to
+say, they're free to use as long as attribution is given to Luis Sobalvarro.
