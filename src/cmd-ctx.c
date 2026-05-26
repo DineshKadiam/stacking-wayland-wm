@@ -207,19 +207,41 @@ resolve_window(const char *spec, struct cow_output *output,
 		return NULL;
 	}
 
-	/* #identifier -- match by river window id */
+	/*
+	 * #identifier -- match by river window id (sigil form), or a
+	 * bare hex/alphanumeric token that exactly equals a known
+	 * river identifier (sigil-less form, used by scripts that
+	 * interpolate `w.id` directly).
+	 */
+	const char *id_start = NULL;
 	if (spec[0] == '#') {
-		const char	*id = spec + 1;
+		id_start = spec + 1;
+	} else {
+		bool	    looks_id = (spec[0] != '\0');
+		const char *p;
+		for (p = spec; *p != '\0'; p++) {
+			char c = *p;
+			if (!((c >= '0' && c <= '9') ||
+				(c >= 'a' && c <= 'f') ||
+				(c >= 'A' && c <= 'F'))) {
+				looks_id = false;
+				break;
+			}
+		}
+		if (looks_id)
+			id_start = spec;
+	}
+	if (id_start != NULL) {
 		struct cow_view *v;
 		wl_list_for_each(v, &cow_wm.views, wm_link)
 		{
 			if (!cow_view_focusable(v))
 				continue;
 			if (v->identifier != NULL &&
-			    strcmp(v->identifier, id) == 0)
+			    strcmp(v->identifier, id_start) == 0)
 				return v;
 		}
-		xasprintf(cause, "no window with id: %s", id);
+		xasprintf(cause, "no window with id: %s", id_start);
 		return NULL;
 	}
 
