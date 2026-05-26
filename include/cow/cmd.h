@@ -339,6 +339,7 @@ extern struct cmd_entry cmd_focus_entry;
 extern struct cmd_entry cmd_desk_entry;
 extern struct cmd_entry cmd_desk_name_entry;
 extern struct cmd_entry cmd_scroll_entry;
+extern struct cmd_entry cmd_script_entry;
 extern struct cmd_entry cmd_window_shade_entry;
 extern struct cmd_entry cmd_container_entry;
 extern struct cmd_entry cmd_pick_window_entry;

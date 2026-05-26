@@ -45,12 +45,15 @@ srcs = [
     'src/cmd-quit.c',
     'src/cmd-resize.c',
     'src/cmd-rule.c',
+    'src/cmd-script.c',
     'src/cmd-scroll.c',
     'src/cmd-set.c',
     'src/cmd-show.c',
     'src/cmd-string.c',
     'src/cmd-window.c',
     'src/cmd.c',
+    'src/dsl-ast.c',
+    'src/dsl-eval.c',
     'src/colour.c',
     'src/command.c',
     'src/config.c',
@@ -92,6 +95,36 @@ endif
 
 cc = meson.get_compiler('c')
 m_dep = cc.find_library('m', required: false)
+
+# DSL parser / lexer (script { ... } blocks).  Generated at build
+# time; the produced .c sources are added to the cow executable
+# below, and the .h headers land in build/ so dsl-eval.c and
+# dsl-lexer.c can include them.
+bison_prog = find_program('bison', version: '>=3.0', required: true)
+flex_prog  = find_program('flex',  version: '>=2.6', required: true)
+
+dsl_parser_gen = custom_target('dsl-parser',
+    input:   'src/dsl-parser.y',
+    output:  ['dsl-parser.c', 'dsl-parser.h'],
+    command: [bison_prog,
+        '-d',
+        '-p', 'dsl_yy',
+        '--defines=@OUTPUT1@',
+        '-o', '@OUTPUT0@',
+        '@INPUT@',
+    ],
+)
+
+dsl_lexer_gen = custom_target('dsl-lexer',
+    input:   'src/dsl-lexer.l',
+    output:  ['dsl-lexer.c', 'dsl-lexer.h'],
+    command: [flex_prog,
+        '-P', 'dsl_yy',
+        '--header-file=@OUTPUT1@',
+        '-o', '@OUTPUT0@',
+        '@INPUT@',
+    ],
+)
 
 add_project_arguments(
     [
@@ -283,7 +316,7 @@ include_dirs = [
 ]
 
 executable('cow',
-    srcs + generated,
+    srcs + generated + [dsl_parser_gen, dsl_lexer_gen],
     include_directories: include_dirs,
     dependencies: all_deps,
     install: true,
