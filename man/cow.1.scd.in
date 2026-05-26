@@ -211,6 +211,129 @@ structured payload leave *COW_EVENT* unset; the variable is only
 visible inside the *exec*'d shell and never affects cow itself or
 other concurrent rule fires.
 
+# SCRIPTING
+
+Beyond the line-oriented command language, *cow* understands
+*script { ... }* blocks: small embedded scripts that can iterate
+collections, filter them, branch on conditions, and invoke any cow
+command on the results.  A *script* block is itself a cow command,
+so it can appear anywhere a command is accepted: the top-level
+configuration file, the body of a *rule*, or as an IPC submission
+on *cow-cmd.sock*.
+
+## Statements
+
+A block contains zero or more statements; whitespace (including
+newlines) separates them.
+
+*let* _NAME_ *=* _EXPR_
+	Bind _NAME_ to the value of _EXPR_ in the current scope.
+	Names are visible to subsequent statements in the same block
+	and to nested blocks.
+
+*for* _NAME_ *in* *(*_SOURCE_ [*where* _EXPR_]*)* *{* ... *}*
+	Snapshot _SOURCE_ at loop entry and execute the body once
+	per matching element with _NAME_ bound to the current
+	record.  _SOURCE_ is one of *windows*, *desks*, *outputs*,
+	*rules*.  An optional *where* clause filters the snapshot
+	with the supplied expression (evaluated per element with
+	_NAME_ in scope).  The body sees a fresh sub-scope; let
+	bindings inside the body don't leak out.
+
+*if* _EXPR_ *{* ... *}* [*else* *{* ... *}* | *else* *if* ... ]
+	Branch on the truthiness of _EXPR_ (numbers are false when
+	zero; strings are false when empty; lists are false when
+	empty; records are always true; nil and false are false).
+
+_COMMAND_ [_ARGS_ ...]
+	Invoke any registered cow command.  Each argument is either
+	a raw text chunk (passed verbatim) or an interpolation of
+	the form *#{*_EXPR_*}* which is replaced with the
+	stringified result before the command runs.  Commands enqueue
+	on the same queue as the *script* invocation itself, so
+	their side effects interleave with the rest of cow's command
+	stream.
+
+## Expressions
+
+The expression language has no arithmetic and no string operators
+in v1; it covers what's needed to choose work to do.
+
+[[ *Form*
+:< *Meaning*
+|  _N_, _N.N_
+:  numeric literal (double-precision)
+|  "..."
+:  string literal (escapes: \\n \\t \\r \\" \\\\)
+|  *true*, *false*
+:  boolean literal
+|  _NAME_
+:  variable in the current or enclosing scope
+|  _NAME_._FIELD_._FIELD_
+:  record field access (chained for nested records)
+|  _A_ *==* _B_
+:  comparison (also *!=*, *<*, *<=*, *>*, *>=*); cross-type
+   compares are evaluation errors; ordering on booleans is an
+   evaluation error
+|  *not* _A_
+:  unary negation
+|  _A_ *and* _B_, _A_ *or* _B_
+:  boolean operators (short-circuit)
+|  (_EXPR_)
+:  grouping
+
+## Sources
+
+Each iterable source yields records whose fields match the matching
+*show* topic JSON (see *show windows*, *show desk*, *show output*,
+*show rules*).  Common window fields include *id*, *app_id*,
+*title*, *desk*, *output*, *layer*, *focused*, *iconified*,
+*maximized*, *width*, *height*.  Common desk fields: *nr*, *output*,
+*current*, *window_count*.  Common output fields: *name*, *number*,
+*current*, *current_desk*.  Common rule fields: *name*, *type*,
+*global*, *match*.
+
+Inside a rule body, the identifier *self* resolves to a record for
+the event's target view; outside a rule body it is unbound.
+
+## Examples
+
+Tint titlebars of windows promoted to the top layer:
+
+```
+rule -g -n top-tint -T on-layer-change script {
+    if self.layer == 16 {
+        set titlebar.active_colour 0xC04030
+    } else {
+        set titlebar.active_colour 0x303030
+    }
+}
+```
+
+Move every mpv window to the top layer:
+
+```
+script {
+    for w in (windows where w.app_id == "mpv") {
+        winops -t #{w.id} -L =top
+    }
+}
+```
+
+Iconify every window not on the currently-focused desk:
+
+```
+script {
+    for w in (windows where w.focused != true and w.iconified != true) {
+        winops -t #{w.id} -i
+    }
+}
+```
+
+Multi-line scripts may also be submitted ad-hoc via IPC by piping
+the body to *moocow*'s stdin (a future addition; for now use
+*moocow 'script { ... }'* on one line).
+
 # DESKTOP BEHAVIOUR
 
 Desktops can be configured either independently of each output, or desktops are

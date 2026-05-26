@@ -82,6 +82,12 @@ Documentation is written in [scdoc](https://git.sr.ht/~sircmpwn/scdoc):
 
 * scdoc
 
+For the embedded scripting language used by `script { ... }` blocks
+(see *cow*(1), section SCRIPTING):
+
+* bison (>= 3.0)
+* flex  (>= 2.6)
+
 The build system itself uses `meson`, and hence the following command will
 configure, build, and install `cow`:
 
