@@ -54,6 +54,7 @@ srcs = [
     'src/cmd.c',
     'src/dsl-ast.c',
     'src/dsl-eval.c',
+    'src/dsl-value.c',
     'src/colour.c',
     'src/command.c',
     'src/config.c',
