@@ -362,10 +362,57 @@ ipc_handle_client_data(struct cow_ipc_client *client)
 	client->buf_len += n;
 	client->buf[client->buf_len] = '\0';
 
-	/* Process complete lines */
+	/*
+	 * Process complete commands.  Commands are terminated by '\n',
+	 * but an unterminated `{ ... }` block (used by script bodies)
+	 * may legitimately contain newlines: balance braces outside
+	 * any single- or double-quoted strings before treating a '\n'
+	 * as the command terminator.  Until braces balance, we keep
+	 * buffering and wait for more bytes.
+	 */
 	char *start = client->buf;
 	char *nl;
 	while ((nl = strchr(start, '\n')) != NULL) {
+		bool in_squote = false;
+		bool in_dquote = false;
+		bool escaping  = false;
+		int  depth     = 0;
+		for (char *p = start; p < nl; p++) {
+			char c = *p;
+			if (escaping) {
+				escaping = false;
+				continue;
+			}
+			if (in_squote) {
+				if (c == '\'')
+					in_squote = false;
+				continue;
+			}
+			if (in_dquote) {
+				if (c == '\\')
+					escaping = true;
+				else if (c == '"')
+					in_dquote = false;
+				continue;
+			}
+			if (c == '\'')
+				in_squote = true;
+			else if (c == '"')
+				in_dquote = true;
+			else if (c == '{')
+				depth++;
+			else if (c == '}' && depth > 0)
+				depth--;
+		}
+		if (depth > 0) {
+			/* unterminated block -- keep accumulating */
+			char *next = strchr(nl + 1, '\n');
+			if (next == NULL)
+				break; /* wait for more data */
+			nl = next;
+			continue;
+		}
+
 		*nl = '\0';
 		cow_ipc_dispatch(start, client->fd);
 		start = nl + 1;
