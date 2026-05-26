@@ -19,14 +19,11 @@
  *
  *   script { ... }
  *
- * Body is captured by cmd-string's brace continuation (step 7) and
- * arrives here as a single argv element.  Until that's wired, the
- * exec joins all argv elements back into one string so a script
- * given on a single line still works.
- *
- * The block is parsed lazily on first invocation and the AST is
- * cached on the cmd via a small data slot; evaluation runs against
- * the calling cmd_q.
+ * The brace-delimited body is captured by cmd-string's brace
+ * continuation as a single argv element (with the outer braces
+ * included).  We parse it on each invocation and evaluate against
+ * the calling cmd_q; the body may emit any number of cow commands
+ * which are appended to the queue and drain in due course.
  */
 
 #include <stdlib.h>
