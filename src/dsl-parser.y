@@ -15,12 +15,12 @@
  */
 
 /*
- * CoW DSL grammar (step 1: skeleton).
+ * CoW DSL grammar.
  *
- * This skeleton only accepts an empty `{ }` block.  Subsequent steps
- * grow the grammar incrementally.  The %define api.pure full + %locations
- * scaffolding is in place now so the lexer doesn't have to be reworked
- * later when the parser sprouts state.
+ * Productions follow the locked design: script blocks contain
+ * statements (let / for / if / command); expressions form a small
+ * tree with comparisons + boolean ops; sources are one of windows /
+ * desks / outputs / rules.
  */
 
 %define api.pure full
@@ -33,7 +33,7 @@
 
 %code requires {
 #include "cow/dsl.h"
-struct dsl_parse_ctx;
+#include "dsl-ast.h"
 }
 
 %code provides {
@@ -45,34 +45,296 @@ void dsl_yyerror(YYLTYPE *llocp, struct dsl_parse_ctx *ctx, void *scanner,
 %code {
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "cow/attrs.h"
+#include "cow/cmd.h"
+#include "cow/memory.h"
 
 #include "dsl-lexer.h"
 
-/* Bison's pure lex API takes (yylval, yylloc, scanner). flex's
- * bison-bridge yields a yylex prototype expecting that exact shape,
- * so we forward by macro-renaming below. */
+/* Bison's pure lex API takes (yylval, yylloc, scanner). */
 #define yylex dsl_yylex
+
+static void
+record_error(struct dsl_parse_ctx *ctx, YYLTYPE *loc, const char *msg)
+{
+	if (ctx == NULL || ctx->err == NULL)
+		return;
+	if (ctx->err->message != NULL)
+		return; /* keep first error */
+	ctx->err->file	  = (ctx->file != NULL) ? xstrdup(ctx->file) : NULL;
+	ctx->err->line	  = (loc != NULL) ? loc->first_line : 0;
+	ctx->err->col	  = (loc != NULL) ? loc->first_column : 0;
+	ctx->err->message = xstrdup(msg);
+}
+}
+
+%code requires {
+struct dsl_source_spec {
+	enum dsl_source	 src;
+	struct dsl_node *where;	/* NULL = no where clause */
+};
 }
 
 %union {
-	int dummy;
+	struct dsl_node	      *node;
+	char		      *str;
+	double		       num;
+	bool		       boolean;
+	enum dsl_cmp_op	       cmp;
+	enum dsl_source	       src;
+	struct dsl_source_spec source_spec;
 }
 
-%token LBRACE RBRACE
+%token LBRACE RBRACE LPAREN RPAREN
+%token DOT EQUALS
+%token LET FOR IN IF ELSE WHERE AND OR NOT
+%token SELF
+%token TRUE_LIT FALSE_LIT
+%token <src> SOURCE_NAME
+%token <str> IDENT STRING_LIT RAW_STRING CMD_VERB
+%token <num> NUMBER_LIT
+%token <cmp> CMP_OP
+%token INTERP_BEGIN INTERP_END
+%token STR_BEGIN STR_END
+%token NEWLINE
+
+%type <node> script stmt_list stmt let_stmt for_stmt if_stmt cmd_stmt block
+%type <node> expr or_expr and_expr not_expr rel_expr atom path
+%type <source_spec> source
+
+%destructor { xfree($$); } <str>
 
 %%
 
 script
-	: LBRACE RBRACE
+	: LBRACE stmt_list RBRACE
+		{
+			ctx->ast->root = $2;
+		}
+	;
+
+stmt_list
+	: %empty
+		{
+			$$ = dsl_node_block(ctx->ast, @$.first_line,
+			    @$.first_column);
+		}
+	| stmt_list stmt
+		{
+			$$ = $1;
+			dsl_block_append(ctx->ast, $$, $2);
+		}
+	;
+
+stmt
+	: let_stmt
+	| for_stmt
+	| if_stmt
+	| cmd_stmt
+	;
+
+let_stmt
+	: LET IDENT EQUALS expr
+		{
+			$$ = dsl_node_let(ctx->ast, @1.first_line,
+			    @1.first_column, $2, $4);
+			xfree($2);
+		}
+	;
+
+for_stmt
+	: FOR IDENT IN source block
+		{
+			$$ = dsl_node_for(ctx->ast, @1.first_line,
+			    @1.first_column, $2, $4.src, $4.where, $5);
+			xfree($2);
+		}
+	;
+
+source
+	: LPAREN SOURCE_NAME RPAREN
+		{
+			$$.src	 = $2;
+			$$.where = NULL;
+		}
+	| LPAREN SOURCE_NAME WHERE expr RPAREN
+		{
+			$$.src	 = $2;
+			$$.where = $4;
+		}
+	;
+
+block
+	: LBRACE stmt_list RBRACE
+		{
+			$$ = $2;
+		}
+	;
+
+if_stmt
+	: IF expr block
+		{
+			$$ = dsl_node_if(ctx->ast, @1.first_line,
+			    @1.first_column, $2, $3, NULL);
+		}
+	| IF expr block ELSE block
+		{
+			$$ = dsl_node_if(ctx->ast, @1.first_line,
+			    @1.first_column, $2, $3, $5);
+		}
+	| IF expr block ELSE if_stmt
+		{
+			$$ = dsl_node_if(ctx->ast, @1.first_line,
+			    @1.first_column, $2, $3, $5);
+		}
+	;
+
+cmd_stmt
+	: CMD_VERB
+		{
+			$$ = dsl_node_cmd(ctx->ast, @1.first_line,
+			    @1.first_column, $1);
+			xfree($1);
+			ctx->current_cmd = $$;
+		}
+	| cmd_stmt RAW_STRING
+		{
+			$$ = $1;
+			dsl_cmd_append_raw(ctx->ast, $$, $2);
+			xfree($2);
+		}
+	| cmd_stmt INTERP_BEGIN expr INTERP_END
+		{
+			$$ = $1;
+			dsl_cmd_append_interp(ctx->ast, $$, $3);
+		}
+	| cmd_stmt STR_BEGIN
+		{
+			dsl_cmd_begin_str_arg(ctx->ast, $1);
+		}
+	  str_pieces STR_END
+		{
+			$$ = $1;
+		}
+	;
+
+str_pieces
+	: %empty
+	| str_pieces str_piece
+	;
+
+str_piece
+	: RAW_STRING
+		{
+			if (ctx->current_cmd != NULL)
+				dsl_cmd_str_push_raw(ctx->ast,
+				    ctx->current_cmd, $1);
+			xfree($1);
+		}
+	| INTERP_BEGIN expr INTERP_END
+		{
+			if (ctx->current_cmd != NULL)
+				dsl_cmd_str_push_interp(ctx->ast,
+				    ctx->current_cmd, $2);
+		}
+	;
+
+expr
+	: or_expr
+	;
+
+or_expr
+	: and_expr
+	| or_expr OR and_expr
+		{
+			$$ = dsl_node_or(ctx->ast, @1.first_line,
+			    @1.first_column, $1, $3);
+		}
+	;
+
+and_expr
+	: not_expr
+	| and_expr AND not_expr
+		{
+			$$ = dsl_node_and(ctx->ast, @1.first_line,
+			    @1.first_column, $1, $3);
+		}
+	;
+
+not_expr
+	: rel_expr
+	| NOT not_expr
+		{
+			$$ = dsl_node_not(ctx->ast, @1.first_line,
+			    @1.first_column, $2);
+		}
+	;
+
+rel_expr
+	: atom
+	| rel_expr CMP_OP atom
+		{
+			$$ = dsl_node_cmp(ctx->ast, @1.first_line,
+			    @1.first_column, $2, $1, $3);
+		}
+	;
+
+atom
+	: path
+	| NUMBER_LIT
+		{
+			$$ = dsl_node_num(ctx->ast, @1.first_line,
+			    @1.first_column, $1);
+		}
+	| STRING_LIT
+		{
+			$$ = dsl_node_str(ctx->ast, @1.first_line,
+			    @1.first_column, $1);
+			xfree($1);
+		}
+	| TRUE_LIT
+		{
+			$$ = dsl_node_bool(ctx->ast, @1.first_line,
+			    @1.first_column, true);
+		}
+	| FALSE_LIT
+		{
+			$$ = dsl_node_bool(ctx->ast, @1.first_line,
+			    @1.first_column, false);
+		}
+	| LPAREN expr RPAREN
+		{
+			$$ = $2;
+		}
+	;
+
+path
+	: IDENT
+		{
+			$$ = dsl_node_path(ctx->ast, @1.first_line,
+			    @1.first_column, $1);
+			xfree($1);
+		}
+	| SELF
+		{
+			$$ = dsl_node_path(ctx->ast, @1.first_line,
+			    @1.first_column, "self");
+		}
+	| path DOT IDENT
+		{
+			$$ = $1;
+			dsl_path_append(ctx->ast, $$, $3);
+			xfree($3);
+		}
 	;
 
 %%
 
 void
-dsl_yyerror(__unused YYLTYPE *llocp, __unused struct dsl_parse_ctx *ctx,
-    __unused void *scanner, __unused const char *msg)
+dsl_yyerror(YYLTYPE *llocp, struct dsl_parse_ctx *ctx, __unused void *scanner,
+    const char *msg)
 {
-	/* Real diagnostics surfaced in step 4. */
+	record_error(ctx, llocp, msg);
 }

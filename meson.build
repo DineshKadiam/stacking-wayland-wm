@@ -313,6 +313,7 @@ include_dirs = [
     # build root, so the generated build_config.h is found here.
     include_directories('.'),
     include_directories('include'),
+    include_directories('src'),
     include_directories('vendor'),
 ]
 

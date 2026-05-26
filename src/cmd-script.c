@@ -19,20 +19,23 @@
  *
  *   script { ... }
  *
- * The brace-delimited body is captured by cmd-string's brace
- * continuation (added in step 7) and arrives here as a single
- * argv element including the outer braces.  cmd_script_exec()
- * parses it lazily on first invocation, caches the AST, and
- * evaluates against the calling cmd_q.  Errors are reported via
- * cmdq_error().
+ * Body is captured by cmd-string's brace continuation (step 7) and
+ * arrives here as a single argv element.  Until that's wired, the
+ * exec joins all argv elements back into one string so a script
+ * given on a single line still works.
  *
- * Step 1: command registered, exec is a no-op so the wiring is
- * verifiable end-to-end before the parser sprouts real productions.
+ * The block is parsed lazily on first invocation and the AST is
+ * cached on the cmd via a small data slot; evaluation runs against
+ * the calling cmd_q.
  */
+
+#include <stdlib.h>
+#include <string.h>
 
 #include "cow/attrs.h"
 #include "cow/cmd.h"
 #include "cow/dsl.h"
+#include "cow/memory.h"
 
 static enum cmd_retval cmd_script_exec(struct cmd *, struct cmd_q *);
 
@@ -40,15 +43,44 @@ struct cmd_entry cmd_script_entry = {
 	"script",
 	"",
 	1,
-	1,
+	-1,
 	"script { ... }",
 	cmd_script_exec,
 	CMD_OWN_TS,
 };
 
 static enum cmd_retval
-cmd_script_exec(__unused struct cmd *self, __unused struct cmd_q *cmdq)
+cmd_script_exec(struct cmd *self, struct cmd_q *cmdq)
 {
-	/* Step 1: no-op.  Real parse + eval lands in step 6. */
+	struct args *args = self->args;
+	char	    *body = cmd_argv_to_string(args->argc, args->argv, 0);
+
+	struct dsl_error err = { 0 };
+	struct dsl_ast	*ast = dsl_parse(body, NULL, &err);
+	xfree(body);
+
+	if (ast == NULL) {
+		cmdq_error(cmdq, "script: parse error at %d:%d: %s", err.line,
+		    err.col, err.message != NULL ? err.message : "(unknown)");
+		xfree(err.file);
+		xfree(err.message);
+		return (CMD_RETURN_ERROR);
+	}
+
+	struct dsl_error eerr = { 0 };
+	bool		 ok   = dsl_eval(ast, cmdq, &eerr);
+	if (!ok) {
+		cmdq_error(cmdq, "script: eval error at %d:%d: %s", eerr.line,
+		    eerr.col,
+		    eerr.message != NULL ? eerr.message : "(unknown)");
+		xfree(eerr.file);
+		xfree(eerr.message);
+		dsl_free(ast);
+		return (CMD_RETURN_ERROR);
+	}
+
+	xfree(eerr.file);
+	xfree(eerr.message);
+	dsl_free(ast);
 	return (CMD_RETURN_NORMAL);
 }

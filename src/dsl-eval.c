@@ -62,6 +62,14 @@ dsl_parse(const char *src, const char *file, struct dsl_error *err)
 
 	YY_BUFFER_STATE buf = dsl_yy_scan_string(src, scanner);
 
+	/*
+	 * yy_scan_string doesn't initialise the buffer's lineno (only
+	 * the buffer-create path does, and that's a no-op for the
+	 * "now current" buffer).  Force lineno=1 so the first token's
+	 * location is reported as line 1, not line 0.
+	 */
+	dsl_yyset_lineno(1, scanner);
+
 	struct dsl_parse_ctx ctx = { 0 };
 	ctx.err			 = err;
 	ctx.file		 = file;
