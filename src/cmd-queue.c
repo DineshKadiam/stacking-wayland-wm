@@ -131,8 +131,6 @@ cmdq_continue(struct cmd_q *cmdq)
 		cmdq->cmd = TAILQ_NEXT(cmdq->cmd, qentry);
 
 	do {
-		next = TAILQ_NEXT(cmdq->item, qentry);
-
 		while (cmdq->cmd != NULL) {
 			/* Update the current output based on pointer
 			 * position.
@@ -176,14 +174,23 @@ cmdq_continue(struct cmd_q *cmdq)
 				}
 			} else if (!own_ts) {
 				/*
-				 * No -t given.  If a default target was
-				 * seeded on the queue (by the rule
-				 * subsystem), inherit it so commands inside
-				 * a rule body see the event's view / desk /
-				 * output without having to spell out -t on
+				 * No -t given.  Per-command default target
+				 * (set by the script evaluator when
+				 * enqueueing inside a for-windows body)
+				 * wins over the queue's shared default
+				 * (set by the rule subsystem for an entire
+				 * fire).  Either resolves the missing -t
+				 * to the right view / desk / output without
+				 * the script or rule body spelling -t on
 				 * every line.
 				 */
-				cmdq->target = cmdq->default_target;
+				if (cmdq->cmd->default_target.window != NULL ||
+				    cmdq->cmd->default_target.desk != NULL ||
+				    cmdq->cmd->default_target.output != NULL)
+					cmdq->target =
+					    cmdq->cmd->default_target;
+				else
+					cmdq->target = cmdq->default_target;
 			}
 			if (s_spec != NULL) {
 				if (!cmd_ctx_parse(s_spec, &cmdq->source,
@@ -202,6 +209,15 @@ cmdq_continue(struct cmd_q *cmdq)
 
 			cmdq->cmd = TAILQ_NEXT(cmdq->cmd, qentry);
 		}
+
+		/*
+		 * Compute the next queue item AFTER the inner exec
+		 * loop has run -- commands that themselves append to
+		 * the queue (e.g. script blocks expanding loop bodies)
+		 * grow it during exec, and capturing `next` before the
+		 * loop would skip them.
+		 */
+		next = TAILQ_NEXT(cmdq->item, qentry);
 
 		TAILQ_REMOVE(&cmdq->queue, cmdq->item, qentry);
 		cmd_list_free(cmdq->item->cmdlist);

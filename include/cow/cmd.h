@@ -166,6 +166,21 @@ struct cmd {
 	char *file;
 	u_int line;
 
+	/*
+	 * Per-command default target.  When `window` (or `desk` /
+	 * `output`) is non-NULL, the cmd-queue resolver uses this
+	 * instead of the cmd_q's shared `default_target` when the
+	 * command has no explicit -t.  This lets a single cmd_q hold
+	 * many enqueued commands each carrying their own target,
+	 * which is how script for-window bodies route per-view
+	 * commands (e.g. `set ...`) to the right view.
+	 *
+	 * Zero-initialised in cmd_parse(); writes happen in callers
+	 * that enqueue a cmd outside of plain config-file or IPC
+	 * parsing.
+	 */
+	struct cmd_ctx default_target;
+
 	TAILQ_ENTRY(cmd) qentry;
 };
 
