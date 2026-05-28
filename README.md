@@ -1,7 +1,7 @@
 # CoW -- Compostitor on Wayland
 
 <p align="center">
-  <img src="./CoW-final.svg">
+  <img src="./logos/CoW-final.svg">
 </p>
 
 `cow` is a stacking window manager.  Unlike other compositors based on
@@ -48,16 +48,16 @@ See:  https://codeberg.org/thomasadam/cow/wiki/Home
 
 ## What does it look like?
 
-![](./cow-ss.png)
+![](./ss/cow-ss.png)
 
 There's also support for containers -- a top-level window which can group
 windows together into tabs.
 
-![](./cow-container.png)
+![](./ss/cow-container.png)
 
 ### Pages / Pager
 
-![](./cow-pages.png)
+![](./ss/cow-pages.png)
 
 A very crude video is [also available](https://youtu.be/tRdhfRfdPuI)
 
@@ -150,18 +150,18 @@ to set monitors directly.  To get a more visual overview of things, the
 
 # Logo and mascot.
 
-Meet our mascot, Anvil Cow.
+Meet our mascot, Anvil the cow.
 
 ![](./logos/Only-CoW.svg)
 
 Luis Sobalvarro kindly created the CoW logo for this project.
 
 
-![](./CoW-final-inverted.svg)
+![](./logos/CoW-final-inverted.svg)
 
 and...
 
-![](./CoW-final.svg)
+![](./logos/CoW-final.svg)
 
 Massive thanks to you, Luis!
 
