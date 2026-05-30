@@ -61,7 +61,10 @@ cow_state_save(void)
 		cJSON_AddNumberToObject(o, "y", output->y);
 		cJSON_AddNumberToObject(o, "current_desk",
 		    output->current_desk->nr);
+		cJSON_AddBoolToObject(o, "user_named",
+		    output->desk_set.user_named);
 		cJSON *desk_pages = cJSON_AddArrayToObject(o, "desk_pages");
+		cJSON *desk_names = cJSON_AddArrayToObject(o, "desk_names");
 		struct cow_desk *dk;
 		wl_list_for_each(dk, &output->desk_set.desks, set_link)
 		{
@@ -75,6 +78,12 @@ cow_state_save(void)
 				dk->page_vy / output->usable_area.height :
 				0);
 			cJSON_AddItemToArray(desk_pages, dp);
+
+			cJSON *dn = cJSON_CreateObject();
+			cJSON_AddNumberToObject(dn, "nr", dk->nr);
+			cJSON_AddStringToObject(dn, "name",
+			    dk->name != NULL ? dk->name : "");
+			cJSON_AddItemToArray(desk_names, dn);
 		}
 
 		cJSON_AddItemToArray(outputs, o);
@@ -253,6 +262,39 @@ cow_state_restore(void)
 			    find_output_by_position((int)ox, (int)oy);
 			if (output == NULL)
 				continue;
+
+			cJSON *names = cJSON_GetObjectItem(out_obj,
+			    "desk_names");
+			bool user_named = false;
+			(void)cow_json_get_bool(out_obj, "user_named",
+			    &user_named);
+			if (user_named && cJSON_IsArray(names)) {
+				cow_desk_set_fini(&output->desk_set);
+				cow_desk_set_init(&output->desk_set);
+				cJSON *dn;
+				cJSON_ArrayForEach(dn, names)
+				{
+					long long nr;
+					const char *nm;
+					if (!cow_json_get_int(dn, "nr", &nr))
+						continue;
+					if (!cow_json_get_string(dn, "name",
+						&nm))
+						nm = "";
+					while (output->desk_set.count <=
+					    (uint8_t)nr)
+						(void)cow_desk_set_append_default(
+						    output);
+					struct cow_desk *dk = cow_desk_by_nr(
+					    output, (uint8_t)nr);
+					if (dk != NULL && nm[0] != '\0') {
+						xfree(dk->name);
+						dk->name = xstrdup(nm);
+					}
+				}
+				output->desk_set.user_named = true;
+				output->current_desk = cow_desk_first(output);
+			}
 
 			long long cur_desk;
 			if (cow_json_get_int(out_obj, "current_desk",
