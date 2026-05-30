@@ -190,6 +190,8 @@ cow_status_emit(void)
 			}
 			cJSON *d = cJSON_CreateObject();
 			cJSON_AddNumberToObject(d, "nr", dk->nr);
+			cJSON_AddStringToObject(d, "name",
+			    dk->name != NULL ? dk->name : "");
 			cJSON_AddNumberToObject(d, "windows", count);
 			cJSON_AddBoolToObject(d, "collected",
 			    (output->collected_desks & (1u << dk->nr)) != 0);

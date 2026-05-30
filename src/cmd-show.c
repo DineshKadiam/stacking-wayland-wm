@@ -181,13 +181,29 @@ do_show_desk(int fd)
 {
 	struct cow_output *out = cow_wm.current_output;
 
-	if (out != NULL) {
-		cJSON *d = cJSON_CreateObject();
-		cJSON_AddNumberToObject(d, "current", out->current_desk->nr);
-		cow_ipc_respond_data(fd, d);
-	} else {
+	if (out == NULL) {
 		cow_ipc_respond_data(fd, cJSON_CreateNull());
+		return;
 	}
+
+	cJSON *d = cJSON_CreateObject();
+	cJSON_AddNumberToObject(d, "current", out->current_desk->nr);
+	if (out->current_desk->name != NULL)
+		cJSON_AddStringToObject(d, "current_name",
+		    out->current_desk->name);
+	cJSON *desks = cJSON_AddArrayToObject(d, "desks");
+	struct cow_desk *dk;
+	wl_list_for_each(dk, &out->desk_set.desks, set_link)
+	{
+		cJSON *entry = cJSON_CreateObject();
+		cJSON_AddNumberToObject(entry, "nr", dk->nr);
+		cJSON_AddStringToObject(entry, "name",
+		    dk->name != NULL ? dk->name : "");
+		cJSON_AddBoolToObject(entry, "active",
+		    dk == out->current_desk);
+		cJSON_AddItemToArray(desks, entry);
+	}
+	cow_ipc_respond_data(fd, d);
 }
 
 static void
