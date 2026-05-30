@@ -47,7 +47,8 @@
 
 static enum cmd_retval cmd_rule_exec(struct cmd *, struct cmd_q *);
 static bool	       do_rule_add(struct args *, struct cmd_q *);
-static bool	       parse_scope_t(const char *, char **, int *, char **);
+static bool	       parse_scope_t(const char *, char **, int *, char **,
+			   char **);
 
 struct cmd_entry cmd_rule_entry = {
 	"rule",
@@ -100,7 +101,8 @@ cmd_rule_exec(struct cmd *self, struct cmd_q *cmdq)
  * colons (`::1`) or a non-numeric desk part (`:foo`).
  */
 static bool
-parse_scope_t(const char *spec, char **output_name, int *desk_nr, char **cause)
+parse_scope_t(const char *spec, char **output_name, int *desk_nr,
+    char **desk_name, char **cause)
 {
 	if (spec == NULL || spec[0] == '\0') {
 		xasprintf(cause, "empty -t spec");
@@ -113,11 +115,6 @@ parse_scope_t(const char *spec, char **output_name, int *desk_nr, char **cause)
 		const char *output_part = dup;
 		const char *desk_part	= colon + 1;
 
-		/*
-		 * Only one colon is allowed.  Reject specs like "::1" or
-		 * "foo:1:2" so users get an error instead of a silent
-		 * "any output, any desk" fallthrough.
-		 */
 		if (strchr(desk_part, ':') != NULL) {
 			xasprintf(cause,
 			    "-t %s: too many colons "
@@ -132,17 +129,12 @@ parse_scope_t(const char *spec, char **output_name, int *desk_nr, char **cause)
 		if (*desk_part != '\0') {
 			char *end;
 			long  nr = strtol(desk_part, &end, 10);
-			if (end == desk_part || *end != '\0' || nr < 0 ||
-			    nr > 255) {
-				xasprintf(cause,
-				    "-t %s: bad desk number '%s'",
-				    spec, desk_part);
-				xfree(*output_name);
-				*output_name = NULL;
-				xfree(dup);
-				return false;
+			if (end != desk_part && *end == '\0' && nr >= 0 &&
+			    nr <= 255) {
+				*desk_nr = (int)nr;
+			} else {
+				*desk_name = xstrdup(desk_part);
 			}
-			*desk_nr = (int)nr;
 		}
 	} else if (*dup != '\0') {
 		*output_name = xstrdup(dup);
@@ -206,14 +198,16 @@ do_rule_add(struct args *args, struct cmd_q *cmdq)
 	 * the command body or allocate the rule struct. */
 	char *parsed_output_name = NULL;
 	int   parsed_desk_nr	 = -1;
+	char *parsed_desk_name	 = NULL;
 	if (t_val != NULL) {
 		char *t_cause = NULL;
 		if (!parse_scope_t(t_val, &parsed_output_name, &parsed_desk_nr,
-			&t_cause)) {
+			&parsed_desk_name, &t_cause)) {
 			cmdq_error(cmdq, "rule: %s",
 			    t_cause != NULL ? t_cause : "bad -t spec");
 			xfree(t_cause);
 			xfree(parsed_output_name);
+			xfree(parsed_desk_name);
 			return false;
 		}
 	}
@@ -229,6 +223,7 @@ do_rule_add(struct args *args, struct cmd_q *cmdq)
 		xfree(cause);
 		xfree(body);
 		xfree(parsed_output_name);
+		xfree(parsed_desk_name);
 		return false;
 	}
 	xfree(cause);
@@ -239,6 +234,7 @@ do_rule_add(struct args *args, struct cmd_q *cmdq)
 	rule->type	      = type;
 	rule->is_global	      = is_g;
 	rule->desk_nr	      = parsed_desk_nr;
+	rule->desk_name	      = parsed_desk_name;
 	rule->output_name     = parsed_output_name;
 	rule->cmdlist	      = cmdlist;
 	if (s_val != NULL)

@@ -78,6 +78,7 @@ cow_rule_free(struct cow_rule *rule)
 		return;
 	xfree(rule->name);
 	xfree(rule->output_name);
+	xfree(rule->desk_name);
 	xfree(rule->match_spec);
 	if (rule->cmdlist != NULL)
 		cmd_list_free(rule->cmdlist);
@@ -194,7 +195,11 @@ rule_scope_matches(const struct cow_rule *rule, const struct cow_desk *desk,
 		    strcmp(rule->output_name, output->name) != 0)
 			return false;
 	}
-	if (rule->desk_nr >= 0) {
+	if (rule->desk_name != NULL) {
+		if (desk == NULL || desk->name == NULL ||
+		    strcmp(rule->desk_name, desk->name) != 0)
+			return false;
+	} else if (rule->desk_nr >= 0) {
 		if (desk == NULL || desk->nr != rule->desk_nr)
 			return false;
 	}

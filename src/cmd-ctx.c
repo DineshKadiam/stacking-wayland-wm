@@ -98,6 +98,10 @@ resolve_desk(const char *spec, struct cow_output *output, char **cause)
 	if (strcmp(spec, "@prev") == 0)
 		return cow_desk_prev(output, output->current_desk);
 
+	struct cow_desk *by_name = cow_desk_by_name(output, spec);
+	if (by_name != NULL)
+		return by_name;
+
 	char *end;
 	long  nr = strtol(spec, &end, 10);
 	if (end != spec && *end == '\0' && nr >= 0 && nr <= UINT8_MAX) {

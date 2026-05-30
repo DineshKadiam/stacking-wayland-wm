@@ -73,6 +73,7 @@ struct cow_rule {
 	bool  is_global;
 	char *output_name; /* NULL = any */
 	int   desk_nr;	   /* -1 = any */
+	char *desk_name;   /* NULL = use desk_nr or any */
 	char *match_spec;  /* NULL = any view */
 
 	struct cmd_list *cmdlist;

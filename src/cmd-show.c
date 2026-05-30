@@ -249,7 +249,9 @@ do_show_rules(int fd)
 		cJSON_AddBoolToObject(r, "global", rule->is_global);
 		if (rule->output_name != NULL)
 			cJSON_AddStringToObject(r, "output", rule->output_name);
-		if (rule->desk_nr >= 0)
+		if (rule->desk_name != NULL)
+			cJSON_AddStringToObject(r, "desk", rule->desk_name);
+		else if (rule->desk_nr >= 0)
 			cJSON_AddNumberToObject(r, "desk", rule->desk_nr);
 		if (rule->match_spec != NULL)
 			cJSON_AddStringToObject(r, "match", rule->match_spec);
