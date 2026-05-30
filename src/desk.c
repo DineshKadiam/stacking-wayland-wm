@@ -318,3 +318,83 @@ cow_desk_set_reset(struct cow_output *output)
 	}
 	reset_one(output);
 }
+
+static bool
+resize_one_check(struct cow_output *output, uint8_t count, char **cause)
+{
+	if (output->desk_set.count <= count)
+		return (true);
+	struct cow_desk *d;
+	wl_list_for_each(d, &output->desk_set.desks, set_link)
+	{
+		if (d->nr < count)
+			continue;
+		if (desk_has_views(d)) {
+			xasprintf(cause,
+			    "desks.count: desk %u has windows", d->nr);
+			return (false);
+		}
+	}
+	return (true);
+}
+
+static void
+resize_one_apply(struct cow_output *output, uint8_t count)
+{
+	while (output->desk_set.count < count)
+		(void)cow_desk_set_append_default(output);
+
+	struct cow_desk *d, *tmp;
+	wl_list_for_each_safe(d, tmp, &output->desk_set.desks, set_link)
+	{
+		if (d->nr < count)
+			continue;
+		if (output->current_desk == d)
+			output->current_desk = NULL;
+		wl_list_remove(&d->set_link);
+		xfree(d->name);
+		xfree(d);
+		output->desk_set.count--;
+	}
+	if (output->desk_set.next_nr > count)
+		output->desk_set.next_nr = count;
+	if (output->current_desk == NULL)
+		output->current_desk = cow_desk_last(output);
+}
+
+bool
+cow_desk_set_resize(struct cow_output *output, uint8_t count, char **cause)
+{
+	if (output == NULL) {
+		xasprintf(cause, "desks.count: no output");
+		return (false);
+	}
+	if (count == 0) {
+		xasprintf(cause, "desks.count: must be > 0");
+		return (false);
+	}
+	if (count > COW_MAX_DESK_COUNT) {
+		xasprintf(cause, "desks.count: max %d", COW_MAX_DESK_COUNT);
+		return (false);
+	}
+
+	bool global = cow_config != NULL &&
+	    cow_config->desktop_config == COW_DESKTOP_GLOBAL;
+
+	if (global) {
+		struct cow_output *o;
+		wl_list_for_each(o, &cow_wm.outputs, wm_link)
+		{
+			if (!resize_one_check(o, count, cause))
+				return (false);
+		}
+		wl_list_for_each(o, &cow_wm.outputs, wm_link)
+		    resize_one_apply(o, count);
+		return (true);
+	}
+
+	if (!resize_one_check(output, count, cause))
+		return (false);
+	resize_one_apply(output, count);
+	return (true);
+}

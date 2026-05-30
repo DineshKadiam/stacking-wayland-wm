@@ -299,6 +299,14 @@ do_show_config(const char *ckey, int fd, struct cmd_q *cmdq)
 	else if (strcmp(ckey, "font") == 0)
 		val = cJSON_CreateString(
 		    cow_config->font_name ? cow_config->font_name : "");
+	else if (strcmp(ckey, "desks.count") == 0) {
+		struct cow_output *out = cmd_ctx_target_output(cmdq);
+		if (out == NULL && !wl_list_empty(&cow_wm.outputs))
+			out = wl_container_of(cow_wm.outputs.next, out,
+			    wm_link);
+		val = cJSON_CreateNumber(
+		    out != NULL ? cow_desk_count(out) : 0);
+	}
 	else {
 		cow_ipc_respond_error(fd, "show: unknown config key");
 		cmdq_error(cmdq, "show: unknown config key: %s", ckey);

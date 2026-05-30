@@ -122,7 +122,34 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 	const char *key = args->argv[0];
 	char	   *val = cmd_argv_to_string(args->argc, args->argv, 1);
 
-	/* Integer config fields */
+	if (strcmp(key, "desks.count") == 0) {
+		char *end;
+		long  n = strtol(val, &end, 10);
+		if (val[0] == '\0' || *end != '\0' || n <= 0 ||
+		    n > COW_MAX_DESK_COUNT) {
+			cmdq_error(cmdq,
+			    "set: desks.count: expected 1..%d, got '%s'",
+			    COW_MAX_DESK_COUNT, val);
+			xfree(val);
+			return (CMD_RETURN_ERROR);
+		}
+		char *cause = NULL;
+		if (!cow_desk_set_resize(cmd_ctx_target_output(cmdq),
+			(uint8_t)n, &cause)) {
+			cmdq_error(cmdq, "%s",
+			    cause != NULL ? cause :
+					    "set: desks.count: failed");
+			xfree(cause);
+			xfree(val);
+			return (CMD_RETURN_ERROR);
+		}
+		xfree(cause);
+		cow_status_emit();
+		cow_wm_request_manage_dirty();
+		xfree(val);
+		return (CMD_RETURN_NORMAL);
+	}
+
 	if (strcmp(key, "border") == 0 || strcmp(key, "step") == 0 ||
 	    strcmp(key, "corner_length") == 0 ||
 	    strcmp(key, "reserved.top") == 0 ||

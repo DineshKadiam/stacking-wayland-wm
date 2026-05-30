@@ -1189,9 +1189,7 @@ _N_ _NAME_
 	Reset every desk set to the default set, as if no manipulation had ever
 	occurred.
 
-The following examples show how this command can be used.  Note that when
-setting the name of a desk, such as in: `2 dev`, it is assumed that this number
-falls within range set by _desks.count_ setting.
+The following examples show how this command can be used:
 
 ```
 # Three named desks instead of the default ten.
@@ -1203,6 +1201,10 @@ desk-name 2 dev
 focus -t :main
 focus -t :0
 ```
+
+The minimum number of desks can be set with _desks.count_.   Note that it is
+possible with the *desk-name* command to name desks greater than _desks.count_
+number, and that this will effectively create this desk.
 
 ## Desktop / Page Settings
 

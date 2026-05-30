@@ -244,5 +244,6 @@ bool cow_desk_name_valid(const char *, char **cause);
 bool cow_desk_set_name(struct cow_output *, uint8_t , const char *, char **);
 bool cow_desk_set_delete(struct cow_output *, uint8_t, char **);
 void cow_desk_set_reset(struct cow_output *);
+bool cow_desk_set_resize(struct cow_output *, uint8_t count, char **cause);
 
 #endif
