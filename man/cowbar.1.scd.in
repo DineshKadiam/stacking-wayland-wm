@@ -6,7 +6,7 @@ cowbar - relay cow window manager status updates
 
 # SYNOPSIS
 
-*cowbar* [*-h*] [*-o* _output_] [*-f* _field_]
+*cowbar* [*-h*] [*-n*] [*-o* _output_] [*-f* _field_] [*-w* _module_]
 
 # DESCRIPTION
 
@@ -43,6 +43,10 @@ without requiring ordering guarantees.
 
 	*outputs*
 		Emit the full outputs array on each update.
+
+*-n*
+	When used with *-w desks*, render desk names instead of numbers
+	(falls back to the number when a desk has no name).
 
 *-h*
 	Print usage and exit.

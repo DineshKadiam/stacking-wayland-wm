@@ -47,12 +47,13 @@ static void
 usage(void)
 {
 	fprintf(stderr,
-	    "usage: cowbar [-o output] [-f field] [-w module]\n"
+	    "usage: cowbar [-o output] [-f field] [-w module] [-n]\n"
 	    "\n"
 	    "  -o output   filter for named output\n"
 	    "  -f field    extract field: desks, focused, outputs\n"
 	    "  -w module   emit waybar JSON for module: desks, title\n"
 	    "              (requires -o for desks; -o filters title to one bar)\n"
+	    "  -n          show desk names instead of numbers\n"
 	    "\n"
 	    "With no flags, relays full state snapshots.\n");
 }
@@ -137,7 +138,7 @@ emit_waybar(const char *text, const char *tooltip)
 /* Render the waybar 'desks' module text for the given output.  The
  * output object is the per-output entry from cow's state. */
 static void
-waybar_desks(const cJSON *state, const cJSON *out_obj)
+waybar_desks(const cJSON *state, const cJSON *out_obj, bool show_names)
 {
 	cJSON *desks_arr = cJSON_GetObjectItem(out_obj, "desks");
 	if (!cJSON_IsArray(desks_arr)) {
@@ -157,10 +158,13 @@ waybar_desks(const cJSON *state, const cJSON *out_obj)
 		bool active = cJSON_IsTrue(cJSON_GetObjectItem(desk, "active"));
 		bool collected = cJSON_IsTrue(
 		    cJSON_GetObjectItem(desk, "collected"));
-		cJSON *nr_j  = cJSON_GetObjectItem(desk, "nr");
-		cJSON *win_j = cJSON_GetObjectItem(desk, "windows");
+		cJSON *nr_j   = cJSON_GetObjectItem(desk, "nr");
+		cJSON *win_j  = cJSON_GetObjectItem(desk, "windows");
+		cJSON *name_j = cJSON_GetObjectItem(desk, "name");
 		int    nr = cJSON_IsNumber(nr_j) ? (int)nr_j->valuedouble : 0;
 		int wins  = cJSON_IsNumber(win_j) ? (int)win_j->valuedouble : 0;
+		const char *nm = (name_j && cJSON_IsString(name_j)) ?
+		    name_j->valuestring : NULL;
 
 		if (active)
 			active_wins = wins;
@@ -175,9 +179,14 @@ waybar_desks(const cJSON *state, const cJSON *out_obj)
 		if (!first_span)
 			buf_appendf(&text, &cap, &len,
 			    "<span color=\"#808080\">|</span>");
-		buf_appendf(&text, &cap, &len,
-		    "<span background=\"%s\" color=\"#ffffff\"> %d </span>", bg,
-		    nr);
+		if (show_names && nm != NULL && nm[0] != '\0')
+			buf_appendf(&text, &cap, &len,
+			    "<span background=\"%s\" color=\"#ffffff\">"
+			    " %s </span>", bg, nm);
+		else
+			buf_appendf(&text, &cap, &len,
+			    "<span background=\"%s\" color=\"#ffffff\">"
+			    " %d </span>", bg, nr);
 		first_span = false;
 	}
 
@@ -200,10 +209,25 @@ waybar_desks(const cJSON *state, const cJSON *out_obj)
 	    cfg && cJSON_IsString(cfg) ? cfg->valuestring : "");
 
 	cJSON *cur_desk = cJSON_GetObjectItem(out_obj, "current_desk");
-	char   tooltip[64];
-	snprintf(tooltip, sizeof(tooltip), "desk %d",
-	    cur_desk && cJSON_IsNumber(cur_desk) ? (int)cur_desk->valuedouble :
-						   0);
+	const char *cur_name = NULL;
+	cJSON_ArrayForEach(desk, desks_arr)
+	{
+		if (cJSON_IsTrue(cJSON_GetObjectItem(desk, "active"))) {
+			cJSON *nm = cJSON_GetObjectItem(desk, "name");
+			if (cJSON_IsString(nm) && nm->valuestring[0] != '\0')
+				cur_name = nm->valuestring;
+			break;
+		}
+	}
+	char tooltip[128];
+	int  cur_nr = cur_desk && cJSON_IsNumber(cur_desk) ?
+		   (int)cur_desk->valuedouble :
+		   0;
+	if (cur_name != NULL)
+		snprintf(tooltip, sizeof(tooltip), "desk %d (%s)", cur_nr,
+		    cur_name);
+	else
+		snprintf(tooltip, sizeof(tooltip), "desk %d", cur_nr);
 
 	emit_waybar(text != NULL ? text : "", tooltip);
 	free(text);
@@ -290,9 +314,10 @@ main(int argc, char *argv[])
 	const char *output_filter = NULL;
 	const char *field	  = NULL;
 	const char *waybar_mod	  = NULL;
+	bool	    show_names	  = false;
 	int	    opt;
 
-	while ((opt = getopt(argc, argv, "o:f:w:h")) != -1) {
+	while ((opt = getopt(argc, argv, "o:f:w:nh")) != -1) {
 		switch (opt) {
 		case 'o':
 			output_filter = optarg;
@@ -302,6 +327,9 @@ main(int argc, char *argv[])
 			break;
 		case 'w':
 			waybar_mod = optarg;
+			break;
+		case 'n':
+			show_names = true;
 			break;
 		case 'h':
 		default:
@@ -381,7 +409,7 @@ main(int argc, char *argv[])
 			if (strcmp(waybar_mod, "desks") == 0) {
 				cJSON *out = find_output(state, output_filter);
 				if (out != NULL)
-					waybar_desks(state, out);
+					waybar_desks(state, out, show_names);
 				else
 					emit_waybar("", "");
 			} else if (strcmp(waybar_mod, "title") == 0) {
