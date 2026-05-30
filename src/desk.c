@@ -14,11 +14,16 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "cow/compat.h"
+#include "cow/config.h"
 #include "cow/memory.h"
 #include "cow/output.h"
+#include "cow/view.h"
+#include "cow/wm.h"
 
 void
 cow_desk_set_init(struct cow_desk_set *set)
@@ -144,4 +149,172 @@ uint8_t
 cow_desk_count(const struct cow_output *output)
 {
 	return (output != NULL ? output->desk_set.count : 0);
+}
+
+bool
+cow_desk_name_valid(const char *name, char **cause)
+{
+	if (name == NULL || name[0] == '\0') {
+		xasprintf(cause, "desk-name: empty name");
+		return (false);
+	}
+	for (const char *p = name; *p != '\0'; p++) {
+		unsigned char c = (unsigned char)*p;
+		if (c == ':' || c == ' ' || c == '\t' || c == '\n' ||
+		    c == '\r' || c == '/' || !isprint(c)) {
+			xasprintf(cause,
+			    "desk-name: invalid character in '%s'", name);
+			return (false);
+		}
+	}
+	return (true);
+}
+
+static bool
+ensure_up_to(struct cow_output *output, uint8_t nr)
+{
+	struct cow_desk_set *set = &output->desk_set;
+	while (set->count <= nr) {
+		if (cow_desk_set_append_default(output) == NULL)
+			return (false);
+	}
+	return (true);
+}
+
+static bool
+desk_has_views(const struct cow_desk *d)
+{
+	if (d == NULL)
+		return (false);
+	struct cow_view *v;
+	wl_list_for_each(v, &cow_wm.views, wm_link)
+	{
+		if (!v->closed && v->desk == d)
+			return (true);
+	}
+	return (false);
+}
+
+static bool
+set_name_one(struct cow_output *output, uint8_t nr, const char *name,
+    char **cause)
+{
+	if (!ensure_up_to(output, nr)) {
+		xasprintf(cause, "desk-name: cannot extend set");
+		return (false);
+	}
+	struct cow_desk *target = cow_desk_by_nr(output, nr);
+	if (target == NULL) {
+		xasprintf(cause, "desk-name: no such desk: %u", nr);
+		return (false);
+	}
+
+	struct cow_desk *clash = cow_desk_by_name(output, name);
+	if (clash != NULL && clash != target) {
+		xasprintf(cause, "desk-name: name '%s' already used", name);
+		return (false);
+	}
+
+	xfree(target->name);
+	target->name		= xstrdup(name);
+	output->desk_set.user_named = true;
+	return (true);
+}
+
+bool
+cow_desk_set_name(struct cow_output *output, uint8_t nr, const char *name,
+    char **cause)
+{
+	if (output == NULL) {
+		xasprintf(cause, "desk-name: no output");
+		return (false);
+	}
+	if (!cow_desk_name_valid(name, cause))
+		return (false);
+
+	bool global = cow_config != NULL &&
+	    cow_config->desktop_config == COW_DESKTOP_GLOBAL;
+	if (global) {
+		struct cow_output *o;
+		wl_list_for_each(o, &cow_wm.outputs, wm_link)
+		{
+			if (!set_name_one(o, nr, name, cause))
+				return (false);
+		}
+		return (true);
+	}
+	return (set_name_one(output, nr, name, cause));
+}
+
+static bool
+delete_one(struct cow_output *output, uint8_t nr, char **cause)
+{
+	struct cow_desk *target = cow_desk_by_nr(output, nr);
+	if (target == NULL)
+		return (true); /* nothing to do */
+	if (desk_has_views(target)) {
+		xasprintf(cause,
+		    "desk-name: desk %u has windows; move them first", nr);
+		return (false);
+	}
+	if (output->current_desk == target) {
+		struct cow_desk *fallback = cow_desk_prev(output, target);
+		if (fallback == target)
+			fallback = NULL;
+		output->current_desk = fallback;
+	}
+	wl_list_remove(&target->set_link);
+	xfree(target->name);
+	xfree(target);
+	output->desk_set.count--;
+	output->desk_set.user_named = true;
+	if (output->current_desk == NULL)
+		output->current_desk = cow_desk_first(output);
+	return (true);
+}
+
+bool
+cow_desk_set_delete(struct cow_output *output, uint8_t nr, char **cause)
+{
+	if (output == NULL) {
+		xasprintf(cause, "desk-name: no output");
+		return (false);
+	}
+	bool global = cow_config != NULL &&
+	    cow_config->desktop_config == COW_DESKTOP_GLOBAL;
+	if (global) {
+		struct cow_output *o;
+		wl_list_for_each(o, &cow_wm.outputs, wm_link)
+		{
+			if (!delete_one(o, nr, cause))
+				return (false);
+		}
+		return (true);
+	}
+	return (delete_one(output, nr, cause));
+}
+
+static void
+reset_one(struct cow_output *output)
+{
+	cow_desk_set_fini(&output->desk_set);
+	cow_desk_set_init(&output->desk_set);
+	cow_desk_set_populate_defaults(output);
+	output->current_desk = cow_desk_first(output);
+}
+
+void
+cow_desk_set_reset(struct cow_output *output)
+{
+	if (output == NULL)
+		return;
+	bool global = cow_config != NULL &&
+	    cow_config->desktop_config == COW_DESKTOP_GLOBAL;
+	if (global) {
+		struct cow_output *o;
+		wl_list_for_each(o, &cow_wm.outputs, wm_link)
+		    reset_one(o);
+		return;
+	}
+	reset_one(output);
 }

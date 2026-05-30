@@ -240,4 +240,9 @@ struct cow_desk *cow_desk_next(struct cow_output *, struct cow_desk *);
 struct cow_desk *cow_desk_prev(struct cow_output *, struct cow_desk *);
 uint8_t		 cow_desk_count(const struct cow_output *);
 
+bool cow_desk_name_valid(const char *, char **cause);
+bool cow_desk_set_name(struct cow_output *, uint8_t , const char *, char **);
+bool cow_desk_set_delete(struct cow_output *, uint8_t, char **);
+void cow_desk_set_reset(struct cow_output *);
+
 #endif
