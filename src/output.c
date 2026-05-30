@@ -162,14 +162,9 @@ cow_output_create(struct river_output_v1 *river_output)
 	output->pan_edge     = -1;
 	wl_list_init(&output->visible_views);
 
-	/* Initialize sheets */
-	for (int i = 0; i < COW_NR_OF_DESKS; i++) {
-		output->desks[i].nr	= i;
-		output->desks[i].output = output;
-		wl_list_init(&output->desks[i].views);
-	}
-
-	output->current_desk = &output->desks[0];
+	cow_desk_set_init(&output->desk_set);
+	cow_desk_set_populate_defaults(output);
+	output->current_desk = cow_desk_first(output);
 
 	river_output_v1_add_listener(river_output, &output_listener, output);
 
@@ -218,6 +213,7 @@ cow_output_destroy(struct cow_output *output)
 	if (output->bg_surface != NULL)
 		wl_surface_destroy(output->bg_surface);
 
+	cow_desk_set_fini(&output->desk_set);
 	xfree(output->name);
 	river_output_v1_destroy(output->river_output);
 	xfree(output);

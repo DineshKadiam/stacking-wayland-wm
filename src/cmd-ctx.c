@@ -18,6 +18,7 @@
  * [output]:[desk].[window] and resolve them to cow objects.
  */
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -91,22 +92,19 @@ resolve_desk(const char *spec, struct cow_output *output, char **cause)
 	if (spec == NULL || *spec == '\0')
 		return output->current_desk;
 
-	if (strcmp(spec, "@next") == 0) {
-		uint8_t nr = (output->current_desk->nr + 1) % COW_NR_OF_DESKS;
-		return &output->desks[nr];
-	}
+	if (strcmp(spec, "@next") == 0)
+		return cow_desk_next(output, output->current_desk);
 
-	if (strcmp(spec, "@prev") == 0) {
-		uint8_t nr = output->current_desk->nr;
-		nr	   = (nr == 0) ? COW_NR_OF_DESKS - 1 : nr - 1;
-		return &output->desks[nr];
-	}
+	if (strcmp(spec, "@prev") == 0)
+		return cow_desk_prev(output, output->current_desk);
 
-	/* Numeric desk number */
 	char *end;
 	long  nr = strtol(spec, &end, 10);
-	if (end != spec && *end == '\0' && nr >= 0 && nr < COW_NR_OF_DESKS)
-		return &output->desks[nr];
+	if (end != spec && *end == '\0' && nr >= 0 && nr <= UINT8_MAX) {
+		struct cow_desk *d = cow_desk_by_nr(output, (uint8_t)nr);
+		if (d != NULL)
+			return d;
+	}
 
 	xasprintf(cause, "unknown desk: %s", spec);
 	return NULL;

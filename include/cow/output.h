@@ -23,33 +23,38 @@ struct zwp_confined_pointer_v1;
 
 #include "cow/cow_box.h"
 
-#define COW_NR_OF_DESKS 10
+/* The maximum number of desks available. */
+#define COW_MAX_DESK_COUNT 32
+
+/* The default number of desks exposed. */
+#define COW_DEFAULT_DESK_COUNT 10
+
+/* COW_NR_OF_DESKS is now compat for COW_DEFAULT_DESK_COUNT */
+#define COW_NR_OF_DESKS COW_DEFAULT_DESK_COUNT
 
 struct river_output_v1;
 
-/*
- * A virtual desktop: a number and the list of views on it.
- */
 struct cow_desk {
 	uint8_t		   nr;
-	struct wl_list	   views; /* cow_view.desk_views */
+	char		  *name;
+	struct wl_list	   views;	/* cow_view.desk_views */
+	struct wl_list	   set_link;	/* in cow_desk_set.desks */
 	struct cow_output *output;
 
-	/*
-	 * Virtual page viewport: the top-left corner of the currently
-	 * visible page in virtual desktop coordinates.
-	 *   page_vx = page_col * output_width
-	 *   page_vy = page_row * output_height
-	 * Both are 0 when the page grid is 1×1 (the default).
-	 */
 	int page_vx;
 	int page_vy;
 
-	/* Smooth scroll animation state (only used when page_scroll_animate) */
-	int  scroll_from_vx, scroll_from_vy; /* start viewport */
-	int  scroll_to_vx, scroll_to_vy;     /* target viewport */
-	long scroll_start_ms;		     /* animation start time (ms) */
-	bool scrolling;			     /* animation in progress */
+	int  scroll_from_vx, scroll_from_vy;
+	int  scroll_to_vx, scroll_to_vy;
+	long scroll_start_ms;
+	bool scrolling;
+};
+
+struct cow_desk_set {
+	struct wl_list desks;	/* cow_desk.set_link, ordered by nr */
+	uint8_t	       count;
+	uint8_t	       next_nr;
+	bool	       user_named;
 };
 
 /*
@@ -93,9 +98,8 @@ struct cow_output {
 	float bg_colour[4];
 	bool  has_bg_colour;
 
-	/* Desks: 10 virtual desktops per output */
-	struct cow_desk	 desks[COW_NR_OF_DESKS];
-	struct cow_desk *current_desk;
+	struct cow_desk_set desk_set;
+	struct cow_desk	   *current_desk;
 
 	/* Bitmask of desks whose windows are temporarily shown
 	 * on the current desk (collect overlay).  Bit N set means
@@ -222,8 +226,18 @@ void cow_output_update_current(void);
  */
 void cow_outputs_renumber(void);
 
-/*
- * Pan frame management API lives in cow/pan_frames.h.
- */
+/* Desk management. */
+void		 cow_desk_set_init(struct cow_desk_set *);
+void		 cow_desk_set_fini(struct cow_desk_set *);
+struct cow_desk *cow_desk_set_append_default(struct cow_output *);
+void		 cow_desk_set_populate_defaults(struct cow_output *);
+
+struct cow_desk *cow_desk_by_nr(struct cow_output *, uint8_t nr);
+struct cow_desk *cow_desk_by_name(struct cow_output *, const char *);
+struct cow_desk *cow_desk_first(struct cow_output *);
+struct cow_desk *cow_desk_last(struct cow_output *);
+struct cow_desk *cow_desk_next(struct cow_output *, struct cow_desk *);
+struct cow_desk *cow_desk_prev(struct cow_output *, struct cow_desk *);
+uint8_t		 cow_desk_count(const struct cow_output *);
 
 #endif

@@ -93,9 +93,13 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	char *desk_no;
 	if ((desk_no = args_get(args, 'k')) != NULL) {
+		struct cow_output *out = view ? view->output : NULL;
+		int		   max = cow_desk_count(out) - 1;
+		if (max < 0)
+			max = 0;
 		long long nr;
 		if (!cmd_parse_int(cmdq, "move-window", "desk", desk_no, 0,
-			COW_NR_OF_DESKS - 1, &nr))
+			max, &nr))
 			return (CMD_RETURN_ERROR);
 		do_desk(view, (uint8_t)nr, cmdq);
 		return (CMD_RETURN_NORMAL);

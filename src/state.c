@@ -61,19 +61,18 @@ cow_state_save(void)
 		cJSON_AddNumberToObject(o, "y", output->y);
 		cJSON_AddNumberToObject(o, "current_desk",
 		    output->current_desk->nr);
-		/* Save current page viewport for each desk */
 		cJSON *desk_pages = cJSON_AddArrayToObject(o, "desk_pages");
-		for (int i = 0; i < COW_NR_OF_DESKS; i++) {
+		struct cow_desk *dk;
+		wl_list_for_each(dk, &output->desk_set.desks, set_link)
+		{
 			cJSON *dp = cJSON_CreateObject();
 			cJSON_AddNumberToObject(dp, "page_col",
 			    output->usable_area.width > 0 ?
-				output->desks[i].page_vx /
-				    output->usable_area.width :
+				dk->page_vx / output->usable_area.width :
 				0);
 			cJSON_AddNumberToObject(dp, "page_row",
 			    output->usable_area.height > 0 ?
-				output->desks[i].page_vy /
-				    output->usable_area.height :
+				dk->page_vy / output->usable_area.height :
 				0);
 			cJSON_AddItemToArray(desk_pages, dp);
 		}
@@ -258,11 +257,11 @@ cow_state_restore(void)
 			long long cur_desk;
 			if (cow_json_get_int(out_obj, "current_desk",
 				&cur_desk)) {
-				if (cur_desk >= 0 && cur_desk < COW_NR_OF_DESKS)
-					output->current_desk =
-					    &output->desks[cur_desk];
+				struct cow_desk *cd = cow_desk_by_nr(output,
+				    (uint8_t)cur_desk);
+				if (cd != NULL)
+					output->current_desk = cd;
 			}
-			/* Restore page viewport for each desk */
 			cJSON *desk_pages = cJSON_GetObjectItem(out_obj,
 			    "desk_pages");
 			if (cJSON_IsArray(desk_pages)) {
@@ -272,19 +271,19 @@ cow_state_restore(void)
 				cJSON *dp;
 				cJSON_ArrayForEach(dp, desk_pages)
 				{
-					if (i >= COW_NR_OF_DESKS)
+					struct cow_desk *dk = cow_desk_by_nr(
+					    output, (uint8_t)i);
+					if (dk == NULL)
 						break;
 					long long pc, pr;
 					if (cow_json_get_int(dp, "page_col",
 						&pc) &&
 					    w > 0)
-						output->desks[i].page_vx =
-						    (int)pc * w;
+						dk->page_vx = (int)pc * w;
 					if (cow_json_get_int(dp, "page_row",
 						&pr) &&
 					    h > 0)
-						output->desks[i].page_vy =
-						    (int)pr * h;
+						dk->page_vy = (int)pr * h;
 					i++;
 				}
 			}
@@ -330,10 +329,17 @@ cow_state_restore(void)
 						int nr = view->desk->nr;
 						wl_list_remove(
 						    &view->desk_views);
-						view->desk = &target->desks[nr];
-						wl_list_insert(
-						    &view->desk->views,
-						    &view->desk_views);
+						struct cow_desk *td =
+						    cow_desk_by_nr(target,
+							(uint8_t)nr);
+						if (td == NULL)
+							td = cow_desk_first(
+							    target);
+						view->desk = td;
+						if (td != NULL)
+							wl_list_insert(
+							    &td->views,
+							    &view->desk_views);
 					}
 				}
 			}
@@ -348,11 +354,12 @@ cow_state_restore(void)
 			long long vdesk;
 			if (cow_json_get_int(vs, "desk", &vdesk) &&
 			    view->output != NULL) {
-				if (vdesk >= 0 && vdesk < COW_NR_OF_DESKS) {
+				struct cow_desk *td = cow_desk_by_nr(
+				    view->output, (uint8_t)vdesk);
+				if (td != NULL) {
 					wl_list_remove(&view->desk_views);
-					view->desk =
-					    &view->output->desks[vdesk];
-					wl_list_insert(&view->desk->views,
+					view->desk = td;
+					wl_list_insert(&td->views,
 					    &view->desk_views);
 				}
 			}

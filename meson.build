@@ -54,6 +54,7 @@ srcs = [
     'src/config.c',
     'src/cow_box.c',
     'src/decoration.c',
+    'src/desk.c',
     'src/desk_ops.c',
     'src/draw.c',
     'src/font.c',

@@ -833,7 +833,10 @@ do_set_desktop_config(const char *val, struct cmd_q *cmdq)
 				if (other->current_desk->nr !=
 				    o->current_desk->nr)
 					continue;
-				for (int d = 0; d < COW_NR_OF_DESKS; d++) {
+				struct cow_desk *cand;
+				wl_list_for_each(cand, &other->desk_set.desks,
+				    set_link)
+				{
 					bool		   used = false;
 					struct cow_output *chk;
 					wl_list_for_each(chk, &cow_wm.outputs,
@@ -842,13 +845,14 @@ do_set_desktop_config(const char *val, struct cmd_q *cmdq)
 						if (chk == other)
 							continue;
 						if (chk->current_desk->nr ==
-						    d) {
+						    cand->nr) {
 							used = true;
 							break;
 						}
 					}
 					if (!used) {
-						cow_desk_switch(other, d);
+						cow_desk_switch(other,
+						    cand->nr);
 						break;
 					}
 				}

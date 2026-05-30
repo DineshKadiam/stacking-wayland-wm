@@ -174,7 +174,9 @@ cow_status_emit(void)
 
 		cJSON *desks = cJSON_AddArrayToObject(out, "desks");
 		bool global  = cow_config->desktop_config == COW_DESKTOP_GLOBAL;
-		for (int i = 0; i < COW_NR_OF_DESKS; i++) {
+		struct cow_desk *dk;
+		wl_list_for_each(dk, &output->desk_set.desks, set_link)
+		{
 			int		 count = 0;
 			struct cow_view *v;
 			wl_list_for_each(v, &cow_wm.views, wm_link)
@@ -183,16 +185,16 @@ cow_status_emit(void)
 					continue;
 				if (!global && v->output != output)
 					continue;
-				if (v->desk != NULL && v->desk->nr == i)
+				if (v->desk == dk)
 					count++;
 			}
 			cJSON *d = cJSON_CreateObject();
-			cJSON_AddNumberToObject(d, "nr", i);
+			cJSON_AddNumberToObject(d, "nr", dk->nr);
 			cJSON_AddNumberToObject(d, "windows", count);
 			cJSON_AddBoolToObject(d, "collected",
-			    (output->collected_desks & (1u << i)) != 0);
+			    (output->collected_desks & (1u << dk->nr)) != 0);
 			cJSON_AddBoolToObject(d, "active",
-			    i == (int)output->current_desk->nr);
+			    dk == output->current_desk);
 			cJSON_AddItemToArray(desks, d);
 		}
 

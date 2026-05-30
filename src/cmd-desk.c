@@ -53,17 +53,18 @@ cmd_desk_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	if (args_has(args, 'n')) {
-		uint8_t nr = (output->current_desk->nr + 1) % COW_NR_OF_DESKS;
-		cow_desk_switch(output, nr);
-
+		struct cow_desk *next = cow_desk_next(output,
+		    output->current_desk);
+		if (next != NULL)
+			cow_desk_switch(output, next->nr);
 		return (CMD_RETURN_NORMAL);
 	}
 
 	if (args_has(args, 'p')) {
-		uint8_t nr = output->current_desk->nr;
-		nr	   = (nr == 0) ? COW_NR_OF_DESKS - 1 : nr - 1;
-		cow_desk_switch(output, nr);
-
+		struct cow_desk *prev = cow_desk_prev(output,
+		    output->current_desk);
+		if (prev != NULL)
+			cow_desk_switch(output, prev->nr);
 		return (CMD_RETURN_NORMAL);
 	}
 
@@ -72,13 +73,14 @@ cmd_desk_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (desk_no == NULL)
 		return (CMD_RETURN_NORMAL);
 
-	/* Now parse the desk -- it's either going to be for collect or desk
-	 * switching.
-	 */
 	long long nr;
 	if (!cmd_parse_int(cmdq, "desk", "desk", desk_no, 0,
-		COW_NR_OF_DESKS - 1, &nr))
+		cow_desk_count(output) - 1, &nr))
 		return (CMD_RETURN_ERROR);
+	if (cow_desk_by_nr(output, (uint8_t)nr) == NULL) {
+		cmdq_error(cmdq, "desk: no such desk: %lld", nr);
+		return (CMD_RETURN_ERROR);
+	}
 
 	if (args_has(args, 'd')) {
 		cow_desk_switch(output, (uint8_t)nr);
@@ -113,7 +115,7 @@ do_collect(struct cow_output *output, uint8_t nr)
 	{
 		if (v->output != output || v->closed)
 			continue;
-		if (v->desk != &output->desks[nr])
+		if (v->desk != cow_desk_by_nr(output, nr))
 			continue;
 
 		if (!was_collected && now_collected) {

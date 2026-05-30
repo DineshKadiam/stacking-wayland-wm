@@ -120,7 +120,9 @@ cow_view_visible(const struct cow_view *view, const struct cow_output *output)
 static void
 switch_output_desk(struct cow_output *output, uint8_t desk_nr)
 {
-	struct cow_desk *target = &output->desks[desk_nr];
+	struct cow_desk *target = cow_desk_by_nr(output, desk_nr);
+	if (target == NULL)
+		return;
 
 	if (target == output->current_desk)
 		return;
@@ -175,7 +177,7 @@ switch_output_desk(struct cow_output *output, uint8_t desk_nr)
 void
 cow_desk_switch(struct cow_output *output, uint8_t desk_nr)
 {
-	if (desk_nr >= COW_NR_OF_DESKS)
+	if (output != NULL && cow_desk_by_nr(output, desk_nr) == NULL)
 		return;
 
 	int mode = cow_config ? cow_config->desktop_config : COW_DESKTOP_GLOBAL;
@@ -230,14 +232,16 @@ cow_desk_switch(struct cow_output *output, uint8_t desk_nr)
 void
 cow_view_assign_desk(struct cow_view *view, uint8_t desk_nr)
 {
-	if (desk_nr >= COW_NR_OF_DESKS || view == NULL || view->closed)
+	if (view == NULL || view->closed)
 		return;
 
 	struct cow_output *output = view->output;
 	if (output == NULL)
 		return;
 
-	struct cow_desk *target = &output->desks[desk_nr];
+	struct cow_desk *target = cow_desk_by_nr(output, desk_nr);
+	if (target == NULL)
+		return;
 
 	if (view->desk == target)
 		return;
@@ -539,8 +543,8 @@ cow_page_clamp_views(struct cow_output *output)
 	int vy_max = (rows - 1) * h;
 
 	struct cow_desk *desk;
-	for (int i = 0; i < COW_NR_OF_DESKS; i++) {
-		desk = &output->desks[i];
+	wl_list_for_each(desk, &output->desk_set.desks, set_link)
+	{
 		if (desk->page_vx > vx_max)
 			desk->page_vx = vx_max;
 		if (desk->page_vy > vy_max)

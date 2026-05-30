@@ -133,11 +133,10 @@ parse_scope_t(const char *spec, char **output_name, int *desk_nr, char **cause)
 			char *end;
 			long  nr = strtol(desk_part, &end, 10);
 			if (end == desk_part || *end != '\0' || nr < 0 ||
-			    nr >= COW_NR_OF_DESKS) {
+			    nr > 255) {
 				xasprintf(cause,
-				    "-t %s: bad desk number '%s' "
-				    "(expected 0..%d)",
-				    spec, desk_part, COW_NR_OF_DESKS - 1);
+				    "-t %s: bad desk number '%s'",
+				    spec, desk_part);
 				xfree(*output_name);
 				*output_name = NULL;
 				xfree(dup);
