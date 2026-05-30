@@ -1142,15 +1142,15 @@ scroll -P
 mouse CM+left scroll -r
 ```
 
-## desk [-t output] [-d 0-9] [-c 0-9] [-np]
+## desk [-t output] [-d N] [-c N] [-np]
 
 Switch or manipulate virtual desks.
 
 *-t* _output_
 	Target the named output instead of the current one.
 
-*-d* _0-9_
-	Switch to desk number _0-9_.
+*-d* _N_
+	Switch to desk number _N_.
 
 *-n*
 	Switch to the next desk, wrapping around.
@@ -1158,9 +1158,51 @@ Switch or manipulate virtual desks.
 *-p*
 	Switch to the previous desk, wrapping around.
 
-*-c* _0-9_
-	Toggle collection of desk _0-9_: overlay its windows on top of the
+*-c* _N_
+	Toggle collection of desk _N_: overlay its windows on top of the
 	current desk without switching.
+
+## desk-name [-t output] N NAME | -d N | -l | -r
+
+Manage the naming of virtual desktops.  By default, *cow* sets ten desktops,
+whose names default to '0'..'9'.  With this command it is possible to change
+that, either by increasing or decreasing the number of desktops, and/or renaming
+existing desks.
+
+*-t* _output_
+	Target the named output instead of the current one.  In global
+	desktop mode the operation is mirrored across every output.
+
+_N_ _NAME_
+	Ensure desk _N_ exists and set its name to _NAME_.  Gaps
+	below _N_ are auto-filled with default-named desks.  Names
+	must be non-empty, printable, and contain no whitespace or
+	*:*; duplicates within one set are rejected.
+
+*-d* _N_
+	Delete desk _N_.  Refused if any window is on it.
+
+*-l*
+	List the current desks as JSON, per output.
+
+*-r*
+	Reset every desk set to the default set, as if no manipulation had ever
+	occurred.
+
+The following examples show how this command can be used.  Note that when
+setting the name of a desk, such as in: `2 dev`, it is assumed that this number
+falls within range set by _desks.count_ setting.
+
+```
+# Three named desks instead of the default ten.
+desk-name 0 main
+desk-name 1 web
+desk-name 2 dev
+
+# Now both forms select the same desk.
+focus -t :main
+focus -t :0
+```
 
 ## Desktop / Page Settings
 
@@ -1177,6 +1219,9 @@ behaviour of desktops and pages:
 :  N × M integer
 :  Virtual page grid: N columns × M rows per desk. Default: _1 1_
    (no pages). Set e.g. _3 2_ for three columns and two rows.
+|  *desks.count*
+:  0-32
+:  Sets the number of available virtual desktops.  Defaults: _10_.
 |  *page\_scroll\_animate*
 :  _true_ | _false_
 :  Animate page transitions. Default: _false_ (instant cut).
