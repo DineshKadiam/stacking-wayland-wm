@@ -1,0 +1,26 @@
+submitter:
+  git.sr.ht:
+    enabled: false
+
+image: freebsd/latest
+packages:
+  - bison
+  - flex
+  - devel/evdev-proto
+  - devel/meson
+  - devel/ninja
+  - devel/pkgconf
+  - graphics/wayland
+  - graphics/wayland-protocols
+  - x11/libX11
+  - x11/libinput
+  - x11/libxkbcommon
+  - x11/pixman
+  - x11-servers/xwayland
+  - scdoc
+sources:
+  - https://codeberg.org/thomasadam/cow.git
+tasks:
+  - build: |
+      cd cow
+      meson setup build && meson compile -C build

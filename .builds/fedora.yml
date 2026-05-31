@@ -1,0 +1,30 @@
+submitter:
+  git.sr.ht:
+    enabled: false
+
+image: fedora/rawhide
+packages:
+  - bison 
+  - cairo
+  - flex
+  - gcc
+  - libbsd
+  - libbsd-devel
+  - libevdev-devel
+  - libevent-devel
+  - libinput-devel
+  - libwayland-client
+  - libxkbcommon
+  - libxkbcommon-devel
+  - meson
+  - pango
+  - pango-devel
+  - scdoc
+  - wayland-devel
+  - wayland-protocols-devel
+sources:
+  - https://codeberg.org/thomasadam/cow.git
+tasks:
+  - build: |
+      cd cow
+      meson setup build && meson compile -C build

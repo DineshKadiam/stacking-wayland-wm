@@ -1,0 +1,28 @@
+submitter:
+  git.sr.ht:
+    enabled: false
+
+image: alpine/edge
+packages:
+  - bison
+  - cairo-dev
+  - flex
+  - libbsd-dev
+  - libevent-dev
+  - libxkbcommon-dev
+  - pango-dev
+  - pixman-dev
+  - wayland-dev
+  - wayland-protocols
+  - xwayland-dev
+  - meson
+  - scdoc
+  - tar
+  - wget
+  - xz
+sources:
+  - https://codeberg.org/thomasadam/cow.git
+tasks:
+  - build: |
+      cd cow
+      meson setup build && meson compile -C build

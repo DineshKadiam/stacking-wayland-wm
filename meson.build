@@ -107,7 +107,7 @@ m_dep = cc.find_library('m', required: false)
 # below, and the .h headers land in build/ so dsl-eval.c and
 # dsl-lexer.c can include them.
 bison_prog = find_program('bison', version: '>=3.0', required: true)
-flex_prog  = find_program('flex',  version: '>=2.6', required: true)
+flex_prog  = find_program('flex', version: '>=2.5.39', required: true)
 
 dsl_parser_gen = custom_target('dsl-parser',
     input:   'src/dsl-parser.y',
@@ -185,20 +185,12 @@ foreach pair : [
     conf.set10(pair[1], cc.has_header(pair[0], dependencies: libbsd))
 endforeach
 
-# Linux kernel input codes vs. FreeBSD evdev port.  We need exactly
-# one of these to get BTN_LEFT / KEY_Return / etc.
+# Linux kernel input codes vs. FreeBSD evdev port.  OpenBSD has neither,
+# so compat.h falls back to the small set of BTN_* values cow uses.
 have_linux_input = cc.has_header('linux/input-event-codes.h')
 have_bsd_input   = cc.has_header('dev/evdev/input-event-codes.h')
 conf.set10('HAVE_LINUX_INPUT_EVENT_CODES_H', have_linux_input)
 conf.set10('HAVE_DEV_EVDEV_INPUT_EVENT_CODES_H', have_bsd_input)
-if not (have_linux_input or have_bsd_input)
-    error(
-        'Neither <linux/input-event-codes.h> nor '
-        + '<dev/evdev/input-event-codes.h> was found.  '
-        + 'cow needs one of them for BTN_*/KEY_* constants.  '
-        + 'On FreeBSD install devel/evdev-proto.'
-    )
-endif
 
 # Function probes.  The same function may live in libc (BSDs), in
 # libbsd under a bsd/ prefix (Linux with libbsd installed, non-overlay

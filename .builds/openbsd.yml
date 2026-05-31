@@ -1,0 +1,23 @@
+submitter:
+  git.sr.ht:
+    enabled: false
+
+image: openbsd/latest
+packages:
+  - bison
+  - cairo
+  - libevent
+  - libinput-openbsd
+  - libxkbcommon
+  - meson
+  - ninja
+  - pango
+  - scdoc
+  - wayland
+  - wayland-protocols
+sources:
+  - https://codeberg.org/thomasadam/cow.git
+tasks:
+  - build: |
+      cd cow
+      meson setup build && meson compile -C build

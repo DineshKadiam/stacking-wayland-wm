@@ -85,7 +85,7 @@
 #elif HAVE_DEV_EVDEV_INPUT_EVENT_CODES_H
 #include <dev/evdev/input-event-codes.h>
 #else
-#error "no input-event-codes.h found -- install evdev-proto (FreeBSD)"
+#include "cow/input-event-codes.h"
 #endif
 
 /*
