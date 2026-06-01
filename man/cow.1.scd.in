@@ -844,6 +844,8 @@ feel of a window.  All of these can be used with the *set* command.
 :  Iconified window icon size in pixels (default: 64).
 |  *snap\_distance*
 :  Snap attraction distance in pixels; 0 disables (default: 10).
+|  *raise_on_focus*
+:  Raise windows when they receive focus.
 
 *Border Colour Settings* (values are hexadecimal RGB, e.g. *0xFF0000*):
 
