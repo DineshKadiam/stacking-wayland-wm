@@ -186,9 +186,65 @@ cow_output_create(struct river_output_v1 *river_output)
 	return output;
 }
 
+/*
+ * Find a surviving output to migrate orphaned views onto.  Returns the
+ * first entry of cow_wm.outputs that isn't `dying`, or NULL if `dying`
+ * is the only output left.  Called while `dying` is still on the
+ * outputs list, so any other entry is a valid target.
+ */
+static struct cow_output *
+output_find_migration_target(struct cow_output *dying)
+{
+	struct cow_output *o;
+	wl_list_for_each(o, &cow_wm.outputs, wm_link)
+	{
+		if (o != dying)
+			return (o);
+	}
+	return (NULL);
+}
+
+/*
+ * Move every view currently on `dying` either onto `target` (if there
+ * is one) or off the desk/output lists entirely and flag it closed so
+ * the next manage sweep destroys it.  Without this, freeing the output
+ * struct leaves views with a dangling view->output pointer that the
+ * render path dereferences on the very next frame.  Issue #66.
+ */
+static void
+output_migrate_views(struct cow_output *dying, struct cow_output *target)
+{
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (view->output != dying)
+			continue;
+		if (target != NULL) {
+			cow_view_reassign_output(view, target);
+		} else {
+			wl_list_remove(&view->desk_views);
+			wl_list_init(&view->desk_views);
+			wl_list_remove(&view->output_views);
+			wl_list_init(&view->output_views);
+			view->output = NULL;
+			view->desk   = NULL;
+			view->closed = true;
+		}
+	}
+}
+
 void
 cow_output_destroy(struct cow_output *output)
 {
+	/*
+	 * Detach every view from this output before tearing it down.
+	 * cow_view_reassign_output() rewrites the inline desk_views /
+	 * output_views links, so it must run while the old output's
+	 * desk_set is still intact (cow_desk_set_fini below frees the
+	 * desks themselves).
+	 */
+	output_migrate_views(output, output_find_migration_target(output));
+
 	pan_frames_destroy_output(output);
 	cow_layer_shell_fini_output(output);
 	wl_list_remove(&output->wm_link);
