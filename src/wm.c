@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include <errno.h>
+#include <stdint.h>
 #include <poll.h>
 #include <stdio.h>
 #include <string.h>
@@ -1123,6 +1124,7 @@ cow_wm_init(void)
 {
 	memset(&cow_wm, 0, sizeof(cow_wm));
 
+	cow_wm.raise_seq_counter = UINT64_MAX / 2;
 	wl_list_init(&cow_wm.views);
 	wl_list_init(&cow_wm.outputs);
 	wl_list_init(&cow_wm.seats);
