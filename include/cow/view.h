@@ -179,6 +179,7 @@ struct cow_view {
 	int  content_width;
 	int  content_height;
 	bool has_dimensions; /* true after first dimensions event */
+	bool on_map_fired;   /* on-map/on-desk rules fired once */
 	bool placed;
 
 	/*

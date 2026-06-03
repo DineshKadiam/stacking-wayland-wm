@@ -157,7 +157,23 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 
 	view->content_width  = width;
 	view->content_height = height;
+
+	bool first_dims	     = !view->has_dimensions;
 	view->has_dimensions = true;
+
+	/*
+	 * Fire on-map / on-desk on the first dimensions event.  Rule
+	 * actions (window-move, etc.) require has_dimensions to be set,
+	 * so firing earlier from cow_view_configure() would silently
+	 * no-op them.
+	 */
+	if (first_dims && !view->on_map_fired) {
+		view->on_map_fired = true;
+		cow_rule_fire(COW_RULE_ON_MAP, view, view->desk,
+		    view->output);
+		cow_rule_fire(COW_RULE_ON_DESK, view, view->desk,
+		    view->output);
+	}
 
 	/*
 	 * Notify status clients (cowpager, cowbar, ...) so that
@@ -498,9 +514,6 @@ cow_view_configure(struct cow_view *view)
 	view->needs_raise = true;
 	view->needs_focus = true;
 	cow_wm_request_manage_dirty();
-
-	cow_rule_fire(COW_RULE_ON_MAP, view, view->desk, view->output);
-	cow_rule_fire(COW_RULE_ON_DESK, view, view->desk, view->output);
 }
 
 /* Forward declaration: defined later, used by view_cleanup_stale_decoration. */
