@@ -71,7 +71,20 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	if (scr_val != NULL) {
 		do_screen(view, scr_val, cmdq);
-		return (CMD_RETURN_NORMAL);
+		/*
+		 * Fall through so a same-command -k can land the view on
+		 * a specific desk of the new output.  Other modifiers
+		 * (-d, -x/-y, -c, -P) are not meaningful when combined
+		 * with -o and are rejected below.
+		 */
+		if (dir_val != NULL || args_has(args, 'c') ||
+		    args_has(args, 'x') || args_has(args, 'y') ||
+		    args_get(args, 'P') != NULL) {
+			cmdq_error(cmdq, "move: -o only combines with -k");
+			return (CMD_RETURN_ERROR);
+		}
+		if (args_get(args, 'k') == NULL)
+			return (CMD_RETURN_NORMAL);
 	}
 
 	if (dir_val != NULL) {

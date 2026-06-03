@@ -653,7 +653,10 @@ Move a window. With no flags, begin an interactive move using the mouse.
 	With *-d*, snap to the nearest edge instead of stepping.
 
 *-o* _output_
-	Move the window to the named output.
+	Move the window to the named output.  May be combined with *-k*
+	to land the window on a specific desk of that output; other
+	flags (*-d*, *-c*, *-x*, *-y*, *-P*) are rejected when given
+	with *-o*.
 
 *-C*
 	Enable container-formation on drop. When the interactive move ends
