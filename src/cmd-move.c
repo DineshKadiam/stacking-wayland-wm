@@ -378,10 +378,11 @@ do_screen(struct cow_view *view, const char *name, struct cmd_q *cmdq)
 		/*
 		 * Window hasn't had its initial placement yet (e.g.
 		 * window-move fired from an on-map rule before the
-		 * render loop got a chance to place the view).  Drop
-		 * it at the top-left of the target's usable area; the
-		 * render loop will refine via view_compute_initial
-		 * _placement() on the next pass.
+		 * render loop ran view_compute_initial_placement()).
+		 * Drop it at the top-left of the target's usable area
+		 * and mark it as placed below so the render loop does
+		 * NOT subsequently snap the view onto the output under
+		 * the pointer.
 		 */
 		int bw = view->dec.border_width;
 		int tt = view->dec.title_thickness;
@@ -390,6 +391,14 @@ do_screen(struct cow_view *view, const char *name, struct cmd_q *cmdq)
 	}
 
 	cow_view_reassign_output(view, target);
+
+	/*
+	 * Mark placed so view_compute_initial_placement() (which would
+	 * otherwise unconditionally reassign the view to the output
+	 * under the pointer on the next render) leaves the explicit
+	 * placement alone.
+	 */
+	view->placed = true;
 
 	cow_view_sync_vxy_from_global(view);
 	cow_view_sync_container_pos(view);
