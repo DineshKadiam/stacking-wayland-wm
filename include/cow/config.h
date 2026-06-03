@@ -64,6 +64,14 @@ struct cow_desk;
 #define COW_CFG_MAX_LAYER 16
 
 /*
+ * When true (default) views migrated off a disappearing output keep
+ * their desk number on the new output (if such a desk exists there).
+ * When false they land on the new output's current desk regardless of
+ * where they were before.
+ */
+#define COW_CFG_DEFAULT_PRESERVE_DESK_ON_OUTPUT_LOSS true
+
+/*
  * Border style enum (carried from original cow).
  */
 enum cow_border_style {
@@ -300,6 +308,10 @@ struct cow_config {
 
 	/* Raise on focus: raise window when focused (default: on) */
 	bool raise_on_focus;
+
+	/* Preserve desk number when migrating views to a different
+	 * output (e.g. when a monitor is unplugged). */
+	bool preserve_desk_on_output_loss;
 
 	/*
 	 * Layer assigned to newly mapped windows.  Existing windows are

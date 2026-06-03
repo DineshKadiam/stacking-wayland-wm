@@ -210,6 +210,12 @@ output_find_migration_target(struct cow_output *dying)
  * the next manage sweep destroys it.  Without this, freeing the output
  * struct leaves views with a dangling view->output pointer that the
  * render path dereferences on the very next frame.  Issue #66.
+ *
+ * Desk identity is preserved when possible: if the source view was on
+ * desk N and `target` also has a desk N, the view lands on target's
+ * desk N rather than on target's current_desk.  Virtual coordinates
+ * (vx, vy) are unchanged; page state is per-desk, so the render path
+ * naturally applies the new desk's own page viewport.
  */
 static void
 output_migrate_views(struct cow_output *dying, struct cow_output *target)
@@ -220,7 +226,14 @@ output_migrate_views(struct cow_output *dying, struct cow_output *target)
 		if (view->output != dying)
 			continue;
 		if (target != NULL) {
+			bool	preserve = cow_config != NULL &&
+			      cow_config->preserve_desk_on_output_loss;
+			uint8_t old_nr = view->desk != NULL ?
+			    view->desk->nr : 0;
+			bool had_desk = view->desk != NULL;
 			cow_view_reassign_output(view, target);
+			if (preserve && had_desk)
+				cow_view_assign_desk(view, old_nr);
 		} else {
 			wl_list_remove(&view->desk_views);
 			wl_list_init(&view->desk_views);

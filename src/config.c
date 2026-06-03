@@ -156,6 +156,8 @@ cow_config_create(void)
 	config->edge_scroll	     = false;
 	config->edge_scroll_delay_ms = COW_CFG_DEFAULT_EDGE_SCROLL_DELAY;
 	config->raise_on_focus	     = true;
+	config->preserve_desk_on_output_loss =
+	    COW_CFG_DEFAULT_PRESERVE_DESK_ON_OUTPUT_LOSS;
 	config->default_layer	     = COW_CFG_DEFAULT_LAYER;
 	config->max_layer	     = COW_CFG_MAX_LAYER;
 	config->repeat_delay_ms	     = COW_CFG_DEFAULT_REPEAT_DELAY_MS;

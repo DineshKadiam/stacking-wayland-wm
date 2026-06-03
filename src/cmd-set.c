@@ -464,6 +464,15 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_NORMAL);
 	}
 
+	if (strcmp(key, "preserve_desk_on_output_loss") == 0) {
+		bool b;
+		if (cow_config != NULL && cmd_parse_bool(val, &b)) {
+			cow_config->preserve_desk_on_output_loss = b;
+		}
+		xfree(val);
+		return (CMD_RETURN_NORMAL);
+	}
+
 	if (strncmp(key, "titlebar.button_", 16) == 0) {
 		do_set_button(key, val, cmdq);
 		xfree(val);
