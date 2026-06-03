@@ -152,6 +152,8 @@ static const struct river_output_v1_listener output_listener = {
 	.dimensions = output_handle_dimensions,
 };
 
+static void output_adopt_orphan_views(struct cow_output *);
+
 struct cow_output *
 cow_output_create(struct river_output_v1 *river_output)
 {
@@ -177,6 +179,11 @@ cow_output_create(struct river_output_v1 *river_output)
 
 	/* Register with layer shell for non_exclusive_area events */
 	cow_layer_shell_init_output(output);
+
+	/* If a previous output disappearance left views orphaned (no
+	 * output to attach to), adopt them onto this new output.
+	 */
+	output_adopt_orphan_views(output);
 
 	/* Assign a tentative ordinal.  The compositor will follow this
 	 * with `position` and `dimensions` events; renumber again
@@ -205,29 +212,61 @@ output_find_migration_target(struct cow_output *dying)
 }
 
 /*
- * Move every view currently on `dying` either onto `target` (if there
- * is one) or off the desk/output lists entirely and flag it closed so
- * the next manage sweep destroys it.  Without this, freeing the output
- * struct leaves views with a dangling view->output pointer that the
- * render path dereferences on the very next frame.  Issue #66.
+ * Snapshot of the dying output's active desk and that desk's page
+ * state.  Captured when the last surviving output goes away and
+ * consumed by the first output to appear afterwards, so the user's
+ * "where am I" returns with their windows.
  *
- * Desk identity is preserved when possible: if the source view was on
- * desk N and `target` also has a desk N, the view lands on target's
- * desk N rather than on target's current_desk.  Virtual coordinates
- * (vx, vy) are unchanged; page state is per-desk, so the render path
- * naturally applies the new desk's own page viewport.
+ * desk_nr == -1 means no snapshot pending.
+ */
+static struct {
+	int desk_nr;
+	int page_vx;
+	int page_vy;
+} pending_session = { .desk_nr = -1 };
+
+/*
+ * Move every view currently on `dying` onto `target` (when there is
+ * one).
+ *
+ * Desk identity is preserved when possible:
+ *   - with a target: if the source view was on desk N and `target`
+ *     also has a desk N, the view lands on target's desk N rather
+ *     than on target's current_desk.
+ *   - without a target: the source desk number is remembered on the
+ *     view (view->orphan_desk_nr) so that when a new output appears
+ *     and adopts the view (output_adopt_orphan_views) the same desk
+ *     number is restored.
+ *
+ * Views are NOT closed on the no-target path: the session may be
+ * spending a brief period with every monitor disabled (e.g. a laptop
+ * whose internal panel is forced off and whose only external display
+ * was just powered off).  When a monitor returns the views resume
+ * normally.
  */
 static void
 output_migrate_views(struct cow_output *dying, struct cow_output *target)
 {
+	bool	preserve = cow_config != NULL &&
+		     cow_config->preserve_desk_on_output_loss;
+
+	/*
+	 * Last output going away: snapshot its active desk + page so
+	 * the next output to appear can restore the session.
+	 */
+	if (target == NULL && dying != NULL &&
+	    dying->current_desk != NULL) {
+		pending_session.desk_nr = (int)dying->current_desk->nr;
+		pending_session.page_vx = dying->current_desk->page_vx;
+		pending_session.page_vy = dying->current_desk->page_vy;
+	}
+
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
 		if (view->output != dying)
 			continue;
 		if (target != NULL) {
-			bool	preserve = cow_config != NULL &&
-			      cow_config->preserve_desk_on_output_loss;
 			uint8_t old_nr = view->desk != NULL ?
 			    view->desk->nr : 0;
 			bool had_desk = view->desk != NULL;
@@ -235,13 +274,52 @@ output_migrate_views(struct cow_output *dying, struct cow_output *target)
 			if (preserve && had_desk)
 				cow_view_assign_desk(view, old_nr);
 		} else {
+			view->orphan_desk_nr = (view->desk != NULL && preserve)
+			    ? (int8_t)view->desk->nr : -1;
 			wl_list_remove(&view->desk_views);
 			wl_list_init(&view->desk_views);
 			wl_list_remove(&view->output_views);
 			wl_list_init(&view->output_views);
 			view->output = NULL;
 			view->desk   = NULL;
-			view->closed = true;
+		}
+	}
+}
+
+/* Adopt views that were left orphaned by a previous output's destruction. */
+static void
+output_adopt_orphan_views(struct cow_output *adopter)
+{
+	if (adopter == NULL || adopter->current_desk == NULL)
+		return;
+
+	/*
+	 * Restore the snapshot taken when the last output disappeared,
+	 * if any: switch the adopter to the same desk number and put
+	 * that desk on the same page.  One-shot: consumed by the first
+	 * adopter after a blackout.
+	 */
+	if (pending_session.desk_nr >= 0) {
+		struct cow_desk *d = cow_desk_by_nr(adopter,
+		    (uint8_t)pending_session.desk_nr);
+		if (d != NULL) {
+			adopter->current_desk = d;
+			d->page_vx	      = pending_session.page_vx;
+			d->page_vy	      = pending_session.page_vy;
+		}
+		pending_session.desk_nr = -1;
+	}
+
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (view->output != NULL || view->closed)
+			continue;
+		cow_view_reassign_output(view, adopter);
+		if (view->orphan_desk_nr >= 0) {
+			cow_view_assign_desk(view,
+			    (uint8_t)view->orphan_desk_nr);
+			view->orphan_desk_nr = -1;
 		}
 	}
 }

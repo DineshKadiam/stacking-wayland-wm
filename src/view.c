@@ -352,6 +352,7 @@ cow_view_create(struct river_window_v1 *rw)
 	view->raise_seq = ++cow_wm.raise_seq_counter;
 	view->layer	= cow_config != NULL ? cow_config->default_layer :
 					       COW_CFG_DEFAULT_LAYER;
+	view->orphan_desk_nr = -1;
 
 	cow_view_cfg_init_from_global(&view->cfg);
 	cow_decoration_init(view);
@@ -793,6 +794,8 @@ void
 cow_view_apply_render(struct cow_view *view)
 {
 	if (!view->has_dimensions || view->closed)
+		return;
+	if (view->output == NULL)
 		return;
 
 	view_cleanup_stale_decoration(view);

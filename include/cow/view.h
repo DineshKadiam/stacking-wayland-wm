@@ -205,6 +205,12 @@ struct cow_view {
 	struct cow_desk	  *desk;
 	struct cow_output *output;
 
+	/* While orphaned (no output present at all), remember the
+	 * desk number we were on so the next output to appear can
+	 * re-home us onto its desk of the same number.  -1 = none.
+	 */
+	int8_t orphan_desk_nr;
+
 	/* Flags */
 	uint32_t flags;
 
