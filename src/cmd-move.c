@@ -346,22 +346,54 @@ do_screen(struct cow_view *view, const char *name, struct cmd_q *cmdq)
 	if (target == view->output)
 		return;
 
-	struct cow_box *src_ua = &view->output->usable_area;
 	struct cow_box *dst_ua = &target->usable_area;
 
-	double rx = 0.0, ry = 0.0;
-	if (src_ua->width > 0)
-		rx = (double)(view->x - src_ua->x) / src_ua->width;
-	if (src_ua->height > 0)
-		ry = (double)(view->y - src_ua->y) / src_ua->height;
-
 	unmax_if_needed(view);
-	view->x = dst_ua->x + (int)(rx * dst_ua->width);
-	view->y = dst_ua->y + (int)(ry * dst_ua->height);
+
+	if (view->placed) {
+		/*
+		 * Preserve the proportional position within the new
+		 * output's usable area.  Clamp into bounds so the
+		 * computed centre lands inside `target` and the
+		 * subsequent stack update doesn't bounce the view onto
+		 * a neighbouring output.
+		 */
+		struct cow_box *src_ua = &view->output->usable_area;
+		double		rx = 0.0, ry = 0.0;
+		if (src_ua->width > 0)
+			rx = (double)(view->x - src_ua->x) / src_ua->width;
+		if (src_ua->height > 0)
+			ry = (double)(view->y - src_ua->y) / src_ua->height;
+		if (rx < 0.0)
+			rx = 0.0;
+		else if (rx > 1.0)
+			rx = 1.0;
+		if (ry < 0.0)
+			ry = 0.0;
+		else if (ry > 1.0)
+			ry = 1.0;
+		view->x = dst_ua->x + (int)(rx * dst_ua->width);
+		view->y = dst_ua->y + (int)(ry * dst_ua->height);
+	} else {
+		/*
+		 * Window hasn't had its initial placement yet (e.g.
+		 * window-move fired from an on-map rule before the
+		 * render loop got a chance to place the view).  Drop
+		 * it at the top-left of the target's usable area; the
+		 * render loop will refine via view_compute_initial
+		 * _placement() on the next pass.
+		 */
+		int bw = view->dec.border_width;
+		int tt = view->dec.title_thickness;
+		view->x = dst_ua->x + bw;
+		view->y = dst_ua->y + bw + tt;
+	}
 
 	cow_view_reassign_output(view, target);
 
-	apply_move(view);
+	cow_view_sync_vxy_from_global(view);
+	cow_view_sync_container_pos(view);
+	cmd_view_dirty(view);
 }
 
 static void
