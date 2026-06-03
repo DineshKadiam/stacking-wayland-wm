@@ -509,6 +509,9 @@ The following table shows which events are available:
 :  Fired when a new page is switched to.
 |  *on-restart*
 :  Fired when *cow* is restarted (can also happen via `-USR1` signal.
+|  *on-title-change*
+:  Fired whenever a window's title changes to something different to what it
+   used to be.
 |  *on-desk*
 :  Used to change window styles on a particular desk.
 

@@ -42,6 +42,7 @@ enum cow_rule_type {
 	COW_RULE_ON_NEW_DESK,
 	COW_RULE_ON_NEW_PAGE,
 	COW_RULE_ON_RESTART,
+	COW_RULE_ON_TITLE_CHANGE,
 	/*
 	 * Declarative desk style.  Unlike the other ON_* events which
 	 * fire once per lifecycle event, ON_DESK rules express a desk's

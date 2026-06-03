@@ -208,11 +208,20 @@ window_handle_title(void *data, __unused struct river_window_v1 *rw,
 {
 	struct cow_view *view = data;
 
+	const char *old   = view->title;
+	const char *fresh = title ? title : "";
+	bool changed = (old == NULL) ? (fresh[0] != '\0') :
+				       (strcmp(old, fresh) != 0);
+
 	xfree(view->title);
 	view->title	= title ? xstrdup(title) : NULL;
 	view->dec.dirty = true;
 	cow_wm_request_manage_dirty();
 	cow_status_emit();
+
+	if (changed)
+		cow_rule_fire(COW_RULE_ON_TITLE_CHANGE, view, view->desk,
+		    view->output);
 }
 
 static void
