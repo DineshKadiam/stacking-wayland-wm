@@ -20,6 +20,7 @@
 #include "cow/compat.h"
 #include "cow/config.h"
 #include "cow/desk_ops.h"
+#include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/pan_frames.h"
 #include "cow/rule.h"
@@ -526,8 +527,12 @@ cow_pointer_op_process(struct cow_seat *seat)
 			if (seat->has_pointer_position) {
 				struct cow_output *target = cow_output_at(
 				    seat->pointer_x, seat->pointer_y);
-				if (target != NULL && target != view->output)
+				if (target != NULL && target != view->output) {
 					cow_view_reassign_output(view, target);
+					xfree(view->orphan_output_name);
+					view->orphan_output_name = NULL;
+					view->orphan_desk_nr	 = -1;
+				}
 			} else {
 				cow_view_update_output(view);
 			}

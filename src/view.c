@@ -894,7 +894,12 @@ cow_view_update_output(struct cow_view *view)
 	int cy = view->y - tt / 2 + view->content_height / 2;
 
 	struct cow_output *target = cow_output_at(cx, cy);
-	cow_view_reassign_output(view, target);
+	if (target != NULL && target != view->output) {
+		cow_view_reassign_output(view, target);
+		xfree(view->orphan_output_name);
+		view->orphan_output_name = NULL;
+		view->orphan_desk_nr	 = -1;
+	}
 }
 
 void

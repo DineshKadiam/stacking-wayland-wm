@@ -285,6 +285,28 @@ output_migrate_views(struct cow_output *dying, struct cow_output *target)
 	{
 		if (view->output != dying)
 			continue;
+		/*
+		 * Remember the view's source output the first time it
+		 * encounters a dying output -- whether this destroy
+		 * cascades the view onto a still-living sibling (which
+		 * is itself doomed) or strands it as an orphan.  Without
+		 * this, a cascade of N destroys would overwrite the
+		 * "real" original with the name of whichever sibling
+		 * happened to be destroyed last, and every view would
+		 * end up tagged for the same output.
+		 */
+		if (view->orphan_output_name == NULL && dying != NULL &&
+		    dying->name != NULL)
+			view->orphan_output_name = xstrdup(dying->name);
+		/*
+		 * Remember the source desk number too, only on first
+		 * encounter, so a cascade doesn't reset it to the
+		 * arbitrary current desk of the sibling we migrated to.
+		 */
+		if (view->orphan_desk_nr < 0 && preserve &&
+		    view->desk != NULL)
+			view->orphan_desk_nr = (int8_t)view->desk->nr;
+
 		if (target != NULL) {
 			uint8_t old_nr = view->desk != NULL ?
 			    view->desk->nr : 0;
@@ -293,13 +315,6 @@ output_migrate_views(struct cow_output *dying, struct cow_output *target)
 			if (preserve && had_desk)
 				cow_view_assign_desk(view, old_nr);
 		} else {
-			view->orphan_desk_nr = (view->desk != NULL && preserve)
-			    ? (int8_t)view->desk->nr : -1;
-			xfree(view->orphan_output_name);
-			view->orphan_output_name =
-			    (dying != NULL && dying->name != NULL) ?
-				xstrdup(dying->name) :
-				NULL;
 			wl_list_remove(&view->desk_views);
 			wl_list_init(&view->desk_views);
 			wl_list_remove(&view->output_views);

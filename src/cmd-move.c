@@ -245,6 +245,9 @@ do_transfer_to_output(struct cow_view *view, struct cow_output *target,
 	}
 
 	cow_view_reassign_output(view, target);
+	xfree(view->orphan_output_name);
+	view->orphan_output_name = NULL;
+	view->orphan_desk_nr	 = -1;
 }
 
 /*
@@ -391,6 +394,15 @@ do_screen(struct cow_view *view, const char *name, struct cmd_q *cmdq)
 	}
 
 	cow_view_reassign_output(view, target);
+
+	/*
+	 * User-initiated relocation: forget any remembered "original"
+	 * output so the new home is where the view returns to after a
+	 * blackout.
+	 */
+	xfree(view->orphan_output_name);
+	view->orphan_output_name = NULL;
+	view->orphan_desk_nr	 = -1;
 
 	/*
 	 * Mark placed so view_compute_initial_placement() (which would
