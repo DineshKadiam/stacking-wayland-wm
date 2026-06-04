@@ -512,6 +512,10 @@ The following table shows which events are available:
 |  *on-title-change*
 :  Fired whenever a window's title changes to something different to what it
    used to be.
+|  *on-outputs-changed*
+:  Fired when the set of available outputs changes -- a monitor is
+   plugged in or unplugged, or every output is destroyed and
+   recreated. Fires once per change.  Useful to re-apply a monitor layouts.
 |  *on-desk*
 :  Used to change window styles on a particular desk.
 

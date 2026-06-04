@@ -24,6 +24,7 @@
 #include "cow/config.h"
 #include "cow/layer_shell.h"
 #include "cow/memory.h"
+#include "cow/rule.h"
 #include "cow/shm.h"
 #include "cow/util.h"
 #include "cow/wm.h"
@@ -189,6 +190,8 @@ cow_output_create(struct river_output_v1 *river_output)
 	 * with `position` and `dimensions` events; renumber again
 	 * there so the ordering reflects the final geometry. */
 	cow_outputs_renumber();
+
+	cow_rule_fire(COW_RULE_ON_OUTPUTS_CHANGED, NULL, NULL, NULL);
 
 	return output;
 }
@@ -409,6 +412,8 @@ cow_output_destroy(struct cow_output *output)
 
 	/* Numbering shifts when an output disappears. */
 	cow_outputs_renumber();
+
+	cow_rule_fire(COW_RULE_ON_OUTPUTS_CHANGED, NULL, NULL, NULL);
 }
 
 void

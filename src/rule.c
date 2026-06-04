@@ -45,6 +45,7 @@ static const struct {
 	{ COW_RULE_ON_NEW_PAGE,	"on-new-page"     },
 	{ COW_RULE_ON_RESTART,      "on-restart"	    },
 	{ COW_RULE_ON_TITLE_CHANGE, "on-title-change" },
+	{ COW_RULE_ON_OUTPUTS_CHANGED, "on-outputs-changed" },
 	{ COW_RULE_ON_DESK,	    "on-desk"	      },
 };
 
@@ -313,6 +314,22 @@ cow_rule_fire_json(enum cow_rule_type type, struct cow_view *view,
 		return; /* no rules registered */
 
 	struct cow_rule *rule;
+
+	/*
+	 * Output topology change: fire once per matching rule, no
+	 * view fan-out.  The rule body is typically a side-effecting
+	 * command (e.g. exec wlr-randr) that must not be repeated
+	 * per-view.
+	 */
+	if (type == COW_RULE_ON_OUTPUTS_CHANGED) {
+		wl_list_for_each(rule, &rules, link)
+		{
+			if (rule->type != type)
+				continue;
+			rule_run(rule, NULL, NULL, NULL, event_json);
+		}
+		return;
+	}
 
 	if (event_carries_view(type)) {
 		/*
