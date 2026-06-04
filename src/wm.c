@@ -900,6 +900,12 @@ handle_wm_manage_start(__unused void *data,
 		cow_wm.pending_warp = false;
 	}
 
+	/* Fire the rule once all outputs have settled. */
+	if (cow_wm.outputs_changed_pending) {
+		cow_wm.outputs_changed_pending = false;
+		cow_rule_fire(COW_RULE_ON_OUTPUTS_CHANGED, NULL, NULL, NULL);
+	}
+
 	river_window_manager_v1_manage_finish(manager);
 	cow_wm.sequence = COW_WM_SEQUENCE_NONE;
 

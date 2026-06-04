@@ -113,6 +113,8 @@ struct cow_wm {
 	/* Deferred manage_dirty request from IPC context */
 	bool needs_manage_dirty;
 
+	bool outputs_changed_pending;
+
 	/* Deferred exec commands pending from config loading */
 	bool exec_pending;
 
