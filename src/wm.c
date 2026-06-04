@@ -136,6 +136,7 @@ wl_output_handle_name(void *data, __unused struct wl_output *wl_output,
 		    out->name == NULL) {
 			out->wl_output = entry->wl_output;
 			out->name      = xstrdup(name);
+			cow_output_name_known(out);
 		}
 	}
 }

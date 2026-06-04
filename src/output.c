@@ -89,8 +89,10 @@ output_handle_wl_output(void	    *data,
 	{
 		if (entry->global_name == name) {
 			output->wl_output = entry->wl_output;
-			if (entry->name != NULL && output->name == NULL)
+			if (entry->name != NULL && output->name == NULL) {
 				output->name = xstrdup(entry->name);
+				cow_output_name_known(output);
+			}
 			break;
 		}
 	}
@@ -153,6 +155,7 @@ static const struct river_output_v1_listener output_listener = {
 };
 
 static void output_adopt_orphan_views(struct cow_output *);
+static void output_adopt_unnamed_orphans(struct cow_output *);
 
 struct cow_output *
 cow_output_create(struct river_output_v1 *river_output)
@@ -180,10 +183,13 @@ cow_output_create(struct river_output_v1 *river_output)
 	/* Register with layer shell for non_exclusive_area events */
 	cow_layer_shell_init_output(output);
 
-	/* If a previous output disappearance left views orphaned (no
-	 * output to attach to), adopt them onto this new output.
+	/*
+	 * Views with no remembered output name (mapped during a
+	 * total blackout) have no preferred home; adopt them now.
+	 * Name-keyed orphans wait for cow_output_name_known() which
+	 * fires once river/wl_output has populated output->name.
 	 */
-	output_adopt_orphan_views(output);
+	output_adopt_unnamed_orphans(output);
 
 	/* Assign a tentative ordinal.  The compositor will follow this
 	 * with `position` and `dimensions` events; renumber again
@@ -301,21 +307,8 @@ output_migrate_views(struct cow_output *dying, struct cow_output *target)
 }
 
 /*
- * Adopt orphan views onto a freshly-created output.  Views are
- * preferentially returned to a same-named output, so a VT-switch
- * round-trip leaves each window on the monitor it came from.
- *
- * An orphan with no remembered output name (e.g. it was mapped while
- * no output existed) or whose adopter is the first output to appear
- * since the blackout is taken in here.  Orphans whose remembered name
- * doesn't match the adopter stay in limbo until their named output
- * returns.  If that output never returns, the orphan persists; a
- * later fallback (TODO) can adopt it on demand.
- *
- * Each adopted view also gets its remembered desk number restored
- * (if the adopter has a desk by that number) and the pending_session
- * snapshot of "current desk + page" is consumed by the first adopter
- * to run after a blackout.
+ * Adopt a single orphan view onto `adopter`: restore its desk
+ * number, clear its orphan bookkeeping, and re-link it.
  */
 static void
 adopt_one(struct cow_view *view, struct cow_output *adopter)
@@ -329,50 +322,79 @@ adopt_one(struct cow_view *view, struct cow_output *adopter)
 	view->orphan_output_name = NULL;
 }
 
+/*
+ * Restore the snapshot of the dying output's active desk + page onto
+ * the first adopter after a total blackout.  One-shot.
+ */
 static void
-output_adopt_orphan_views(struct cow_output *adopter)
+restore_pending_session(struct cow_output *adopter)
+{
+	if (pending_session.desk_nr < 0)
+		return;
+	struct cow_desk *d = cow_desk_by_nr(adopter,
+	    (uint8_t)pending_session.desk_nr);
+	if (d != NULL) {
+		adopter->current_desk = d;
+		d->page_vx	      = pending_session.page_vx;
+		d->page_vy	      = pending_session.page_vy;
+	}
+	pending_session.desk_nr = -1;
+}
+
+/*
+ * Adopt orphans that have no preferred home (mapped during a
+ * blackout, no remembered output name).  Called from cow_output_create
+ * since the adopter's name has no bearing on these views.
+ */
+static void
+output_adopt_unnamed_orphans(struct cow_output *adopter)
 {
 	if (adopter == NULL || adopter->current_desk == NULL)
 		return;
-
-	/*
-	 * Restore the snapshot of the dying output's active desk +
-	 * page.  One-shot: consumed by the first adopter after a
-	 * total blackout.
-	 */
-	if (pending_session.desk_nr >= 0) {
-		struct cow_desk *d = cow_desk_by_nr(adopter,
-		    (uint8_t)pending_session.desk_nr);
-		if (d != NULL) {
-			adopter->current_desk = d;
-			d->page_vx	      = pending_session.page_vx;
-			d->page_vy	      = pending_session.page_vy;
-		}
-		pending_session.desk_nr = -1;
-	}
+	restore_pending_session(adopter);
 
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
 		if (view->output != NULL || view->closed)
 			continue;
-		/*
-		 * No remembered name -- view was mapped during a
-		 * blackout; just adopt onto this output.
-		 */
-		if (view->orphan_output_name == NULL) {
-			adopt_one(view, adopter);
+		if (view->orphan_output_name != NULL)
 			continue;
-		}
-		/* Same name: this view came from here. */
-		if (adopter->name != NULL &&
-		    strcmp(view->orphan_output_name, adopter->name) == 0) {
-			adopt_one(view, adopter);
-			continue;
-		}
-		/* Different name: leave the orphan to wait for its
-		 * original output. */
+		adopt_one(view, adopter);
 	}
+}
+
+/*
+ * Adopt orphans whose remembered output name matches the adopter's
+ * name.  Called from cow_output_name_known() once river/wl_output
+ * has populated output->name; firing this earlier would skip every
+ * named orphan because adopter->name would still be NULL.
+ */
+static void
+output_adopt_orphan_views(struct cow_output *adopter)
+{
+	if (adopter == NULL || adopter->current_desk == NULL ||
+	    adopter->name == NULL)
+		return;
+	restore_pending_session(adopter);
+
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (view->output != NULL || view->closed)
+			continue;
+		if (view->orphan_output_name == NULL)
+			continue;
+		if (strcmp(view->orphan_output_name, adopter->name) != 0)
+			continue;
+		adopt_one(view, adopter);
+	}
+}
+
+void
+cow_output_name_known(struct cow_output *output)
+{
+	output_adopt_orphan_views(output);
 }
 
 void

@@ -173,6 +173,14 @@ struct cow_output *cow_output_create(struct river_output_v1 *);
 void cow_output_destroy(struct cow_output *);
 
 /*
+ * Called after an output's `name` field is set (in either river's
+ * wl_output handler or the wl_output `name` event).  Triggers a pass
+ * of orphan-view adoption: views remembered for this output's name
+ * come home.
+ */
+void cow_output_name_known(struct cow_output *);
+
+/*
  * Recompute the usable area by applying the configured reserved area
  * on top of the current usable area (from output dimensions or
  * layer shell non_exclusive_area).
