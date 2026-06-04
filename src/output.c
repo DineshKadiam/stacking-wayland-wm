@@ -276,6 +276,11 @@ output_migrate_views(struct cow_output *dying, struct cow_output *target)
 		} else {
 			view->orphan_desk_nr = (view->desk != NULL && preserve)
 			    ? (int8_t)view->desk->nr : -1;
+			xfree(view->orphan_output_name);
+			view->orphan_output_name =
+			    (dying != NULL && dying->name != NULL) ?
+				xstrdup(dying->name) :
+				NULL;
 			wl_list_remove(&view->desk_views);
 			wl_list_init(&view->desk_views);
 			wl_list_remove(&view->output_views);
@@ -286,7 +291,35 @@ output_migrate_views(struct cow_output *dying, struct cow_output *target)
 	}
 }
 
-/* Adopt views that were left orphaned by a previous output's destruction. */
+/*
+ * Adopt orphan views onto a freshly-created output.  Views are
+ * preferentially returned to a same-named output, so a VT-switch
+ * round-trip leaves each window on the monitor it came from.
+ *
+ * An orphan with no remembered output name (e.g. it was mapped while
+ * no output existed) or whose adopter is the first output to appear
+ * since the blackout is taken in here.  Orphans whose remembered name
+ * doesn't match the adopter stay in limbo until their named output
+ * returns.  If that output never returns, the orphan persists; a
+ * later fallback (TODO) can adopt it on demand.
+ *
+ * Each adopted view also gets its remembered desk number restored
+ * (if the adopter has a desk by that number) and the pending_session
+ * snapshot of "current desk + page" is consumed by the first adopter
+ * to run after a blackout.
+ */
+static void
+adopt_one(struct cow_view *view, struct cow_output *adopter)
+{
+	cow_view_reassign_output(view, adopter);
+	if (view->orphan_desk_nr >= 0) {
+		cow_view_assign_desk(view, (uint8_t)view->orphan_desk_nr);
+		view->orphan_desk_nr = -1;
+	}
+	xfree(view->orphan_output_name);
+	view->orphan_output_name = NULL;
+}
+
 static void
 output_adopt_orphan_views(struct cow_output *adopter)
 {
@@ -294,10 +327,9 @@ output_adopt_orphan_views(struct cow_output *adopter)
 		return;
 
 	/*
-	 * Restore the snapshot taken when the last output disappeared,
-	 * if any: switch the adopter to the same desk number and put
-	 * that desk on the same page.  One-shot: consumed by the first
-	 * adopter after a blackout.
+	 * Restore the snapshot of the dying output's active desk +
+	 * page.  One-shot: consumed by the first adopter after a
+	 * total blackout.
 	 */
 	if (pending_session.desk_nr >= 0) {
 		struct cow_desk *d = cow_desk_by_nr(adopter,
@@ -315,12 +347,22 @@ output_adopt_orphan_views(struct cow_output *adopter)
 	{
 		if (view->output != NULL || view->closed)
 			continue;
-		cow_view_reassign_output(view, adopter);
-		if (view->orphan_desk_nr >= 0) {
-			cow_view_assign_desk(view,
-			    (uint8_t)view->orphan_desk_nr);
-			view->orphan_desk_nr = -1;
+		/*
+		 * No remembered name -- view was mapped during a
+		 * blackout; just adopt onto this output.
+		 */
+		if (view->orphan_output_name == NULL) {
+			adopt_one(view, adopter);
+			continue;
 		}
+		/* Same name: this view came from here. */
+		if (adopter->name != NULL &&
+		    strcmp(view->orphan_output_name, adopter->name) == 0) {
+			adopt_one(view, adopter);
+			continue;
+		}
+		/* Different name: leave the orphan to wait for its
+		 * original output. */
 	}
 }
 

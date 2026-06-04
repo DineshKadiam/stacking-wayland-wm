@@ -480,6 +480,7 @@ cow_view_destroy(struct cow_view *view)
 	xfree(view->identifier);
 	xfree(view->app_id);
 	xfree(view->title);
+	xfree(view->orphan_output_name);
 	cow_view_cfg_fini(&view->cfg);
 	xfree(view);
 }
