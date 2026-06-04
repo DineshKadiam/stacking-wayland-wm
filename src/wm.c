@@ -40,6 +40,7 @@
 #include "cow/stack.h"
 #include "cow/state.h"
 #include "cow/status.h"
+#include "cow/util.h"
 #include "cow/titlebar.h"
 #include "cow/shm.h"
 #include "cow/view.h"
@@ -901,12 +902,6 @@ handle_wm_manage_start(__unused void *data,
 		cow_wm.pending_warp = false;
 	}
 
-	/* Fire the rule once all outputs have settled. */
-	if (cow_wm.outputs_changed_pending) {
-		cow_wm.outputs_changed_pending = false;
-		cow_rule_fire(COW_RULE_ON_OUTPUTS_CHANGED, NULL, NULL, NULL);
-	}
-
 	river_window_manager_v1_manage_finish(manager);
 	cow_wm.sequence = COW_WM_SEQUENCE_NONE;
 
@@ -1131,7 +1126,8 @@ cow_wm_init(void)
 {
 	memset(&cow_wm, 0, sizeof(cow_wm));
 
-	cow_wm.raise_seq_counter = UINT64_MAX / 2;
+	cow_wm.raise_seq_counter	    = UINT64_MAX / 2;
+	cow_wm.outputs_changed_deadline_ms = -1;
 	wl_list_init(&cow_wm.views);
 	wl_list_init(&cow_wm.outputs);
 	wl_list_init(&cow_wm.seats);
@@ -1323,6 +1319,19 @@ cow_wm_run(void)
 				poll_timeout = wait;
 		}
 
+		/*
+		 * Shorten the poll timeout to the on-outputs-changed
+		 * deadline so the debounced rule fires promptly when
+		 * the topology has been quiet long enough.
+		 */
+		if (cow_wm.outputs_changed_deadline_ms >= 0) {
+			long delta = cow_wm.outputs_changed_deadline_ms -
+			    cow_mono_ms();
+			int  wait  = delta < 1 ? 1 : (int)delta;
+			if (poll_timeout < 0 || wait < poll_timeout)
+				poll_timeout = wait;
+		}
+
 		int ret = poll(fds, total_fds, poll_timeout);
 		if (ret < 0) {
 			if (errno == EINTR) {
@@ -1350,6 +1359,45 @@ cow_wm_run(void)
 		 * event. */
 		if (ret == 0 && poll_timeout > 0)
 			cow_wm.needs_manage_dirty = true;
+
+		/*
+		 * Fire on-outputs-changed once the debounce window
+		 * has elapsed AND the topology is in a "ready" state:
+		 * at least one output present and every output has
+		 * been named (i.e. its wl_output is bound and the
+		 * `name` event has arrived).  Without these guards
+		 * the rule body could run while no outputs are
+		 * registered with other clients (a transient
+		 * blackout) or while names are still propagating, so
+		 * a wlr-randr call inside the body would fail with
+		 * "unknown output X" for every name it tried.  When
+		 * not ready, push the deadline forward so we
+		 * re-check after another debounce window.
+		 */
+		if (cow_wm.outputs_changed_deadline_ms >= 0 &&
+		    cow_mono_ms() >= cow_wm.outputs_changed_deadline_ms) {
+			bool		   ready = !wl_list_empty(
+			    &cow_wm.outputs);
+			struct cow_output *po;
+			if (ready) {
+				wl_list_for_each(po, &cow_wm.outputs, wm_link)
+				{
+					if (po->name == NULL) {
+						ready = false;
+						break;
+					}
+				}
+			}
+			if (!ready) {
+				cow_wm.outputs_changed_deadline_ms =
+				    cow_mono_ms() +
+				    COW_OUTPUTS_CHANGED_DEBOUNCE_MS;
+			} else {
+				cow_wm.outputs_changed_deadline_ms = -1;
+				cow_rule_fire(COW_RULE_ON_OUTPUTS_CHANGED,
+				    NULL, NULL, NULL);
+			}
+		}
 
 		/* Handle IPC events */
 		if (ipc_nfds > 0)

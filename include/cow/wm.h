@@ -23,6 +23,14 @@
 #define DOUBLE_CLICK_MS 300
 
 /*
+ * How long after the last output add/remove event before
+ * on-outputs-changed fires.  Generous enough that wlroots has time
+ * to propagate every new wl_output global to other clients before a
+ * rule body such as `exec wlr-randr ...` runs.
+ */
+#define COW_OUTPUTS_CHANGED_DEBOUNCE_MS 250
+
+/*
  * Forward declarations for river protocol objects.
  * The actual types are generated from the protocol XML by wayland-scanner.
  */
@@ -113,7 +121,15 @@ struct cow_wm {
 	/* Deferred manage_dirty request from IPC context */
 	bool needs_manage_dirty;
 
-	bool outputs_changed_pending;
+	/* Debounced on-outputs-changed firing.  Each output add/remove
+	 * sets the deadline to now + COW_OUTPUTS_CHANGED_DEBOUNCE_MS.
+	 * The main loop fires the rule once and clears the deadline
+	 * after it expires, so a flurry of changes (e.g. a VT-switch
+	 * round-trip with seven monitors) results in exactly one fire
+	 * after the topology has settled and wlroots has had time to
+	 * propagate wl_output globals to other clients (such as
+	 * wlr-randr). */
+	long outputs_changed_deadline_ms;
 
 	/* Deferred exec commands pending from config loading */
 	bool exec_pending;

@@ -197,13 +197,17 @@ cow_output_create(struct river_output_v1 *river_output)
 	cow_outputs_renumber();
 
 	/*
-	 * Coalesce: many outputs can be created in a single manage
-	 * transaction.  Fire on-outputs-changed exactly once at the
-	 * end of the manage cycle so the user's body sees a settled
-	 * topology rather than mid-creation snapshots.
+	 * Debounce: many outputs can be created in a burst (e.g. a
+	 * VT-switch round-trip with several monitors).  Each event
+	 * pushes the deadline; the main loop fires
+	 * on-outputs-changed once after the topology has been quiet
+	 * for COW_OUTPUTS_CHANGED_DEBOUNCE_MS.  This also gives
+	 * wlroots time to propagate every new wl_output global to
+	 * other clients before a rule body such as
+	 * `exec wlr-randr ...` runs.
 	 */
-	cow_wm.outputs_changed_pending = true;
-	cow_wm_request_manage_dirty();
+	cow_wm.outputs_changed_deadline_ms = cow_mono_ms() +
+	    COW_OUTPUTS_CHANGED_DEBOUNCE_MS;
 
 	return output;
 }
@@ -441,8 +445,8 @@ cow_output_destroy(struct cow_output *output)
 	/* Numbering shifts when an output disappears. */
 	cow_outputs_renumber();
 
-	cow_wm.outputs_changed_pending = true;
-	cow_wm_request_manage_dirty();
+	cow_wm.outputs_changed_deadline_ms = cow_mono_ms() +
+	    COW_OUTPUTS_CHANGED_DEBOUNCE_MS;
 }
 
 void
