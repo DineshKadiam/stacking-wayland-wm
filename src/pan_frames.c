@@ -553,17 +553,6 @@ pan_frames_destroy_all(void)
 	    pan_frames_destroy_output(output);
 }
 
-/* ----------------------------------------------------------------------
- * Edge-driven dwell timer + warp.
- *
- * The functions below implement the per-output dwell timer, the
- * page-switch warp target, the drag-aware view-edge arming used by
- * pointer ops, and the cow_output_pan_pointer_{leave,enter} fallback
- * for compositors without zwlr_layer_shell_v1.  Originally lived in
- * output.c; consolidated here so all pan-frame code is in one
- * translation unit.
- * ---------------------------------------------------------------------- */
-
 static int
 pan_dwell_delay(const struct cow_output *output, long now_ms)
 {
@@ -580,17 +569,7 @@ pan_dwell_delay(const struct cow_output *output, long now_ms)
 	return delay;
 }
 
-/* Find the view being dragged (if any).  Used to consider view-edge
- * arming during a drag.
- *
- * Excludes container drags (-C): during a containerise/uncontainerise
- * the source view's frame is dragged freely around the screen as the
- * user positions the cursor over a drop target.  The drag is the
- * user's hand placement, not a deliberate page approach -- using the
- * view's frame edges for arming there causes spurious page-switches
- * whenever the dragged frame happens to slide past a screen edge,
- * even with the pointer well inside the output.  Cursor-only arming
- * still works (handled by px/py checks alongside the view checks). */
+/* Active MOVE drag (excluding container drags), or NULL. */
 static struct cow_view *
 pan_find_drag_view(void)
 {
@@ -616,54 +595,31 @@ pan_view_frame(const struct cow_view *v, int *l, int *t, int *r, int *b)
 	*b		  = fb.y + fb.height;
 }
 
-/* Figure out which edge of 'output' the pointer (or, during a drag, the
- * view's frame) is touching.  Returns -1 for none, 0=top 1=bottom 2=left
- * 3=right. 'view_edge_ok' lets the caller suppress view-edge arming
- * (used during the post-page cooldown).
- *
- * FIXME: Use an enum for return value
- */
+/* Which edge of 'output' the pointer is touching, or -1. */
 static int
-pan_edge_for_pointer(const struct cow_output *output, int px, int py,
-    const struct cow_view *drag, bool view_edge_ok, int strip)
+pan_edge_for_pointer(const struct cow_output *output, int px, int py, int strip)
 {
 	int cols    = cow_config->page_cols;
 	int rows    = cow_config->page_rows;
 	int cur_col = cow_page_col(output);
 	int cur_row = cow_page_row(output);
 
-	/*
-	 * For a maximised (or fullscreen / shaded) view, the frame
-	 * already spans the usable area by definition; using its edges
-	 * for view-edge arming would arm a pan strip every manage cycle
-	 * regardless of user intent.  Fall back to cursor-only arming
-	 * for those cases.
-	 */
-	int  v_l = px, v_r = px, v_t = py, v_b = py;
-	bool consider_view = drag != NULL && drag->output == output &&
-	    !drag->maximized && !drag->fullscreen && drag->sd == COW_SHADE_NONE;
-	if (consider_view)
-		pan_view_frame(drag, &v_l, &v_t, &v_r, &v_b);
 	if (rows <= 0 || cols <= 0)
 		return (-1);
 
 	unsigned mask = cow_pan_edge_mask(cur_col, cur_row, cols, rows);
 
 	if ((mask & COW_PAN_EDGE_BIT(COW_PAN_TOP)) &&
-	    (py <= output->y + strip ||
-		(view_edge_ok && v_t <= output->y + strip)))
+	    py <= output->y + strip)
 		return COW_PAN_TOP;
 	if ((mask & COW_PAN_EDGE_BIT(COW_PAN_BOTTOM)) &&
-	    (py >= output->y + output->height - strip ||
-		(view_edge_ok && v_b >= output->y + output->height - strip)))
+	    py >= output->y + output->height - strip)
 		return COW_PAN_BOTTOM;
 	if ((mask & COW_PAN_EDGE_BIT(COW_PAN_LEFT)) &&
-	    (px <= output->x + strip ||
-		(view_edge_ok && v_l <= output->x + strip)))
+	    px <= output->x + strip)
 		return COW_PAN_LEFT;
 	if ((mask & COW_PAN_EDGE_BIT(COW_PAN_RIGHT)) &&
-	    (px >= output->x + output->width - strip ||
-		(view_edge_ok && v_r >= output->x + output->width - strip)))
+	    px >= output->x + output->width - strip)
 		return COW_PAN_RIGHT;
 
 	return -1;
@@ -884,7 +840,7 @@ cow_output_pan_pointer_leave(int px, int py)
 	struct cow_output *output;
 	wl_list_for_each(output, &cow_wm.outputs, wm_link)
 	{
-		int edge = pan_edge_for_pointer(output, px, py, NULL, true,
+		int edge = pan_edge_for_pointer(output, px, py,
 		    /* strip */ 2);
 		if (edge >= 0) {
 			output->pan_edge     = edge;
@@ -916,10 +872,8 @@ cow_output_pan_op_arm(int px, int py)
 	if (cow_config->page_cols <= 1 && cow_config->page_rows <= 1)
 		return;
 
-	const int	 strip	  = 8;
-	const int	 cooldown = 600;
-	long		 now_ms	  = cow_mono_ms();
-	struct cow_view *drag	  = pan_find_drag_view();
+	const int strip  = 8;
+	long	  now_ms = cow_mono_ms();
 
 	struct cow_output *output;
 	wl_list_for_each(output, &cow_wm.outputs, wm_link)
@@ -928,27 +882,15 @@ cow_output_pan_op_arm(int px, int py)
 		    px < output->x + output->width && py >= output->y &&
 		    py < output->y + output->height);
 		if (!on_output) {
-			/* Pointer is on a different output: disarm and
-			 * clear any orange paint we may have left here.
-			 * (River doesn't deliver pointer_leave to layer
-			 * surfaces during an op.) */
 			if (output->pan_edge >= 0)
 				output->pan_edge = -1;
 			pan_clear_orange(output);
 			continue;
 		}
 
-		bool view_edge_ok = (output->pan_last_fire_ms == 0) ||
-		    (now_ms - output->pan_last_fire_ms >= (long)cooldown);
-		int edge = pan_edge_for_pointer(output, px, py, drag,
-		    view_edge_ok, strip);
+		int edge = pan_edge_for_pointer(output, px, py, strip);
 
 		if (edge >= 0 && output->pan_edge != edge) {
-			/*
-			 * Newly armed (or armed edge changed).  Clear any
-			 * orange paint left on the previously-armed edge so
-			 * we don't leave a stale stripe behind.
-			 */
 			if (output->pan_edge >= 0 &&
 			    output->pan_entered[output->pan_edge])
 				pan_frame_set_orange(output, output->pan_edge,
@@ -956,9 +898,6 @@ cow_output_pan_op_arm(int px, int py)
 			output->pan_edge     = edge;
 			output->pan_enter_ms = now_ms;
 		} else if (edge < 0 && output->pan_edge >= 0) {
-			/* Pointer/view left the strip before dwell completed:
-			 * disarm and clear any orange paint that may have been
-			 * applied at the paint_threshold. */
 			if (output->pan_entered[output->pan_edge])
 				pan_frame_set_orange(output, output->pan_edge,
 				    false);

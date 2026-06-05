@@ -59,9 +59,7 @@ void cow_output_pan_pointer_enter(void);
  * stop firing once river enters pointer-op mode for a drag/resize, so
  * pan frames cannot detect entry the usual way.  Called from the
  * pointer-op processing loop with the current seat pointer position;
- * arms pan_edge / pan_enter_ms when the cursor (or, for a MOVE op,
- * the dragged view's frame) is on an edge strip; disarms otherwise.
- * Independent of wl_layer_shell availability.
+ * arms pan_edge by cursor position only.
  */
 void cow_output_pan_op_arm(int, int);
 
