@@ -386,7 +386,7 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	if (strcmp(key, "edge_scroll_delay_ms") == 0) {
 		const char *errstr;
-		long long   v = strtonum(val, 0, 10000, &errstr);
+		long long   v = strtonum(val, 50, 5000, &errstr);
 		if (errstr != NULL) {
 			cmdq_error(cmdq,
 			    "set: edge_scroll_delay_ms: bad value: %s", val);

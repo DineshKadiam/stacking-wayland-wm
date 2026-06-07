@@ -290,11 +290,10 @@ struct cow_config {
 	bool page_scroll_animate;
 	int  page_scroll_ms; /* animation duration in ms, default 200 */
 
-	/* Edge scroll: trigger a page switch when the pointer dwells at a
-	 * screen edge for edge_scroll_delay_ms milliseconds.
+	/* Edge scroll: dwelling at a screen edge switches the page.
 	 * Default false (disabled). */
 	bool edge_scroll;
-	int  edge_scroll_delay_ms; /* delay before scroll fires, default 300 */
+	int  edge_scroll_delay_ms; /* dwell duration in ms */
 
 	/*
 	 * Key-repeat timing for bindings declared `bind -r`.

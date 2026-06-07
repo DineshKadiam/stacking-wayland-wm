@@ -79,6 +79,13 @@ struct cow_wm {
 	struct wl_pointer		  *wl_pointer_raw;
 	struct zwp_pointer_constraints_v1 *wl_pointer_constraints;
 
+	/* Currently armed pan edge (at most one across all outputs). */
+	struct cow_output *pan_lock_output;
+	int		   pan_lock_edge;
+	/* Global post-fire cooldown so the post-warp cursor doesn't
+	 * immediately re-arm an adjacent edge. */
+	long pan_global_cooldown_ms;
+
 	/* River protocol globals */
 	struct river_window_manager_v1 *manager;
 	struct river_xkb_bindings_v1   *xkb_bindings;

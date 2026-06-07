@@ -262,25 +262,32 @@ clamp_drag_to_screen(const struct cow_view *view, int bw, int tt, int *new_x,
 	if (view->output == NULL || cow_config == NULL)
 		return;
 
-	int ox = view->output->x;
-	int oy = view->output->y;
-	int ow = view->output->width;
-	int oh = view->output->height;
+	int cols    = cow_config->page_cols;
+	int rows    = cow_config->page_rows;
+	int cur_col = cow_page_col(view->output);
+	int cur_row = cow_page_row(view->output);
+	int ox	    = view->output->x;
+	int oy	    = view->output->y;
+	int ow	    = view->output->width;
+	int oh	    = view->output->height;
 
 	struct cow_box nfb = cow_view_frame_box_at(view, *new_x, *new_y);
 	struct cow_box cfb = cow_view_frame_box(view);
 
-	/* Keep the dragged view on its current output regardless of
-	 * neighbouring pages; page-cross is driven by pointer-edge
-	 * push-through, not by the view sliding off-screen. */
-	if (nfb.x < cfb.x && nfb.x < ox)
+	unsigned mask	    = cow_pan_edge_mask(cur_col, cur_row, cols, rows);
+	bool	 can_left   = (mask & COW_PAN_EDGE_BIT(COW_PAN_LEFT)) != 0;
+	bool	 can_right  = (mask & COW_PAN_EDGE_BIT(COW_PAN_RIGHT)) != 0;
+	bool	 can_top    = (mask & COW_PAN_EDGE_BIT(COW_PAN_TOP)) != 0;
+	bool	 can_bottom = (mask & COW_PAN_EDGE_BIT(COW_PAN_BOTTOM)) != 0;
+
+	if (!can_left && nfb.x < cfb.x && nfb.x < ox)
 		*new_x = ox + bw;
-	if ((nfb.x + nfb.width) > (cfb.x + cfb.width) &&
+	if (!can_right && (nfb.x + nfb.width) > (cfb.x + cfb.width) &&
 	    (nfb.x + nfb.width) > ox + ow)
 		*new_x = ox + ow - view->content_width - bw;
-	if (nfb.y < cfb.y && nfb.y < oy)
+	if (!can_top && nfb.y < cfb.y && nfb.y < oy)
 		*new_y = oy + bw + tt;
-	if ((nfb.y + nfb.height) > (cfb.y + cfb.height) &&
+	if (!can_bottom && (nfb.y + nfb.height) > (cfb.y + cfb.height) &&
 	    (nfb.y + nfb.height) > oy + oh)
 		*new_y = oy + oh - view->content_height - bw;
 }
@@ -461,7 +468,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 	 * by proximity instead.
 	 */
 	if (seat->has_pointer_position)
-		cow_output_pan_op_arm(seat->pointer_x, seat->pointer_y);
+		cow_output_pan_op_arm(seat);
 
 	int dx = seat->op_dx;
 	int dy = seat->op_dy;

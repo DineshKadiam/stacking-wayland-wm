@@ -32,12 +32,21 @@
 #include "pointer-constraints-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 
-/* Thickness of each pan frame surface in pixels */
-#define PAN_FRAME_SIZE 5
+/* Thickness of each pan frame surface in pixels. */
+#define PAN_FRAME_SIZE 8
 
 /* Colours */
 #define PAN_COL_CLEAR 0x00000000u
 #define PAN_COL_ORANGE 0xCCFF8800u
+
+/* Pre-multiplied ARGB orange shades for fill levels 1..5. */
+static const uint32_t pan_col_fill[5] = {
+	0x29331C00u, /* ~16% */
+	0x52663800u, /* ~32% */
+	0x7A995400u, /* ~48% */
+	0xA3CC7000u, /* ~64% */
+	0xCCFF8800u, /* ~80% (matches PAN_COL_ORANGE) */
+};
 
 /* Index helpers */
 /* Local short aliases for the public enum values used pervasively
@@ -65,7 +74,12 @@ cow_pan_edge_mask(int cur_col, int cur_row, int cols, int rows)
 
 static void pan_frame_destroy(struct cow_output *output, int edge);
 static void pan_frame_paint(struct cow_output *output, int edge, bool orange);
-static void pan_confine_release(struct cow_output *output, int edge);
+static void pan_frame_set_level(struct cow_output *output, int edge, int level);
+static void pan_disarm(void);
+static void pan_fire(struct cow_output *output, int edge);
+
+/* Cooldown after a fire so the post-warp cursor doesn't re-arm. */
+#define PAN_GIVEUP_COOLDOWN_MS 200
 
 /* Map a wl_surface back to (output, edge) */
 static int
@@ -84,6 +98,56 @@ surface_to_output_edge(struct wl_surface *surf, struct cow_output **out_output)
 	return -1;
 }
 
+/* Dwell timer: cursor on a strip for this many ms fires the page
+ * switch.  cow_output_pan_frame_tick() is the periodic check. */
+static int
+pan_dwell_ms(void)
+{
+	int v = cow_config != NULL ? cow_config->edge_scroll_delay_ms : 300;
+	if (v < 50)
+		v = 50;
+	return v;
+}
+
+/* Would a page-switch in this direction actually move the page? */
+static bool
+pan_edge_has_page(const struct cow_output *output, int edge)
+{
+	if (cow_config == NULL)
+		return false;
+	int cols = cow_config->page_cols;
+	int rows = cow_config->page_rows;
+	if (cols <= 0 || rows <= 0)
+		return false;
+	int cur_col = cow_page_col(output);
+	int cur_row = cow_page_row(output);
+	unsigned mask = cow_pan_edge_mask(cur_col, cur_row, cols, rows);
+	return (mask & COW_PAN_EDGE_BIT(edge)) != 0;
+}
+
+static void
+pan_arm_edge(struct cow_output *output, int edge)
+{
+	if (cow_wm.pan_lock_output == output && cow_wm.pan_lock_edge == edge)
+		return;
+	/* No page in that direction -- skip arming so the cursor isn't
+	 * trapped by a no-op orange fill. */
+	if (!pan_edge_has_page(output, edge))
+		return;
+	if (cow_wm.pan_lock_output != NULL)
+		pan_disarm();
+
+	output->pan_entered[edge]  = true;
+	output->pan_edge	   = edge;
+	output->pan_resist_motion  = 0;
+	output->pan_resist_done	   = false;
+	output->pan_arm_ms	   = cow_mono_ms();
+	cow_wm.pan_lock_output	   = output;
+	cow_wm.pan_lock_edge	   = edge;
+
+	cow_wm_request_manage_dirty();
+}
+
 static void
 pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
     struct wl_surface *surf, wl_fixed_t sx, wl_fixed_t sy)
@@ -100,28 +164,14 @@ pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 		return;
 
 	output->pan_entered[edge] = true;
-	/* Do NOT paint orange immediately — wait for the first tick after a
-	 * short dwell so that fast cursor sweeps across the strip (e.g. when
-	 * moving between monitors) don't produce a visible flash.
-	 */
 
-	/* Arm dwell timer */
-	output->pan_edge     = edge;
-	output->pan_enter_ms = cow_mono_ms();
+	long now = cow_mono_ms();
+	if (now < output->pan_giveup_until_ms)
+		return;
+	if (now < cow_wm.pan_global_cooldown_ms)
+		return;
 
-	/* Confine the pointer to this strip so it can't cross the monitor
-	 * boundary while the dwell timer is running.
-	 */
-	if (cow_wm.wl_pointer_constraints != NULL &&
-	    output->pan_confined[edge] == NULL) {
-		output->pan_confined[edge] =
-		    zwp_pointer_constraints_v1_confine_pointer(
-			cow_wm.wl_pointer_constraints, surf,
-			cow_wm.wl_pointer_raw, NULL,
-			ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_ONESHOT);
-	}
-
-	cow_wm_request_manage_dirty();
+	pan_arm_edge(output, edge);
 }
 
 static void
@@ -138,13 +188,8 @@ pointer_leave(void *data, struct wl_pointer *pointer, uint32_t serial,
 		return;
 
 	output->pan_entered[edge] = false;
-	pan_frame_paint(output, edge, false); /* back to transparent */
-
-	/* Release confinement and cancel dwell */
-	pan_confine_release(output, edge);
-	output->pan_edge = -1;
-
-	cow_wm_request_manage_dirty();
+	if (cow_wm.pan_lock_output == output && cow_wm.pan_lock_edge == edge)
+		pan_disarm();
 }
 
 static void
@@ -227,12 +272,55 @@ static const struct wl_pointer_listener pointer_listener = {
 };
 
 static void
-pan_confine_release(struct cow_output *output, int edge)
+pan_disarm(void)
 {
-	if (output->pan_confined[edge] != NULL) {
-		zwp_confined_pointer_v1_destroy(output->pan_confined[edge]);
-		output->pan_confined[edge] = NULL;
+	struct cow_output *out	= cow_wm.pan_lock_output;
+	int		   edge = cow_wm.pan_lock_edge;
+	if (out != NULL && edge >= 0) {
+		pan_frame_set_level(out, edge, 0);
+		out->pan_edge	= -1;
+		out->pan_arm_ms = 0;
 	}
+	cow_wm.pan_lock_output = NULL;
+	cow_wm.pan_lock_edge   = -1;
+}
+
+static bool
+pan_edge_is_shared(const struct cow_output *output, int edge)
+{
+	struct cow_output *o;
+	wl_list_for_each(o, &cow_wm.outputs, wm_link)
+	{
+		if (o == output)
+			continue;
+		switch (edge) {
+		case COW_PAN_TOP:
+			if (o->y + o->height == output->y &&
+			    o->x < output->x + output->width &&
+			    o->x + o->width > output->x)
+				return true;
+			break;
+		case COW_PAN_BOTTOM:
+			if (output->y + output->height == o->y &&
+			    o->x < output->x + output->width &&
+			    o->x + o->width > output->x)
+				return true;
+			break;
+		case COW_PAN_LEFT:
+			if (o->x + o->width == output->x &&
+			    o->y < output->y + output->height &&
+			    o->y + o->height > output->y)
+				return true;
+			break;
+		case COW_PAN_RIGHT:
+			if (output->x + output->width == o->x &&
+			    o->y < output->y + output->height &&
+			    o->y + o->height > output->y)
+				return true;
+			break;
+		}
+	}
+	return false;
 }
 
 struct pan_frame_ctx {
@@ -295,14 +383,25 @@ make_solid_buffer(int w, int h, uint32_t colour)
 	return buf;
 }
 
+/* level: 0 = clear, 1..5 = fill 1/5..5/5. */
 static void
-pan_frame_paint(struct cow_output *output, int edge, bool orange)
+pan_frame_set_level(struct cow_output *output, int edge, int level)
 {
 	if (output->pan_surf[edge] == NULL)
 		return;
+	if (level < 0)
+		level = 0;
+	if (level > 5)
+		level = 5;
+	if (output->pan_fill_level[edge] == level)
+		return;
+	output->pan_fill_level[edge] = level;
 
-	struct cow_shm_buffer *buf = orange ? output->pan_buf_orange[edge] :
-					      output->pan_buf_clear[edge];
+	struct cow_shm_buffer *buf;
+	if (level == 0)
+		buf = output->pan_buf_clear[edge];
+	else
+		buf = output->pan_buf_fill[edge][level - 1];
 	if (!buf)
 		return;
 
@@ -313,9 +412,28 @@ pan_frame_paint(struct cow_output *output, int edge, bool orange)
 }
 
 static void
+pan_frame_paint(struct cow_output *output, int edge, bool orange)
+{
+	if (output->pan_surf[edge] == NULL)
+		return;
+
+	struct cow_shm_buffer *buf = orange ? output->pan_buf_orange[edge] :
+					      output->pan_buf_clear[edge];
+	if (!buf)
+		return;
+	output->pan_fill_level[edge] = orange ? 5 : 0;
+
+	wl_surface_attach(output->pan_surf[edge], buf->buffer, 0, 0);
+	wl_surface_damage_buffer(output->pan_surf[edge], 0, 0, buf->width,
+	    buf->height);
+	wl_surface_commit(output->pan_surf[edge]);
+}
+
+static void
 pan_frame_destroy(struct cow_output *output, int edge)
 {
-	pan_confine_release(output, edge);
+	if (cow_wm.pan_lock_output == output && cow_wm.pan_lock_edge == edge)
+		pan_disarm();
 	if (output->pan_lsurf[edge] != NULL) {
 		zwlr_layer_surface_v1_destroy(output->pan_lsurf[edge]);
 		output->pan_lsurf[edge] = NULL;
@@ -330,6 +448,12 @@ pan_frame_destroy(struct cow_output *output, int edge)
 
 	cow_shm_buffer_destroy(output->pan_buf_orange[edge]);
 	output->pan_buf_orange[edge] = NULL;
+
+	for (int i = 0; i < 5; i++) {
+		cow_shm_buffer_destroy(output->pan_buf_fill[edge][i]);
+		output->pan_buf_fill[edge][i] = NULL;
+	}
+	output->pan_fill_level[edge] = 0;
 
 	xfree(output->pan_ctx[edge]);
 
@@ -347,16 +471,25 @@ edge_is_scrollable(struct cow_output *output, int edge)
 		return false;
 	int cols = cow_config->page_cols;
 	int rows = cow_config->page_rows;
+	if (cols <= 1 && rows <= 1)
+		return false;
+	if (edge < 0 || edge > 3)
+		return false;
 
-	/* When a page-scroll animation is in progress, use the target page
-	 * position rather than the current mid-animation page_vx/vy.  This
-	 * ensures pan frames are created/destroyed for the destination page
-	 * rather than whichever intermediate position happens to be current
-	 * when pan_frames_update_* is called. */
+	/* Per-output / shared: every edge of every output gets a strip
+	 * regardless of current page position -- each output pages
+	 * independently and the user expects all four edges available. */
+	if (cow_config->desktop_config != COW_DESKTOP_GLOBAL)
+		return true;
+
+	/* Global: only outer edges of the combined layout get strips.
+	 * Edges that abut another monitor are not scroll-fire points
+	 * because the cursor naturally crosses to the neighbour there. */
+	if (pan_edge_is_shared(output, edge))
+		return false;
+
 	int		 cur_col, cur_row;
-	struct cow_desk *desk = (output->current_desk != NULL) ?
-	    output->current_desk :
-	    NULL;
+	struct cow_desk *desk = output->current_desk;
 	if (desk != NULL && desk->scrolling) {
 		int w	= output->usable_area.width;
 		int h	= output->usable_area.height;
@@ -367,8 +500,6 @@ edge_is_scrollable(struct cow_output *output, int edge)
 		cur_row = cow_page_row(output);
 	}
 
-	if (edge < 0 || edge > 3)
-		return false;
 	unsigned mask = cow_pan_edge_mask(cur_col, cur_row, cols, rows);
 	return (mask & COW_PAN_EDGE_BIT(edge)) != 0;
 }
@@ -458,7 +589,10 @@ pan_frame_create(struct cow_output *output, int edge)
 	output->pan_buf_clear[edge]  = buf_clear;
 	output->pan_buf_orange[edge] = buf_orange;
 	output->pan_entered[edge]    = false;
-	output->pan_confined[edge]   = NULL;
+	output->pan_fill_level[edge] = 0;
+	for (int i = 0; i < 5; i++)
+		output->pan_buf_fill[edge][i] = make_solid_buffer(iw, ih,
+		    pan_col_fill[i]);
 
 	/* ctx freed in pan_frame_destroy */
 	struct pan_frame_ctx *ctx = xcalloc(1, sizeof(*ctx));
@@ -468,9 +602,7 @@ pan_frame_create(struct cow_output *output, int edge)
 
 	zwlr_layer_surface_v1_set_size(lsurf, iw, ih);
 	zwlr_layer_surface_v1_set_anchor(lsurf, anchor);
-	/* exclusive_zone=-1: ignore reserved areas from panels/bars so the
-	 * pan frame is always at the raw output edge, not below a waybar.
-	 */
+	/* exclusive_zone=-1: ignore reserved areas. */
 	zwlr_layer_surface_v1_set_exclusive_zone(lsurf, -1);
 	zwlr_layer_surface_v1_set_keyboard_interactivity(lsurf,
 	    ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
@@ -487,13 +619,13 @@ pan_frame_create(struct cow_output *output, int edge)
 void
 pan_frames_init(void)
 {
+	cow_wm.pan_lock_edge = -1;
+
 	if (!cow_wm.wl_seat_raw)
 		return;
 
-	/* Only call wl_seat_get_pointer if the seat actually advertises the
-	 * pointer capability.  Calling it on a seat without a pointer device
-	 * (e.g. a headless/VNC session before a client connects) is a fatal
-	 * Wayland protocol error that kills the connection. */
+	/* wl_seat_get_pointer on a seat without a pointer cap is a fatal
+	 * protocol error; only call it once the cap is advertised. */
 	if (cow_wm.wl_pointer_raw == NULL && cow_wm.wl_seat_has_pointer) {
 		cow_wm.wl_pointer_raw = wl_seat_get_pointer(cow_wm.wl_seat_raw);
 		if (cow_wm.wl_pointer_raw != NULL)
@@ -524,8 +656,10 @@ pan_frames_update_output(struct cow_output *output)
 		} else if (!needed && exists) {
 			pan_frame_destroy(output, e);
 		} else if (exists) {
-			/* Re-paint in case hover state changed */
-			pan_frame_paint(output, e, output->pan_entered[e]);
+			/* Clear any stale fill from the previous accumulation
+			 * (a page just switched, or the page grid changed). */
+			output->pan_fill_level[e] = -1; /* force repaint */
+			pan_frame_set_level(output, e, 0);
 		}
 	}
 }
@@ -551,22 +685,6 @@ pan_frames_destroy_all(void)
 	struct cow_output *output;
 	wl_list_for_each(output, &cow_wm.outputs, wm_link)
 	    pan_frames_destroy_output(output);
-}
-
-static int
-pan_dwell_delay(const struct cow_output *output, long now_ms)
-{
-	int delay = cow_config->edge_scroll_delay_ms > 0 ?
-	    cow_config->edge_scroll_delay_ms :
-	    300;
-	if (output->pan_last_fire_ms != 0 &&
-	    now_ms - output->pan_last_fire_ms < (long)delay) {
-		int rapid = delay / 5;
-		if (rapid < 60)
-			rapid = 60;
-		delay = rapid;
-	}
-	return delay;
 }
 
 /* Active MOVE drag (excluding container drags), or NULL. */
@@ -599,15 +717,18 @@ pan_view_frame(const struct cow_view *v, int *l, int *t, int *r, int *b)
 static int
 pan_edge_for_pointer(const struct cow_output *output, int px, int py, int strip)
 {
-	int cols    = cow_config->page_cols;
-	int rows    = cow_config->page_rows;
-	int cur_col = cow_page_col(output);
-	int cur_row = cow_page_row(output);
+	int cols = cow_config->page_cols;
+	int rows = cow_config->page_rows;
 
 	if (rows <= 0 || cols <= 0)
 		return (-1);
 
-	unsigned mask = cow_pan_edge_mask(cur_col, cur_row, cols, rows);
+	/* Only arm edges where a page-switch would actually move
+	 * somewhere -- a no-op edge (already at the row/col boundary
+	 * of the page grid) shouldn't trap the cursor. */
+	int	 cur_col = cow_page_col(output);
+	int	 cur_row = cow_page_row(output);
+	unsigned mask	 = cow_pan_edge_mask(cur_col, cur_row, cols, rows);
 
 	if ((mask & COW_PAN_EDGE_BIT(COW_PAN_TOP)) &&
 	    py <= output->y + strip)
@@ -623,18 +744,6 @@ pan_edge_for_pointer(const struct cow_output *output, int px, int py, int strip)
 		return COW_PAN_RIGHT;
 
 	return -1;
-}
-
-/* Clear all four pan-frame orange indicators on this output.  Used when
- * we know none of them should be armed (cursor left the output, or we
- * just fired a page). */
-static void
-pan_clear_orange(struct cow_output *output)
-{
-	for (int e = 0; e < 4; e++) {
-		if (output->pan_entered[e])
-			pan_frame_set_orange(output, e, false);
-	}
 }
 
 /* Direction tables for the four pan edges.  Indexed by edge value. */
@@ -752,43 +861,29 @@ pan_adjust_drags(struct cow_output *output, int warp_dx, int warp_dy)
 	}
 }
 
-void
-cow_output_pan_frame_tick(struct cow_output *output)
+static void
+pan_fire(struct cow_output *output, int edge)
 {
-	if (output == NULL || cow_config == NULL || !cow_config->edge_scroll)
-		return;
-	if (output->pan_edge < 0)
+	if (output == NULL || edge < 0)
 		return;
 
-	long now_ms  = cow_mono_ms();
-	int  delay   = pan_dwell_delay(output, now_ms);
-	long elapsed = now_ms - output->pan_enter_ms;
-
-	/* Paint orange after 1/3 of the dwell (min 100ms) so a fast
-	 * cursor sweep across the strip doesn't cause a visible flash. */
-	int paint_threshold = delay / 3;
-	if (paint_threshold < 100)
-		paint_threshold = 100;
-	if (elapsed >= paint_threshold &&
-	    !output->pan_entered[output->pan_edge])
-		pan_frame_set_orange(output, output->pan_edge, true);
-
-	if (elapsed < delay)
-		return;
-
-	output->pan_last_fire_ms = now_ms;
-	int edge		 = output->pan_edge;
-	int cur_col		 = cow_page_col(output);
-	int cur_row		 = cow_page_row(output);
-	output->pan_edge	 = -1;
+	long now = cow_mono_ms();
+	output->pan_last_fire_ms      = now;
+	output->pan_giveup_until_ms   = now + PAN_GIVEUP_COOLDOWN_MS;
+	cow_wm.pan_global_cooldown_ms = now + PAN_GIVEUP_COOLDOWN_MS;
+	int cur_col = cow_page_col(output);
+	int cur_row = cow_page_row(output);
 
 	if (output->pan_entered[edge])
-		pan_frame_set_orange(output, edge, false);
+		pan_frame_paint(output, edge, false);
+
+	/* Disarm before warping so the warp lands on the post-page page. */
+	pan_disarm();
+	output->pan_edge = -1;
 
 	int ptr_x = output->x + output->width / 2;
 	int ptr_y = output->y + output->height / 2;
 	cow_seat_get_pointer(&ptr_x, &ptr_y);
-	/* clamp perpendicular coords to this output */
 	if (ptr_x < output->x)
 		ptr_x = output->x;
 	if (ptr_x >= output->x + output->width)
@@ -807,23 +902,39 @@ cow_output_pan_frame_tick(struct cow_output *output)
 
 	cow_wm_request_pointer_warp(warp_x, warp_y);
 
-	/*
-	 * Optimistically pre-warp each seat's tracked pointer.  River
-	 * delivers the matching pointer_position event next manage cycle,
-	 * but cow_pointer_op_process runs LATER this cycle and needs the
-	 * post-warp position so the dragged view's (pointer + offset)
-	 * formula gives a consistent result.
-	 */
+	/* Pre-warp each seat's tracked pointer so the same-cycle
+	 * pointer-op processor sees the post-warp position. */
+	struct cow_seat *ws;
+	wl_list_for_each(ws, &cow_wm.seats, wm_link)
 	{
-		struct cow_seat *ws;
-		wl_list_for_each(ws, &cow_wm.seats, wm_link)
-		{
-			ws->pointer_x = warp_x;
-			ws->pointer_y = warp_y;
-		}
+		ws->pointer_x = warp_x;
+		ws->pointer_y = warp_y;
 	}
 
 	pan_adjust_drags(output, warp_x - ptr_x, warp_y - ptr_y);
+}
+
+void
+cow_output_pan_frame_tick(struct cow_output *output)
+{
+	if (output == NULL || cow_config == NULL || !cow_config->edge_scroll)
+		return;
+	if (cow_wm.pan_lock_output != output || cow_wm.pan_lock_edge < 0)
+		return;
+	int edge = cow_wm.pan_lock_edge;
+	if (!output->pan_entered[edge])
+		return;
+
+	long now     = cow_mono_ms();
+	long elapsed = now - output->pan_arm_ms;
+	int  dwell   = pan_dwell_ms();
+	int  level   = (elapsed * 5) / (dwell > 0 ? dwell : 1);
+	if (level > 5)
+		level = 5;
+	pan_frame_set_level(output, edge, level);
+
+	if (elapsed >= dwell)
+		pan_fire(output, edge);
 }
 
 void
@@ -836,16 +947,16 @@ cow_output_pan_pointer_leave(int px, int py)
 	if (cow_config->page_cols <= 1 && cow_config->page_rows <= 1)
 		return;
 
-	long		   now_ms = cow_mono_ms();
 	struct cow_output *output;
 	wl_list_for_each(output, &cow_wm.outputs, wm_link)
 	{
 		int edge = pan_edge_for_pointer(output, px, py,
 		    /* strip */ 2);
-		if (edge >= 0) {
-			output->pan_edge     = edge;
-			output->pan_enter_ms = now_ms;
-		} else {
+		if (edge >= 0 && output->pan_edge != edge) {
+			output->pan_edge	  = edge;
+			output->pan_resist_motion = 0;
+			output->pan_resist_done	  = false;
+		} else if (edge < 0) {
 			output->pan_edge = -1;
 		}
 	}
@@ -865,15 +976,31 @@ cow_output_pan_pointer_enter(void)
 }
 
 void
-cow_output_pan_op_arm(int px, int py)
+cow_pan_pointer_moved(int x, int y)
 {
+	(void)x;
+	(void)y;
+}
+
+/* Drag-mode arming: when a window is being moved, the cursor's
+ * position dwells at an edge → fire after edge_scroll_delay_ms.
+ * Driven by pointer_op processing rather than wl_pointer events
+ * because layer-shell pointer events don't fire during a drag. */
+void
+cow_output_pan_op_arm(struct cow_seat *seat)
+{
+	if (seat == NULL)
+		return;
 	if (cow_config == NULL || !cow_config->edge_scroll)
 		return;
 	if (cow_config->page_cols <= 1 && cow_config->page_rows <= 1)
 		return;
 
-	const int strip  = 8;
-	long	  now_ms = cow_mono_ms();
+	int px = seat->pointer_x;
+	int py = seat->pointer_y;
+
+	const int strip = 8;
+	long	  now	= cow_mono_ms();
 
 	struct cow_output *output;
 	wl_list_for_each(output, &cow_wm.outputs, wm_link)
@@ -882,26 +1009,45 @@ cow_output_pan_op_arm(int px, int py)
 		    px < output->x + output->width && py >= output->y &&
 		    py < output->y + output->height);
 		if (!on_output) {
-			if (output->pan_edge >= 0)
-				output->pan_edge = -1;
-			pan_clear_orange(output);
+			if (output->pan_edge >= 0) {
+				pan_frame_set_level(output, output->pan_edge, 0);
+				output->pan_edge   = -1;
+				output->pan_arm_ms = 0;
+			}
 			continue;
 		}
 
 		int edge = pan_edge_for_pointer(output, px, py, strip);
 
-		if (edge >= 0 && output->pan_edge != edge) {
-			if (output->pan_edge >= 0 &&
-			    output->pan_entered[output->pan_edge])
-				pan_frame_set_orange(output, output->pan_edge,
-				    false);
-			output->pan_edge     = edge;
-			output->pan_enter_ms = now_ms;
-		} else if (edge < 0 && output->pan_edge >= 0) {
-			if (output->pan_entered[output->pan_edge])
-				pan_frame_set_orange(output, output->pan_edge,
-				    false);
-			output->pan_edge = -1;
+		if (edge < 0) {
+			if (output->pan_edge >= 0) {
+				pan_frame_set_level(output, output->pan_edge, 0);
+				output->pan_edge   = -1;
+				output->pan_arm_ms = 0;
+			}
+			continue;
+		}
+
+		if (output->pan_edge != edge) {
+			if (output->pan_edge >= 0)
+				pan_frame_set_level(output, output->pan_edge, 0);
+			output->pan_edge   = edge;
+			output->pan_arm_ms = now;
+		}
+
+		if (now < output->pan_giveup_until_ms)
+			continue;
+
+		long elapsed = now - output->pan_arm_ms;
+		int  dwell   = pan_dwell_ms();
+		int  level   = (elapsed * 5) / (dwell > 0 ? dwell : 1);
+		if (level > 5)
+			level = 5;
+		pan_frame_set_level(output, edge, level);
+
+		if (elapsed >= dwell) {
+			pan_fire(output, edge);
+			return;
 		}
 	}
 }

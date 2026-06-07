@@ -153,7 +153,7 @@ cow_config_create(void)
 	config->page_rows	     = COW_CFG_DEFAULT_PAGE_ROWS;
 	config->page_scroll_animate  = false;
 	config->page_scroll_ms	     = COW_CFG_DEFAULT_PAGE_SCROLL_MS;
-	config->edge_scroll	     = false;
+	config->edge_scroll	      = false;
 	config->edge_scroll_delay_ms = COW_CFG_DEFAULT_EDGE_SCROLL_DELAY;
 	config->raise_on_focus	     = true;
 	config->preserve_desk_on_output_loss =

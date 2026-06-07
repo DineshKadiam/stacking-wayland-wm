@@ -40,9 +40,6 @@ void pan_frame_set_orange(struct cow_output *, int, bool);
 /*
  * Called from the manage cycle when edge_scroll is enabled.  Fires a
  * page switch if the pointer has dwelt at an edge long enough.
- * pan_edge is set either by the pan-frame wl_pointer listener
- * (primary) or by cow_output_pan_pointer_leave (fallback when no
- * wl_layer_shell).
  */
 void cow_output_pan_frame_tick(struct cow_output *);
 
@@ -55,12 +52,11 @@ void cow_output_pan_pointer_leave(int, int);
 void cow_output_pan_pointer_enter(void);
 
 /*
- * Op-mode proximity-based edge arming.  Layer-surface pointer events
- * stop firing once river enters pointer-op mode for a drag/resize, so
- * pan frames cannot detect entry the usual way.  Called from the
- * pointer-op processing loop with the current seat pointer position;
- * arms pan_edge by cursor position only.
+ * Op-mode (drag) dwell arming.  Layer-surface pointer events don't
+ * fire during a pointer-op, so the dwell timer is driven from the
+ * pointer-op processing loop instead.
  */
-void cow_output_pan_op_arm(int, int);
+struct cow_seat;
+void cow_output_pan_op_arm(struct cow_seat *);
 
 #endif /* COW_PAN_FRAMES_H */

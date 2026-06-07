@@ -122,43 +122,34 @@ struct cow_output {
 	struct cow_layer_shell_output *layer_shell_state;
 
 	/*
-	 * Edge scroll dwell state.
+	 * Edge-scroll dwell state.
 	 *
-	 * Primary path: zwlr_layer_shell pan frame surfaces (pan_frames.c).
-	 * Each edge has a thin input-capable layer surface; wl_pointer
-	 * enter/leave events arm/cancel the dwell timer and paint the frame.
-	 *
-	 * Fallback path (no wl_layer_shell): proximity detection via the
-	 * pointer-position events River already delivers.
-	 *
-	 * pan_edge:         armed edge (-1 = none; 0=top 1=bottom 2=left
-	 * 3=right) pan_enter_ms:     monotonic ms when dwell started.
-	 * pan_last_fire_ms: monotonic ms of the last successful pan_tick
-	 *                   fire on this output.  Used to (a) shorten
-	 *                   the dwell on rapid consecutive paging and
-	 *                   (b) suppress view-edge-based arming for a
-	 *                   short cooldown so paging in one direction
-	 *                   doesn't immediately re-arm the opposite edge.
+	 * pan_edge:            armed edge (-1 none; 0=top 1=bottom 2=left
+	 *                      3=right).
+	 * pan_arm_ms:          monotonic ms when the dwell timer started.
+	 * pan_resist_motion:   cumulative cursor motion while armed,
+	 *                      used to add light resistance before the
+	 *                      cursor crosses to a neighbouring monitor.
+	 * pan_resist_done:     once true, no more warp-backs this arm.
+	 * pan_giveup_until_ms: post-fire cooldown.
+	 * pan_last_fire_ms:    monotonic ms of the last successful fire.
 	 */
 	int  pan_edge;
-	long pan_enter_ms;
+	int  pan_resist_motion;
+	bool pan_resist_done;
+	long pan_arm_ms;
+	long pan_giveup_until_ms;
 	long pan_last_fire_ms;
 
-	/*
-	 * Pan frame input surfaces (zwlr_layer_surface_v1).
-	 * Index: 0=top 1=bottom 2=left 3=right.
-	 * Each is a thin input-capable layer surface at the edge.
-	 * When the pointer enters one it turns orange and the dwell
-	 * timer arms; on leave it becomes transparent again.
-	 */
+	/* Pan frame input surfaces.  Index: 0=top 1=bottom 2=left 3=right. */
 	struct wl_surface	     *pan_surf[4];
 	struct zwlr_layer_surface_v1 *pan_lsurf[4];
 	struct cow_shm_buffer	     *pan_buf_clear[4];
 	struct cow_shm_buffer	     *pan_buf_orange[4];
-	void *pan_ctx[4]; /* pan_frame_ctx*, freed on destroy */
-	struct zwp_confined_pointer_v1
-	    *pan_confined[4]; /* active confinement */
-	bool pan_entered[4];  /* pointer is over this frame */
+	struct cow_shm_buffer	     *pan_buf_fill[4][5]; /* 20/40/60/80/100% */
+	int   pan_fill_level[4];     /* 0..5 currently displayed */
+	void *pan_ctx[4];	     /* pan_frame_ctx*, freed on destroy */
+	bool  pan_entered[4];	     /* pointer is over this frame */
 };
 
 /*

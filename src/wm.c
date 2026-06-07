@@ -307,7 +307,7 @@ handle_wm_manage_start(__unused void *data,
 		cow_output_prepare_background(out);
 		/* Advance smooth page scroll animation if in progress */
 		cow_page_scroll_tick(out);
-		/* Fire edge scroll if dwell timer expired */
+		/* Edge-scroll dwell timer */
 		cow_output_pan_frame_tick(out);
 	}
 
@@ -1290,20 +1290,12 @@ cow_wm_run(void)
 		int ipc_nfds  = cow_ipc_fill_pollfds(fds + nfds);
 		int total_fds = nfds + ipc_nfds;
 
-		/* If any pan frame dwell timer is armed, wake up frequently
-		 * so cow_output_pan_frame_tick() fires promptly without
-		 * waiting for a River manage event. */
 		int poll_timeout = -1;
-		{
-			struct cow_output *po;
-			wl_list_for_each(po, &cow_wm.outputs, wm_link)
-			{
-				if (po->pan_edge >= 0) {
-					poll_timeout = 50; /* ms */
-					break;
-				}
-			}
-		}
+
+		/* If a pan-frame dwell timer is armed, wake the loop
+		 * frequently so the dwell fires on time. */
+		if (cow_wm.pan_lock_output != NULL)
+			poll_timeout = 50;
 
 		/*
 		 * Shorten the poll timeout to the next held repeatable

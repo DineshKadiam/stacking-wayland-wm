@@ -1250,12 +1250,11 @@ behaviour of desktops and pages:
 :  Page scroll animation duration. Default: _200_.
 |  *edge\_scroll*
 :  _true_ | _false_
-:  Enable edge scroll: dwell at a screen edge to switch page.
-   Default: _false_.
+:  Enable edge scroll: hovering the cursor at a screen edge switches
+   the page after *edge\_scroll\_delay\_ms* milliseconds.  Default: _false_.
 |  *edge\_scroll\_delay\_ms*
-:  integer (ms)
-:  Time the pointer must dwell at an edge before a page switch fires.
-   Default: _300_.
+:  integer (ms, 50..5000)
+:  Cursor hover time at an edge before the page switches.  Default: _300_.
 |  *output.colour.background*
 :  hex colour (_0xRRGGBB_)
 :  Background colour for all outputs.
