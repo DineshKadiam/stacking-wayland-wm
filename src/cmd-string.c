@@ -92,19 +92,21 @@ cmd_string_parse(const char *s, struct cmd_list **cmdlist, const char *file,
 			break;
 		case '{': {
 			/*
-			 * Brace-delimited block: accumulate the whole
-			 * { ... } verbatim into the current argv element,
-			 * including the outer braces.  Honours nested
-			 * braces and ignores braces inside ' / " strings
-			 * and # comments so script bodies can contain
-			 * any of those without confusing the outer
-			 * tokeniser.  The block is handed to the command
-			 * as a single argument; the command (e.g. script)
-			 * is responsible for parsing the body.
+			 * Brace-delimited block: capture the contents of
+			 * a balanced { ... } group as a single argv
+			 * element.  The outer braces are stripped; only
+			 * the body lands in argv.  Nested braces are
+			 * tracked; quoted strings and # comments are
+			 * scanned through verbatim so the body can
+			 * contain semicolons, whitespace, and quoting
+			 * without confusing the outer tokeniser.
 			 */
-			int depth  = 1;
-			buf	   = xrealloc(buf, 1, len + 1);
-			buf[len++] = (char)ch;
+			int  depth = 1;
+			bool need  = (buf == NULL);
+			if (need) {
+				buf = xrealloc(buf, 1, 1);
+				len = 0;
+			}
 
 			while (depth > 0) {
 				ch = cmd_string_getc(s, &p);
@@ -152,10 +154,13 @@ cmd_string_parse(const char *s, struct cmd_list **cmdlist, const char *file,
 					}
 					continue;
 				}
-				if (ch == '{')
+				if (ch == '{') {
 					depth++;
-				else if (ch == '}')
+				} else if (ch == '}') {
 					depth--;
+					if (depth == 0)
+						break;
+				}
 
 				buf	   = xrealloc(buf, 1, len + 1);
 				buf[len++] = (char)ch;
