@@ -90,6 +90,78 @@ cmd_string_parse(const char *s, struct cmd_list **cmdlist, const char *file,
 				goto error;
 			cmd_string_copy(&buf, t, &len);
 			break;
+		case '{': {
+			/*
+			 * Brace-delimited block: accumulate the whole
+			 * { ... } verbatim into the current argv element,
+			 * including the outer braces.  Honours nested
+			 * braces and ignores braces inside ' / " strings
+			 * and # comments so script bodies can contain
+			 * any of those without confusing the outer
+			 * tokeniser.  The block is handed to the command
+			 * as a single argument; the command (e.g. script)
+			 * is responsible for parsing the body.
+			 */
+			int depth  = 1;
+			buf	   = xrealloc(buf, 1, len + 1);
+			buf[len++] = (char)ch;
+
+			while (depth > 0) {
+				ch = cmd_string_getc(s, &p);
+				if (ch == EOF)
+					goto error;
+
+				if (ch == '\'' || ch == '"') {
+					int qc	   = ch;
+					buf	   = xrealloc(buf, 1, len + 1);
+					buf[len++] = (char)qc;
+					while ((ch = cmd_string_getc(s, &p)) !=
+					    EOF) {
+						buf = xrealloc(buf, 1, len + 1);
+						buf[len++] = (char)ch;
+						if (ch == '\\' && qc == '"') {
+							ch = cmd_string_getc(s,
+							    &p);
+							if (ch == EOF)
+								goto error;
+							buf = xrealloc(buf, 1,
+							    len + 1);
+							buf[len++] = (char)ch;
+							continue;
+						}
+						if (ch == qc)
+							break;
+					}
+					if (ch == EOF)
+						goto error;
+					continue;
+				}
+				if (ch == '#') {
+					/* line comment to end-of-line */
+					buf	   = xrealloc(buf, 1, len + 1);
+					buf[len++] = (char)ch;
+					while ((ch = cmd_string_getc(s, &p)) !=
+						EOF &&
+					    ch != '\n') {
+						buf = xrealloc(buf, 1, len + 1);
+						buf[len++] = (char)ch;
+					}
+					if (ch == '\n') {
+						buf = xrealloc(buf, 1, len + 1);
+						buf[len++] = (char)ch;
+					}
+					continue;
+				}
+				if (ch == '{')
+					depth++;
+				else if (ch == '}')
+					depth--;
+
+				buf	   = xrealloc(buf, 1, len + 1);
+				buf[len++] = (char)ch;
+			}
+			break;
+		}
 		case '#':
 			/* Comment: discard rest of line. */
 			while ((ch = cmd_string_getc(s, &p)) != EOF)
