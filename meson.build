@@ -40,6 +40,7 @@ srcs = [
     'src/cmd-list.c',
     'src/cmd-mouse.c',
     'src/cmd-move.c',
+    'src/cmd-pick-window.c',
     'src/cmd-queue.c',
     'src/cmd-quit.c',
     'src/cmd-resize.c',
@@ -265,6 +266,8 @@ generated = wl_mod.scan_xml(
     wl_proto_dir / 'stable/xdg-shell/xdg-shell.xml',
     'protocol/wlr-layer-shell-unstable-v1.xml',
     'protocol/pointer-constraints-unstable-v1.xml',
+    'protocol/tablet-unstable-v2.xml',
+    'protocol/cursor-shape-v1.xml',
 )
 
 include_dirs = [

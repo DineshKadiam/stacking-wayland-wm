@@ -823,6 +823,23 @@ window-maximize -T -h  # toggle horizontal maximised state only
 window-maximize -u -v  # un-maximise vertical only, keep horizontal
 ```
 
+## pick-window command ...
+
+Pick a window with the mouse and run _command_ targeting that window.
+The cursor changes to a crosshair icon, indicating a target window should be
+selected. Right-click or _Escape_ cancels.
+
+The picked window is passed to _command_ as the default target, so a
+_command_ without an explicit *-t* operates on the picked view.  Any
+explicit *-t* in _command_ takes precedence. 
+
+Examples:
+
+```
+bind Super+p pick-window winops -c
+bind Super+P pick-window { winops -c ; focus -L }
+```
+
 ## window-shade [-t target] -d dir
 
 Shade (roll up) a window in a given direction, hiding its content but leaving

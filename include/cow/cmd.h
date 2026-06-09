@@ -339,6 +339,7 @@ extern struct cmd_entry cmd_desk_name_entry;
 extern struct cmd_entry cmd_scroll_entry;
 extern struct cmd_entry cmd_window_shade_entry;
 extern struct cmd_entry cmd_container_entry;
+extern struct cmd_entry cmd_pick_window_entry;
 
 int args_cmp(struct args_entry *, struct args_entry *);
 RB_PROTOTYPE(args_tree, args_entry, entry, args_cmp);

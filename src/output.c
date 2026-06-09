@@ -29,6 +29,7 @@
 #include "cow/wm.h"
 #include "cow/desk_ops.h"
 #include "cow/pan_frames.h"
+#include "cow/pick.h"
 #include "cow/seat.h"
 #include "cow/view.h"
 
@@ -419,6 +420,10 @@ cow_output_name_known(struct cow_output *output)
 void
 cow_output_destroy(struct cow_output *output)
 {
+	/* Cancel any in-flight pick session: its per-output overlay is
+	 * about to be torn down anyway. */
+	cow_pick_cancel_active();
+
 	/*
 	 * Detach every view from this output before tearing it down.
 	 * cow_view_reassign_output() rewrites the inline desk_views /

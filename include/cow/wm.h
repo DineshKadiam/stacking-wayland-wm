@@ -37,6 +37,7 @@
 struct river_window_manager_v1;
 struct zwlr_layer_shell_v1;
 struct zwp_pointer_constraints_v1;
+struct wp_cursor_shape_manager_v1;
 struct river_xkb_bindings_v1;
 struct river_layer_shell_v1;
 struct river_window_v1;
@@ -76,8 +77,10 @@ struct cow_wm {
 	struct zwlr_layer_shell_v1	  *wl_layer_shell;
 	struct wl_seat			  *wl_seat_raw;
 	bool				   wl_seat_has_pointer;
+	bool				   wl_seat_has_keyboard;
 	struct wl_pointer		  *wl_pointer_raw;
 	struct zwp_pointer_constraints_v1 *wl_pointer_constraints;
+	struct wp_cursor_shape_manager_v1 *wl_cursor_shape_mgr;
 
 	/* Currently armed pan edge (at most one across all outputs). */
 	struct cow_output *pan_lock_output;

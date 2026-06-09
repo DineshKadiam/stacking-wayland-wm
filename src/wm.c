@@ -46,6 +46,7 @@
 #include "cow/view.h"
 #include "cow/wm.h"
 
+#include "cursor-shape-v1-client-protocol.h"
 #include "pointer-constraints-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "river-layer-shell-v1-client-protocol.h"
@@ -168,6 +169,8 @@ wl_seat_handle_capabilities(__unused void *data, __unused struct wl_seat *seat,
 {
 	cow_wm.wl_seat_has_pointer = (capabilities &
 					 WL_SEAT_CAPABILITY_POINTER) != 0;
+	cow_wm.wl_seat_has_keyboard = (capabilities &
+					  WL_SEAT_CAPABILITY_KEYBOARD) != 0;
 
 	if (!cow_wm.wl_seat_has_pointer && cow_wm.wl_pointer_raw != NULL) {
 		/* Pointer capability removed — release the wl_pointer. */
@@ -228,6 +231,11 @@ registry_global(__unused void *data, struct wl_registry *registry,
 	    version >= 1) {
 		cow_wm.wl_pointer_constraints = wl_registry_bind(registry, name,
 		    &zwp_pointer_constraints_v1_interface, 1);
+	} else if (strcmp(interface,
+		       wp_cursor_shape_manager_v1_interface.name) == 0 &&
+	    version >= 1) {
+		cow_wm.wl_cursor_shape_mgr = wl_registry_bind(registry, name,
+		    &wp_cursor_shape_manager_v1_interface, 1);
 	} else if (strcmp(interface, "wl_output") == 0 && version >= 4) {
 		struct cow_wl_output_entry *entry = xcalloc(1, sizeof(*entry));
 		entry->wl_output   = wl_registry_bind(registry, name,
@@ -1240,6 +1248,9 @@ cow_wm_fini(void)
 	if (cow_wm.wl_pointer_constraints != NULL)
 		zwp_pointer_constraints_v1_destroy(
 		    cow_wm.wl_pointer_constraints);
+	if (cow_wm.wl_cursor_shape_mgr != NULL)
+		wp_cursor_shape_manager_v1_destroy(
+		    cow_wm.wl_cursor_shape_mgr);
 	if (cow_wm.wl_layer_shell != NULL)
 		zwlr_layer_shell_v1_destroy(cow_wm.wl_layer_shell);
 	if (cow_wm.compositor != NULL)

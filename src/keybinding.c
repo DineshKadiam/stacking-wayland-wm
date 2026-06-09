@@ -275,8 +275,8 @@ cow_seat_process_bindings(struct cow_seat *seat)
 		}
 	}
 
-	struct cow_pointer_binding *pb;
-	wl_list_for_each(pb, &seat->pointer_bindings, link)
+	struct cow_pointer_binding *pb, *pb_tmp;
+	wl_list_for_each_safe(pb, pb_tmp, &seat->pointer_bindings, link)
 	{
 		if (pb->pending) {
 			pb->pending = false;
@@ -294,9 +294,9 @@ cow_seat_next_repeat_ms(void)
 	struct cow_seat *seat;
 	wl_list_for_each(seat, &cow_wm.seats, wm_link)
 	{
-		struct cow_keybinding *kb;
-		wl_list_for_each(kb, &seat->keybindings, link)
-		{
+	struct cow_keybinding *kb, *kb_tmp;
+	wl_list_for_each_safe(kb, kb_tmp, &seat->keybindings, link)
+	{
 			if (!kb->held || !kb->repeatable)
 				continue;
 			long due   = kb->last_fire_ms + repeat_wait_ms(kb);

@@ -23,6 +23,7 @@
 #include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/pan_frames.h"
+#include "cow/pick.h"
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
 #include "cow/shm.h"
@@ -154,14 +155,13 @@ pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 {
 	(void)data;
 	(void)pointer;
-	(void)serial;
-	(void)sx;
-	(void)sy;
 
 	struct cow_output *output;
 	int		   edge = surface_to_output_edge(surf, &output);
-	if (edge < 0)
+	if (edge < 0) {
+		cow_pick_pointer_enter(surf, serial, sx, sy);
 		return;
+	}
 
 	output->pan_entered[edge] = true;
 
@@ -184,8 +184,10 @@ pointer_leave(void *data, struct wl_pointer *pointer, uint32_t serial,
 
 	struct cow_output *output;
 	int		   edge = surface_to_output_edge(surf, &output);
-	if (edge < 0)
+	if (edge < 0) {
+		cow_pick_pointer_leave(surf);
 		return;
+	}
 
 	output->pan_entered[edge] = false;
 	if (cow_wm.pan_lock_output == output && cow_wm.pan_lock_edge == edge)
@@ -198,9 +200,7 @@ pointer_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x,
 {
 	(void)d;
 	(void)p;
-	(void)t;
-	(void)x;
-	(void)y;
+	cow_pick_pointer_motion(t, x, y);
 }
 
 static void
@@ -209,10 +209,8 @@ pointer_button(void *d, struct wl_pointer *p, uint32_t ser, uint32_t t,
 {
 	(void)d;
 	(void)p;
-	(void)ser;
 	(void)t;
-	(void)btn;
-	(void)state;
+	cow_pick_pointer_button(ser, btn, state);
 }
 
 static void
