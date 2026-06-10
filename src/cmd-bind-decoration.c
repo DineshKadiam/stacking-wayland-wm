@@ -15,11 +15,17 @@
  */
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "cow/cmd.h"
 #include "cow/config.h"
 #include "cow/memory.h"
+#include "cow/pointer_op.h"
+#include "cow/seat.h"
 #include "cow/view.h"
+#include "cow/wm.h"
+
+#include "river-window-management-v1-client-protocol.h"
 
 static enum cmd_retval cmd_bind_decoration_exec(struct cmd *, struct cmd_q *);
 
@@ -134,20 +140,9 @@ cow_decoration_register_default_bindings(void)
 	register_default(COW_DEC_REGION_TITLEBAR, 2, "window-shade -d north");
 }
 
-bool
-cow_dec_binding_fire(struct cow_view *view, enum cow_dec_region region,
-    int clicks)
+static bool
+run_cmd_string(struct cow_view *view, const char *cmd_str)
 {
-	if (view == NULL || view->closed)
-		return false;
-	const char *cmd_str = cow_dec_binding_lookup(region, clicks);
-	if (cmd_str == NULL)
-		return false;
-
-	/*
-	 * Parse + run the bound command string with the clicked view
-	 * as the implicit -t target.
-	 */
 	struct cmd_list *cmdlist = NULL;
 	char		*cause	 = NULL;
 	if (cmd_string_parse(cmd_str, &cmdlist, NULL, 0, &cause) != 0) {
@@ -167,6 +162,66 @@ cow_dec_binding_fire(struct cow_view *view, enum cow_dec_region region,
 	cmdq_run(cmdq, cmdlist);
 	cmd_list_free(cmdlist);
 	cmdq_free(cmdq);
-
 	return true;
 }
+
+bool
+cow_dec_binding_fire(struct cow_view *view, enum cow_dec_region region,
+    int clicks)
+{
+	if (view == NULL || view->closed)
+		return false;
+	const char *cmd_str = cow_dec_binding_lookup(region, clicks);
+	if (cmd_str == NULL)
+		return false;
+	return run_cmd_string(view, cmd_str);
+}
+
+/*
+ * Cancel an in-flight pointer op started by a 1-click bind-decoration
+ * action.  A 2-click on the same view+region within DOUBLE_CLICK_MS
+ * "claims" the second press: the op (begun on the first press for
+ * press-and-hold semantics) is ended without committing any motion,
+ * and the 2-click binding runs against the pre-press state.
+ *
+ * window-move defers its unmaximise side-effect until the first
+ * non-zero motion event (see cow_pointer_op_process), so cancelling
+ * a press-only op leaves the view geometry untouched.
+ */
+static void
+cancel_first_press_op(struct cow_seat *seat)
+{
+	if (!seat->op_in_progress)
+		return;
+	river_seat_v1_op_end(seat->river_seat);
+	seat->op_in_progress = false;
+	seat->op.type	     = COW_POINTER_OP_NONE;
+	seat->op.view	     = NULL;
+	seat->op_released    = false;
+	seat->op_dx	     = 0;
+	seat->op_dy	     = 0;
+}
+
+bool
+cow_dec_binding_dispatch(struct cow_seat *seat, struct cow_view *view,
+    enum cow_dec_region region, int clicks)
+{
+	if (view == NULL || view->closed || seat == NULL)
+		return false;
+
+	if (clicks == 2) {
+		cancel_first_press_op(seat);
+		const char *cmd_str = cow_dec_binding_lookup(region, 2);
+		if (cmd_str != NULL)
+			return run_cmd_string(view, cmd_str);
+		const char *one = cow_dec_binding_lookup(region, 1);
+		return one != NULL ? run_cmd_string(view, one) : false;
+	}
+
+	const char *cmd_str = cow_dec_binding_lookup(region, 1);
+	if (cmd_str == NULL)
+		return false;
+	return run_cmd_string(view, cmd_str);
+}
+
+

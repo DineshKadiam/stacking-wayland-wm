@@ -439,7 +439,11 @@ do_interactive(struct cow_view *view)
 	if (seat == NULL)
 		seat = cow_seat_primary();
 	if (seat != NULL) {
-		unmax_if_needed(view);
+		/* Deferred unmax: cow_pointer_op_process unmaxes on the
+		 * first non-zero drag delta.  This keeps the view's
+		 * geometry intact through a press-without-motion so a
+		 * 2-click bind-decoration action runs against the
+		 * original state. */
 		cow_pointer_op_start_move(seat, view);
 	}
 }

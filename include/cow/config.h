@@ -422,6 +422,17 @@ struct cow_view;
 bool cow_dec_binding_fire(struct cow_view *, enum cow_dec_region, int clicks);
 
 /*
+ * Click-dispatch helper for the wm.c decoration-click router.
+ * Fires the (region, 1) binding immediately on press for press-and-
+ * hold semantics; on a (region, 2) follow-up cancels the in-flight
+ * pointer op (so press-without-motion side-effects roll back) and
+ * runs the 2-click binding.
+ */
+struct cow_seat;
+bool cow_dec_binding_dispatch(struct cow_seat *seat, struct cow_view *,
+    enum cow_dec_region, int clicks);
+
+/*
  * Populate the current cow_config->decoration_bindings list with
  * the built-in defaults (resize for each edge/corner; move +
  * double-click-shade for the titlebar).  Call once after

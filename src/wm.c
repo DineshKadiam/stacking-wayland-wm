@@ -639,7 +639,7 @@ handle_wm_manage_start(__unused void *data,
 					else if (corner_edges ==
 					    (COW_EDGE_BOTTOM | COW_EDGE_RIGHT))
 						cr = COW_DEC_REGION_SE;
-					cow_dec_binding_fire(iv, cr, clicks);
+					cow_dec_binding_dispatch(s, iv, cr, clicks);
 				} else if (cow_titlebar_hit(iv, lx, ly)) {
 					/*
 					 * Titlebar (below north border, above
@@ -766,7 +766,7 @@ handle_wm_manage_start(__unused void *data,
 						 * short-circuited so they
 						 * keep their semantics.
 						 */
-						cow_dec_binding_fire(iv,
+						cow_dec_binding_dispatch(s, iv,
 						    COW_DEC_REGION_TITLEBAR,
 						    clicks);
 					}
@@ -790,7 +790,7 @@ handle_wm_manage_start(__unused void *data,
 						er = COW_DEC_REGION_W;
 					else if (lx >= hit_cw)
 						er = COW_DEC_REGION_E;
-					cow_dec_binding_fire(iv, er, clicks);
+					cow_dec_binding_dispatch(s, iv, er, clicks);
 				}
 
 				/*

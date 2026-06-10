@@ -186,6 +186,7 @@ cow_pointer_op_start_move(struct cow_seat *seat, struct cow_view *view)
 	seat->op_released    = false;
 	seat->op_dx	     = 0;
 	seat->op_dy	     = 0;
+	seat->op.unmax_done  = false;
 
 	/*
 	 * Titlebar-press visual feedback: while a move is in progress
@@ -475,6 +476,32 @@ cow_pointer_op_process(struct cow_seat *seat)
 
 	switch (seat->op.type) {
 	case COW_POINTER_OP_MOVE: {
+		/*
+		 * Deferred unmaximise: on the first frame that carries
+		 * actual motion, drop the view's maximised state so the
+		 * drag can move it freely.  A press with no motion (e.g.
+		 * the first press of a double-click) skips this entirely,
+		 * leaving the view's geometry untouched for a follow-up
+		 * 2-click bind-decoration action to see the pre-press
+		 * state.
+		 */
+		if (!seat->op.unmax_done && (dx != 0 || dy != 0) &&
+		    view->maximized) {
+			cow_view_set_maximized(view, false);
+			view->icon_inverted_button = -1;
+			view->dec.dirty		   = true;
+			seat->op.unmax_done	   = true;
+			/* Recompute the offset so the cursor stays at the
+			 * same surface-relative point on the now-unmaxed
+			 * view.  Without this, the post-unmax view jumps
+			 * away from the cursor and tracking feels stuck. */
+			if (seat->has_pointer_position) {
+				seat->op.move_offset_x = view->x -
+				    seat->pointer_x;
+				seat->op.move_offset_y = view->y -
+				    seat->pointer_y;
+			}
+		}
 		int bw = view->dec.border_width;
 		int tt = view->dec.title_thickness;
 

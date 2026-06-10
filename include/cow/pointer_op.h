@@ -59,6 +59,16 @@ struct cow_pointer_op {
 
 	int move_offset_x, move_offset_y;
 
+	/*
+	 * For MOVE: whether the view has been unmaximised in response
+	 * to the drag actually starting.  Unmax is deferred to the
+	 * first non-zero motion event so a press without subsequent
+	 * motion (e.g. the first press of a double-click) leaves the
+	 * view's geometry untouched, letting the 2-click action see
+	 * the pre-press state.
+	 */
+	bool unmax_done;
+
 	/* Initial dimensions when the op started */
 	int start_width, start_height;
 
