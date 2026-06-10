@@ -1097,6 +1097,41 @@ handle_wm_session_unlocked(__unused void    *data,
     __unused struct river_window_manager_v1 *manager)
 {
 	cow_wm.session_locked = false;
+
+	/* Re-assert keyboard focus on the view we think is focused. */
+	struct cow_seat *seat;
+	wl_list_for_each(seat, &cow_wm.seats, wm_link)
+	{
+		struct cow_view *target = NULL;
+		if (cow_config != NULL && seat->pointer_entered_view != NULL &&
+		    !seat->pointer_entered_view->closed) {
+			target = seat->pointer_entered_view;
+		}
+		if (target == NULL && seat->focused_view != NULL &&
+		    !seat->focused_view->closed)
+			target = seat->focused_view;
+		if (target == NULL && !wl_list_empty(&cow_wm.views)) {
+			/* Last resort: focus any non-closed view. */
+			struct cow_view *v;
+			wl_list_for_each(v, &cow_wm.views, wm_link)
+			{
+				if (!v->closed) {
+					target = v;
+					break;
+				}
+			}
+		}
+		if (target != NULL) {
+			river_seat_v1_focus_window(seat->river_seat,
+			    target->river_window);
+			seat->focused_view  = target;
+			cow_wm.focused_view = target;
+			if (target->output != NULL)
+				cow_wm.current_output = target->output;
+		}
+	}
+	cow_status_emit();
+	cow_wm_request_manage_dirty();
 }
 
 static void
