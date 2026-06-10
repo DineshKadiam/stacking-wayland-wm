@@ -88,16 +88,12 @@ main(int argc, char *argv[])
 		    "cow: warning: config load failed, using defaults\n");
 
 	/*
-	 * Decoration-click defaults.  Mirror the keybinding pattern:
-	 * the shipped config carries them as ordinary
-	 * `bind-decoration` lines (visible and editable like any other
-	 * binding), and this fallback only fires when the user has no
-	 * config or their config doesn't declare any decoration
-	 * bindings.  Without this, a user running with an empty config
-	 * would lose move/resize/shade entirely.
+	 * Decoration-click defaults.  Each (region, clicks) pair is
+	 * installed only if the user didn't declare a binding for it
+	 * in the config, so partial overrides leave the other
+	 * defaults intact.
 	 */
-	if (wl_list_empty(&cow_config->decoration_bindings))
-		cow_decoration_register_default_bindings();
+	cow_decoration_register_default_bindings();
 	/* Ignore SIGPIPE -- child processes (xterm etc.) may cause this */
 	signal(SIGPIPE, SIG_IGN);
 

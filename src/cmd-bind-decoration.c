@@ -93,11 +93,14 @@ cmd_bind_decoration_exec(struct cmd *self, struct cmd_q *cmdq)
 
 /*
  * Insert a (region, clicks) binding directly, bypassing the cmd
- * surface.
+ * surface.  Skips entries the user has already defined.
  */
 static void
 register_default(enum cow_dec_region region, int clicks, const char *action)
 {
+	if (cow_dec_binding_lookup(region, clicks) != NULL)
+		return;
+
 	struct cow_dec_binding_entry *entry = xcalloc(1, sizeof(*entry));
 	entry->region			    = region;
 	entry->clicks			    = clicks;
@@ -116,7 +119,8 @@ cow_decoration_register_default_bindings(void)
 	 * Built-in defaults.  Each is expressible as a normal cow
 	 * command, so the wm.c dispatch can call cow_dec_binding_fire
 	 * uniformly and never has to know which built-in to run as a
-	 * fallback.
+	 * fallback.  Per (region, clicks) pair: only install if the
+	 * user hasn't already declared one.
 	 */
 	register_default(COW_DEC_REGION_N, 1, "window-resize -e n");
 	register_default(COW_DEC_REGION_S, 1, "window-resize -e s");

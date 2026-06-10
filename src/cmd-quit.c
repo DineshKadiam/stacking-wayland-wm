@@ -98,6 +98,8 @@ do_reload(struct cmd_q *cmdq)
 		cow_seat_register_default_bindings(seat);
 	}
 
+	cow_decoration_register_default_bindings();
+
 	/* Re-stamp every view's cfg snapshot from the freshly parsed
 	 * cow_config so existing views pick up the new defaults; then
 	 * mark their decoration dirty for re-render. */

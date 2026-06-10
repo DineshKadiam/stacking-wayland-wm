@@ -35,10 +35,6 @@
 
 struct cow_ipc cow_ipc;
 
-/* ================================================================
- * Socket lifecycle
- * ================================================================ */
-
 bool
 cow_ipc_init(void)
 {
@@ -79,10 +75,6 @@ cow_ipc_fini(void)
 	}
 }
 
-/* ================================================================
- * Poll fd management
- * ================================================================ */
-
 int
 cow_ipc_fill_pollfds(struct pollfd *fds)
 {
@@ -106,10 +98,6 @@ cow_ipc_fill_pollfds(struct pollfd *fds)
 
 	return n;
 }
-
-/* ================================================================
- * Response helpers
- * ================================================================ */
 
 void
 cow_ipc_respond(int fd, const char *json)
@@ -154,10 +142,6 @@ cow_ipc_respond_data(int fd, cJSON *data)
 	cJSON_free(s);
 	cJSON_Delete(root);
 }
-
-/* ================================================================
- * Main command dispatcher
- * ================================================================ */
 
 bool
 cow_ipc_dispatch(const char *line, int client_fd)
@@ -216,10 +200,6 @@ cow_ipc_dispatch(const char *line, int client_fd)
 	return ok;
 }
 
-/* ================================================================
- * Config file loader
- * ================================================================ */
-
 bool
 cow_ipc_load_config(const char *path)
 {
@@ -229,9 +209,10 @@ cow_ipc_load_config(const char *path)
 		return false;
 	}
 
-	/* Remember the path so do_reload can re-use it. */
+	/* Remember the path so that 'moocow quit -r' doesn't crash. */
+	char *new_path = xstrdup(path);
 	xfree(cow_ipc.config_path);
-	cow_ipc.config_path = xstrdup(path);
+	cow_ipc.config_path = new_path;
 
 	cow_ipc.startup_mode = true;
 
@@ -304,10 +285,6 @@ cow_ipc_load_config(const char *path)
 	    lineno);
 	return true;
 }
-
-/* ================================================================
- * Connection handling
- * ================================================================ */
 
 static void
 ipc_accept_client(void)
