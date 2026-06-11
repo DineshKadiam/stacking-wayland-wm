@@ -158,6 +158,25 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 	view->content_width  = width;
 	view->content_height = height;
 
+	/*
+	 * Apply a deferred position now that the new (smaller) buffer
+	 * dimensions are in effect.  Without this defer/apply pair,
+	 * a maximise that shrinks the window briefly renders the old
+	 * (larger) buffer at the new top-left, which on multi-output
+	 * setups visually overshoots into a neighbouring monitor.
+	 */
+	if (view->deferred_position) {
+		view->x			= view->deferred_x;
+		view->y			= view->deferred_y;
+		view->deferred_position = false;
+		if (view->output != NULL && view->desk != NULL) {
+			view->vx = (view->x - view->output->x) +
+			    view->desk->page_vx;
+			view->vy = (view->y - view->output->y) +
+			    view->desk->page_vy;
+		}
+	}
+
 	bool first_dims	     = !view->has_dimensions;
 	view->has_dimensions = true;
 

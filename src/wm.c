@@ -856,21 +856,40 @@ handle_wm_manage_start(__unused void *data,
 			view->pending_close = false;
 		}
 		if (view->pending_resize && !view->closed) {
-			view->x = view->pending_x;
-			view->y = view->pending_y;
+			/*
+			 * If the proposed dimensions are smaller than
+			 * the current buffer, defer the position update
+			 * until the dimensions ack arrives so the
+			 * rendered surface doesn't briefly bridge the
+			 * new position with the old (larger) size.  On
+			 * multi-output setups this transient looks like
+			 * the window momentarily overshoots into a
+			 * neighbouring monitor.
+			 */
+			bool shrinking =
+			    (view->pending_width < view->content_width ||
+				view->pending_height < view->content_height);
+			if (shrinking && view->has_dimensions) {
+				view->deferred_position = true;
+				view->deferred_x	= view->pending_x;
+				view->deferred_y	= view->pending_y;
+			} else {
+				view->x = view->pending_x;
+				view->y = view->pending_y;
+				if (view->output != NULL &&
+				    view->desk != NULL) {
+					view->vx = (view->x -
+						       view->output->x) +
+					    view->desk->page_vx;
+					view->vy = (view->y -
+						       view->output->y) +
+					    view->desk->page_vy;
+				}
+			}
 			river_window_v1_propose_dimensions(view->river_window,
 			    view->pending_width, view->pending_height);
 			view->pending_resize = false;
 			view->dec.dirty	     = true;
-			/* Sync virtual position from the new global position so
-			 * the render cycle computes the correct on-screen
-			 * location. */
-			if (view->output != NULL && view->desk != NULL) {
-				view->vx = (view->x - view->output->x) +
-				    view->desk->page_vx;
-				view->vy = (view->y - view->output->y) +
-				    view->desk->page_vy;
-			}
 		}
 		/* Note: clip box changes are rendering state and are
 		 * applied in handle_wm_render_start, not here. */

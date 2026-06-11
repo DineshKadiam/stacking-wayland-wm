@@ -310,6 +310,16 @@ struct cow_view {
 	int  pending_x, pending_y;
 	int  pending_width, pending_height;
 
+	/*
+	 * When shrinking, defer the position update until the
+	 * dimensions ack arrives so the rendered surface doesn't
+	 * briefly straddle the old (large) buffer at the new top-left,
+	 * which on multi-output setups looks like the window overshoots
+	 * the monitor edge into a neighbouring output.
+	 */
+	bool deferred_position;
+	int  deferred_x, deferred_y;
+
 	/* Pending clip box change (applied during manage cycle) */
 	bool pending_clip;
 	int  clip_x, clip_y, clip_w, clip_h;
