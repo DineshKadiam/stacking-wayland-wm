@@ -224,6 +224,8 @@ struct cmd_q {
 	 * NULL when the firing event has no structured payload.
 	 */
 	char *event_json;
+
+	int in_rule;
 };
 
 /* Error cause list. */

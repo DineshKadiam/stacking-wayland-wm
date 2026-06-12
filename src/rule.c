@@ -218,6 +218,7 @@ rule_run(struct cow_rule *rule, struct cow_view *view, struct cow_desk *desk,
 {
 	struct cmd_q *cmdq = cmdq_new();
 	cmdq->client_fd	   = -1;
+	cmdq->in_rule	   = 1;
 	cmdq_set_default_target(cmdq, view, desk, output);
 	if (event_json != NULL)
 		cmdq_set_event_json(cmdq, xstrdup(event_json));

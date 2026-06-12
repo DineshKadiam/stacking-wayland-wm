@@ -639,9 +639,8 @@ Operate on a window.
 	  *default_layer* when the window is already at *max_layer*.
 	- *bottom* -- shorthand for 0; toggles back to *default_layer*
 	  when the window is already at 0.
-	- *=top* / *=bottom* -- non-toggling variants; useful inside
-	  rules so a re-map event doesn't accidentally revert the
-	  layer.
+	- *=top* / *=bottom* -- non-toggling variants, useful inside a _rule_
+	  command.
 
 	Container members share a single layer: setting *-L* on any
 	member updates every member of the container.

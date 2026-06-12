@@ -64,6 +64,7 @@ typedef struct {
 	int  focused;
 	char id[128];
 	char output[64];
+	char app_id[64];
 } pwin_t;
 
 typedef struct {
@@ -75,7 +76,7 @@ typedef struct {
 typedef struct {
 	char name[64];
 	int  number;  /* 1-based ordinal from cow (raster-scan order). */
-	int  current; /* 1 iff this is cow's "current_output". */
+	int  current; /* 1 if this is cow's "current_output". */
 	int  current_desk;
 	int  page_cols, page_rows;
 	int  page_col, page_row;
@@ -517,6 +518,15 @@ reference_output(const state_t *st)
 }
 
 /*
+ * Is this window a cowpager window?
+ */
+static int
+is_self_window(const pwin_t *w)
+{
+	return w != NULL && strcmp(w->app_id, "cowpager") == 0;
+}
+
+/*
  * Look up a window's own output by name.  Falls back to NULL when the
  * window's output field is empty or the named output isn't tracked.
  */
@@ -775,6 +785,8 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		if (w->desk != d->nr)
 			continue;
 		if (!monitor_visible(w->output))
+			continue;
+		if (is_self_window(w))
 			continue;
 
 		const pout_t *wo = output_for_window(st, w);
@@ -1100,6 +1112,8 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 			for (int wi = 0; wi < st->n_wins; wi++) {
 				const pwin_t *w = &st->wins[wi];
 				if (w->desk != d->nr)
+					continue;
+				if (is_self_window(w))
 					continue;
 				if (w->output[0] &&
 				    strcmp(w->output, tab[i]->name) == 0) {
@@ -1490,6 +1504,8 @@ hit_test_window(const state_t *st, double x, double y,
 		if (w->desk != d->nr)
 			continue;
 		if (!monitor_visible(w->output))
+			continue;
+		if (is_self_window(w))
 			continue;
 
 		const pout_t *wo = output_for_window(st, w);
@@ -2450,6 +2466,7 @@ fetch_windows(void)
 		strncpy(pw->f, v->valuestring, z - 1);
 		GS("id", id, 128)
 		GS("output", output, 64)
+		GS("app_id", app_id, 64)
 		GN("desk", desk)
 		GN("vx", vx)
 		GN("vy", vy)

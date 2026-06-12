@@ -108,29 +108,35 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (args_has(args, 'l'))
 		do_lower(view);
 
+	 /* Sticky-flag.  -s toggles desk-sticky, -S toggles page-sticky. */
 	if (args_has(args, 's')) {
-		/* -s: toggle desk-sticky (visible on all desks) */
-		bool was_sticky = (view->flags & COW_VIEW_STICKY_DESK_FLAG) !=
-		    0;
-
-		view->flags ^= COW_VIEW_STICKY_DESK_FLAG;
-		view->dec.dirty = true;
-		cow_wm_request_manage_dirty();
-
-		if (was_sticky) {
-			uint8_t target = (view->output != NULL) ?
-			    view->output->current_desk->nr :
-			    view->desk->nr;
-			cow_view_assign_desk(view, target);
+		bool currently = (view->flags & COW_VIEW_STICKY_DESK_FLAG) != 0;
+		bool target    = cmdq->in_rule ? true : !currently;
+		if (target != currently) {
+			view->flags ^= COW_VIEW_STICKY_DESK_FLAG;
+			view->dec.dirty = true;
+			cow_wm_request_manage_dirty();
+			/* Becoming non-sticky: assign view back to the
+			 * output's current desk so it's actually on the
+			 * desk it appears to be on.
+			 */
+			if (currently) {
+				uint8_t nr = (view->output != NULL) ?
+				    view->output->current_desk->nr :
+				    view->desk->nr;
+				cow_view_assign_desk(view, nr);
+			}
 		}
 	}
 
 	if (args_has(args, 'S')) {
-		/* -S: toggle page-sticky (visible on all pages of current desk)
-		 */
-		view->flags ^= COW_VIEW_STICKY_PAGE_FLAG;
-		view->dec.dirty = true;
-		cow_wm_request_manage_dirty();
+		bool currently = (view->flags & COW_VIEW_STICKY_PAGE_FLAG) != 0;
+		bool target    = cmdq->in_rule ? true : !currently;
+		if (target != currently) {
+			view->flags ^= COW_VIEW_STICKY_PAGE_FLAG;
+			view->dec.dirty = true;
+			cow_wm_request_manage_dirty();
+		}
 	}
 
 	if (args_has(args, 'i'))
@@ -307,7 +313,7 @@ do_set_layer(struct cow_view *view, const char *arg, struct cmd_q *cmdq)
 	if (defl > max)
 		defl = max;
 
-	bool	    explicit_set = false;
+	bool	    explicit_set = cmdq->in_rule;
 	const char *p		 = arg;
 	if (*p == '=') {
 		explicit_set = true;
