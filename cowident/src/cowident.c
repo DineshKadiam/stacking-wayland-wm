@@ -339,7 +339,16 @@ shm_buffer(int w, int h, void **px)
 	int   stride = w * 4;
 	off_t size   = (off_t)stride * h;
 
+    #if HAVE_MEMFD_CREATE
 	int fd = memfd_create("cowident", MFD_CLOEXEC);
+    #else
+    /* POSIX fallback for systems without memfd_create. */
+    char name[64];
+    snprintf(name, sizeof(name), "/cowident-%d", getpid());
+    int fd = shm_open(name, O_RDWR | O_CREAT | O_EXCL, 0600);
+    if (fd >= 0)
+      shm_unlink(name);
+    #endif
 	if (fd < 0)
 		return NULL;
 	if (ftruncate(fd, size) < 0) {
