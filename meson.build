@@ -121,6 +121,7 @@ foreach pair : [
     ['sys/queue.h',  'HAVE_SYS_QUEUE_H'],
     ['sys/tree.h',   'HAVE_SYS_TREE_H'],
     ['libutil.h',    'HAVE_LIBUTIL_H'],
+    ['util.h',       'HAVE_UTIL_H'],
 ]
     conf.set10(pair[1], cc.has_header(pair[0]))
 endforeach
