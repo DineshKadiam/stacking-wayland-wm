@@ -57,6 +57,8 @@
 /* libutil.h -- for fparseln(). */
 #if HAVE_LIBUTIL_H
 #include <libutil.h>
+#elif HAVE_UTIL_H
+#include <util.h>
 #elif HAVE_BSD_LIBUTIL_H
 #include <bsd/libutil.h>
 #else
