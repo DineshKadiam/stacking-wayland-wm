@@ -264,7 +264,16 @@ static struct wl_buffer *
 shm_buf(int w, int h, void **px)
 {
 	int size = w * 4 * h;
+    #if HAVE_MEMFD_CREATE
 	int fd	 = memfd_create("cp", MFD_CLOEXEC);
+    #else
+    /* POSIX fallback for systems without memfd_create. */
+    char name[64];
+    snprintf(name, sizeof(name), "/cp-%d", getpid());
+    int fd = shm_open(name, O_RDWR | O_CREAT | O_EXCL, 0600);
+    if (fd >= 0)
+      shm_unlink(name);
+    #endif
 	if (fd < 0)
 		return NULL;
 
