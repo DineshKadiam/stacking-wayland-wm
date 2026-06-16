@@ -62,6 +62,11 @@ static enum cmd_retval set_titlebar_squeeze_justify(const char *,
 static enum cmd_retval set_titlebar_squeeze_int(const char *, const char *,
     struct cmd_q *);
 static enum cmd_retval set_layer(const char *, const char *, struct cmd_q *);
+static void finish_visual_update(struct cow_view_cfg *);
+static struct cow_titlebar_config *target_titlebar(struct cmd_q *,
+    struct cow_view_cfg **);
+static struct cow_container_config *target_container(struct cmd_q *,
+    struct cow_view_cfg **);
 static void do_set_colour(const char *, const char *, struct cmd_q *);
 static bool set_output_colour(const char *, const char *, struct cmd_q *);
 static bool set_border_colour(const char *, const char *, struct cmd_q *);
@@ -522,6 +527,32 @@ stamp_all_views_from_global(void)
 	}
 }
 
+static void
+finish_visual_update(struct cow_view_cfg *cfg)
+{
+	if (cfg == NULL)
+		stamp_all_views_from_global();
+	refresh_visuals();
+}
+
+static struct cow_titlebar_config *
+target_titlebar(struct cmd_q *cmdq, struct cow_view_cfg **cfgp)
+{
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+
+	*cfgp = cfg;
+	return (cfg != NULL ? &cfg->titlebar : &cow_config->titlebar);
+}
+
+static struct cow_container_config *
+target_container(struct cmd_q *cmdq, struct cow_view_cfg **cfgp)
+{
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+
+	*cfgp = cfg;
+	return (cfg != NULL ? &cfg->container : &cow_config->container);
+}
+
 struct cmd_entry cmd_set_entry = {
 	"set",
 	"v",
@@ -779,14 +810,10 @@ set_titlebar_height(const char *val, struct cmd_q *cmdq)
 		return (CMD_RETURN_ERROR);
 	}
 
-	struct cow_view_cfg *cfg = cfg_target(cmdq);
-	if (cfg != NULL) {
-		cfg->titlebar.height = (int)v;
-	} else if (cow_config != NULL) {
-		cow_config->titlebar.height = (int)v;
-		stamp_all_views_from_global();
-	}
-	refresh_visuals();
+	struct cow_view_cfg	    *cfg;
+	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
+	tb->height = (int)v;
+	finish_visual_update(cfg);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -802,14 +829,10 @@ set_titlebar_squeeze(const char *val, struct cmd_q *cmdq)
 		return (CMD_RETURN_ERROR);
 	}
 
-	struct cow_view_cfg *cfg = cfg_target(cmdq);
-	if (cfg != NULL) {
-		cfg->titlebar.squeeze.mode = m;
-	} else if (cow_config != NULL) {
-		cow_config->titlebar.squeeze.mode = m;
-		stamp_all_views_from_global();
-	}
-	refresh_visuals();
+	struct cow_view_cfg	    *cfg;
+	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
+	tb->squeeze.mode = m;
+	finish_visual_update(cfg);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -825,14 +848,10 @@ set_titlebar_squeeze_justify(const char *val, struct cmd_q *cmdq)
 		return (CMD_RETURN_ERROR);
 	}
 
-	struct cow_view_cfg *cfg = cfg_target(cmdq);
-	if (cfg != NULL) {
-		cfg->titlebar.squeeze.justify = j;
-	} else if (cow_config != NULL) {
-		cow_config->titlebar.squeeze.justify = j;
-		stamp_all_views_from_global();
-	}
-	refresh_visuals();
+	struct cow_view_cfg	    *cfg;
+	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
+	tb->squeeze.justify = j;
+	finish_visual_update(cfg);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -849,23 +868,15 @@ set_titlebar_squeeze_int(const char *key, const char *val, struct cmd_q *cmdq)
 		return (CMD_RETURN_ERROR);
 	}
 
-	struct cow_view_cfg	    *cfg = cfg_target(cmdq);
-	struct cow_titlebar_squeeze *sq	 = NULL;
-	if (cfg != NULL)
-		sq = &cfg->titlebar.squeeze;
-	else if (cow_config != NULL)
-		sq = &cow_config->titlebar.squeeze;
-	if (sq != NULL) {
-		if (strcmp(key, "titlebar.squeeze.width") == 0)
-			sq->width = (int)v;
-		else if (strcmp(key, "titlebar.squeeze.offset") == 0)
-			sq->offset = (int)v;
-		else
-			sq->min_width = (int)v;
-		if (cfg == NULL)
-			stamp_all_views_from_global();
-		refresh_visuals();
-	}
+	struct cow_view_cfg	    *cfg;
+	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
+	if (strcmp(key, "titlebar.squeeze.width") == 0)
+		tb->squeeze.width = (int)v;
+	else if (strcmp(key, "titlebar.squeeze.offset") == 0)
+		tb->squeeze.offset = (int)v;
+	else
+		tb->squeeze.min_width = (int)v;
+	finish_visual_update(cfg);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -980,18 +991,14 @@ set_titlebar_colour(const char *key, const char *val, struct cmd_q *cmdq)
 	for (int i = 0; tb_fields[i].name != NULL; i++) {
 		if (strcmp(key, tb_fields[i].name) != 0)
 			continue;
-		struct cow_view_cfg *cfg = cfg_target(cmdq);
-		struct cow_titlebar_config *tb = (cfg != NULL) ?
-		    &cfg->titlebar :
-		    &cow_config->titlebar;
+		struct cow_view_cfg	    *cfg;
+		struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
 		float *ptr = (float *)((char *)tb + tb_fields[i].offset);
 		if (!cow_colour_parse(val, ptr)) {
 			cmdq_error(cmdq, "set: invalid colour value");
 			return (true);
 		}
-		if (cfg == NULL)
-			stamp_all_views_from_global();
-		refresh_visuals();
+		finish_visual_update(cfg);
 		return (true);
 	}
 	return (false);
@@ -1024,10 +1031,8 @@ set_container_tab_colour(const char *key, const char *val, struct cmd_q *cmdq)
 	for (int i = 0; ct_fields[i].name != NULL; i++) {
 		if (strcmp(key, ct_fields[i].name) != 0)
 			continue;
-		struct cow_view_cfg *cfg = cfg_target(cmdq);
-		struct cow_container_config *cc = (cfg != NULL) ?
-		    &cfg->container :
-		    &cow_config->container;
+		struct cow_view_cfg	     *cfg;
+		struct cow_container_config *cc = target_container(cmdq, &cfg);
 		float *ptr = (float *)((char *)cc +
 		    ct_fields[i].colour_offset);
 		bool *has = (bool *)((char *)cc + ct_fields[i].has_offset);
@@ -1036,9 +1041,7 @@ set_container_tab_colour(const char *key, const char *val, struct cmd_q *cmdq)
 			return (true);
 		}
 		*has = true;
-		if (cfg == NULL)
-			stamp_all_views_from_global();
-		refresh_visuals();
+		finish_visual_update(cfg);
 		return (true);
 	}
 	return (false);
@@ -1075,9 +1078,7 @@ set_border_colour(const char *key, const char *val, struct cmd_q *cmdq)
 		memcpy(bc->s, c, sizeof(float) * 4);
 		memcpy(bc->e, c, sizeof(float) * 4);
 		memcpy(bc->w, c, sizeof(float) * 4);
-		if (cfg == NULL)
-			stamp_all_views_from_global();
-		refresh_visuals();
+		finish_visual_update(cfg);
 		return (true);
 	}
 
@@ -1116,9 +1117,7 @@ set_border_colour(const char *key, const char *val, struct cmd_q *cmdq)
 		*has = true;
 	if (bc->has_nw || bc->has_ne || bc->has_sw || bc->has_se)
 		bc->has_corners = true;
-	if (cfg == NULL)
-		stamp_all_views_from_global();
-	refresh_visuals();
+	finish_visual_update(cfg);
 	return (true);
 }
 
@@ -1134,13 +1133,11 @@ do_set_border_style(const char *val, struct cmd_q *cmdq)
 		style = COW_BORDER_STYLE_NONE;
 
 	struct cow_view_cfg *cfg = cfg_target(cmdq);
-	if (cfg != NULL) {
+	if (cfg != NULL)
 		cfg->border_style = style;
-	} else {
+	else
 		cow_config->border_style = style;
-		stamp_all_views_from_global();
-	}
-	refresh_visuals();
+	finish_visual_update(cfg);
 }
 
 static void
@@ -1247,9 +1244,8 @@ do_set_font(const char *val, struct cmd_q *cmdq)
 	} else {
 		xfree(cow_config->font_name);
 		cow_config->font_name = xstrdup(val);
-		stamp_all_views_from_global();
 	}
-	refresh_visuals();
+	finish_visual_update(cfg);
 }
 
 static void
@@ -1269,17 +1265,14 @@ do_set_button(const char *key, const char *val, struct cmd_q *cmdq)
 		{ NULL,			    NULL,			      -1 },
 	};
 
-	struct cow_view_cfg	   *cfg = cfg_target(cmdq);
-	struct cow_titlebar_config *tb	= (cfg != NULL) ? &cfg->titlebar :
-							  &cow_config->titlebar;
+	struct cow_view_cfg	    *cfg;
+	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
 
 	for (int i = 0; btn_fields[i].vector_key != NULL; i++) {
 		if (strcmp(key, btn_fields[i].vector_key) == 0) {
 			cow_parse_vector_button_string(
 			    &tb->buttons[btn_fields[i].idx].vector, val);
-			if (cfg == NULL)
-				stamp_all_views_from_global();
-			refresh_visuals();
+			finish_visual_update(cfg);
 			return;
 		}
 		if (strcmp(key, btn_fields[i].action_key) == 0) {
