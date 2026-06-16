@@ -71,37 +71,33 @@ struct cow_box cow_titlebar_squeezed_rect(const struct cow_view *);
  */
 bool cow_titlebar_hit(const struct cow_view *, int, int);
 
-/*
- * Render the titlebar (background + relief + text + vector buttons) directly
- * into the decoration frame pixel buffer.
- *
- * `pixels` is the full frame buffer (frame_w x frame_h).
- * `stride_px` is stride in uint32_t units.
- * `frame_w` is the total frame width.
- * `border_width` is the border around the frame.
- * `tb_rect` is the titlebar drawing rectangle inside the decoration
- *    buffer (see cow_titlebar_squeezed_rect()).  For unsqueezed views
- *    this spans the full inner width; for squeezed views it is
- *    narrower, and pixels outside this rect (but inside the
- *    full-width strip) are cleared to transparent.
- * `title` is the window title string (can be NULL).
- * `active` selects active or inactive colors.
- * `font` is the pango font to use for title text.
- *
- * `pressed_button`: -1 = none, 0/1/2 = button with sunken frame relief
- * `icon_inverted_button`: -1 = none, 0/1/2 = button with swapped icon relief
- * `title_pressed`: true = title area drawn sunken (during drag)
- *
- * tab_titles: array of n_tabs strings (app_id or title per member).
- *             NULL means single-window mode (normal rendering).
- * n_tabs:     number of tab labels (>1 means container tab strip).
- * active_tab: index of the active member in tab_titles.
- * drop_target: when true, draw a highlight border on the title strip
- *              to indicate this window is the current drop target.
- */
-void cow_titlebar_render(uint32_t *, int, int, int, struct cow_box,
-    const char *, bool, struct cow_font *, int, int, bool,
-    const struct cow_titlebar_config *, const struct cow_container_config *,
-    const float *, const float *, bool, const char **, int, int, bool);
+struct cow_titlebar_render_ctx {
+	uint32_t       *pixels;
+	int		stride_px;
+	int		frame_w;
+	int		border_width;
+	struct cow_box tb_rect;
+
+	const char     *title;
+	bool		active;
+	struct cow_font *font;
+
+	int  pressed_button;
+	int  icon_inverted_button;
+	bool title_pressed;
+
+	const struct cow_titlebar_config	 *tb_cfg;
+	const struct cow_container_config *container_cfg;
+	const float			 *style_colour;
+	const float			 *style_fg;
+	bool				  sticky;
+
+	const char **tab_titles;
+	int	     n_tabs;
+	int	     active_tab;
+	bool	     drop_target;
+};
+
+void cow_titlebar_render(const struct cow_titlebar_render_ctx *);
 
 #endif

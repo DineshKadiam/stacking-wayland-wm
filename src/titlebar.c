@@ -232,14 +232,30 @@ draw_fvwm_relief(uint32_t *pixels, int stride, int rx, int ry, int rw, int rh,
 }
 
 void
-cow_titlebar_render(uint32_t *pixels, int stride_px, int frame_w,
-    int border_width, struct cow_box tb_rect, const char *title, bool active,
-    struct cow_font *font, int pressed_button, int icon_inverted_button,
-    bool title_pressed, const struct cow_titlebar_config *tb_cfg,
-    const struct cow_container_config *cc, const float *style_colour,
-    const float *style_fg, bool sticky, const char **tab_titles, int n_tabs,
-    int active_tab, bool drop_target)
+cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 {
+	uint32_t			      *pixels = ctx->pixels;
+	int			       stride_px = ctx->stride_px;
+	int			       frame_w = ctx->frame_w;
+	int			       border_width = ctx->border_width;
+	struct cow_box		       tb_rect = ctx->tb_rect;
+	const char		      *title = ctx->title;
+	bool			       active = ctx->active;
+	struct cow_font		      *font = ctx->font;
+	int			       pressed_button = ctx->pressed_button;
+	int			       icon_inverted_button =
+				    ctx->icon_inverted_button;
+	bool			       title_pressed = ctx->title_pressed;
+	const struct cow_titlebar_config *tb_cfg = ctx->tb_cfg;
+	const struct cow_container_config *cc = ctx->container_cfg;
+	const float		      *style_colour = ctx->style_colour;
+	const float		      *style_fg = ctx->style_fg;
+	bool			       sticky = ctx->sticky;
+	const char		     **tab_titles = ctx->tab_titles;
+	int			       n_tabs = ctx->n_tabs;
+	int			       active_tab = ctx->active_tab;
+	bool			       drop_target = ctx->drop_target;
+
 	if (tb_rect.height <= 0 || tb_rect.width <= 0 ||
 	    frame_w <= 2 * border_width)
 		return;

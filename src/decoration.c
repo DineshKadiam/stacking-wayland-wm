@@ -597,12 +597,30 @@ cow_decoration_update(struct cow_view *view, bool active)
 			 */
 			struct cow_box tb_rect = cow_titlebar_squeezed_rect(
 			    view);
-			cow_titlebar_render(dec->buffer->data, stride_px,
-			    frame_w, bw, tb_rect, display_title, active, font,
-			    view->pressed_button, view->icon_inverted_button,
-			    view->title_pressed, &view->cfg.titlebar,
-			    &view->cfg.container, tb_colour, tb_fg, is_sticky,
-			    tab_titles, n_tabs, active_tab, is_drop_target);
+			struct cow_titlebar_render_ctx tbctx = {
+				.pixels = dec->buffer->data,
+				.stride_px = stride_px,
+				.frame_w = frame_w,
+				.border_width = bw,
+				.tb_rect = tb_rect,
+				.title = display_title,
+				.active = active,
+				.font = font,
+				.pressed_button = view->pressed_button,
+				.icon_inverted_button =
+				    view->icon_inverted_button,
+				.title_pressed = view->title_pressed,
+				.tb_cfg = &view->cfg.titlebar,
+				.container_cfg = &view->cfg.container,
+				.style_colour = tb_colour,
+				.style_fg = tb_fg,
+				.sticky = is_sticky,
+				.tab_titles = tab_titles,
+				.n_tabs = n_tabs,
+				.active_tab = active_tab,
+				.drop_target = is_drop_target,
+			};
+			cow_titlebar_render(&tbctx);
 			xfree(display_title);
 			xfree(tab_titles);
 		}
