@@ -322,9 +322,7 @@ struct cow_config {
 
 	/*
 	 * Upper bound for layer numbers.  Assignments above this cap are
-	 * clamped.  Lowering max_layer below an existing window's layer
-	 * does NOT silently rewrite that window; callers can re-run
-	 * `winops -L =top` to bring it down.
+	 * clamped.  Lowering max_layer also clamps existing window layers.
 	 */
 	uint8_t max_layer;
 
