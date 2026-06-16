@@ -43,6 +43,19 @@
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_set_exec(struct cmd *, struct cmd_q *);
+static enum cmd_retval set_desks_count(const char *, struct cmd_q *);
+static enum cmd_retval set_desktop_size(struct args *, struct cmd_q *);
+static enum cmd_retval set_titlebar_height(const char *, struct cmd_q *);
+static enum cmd_retval set_titlebar_squeeze(const char *, struct cmd_q *);
+static enum cmd_retval set_titlebar_squeeze_justify(const char *,
+    struct cmd_q *);
+static enum cmd_retval set_titlebar_squeeze_int(const char *, const char *,
+    struct cmd_q *);
+static enum cmd_retval set_container_tab_sunken(const char *, struct cmd_q *);
+static enum cmd_retval set_simple_bool(const char *, const char *);
+static enum cmd_retval set_simple_ms(const char *, const char *, long long,
+    long long, struct cmd_q *);
+static enum cmd_retval set_layer(const char *, const char *, struct cmd_q *);
 static void	       do_set_int(const char *, const char *, struct cmd_q *);
 static void do_set_colour(const char *, const char *, struct cmd_q *);
 static void do_set_border_style(const char *, struct cmd_q *);
@@ -123,37 +136,9 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 	char	   *val = cmd_argv_to_string(args->argc, args->argv, 1);
 
 	if (strcmp(key, "desks.count") == 0) {
-		char *end;
-		long  n = strtol(val, &end, 10);
-		if (val[0] == '\0' || *end != '\0' || n <= 0 ||
-		    n > COW_MAX_DESK_COUNT) {
-			cmdq_error(cmdq,
-			    "set: desks.count: expected 1..%d, got '%s'",
-			    COW_MAX_DESK_COUNT, val);
-			xfree(val);
-			return (CMD_RETURN_ERROR);
-		}
-		char *cause = NULL;
-
-		if (cow_ipc.startup_mode) {
-			cow_config->desk_count = (uint8_t)n;
-			xfree(val);
-			return (CMD_RETURN_NORMAL);
-		}
-
-		if (!cow_desk_sets_resize_all((uint8_t)n, &cause)) {
-			cmdq_error(cmdq, "%s", cause != NULL ? cause :
-				    "set: desks.count: failed");
-			xfree(cause);
-			xfree(val);
-			return (CMD_RETURN_ERROR);
-		}
-		cow_config->desk_count = (uint8_t)n;
-		xfree(cause);
-		cow_status_emit();
-		cow_wm_request_manage_dirty();
+		enum cmd_retval ret = set_desks_count(val, cmdq);
 		xfree(val);
-		return (CMD_RETURN_NORMAL);
+		return (ret);
 	}
 
 	if (strcmp(key, "border") == 0 || strcmp(key, "step") == 0 ||
@@ -195,46 +180,9 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	if (strcmp(key, "desktop_size") == 0) {
-		/* desktop_size N M: cols in argv[1], rows in argv[2]. */
-		if (args->argc < 3) {
-			cmdq_error(cmdq,
-			    "set: desktop_size: expected N M (e.g. 3 2)");
-			xfree(val);
-			return (CMD_RETURN_ERROR);
-		}
-		const char *errstr;
-		int	    cols = (int)strtonum(args->argv[1], 1, 99, &errstr);
-		if (errstr != NULL) {
-			cmdq_error(cmdq,
-			    "set: desktop_size: bad column count: %s",
-			    args->argv[1]);
-			xfree(val);
-			return (CMD_RETURN_ERROR);
-		}
-		int rows = (int)strtonum(args->argv[2], 1, 99, &errstr);
-		if (errstr != NULL) {
-			cmdq_error(cmdq, "set: desktop_size: bad row count: %s",
-			    args->argv[2]);
-			xfree(val);
-			return (CMD_RETURN_ERROR);
-		}
-		if (cow_config != NULL) {
-			cow_config->page_cols = cols;
-			cow_config->page_rows = rows;
-			/* Clamp windows/viewports outside the new grid at
-			 * runtime. Skip during startup: outputs have not
-			 * connected yet and cow_wm.outputs is empty, making the
-			 * list iteration unsafe. */
-			if (!cow_ipc.startup_mode) {
-				struct cow_output *out;
-				wl_list_for_each(out, &cow_wm.outputs, wm_link)
-				    cow_page_clamp_views(out);
-				cow_wm_request_manage_dirty();
-				pan_frames_update_all();
-			}
-		}
+		enum cmd_retval ret = set_desktop_size(args, cmdq);
 		xfree(val);
-		return (CMD_RETURN_NORMAL);
+		return (ret);
 	}
 
 	if (strcmp(key, "focus") == 0) {
@@ -262,121 +210,35 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	if (strcmp(key, "titlebar.height") == 0) {
-		const char *errstr;
-		long long   v = strtonum(val, 0, INT_MAX, &errstr);
-		if (errstr != NULL) {
-			cmdq_error(cmdq, "set: titlebar.height: bad value: %s",
-			    val);
-			xfree(val);
-			return (CMD_RETURN_ERROR);
-		}
-		struct cow_view_cfg *cfg = cfg_target(cmdq);
-		if (cfg != NULL) {
-			cfg->titlebar.height = (int)v;
-		} else if (cow_config != NULL) {
-			cow_config->titlebar.height = (int)v;
-			stamp_all_views_from_global();
-		}
-		refresh_visuals();
+		enum cmd_retval ret = set_titlebar_height(val, cmdq);
 		xfree(val);
-		return (CMD_RETURN_NORMAL);
+		return (ret);
 	}
 
 	if (strcmp(key, "titlebar.squeeze") == 0) {
-		enum cow_squeeze_mode m;
-		if (!cow_parse_squeeze_mode(val, &m)) {
-			cmdq_error(cmdq,
-			    "set: titlebar.squeeze: bad value: %s "
-			    "(expected none|natural|fixed)",
-			    val);
-			xfree(val);
-			return (CMD_RETURN_ERROR);
-		}
-		struct cow_view_cfg *cfg = cfg_target(cmdq);
-		if (cfg != NULL) {
-			cfg->titlebar.squeeze.mode = m;
-		} else if (cow_config != NULL) {
-			cow_config->titlebar.squeeze.mode = m;
-			stamp_all_views_from_global();
-		}
-		refresh_visuals();
+		enum cmd_retval ret = set_titlebar_squeeze(val, cmdq);
 		xfree(val);
-		return (CMD_RETURN_NORMAL);
+		return (ret);
 	}
 
 	if (strcmp(key, "titlebar.squeeze.justify") == 0) {
-		enum cow_squeeze_just j;
-		if (!cow_parse_squeeze_just(val, &j)) {
-			cmdq_error(cmdq,
-			    "set: titlebar.squeeze.justify: bad value: %s "
-			    "(expected left|centre|right)",
-			    val);
-			xfree(val);
-			return (CMD_RETURN_ERROR);
-		}
-		struct cow_view_cfg *cfg = cfg_target(cmdq);
-		if (cfg != NULL) {
-			cfg->titlebar.squeeze.justify = j;
-		} else if (cow_config != NULL) {
-			cow_config->titlebar.squeeze.justify = j;
-			stamp_all_views_from_global();
-		}
-		refresh_visuals();
+		enum cmd_retval ret = set_titlebar_squeeze_justify(val, cmdq);
 		xfree(val);
-		return (CMD_RETURN_NORMAL);
+		return (ret);
 	}
 
 	if (strcmp(key, "titlebar.squeeze.width") == 0 ||
 	    strcmp(key, "titlebar.squeeze.offset") == 0 ||
 	    strcmp(key, "titlebar.squeeze.min_width") == 0) {
-		const char *errstr;
-		/* offset is signed; width/min_width are non-negative. */
-		long long lo = (strcmp(key, "titlebar.squeeze.offset") == 0) ?
-		    -32768 :
-		    0;
-		long long v  = strtonum(val, lo, 32767, &errstr);
-		if (errstr != NULL) {
-			cmdq_error(cmdq, "set: %s: bad value: %s", key, val);
-			xfree(val);
-			return (CMD_RETURN_ERROR);
-		}
-		struct cow_view_cfg	    *cfg = cfg_target(cmdq);
-		struct cow_titlebar_squeeze *sq	 = NULL;
-		if (cfg != NULL)
-			sq = &cfg->titlebar.squeeze;
-		else if (cow_config != NULL)
-			sq = &cow_config->titlebar.squeeze;
-		if (sq != NULL) {
-			if (strcmp(key, "titlebar.squeeze.width") == 0)
-				sq->width = (int)v;
-			else if (strcmp(key, "titlebar.squeeze.offset") == 0)
-				sq->offset = (int)v;
-			else
-				sq->min_width = (int)v;
-			if (cfg == NULL)
-				stamp_all_views_from_global();
-			refresh_visuals();
-		}
+		enum cmd_retval ret = set_titlebar_squeeze_int(key, val, cmdq);
 		xfree(val);
-		return (CMD_RETURN_NORMAL);
+		return (ret);
 	}
 
 	if (strcmp(key, "container.tab.sunken") == 0) {
-		bool b;
-		if (!cmd_parse_bool(val, &b)) {
-			xfree(val);
-			return (CMD_RETURN_NORMAL);
-		}
-		struct cow_view_cfg *cfg = cfg_target(cmdq);
-		if (cfg != NULL) {
-			cfg->container.tab_sunken_inactive = b;
-		} else if (cow_config != NULL) {
-			cow_config->container.tab_sunken_inactive = b;
-			stamp_all_views_from_global();
-		}
+		enum cmd_retval ret = set_container_tab_sunken(val, cmdq);
 		xfree(val);
-		refresh_visuals();
-		return (CMD_RETURN_NORMAL);
+		return (ret);
 	}
 
 	if (strcmp(key, "edge_scroll") == 0) {
@@ -391,18 +253,9 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	if (strcmp(key, "edge_scroll_delay_ms") == 0) {
-		const char *errstr;
-		long long   v = strtonum(val, 50, 5000, &errstr);
-		if (errstr != NULL) {
-			cmdq_error(cmdq,
-			    "set: edge_scroll_delay_ms: bad value: %s", val);
-			xfree(val);
-			return (CMD_RETURN_ERROR);
-		}
-		if (cow_config != NULL)
-			cow_config->edge_scroll_delay_ms = (int)v;
+		enum cmd_retval ret = set_simple_ms(key, val, 50, 5000, cmdq);
 		xfree(val);
-		return (CMD_RETURN_NORMAL);
+		return (ret);
 	}
 
 	if (strcmp(key, "page_scroll_animate") == 0) {
@@ -414,69 +267,33 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	if (strcmp(key, "page_scroll_ms") == 0) {
-		const char *errstr;
-		long long   v = strtonum(val, 0, 5000, &errstr);
-		if (errstr != NULL) {
-			cmdq_error(cmdq, "set: page_scroll_ms: bad value: %s",
-			    val);
-			xfree(val);
-			return (CMD_RETURN_ERROR);
-		}
-		if (cow_config != NULL)
-			cow_config->page_scroll_ms = (int)v;
+		enum cmd_retval ret = set_simple_ms(key, val, 0, 5000, cmdq);
 		xfree(val);
-		return (CMD_RETURN_NORMAL);
+		return (ret);
 	}
 
 	if (strcmp(key, "repeat_delay_ms") == 0) {
-		const char *errstr;
-		long long   v = strtonum(val, 0, 10000, &errstr);
-		if (errstr != NULL) {
-			cmdq_error(cmdq, "set: repeat_delay_ms: %s: %s", val,
-			    errstr);
-			xfree(val);
-			return (CMD_RETURN_ERROR);
-		}
-		if (cow_config != NULL)
-			cow_config->repeat_delay_ms = (int)v;
+		enum cmd_retval ret = set_simple_ms(key, val, 0, 10000, cmdq);
 		xfree(val);
-		return (CMD_RETURN_NORMAL);
+		return (ret);
 	}
 
 	if (strcmp(key, "repeat_interval_ms") == 0) {
-		const char *errstr;
-		/* Floor at 1ms; 0 would mean "fire every loop iteration"
-		 * which is busy-loopable, and the protocol doesn't sync
-		 * fast enough for sub-ms repeats to be meaningful. */
-		long long v = strtonum(val, 1, 10000, &errstr);
-		if (errstr != NULL) {
-			cmdq_error(cmdq, "set: repeat_interval_ms: %s: %s", val,
-			    errstr);
-			xfree(val);
-			return (CMD_RETURN_ERROR);
-		}
-		if (cow_config != NULL)
-			cow_config->repeat_interval_ms = (int)v;
+		enum cmd_retval ret = set_simple_ms(key, val, 1, 10000, cmdq);
 		xfree(val);
-		return (CMD_RETURN_NORMAL);
+		return (ret);
 	}
 
 	if (strcmp(key, "raise_on_focus") == 0) {
-		bool b;
-		if (cow_config != NULL && cmd_parse_bool(val, &b)) {
-			cow_config->raise_on_focus = b;
-		}
+		enum cmd_retval ret = set_simple_bool(key, val);
 		xfree(val);
-		return (CMD_RETURN_NORMAL);
+		return (ret);
 	}
 
 	if (strcmp(key, "preserve_desk_on_output_loss") == 0) {
-		bool b;
-		if (cow_config != NULL && cmd_parse_bool(val, &b)) {
-			cow_config->preserve_desk_on_output_loss = b;
-		}
+		enum cmd_retval ret = set_simple_bool(key, val);
 		xfree(val);
-		return (CMD_RETURN_NORMAL);
+		return (ret);
 	}
 
 	if (strncmp(key, "titlebar.button_", 16) == 0) {
@@ -487,51 +304,278 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	if (strcmp(key, "default_layer") == 0 ||
 	    strcmp(key, "max_layer") == 0) {
-		const char *errstr;
-		long long   v = strtonum(val, 0, 255, &errstr);
-		if (errstr != NULL) {
-			cmdq_error(cmdq, "set: %s: bad value: %s", key, val);
-			xfree(val);
-			return (CMD_RETURN_ERROR);
-		}
-		if (cow_config != NULL) {
-			if (strcmp(key, "default_layer") == 0) {
-				int max = (int)cow_config->max_layer;
-				if ((int)v > max)
-					v = max;
-				cow_config->default_layer = (uint8_t)v;
-			} else {
-				/*
-				 * max_layer: clamp every existing view's
-				 * layer to the new cap so the invariant
-				 * (view->layer <= max_layer) holds for
-				 * subsequent stacking passes.
-				 */
-				cow_config->max_layer = (uint8_t)v;
-				if (cow_config->default_layer > (uint8_t)v)
-					cow_config->default_layer = (uint8_t)v;
-				struct cow_view *vw;
-				bool		 any = false;
-				wl_list_for_each(vw, &cow_wm.views, wm_link)
-				{
-					if (vw->layer > (uint8_t)v) {
-						vw->layer = (uint8_t)v;
-						any	  = true;
-					}
-				}
-				if (any) {
-					cow_stack_mark_dirty();
-					cow_wm_request_manage_dirty();
-				}
-			}
-		}
+		enum cmd_retval ret = set_layer(key, val, cmdq);
 		xfree(val);
-		return (CMD_RETURN_NORMAL);
+		return (ret);
 	}
 
 	cmdq_error(cmdq, "set: unknown key: %s", key);
 	xfree(val);
 	return (CMD_RETURN_ERROR);
+}
+
+static enum cmd_retval
+set_desks_count(const char *val, struct cmd_q *cmdq)
+{
+	char *end;
+	long  n = strtol(val, &end, 10);
+	if (val[0] == '\0' || *end != '\0' || n <= 0 ||
+	    n > COW_MAX_DESK_COUNT) {
+		cmdq_error(cmdq, "set: desks.count: expected 1..%d, got '%s'",
+		    COW_MAX_DESK_COUNT, val);
+		return (CMD_RETURN_ERROR);
+	}
+
+	if (cow_ipc.startup_mode) {
+		cow_config->desk_count = (uint8_t)n;
+		return (CMD_RETURN_NORMAL);
+	}
+
+	char *cause = NULL;
+	if (!cow_desk_sets_resize_all((uint8_t)n, &cause)) {
+		cmdq_error(cmdq, "%s", cause != NULL ? cause :
+			    "set: desks.count: failed");
+		xfree(cause);
+		return (CMD_RETURN_ERROR);
+	}
+	cow_config->desk_count = (uint8_t)n;
+	xfree(cause);
+	cow_status_emit();
+	cow_wm_request_manage_dirty();
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+set_desktop_size(struct args *args, struct cmd_q *cmdq)
+{
+	if (args->argc < 3) {
+		cmdq_error(cmdq, "set: desktop_size: expected N M (e.g. 3 2)");
+		return (CMD_RETURN_ERROR);
+	}
+
+	const char *errstr;
+	int	    cols = (int)strtonum(args->argv[1], 1, 99, &errstr);
+	if (errstr != NULL) {
+		cmdq_error(cmdq, "set: desktop_size: bad column count: %s",
+		    args->argv[1]);
+		return (CMD_RETURN_ERROR);
+	}
+	int rows = (int)strtonum(args->argv[2], 1, 99, &errstr);
+	if (errstr != NULL) {
+		cmdq_error(cmdq, "set: desktop_size: bad row count: %s",
+		    args->argv[2]);
+		return (CMD_RETURN_ERROR);
+	}
+
+	if (cow_config != NULL) {
+		cow_config->page_cols = cols;
+		cow_config->page_rows = rows;
+		if (!cow_ipc.startup_mode) {
+			struct cow_output *out;
+			wl_list_for_each(out, &cow_wm.outputs, wm_link)
+			    cow_page_clamp_views(out);
+			cow_wm_request_manage_dirty();
+			pan_frames_update_all();
+		}
+	}
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+set_titlebar_height(const char *val, struct cmd_q *cmdq)
+{
+	const char *errstr;
+	long long   v = strtonum(val, 0, INT_MAX, &errstr);
+	if (errstr != NULL) {
+		cmdq_error(cmdq, "set: titlebar.height: bad value: %s", val);
+		return (CMD_RETURN_ERROR);
+	}
+
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+	if (cfg != NULL) {
+		cfg->titlebar.height = (int)v;
+	} else if (cow_config != NULL) {
+		cow_config->titlebar.height = (int)v;
+		stamp_all_views_from_global();
+	}
+	refresh_visuals();
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+set_titlebar_squeeze(const char *val, struct cmd_q *cmdq)
+{
+	enum cow_squeeze_mode m;
+	if (!cow_parse_squeeze_mode(val, &m)) {
+		cmdq_error(cmdq,
+		    "set: titlebar.squeeze: bad value: %s "
+		    "(expected none|natural|fixed)",
+		    val);
+		return (CMD_RETURN_ERROR);
+	}
+
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+	if (cfg != NULL) {
+		cfg->titlebar.squeeze.mode = m;
+	} else if (cow_config != NULL) {
+		cow_config->titlebar.squeeze.mode = m;
+		stamp_all_views_from_global();
+	}
+	refresh_visuals();
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+set_titlebar_squeeze_justify(const char *val, struct cmd_q *cmdq)
+{
+	enum cow_squeeze_just j;
+	if (!cow_parse_squeeze_just(val, &j)) {
+		cmdq_error(cmdq,
+		    "set: titlebar.squeeze.justify: bad value: %s "
+		    "(expected left|centre|right)",
+		    val);
+		return (CMD_RETURN_ERROR);
+	}
+
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+	if (cfg != NULL) {
+		cfg->titlebar.squeeze.justify = j;
+	} else if (cow_config != NULL) {
+		cow_config->titlebar.squeeze.justify = j;
+		stamp_all_views_from_global();
+	}
+	refresh_visuals();
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+set_titlebar_squeeze_int(const char *key, const char *val, struct cmd_q *cmdq)
+{
+	const char *errstr;
+	long long   lo = (strcmp(key, "titlebar.squeeze.offset") == 0) ?
+	      -32768 :
+	      0;
+	long long v = strtonum(val, lo, 32767, &errstr);
+	if (errstr != NULL) {
+		cmdq_error(cmdq, "set: %s: bad value: %s", key, val);
+		return (CMD_RETURN_ERROR);
+	}
+
+	struct cow_view_cfg	    *cfg = cfg_target(cmdq);
+	struct cow_titlebar_squeeze *sq	 = NULL;
+	if (cfg != NULL)
+		sq = &cfg->titlebar.squeeze;
+	else if (cow_config != NULL)
+		sq = &cow_config->titlebar.squeeze;
+	if (sq != NULL) {
+		if (strcmp(key, "titlebar.squeeze.width") == 0)
+			sq->width = (int)v;
+		else if (strcmp(key, "titlebar.squeeze.offset") == 0)
+			sq->offset = (int)v;
+		else
+			sq->min_width = (int)v;
+		if (cfg == NULL)
+			stamp_all_views_from_global();
+		refresh_visuals();
+	}
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+set_container_tab_sunken(const char *val, struct cmd_q *cmdq)
+{
+	bool b;
+	if (!cmd_parse_bool(val, &b))
+		return (CMD_RETURN_NORMAL);
+
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+	if (cfg != NULL) {
+		cfg->container.tab_sunken_inactive = b;
+	} else if (cow_config != NULL) {
+		cow_config->container.tab_sunken_inactive = b;
+		stamp_all_views_from_global();
+	}
+	refresh_visuals();
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+set_simple_bool(const char *key, const char *val)
+{
+	bool b;
+	if (cow_config == NULL || !cmd_parse_bool(val, &b))
+		return (CMD_RETURN_NORMAL);
+	if (strcmp(key, "raise_on_focus") == 0)
+		cow_config->raise_on_focus = b;
+	else if (strcmp(key, "preserve_desk_on_output_loss") == 0)
+		cow_config->preserve_desk_on_output_loss = b;
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+set_simple_ms(const char *key, const char *val, long long lo, long long hi,
+    struct cmd_q *cmdq)
+{
+	const char *errstr;
+	long long   v = strtonum(val, lo, hi, &errstr);
+	if (errstr != NULL) {
+		if (strncmp(key, "repeat_", 7) == 0)
+			cmdq_error(cmdq, "set: %s: %s: %s", key, val, errstr);
+		else
+			cmdq_error(cmdq, "set: %s: bad value: %s", key, val);
+		return (CMD_RETURN_ERROR);
+	}
+	if (cow_config == NULL)
+		return (CMD_RETURN_NORMAL);
+	if (strcmp(key, "edge_scroll_delay_ms") == 0)
+		cow_config->edge_scroll_delay_ms = (int)v;
+	else if (strcmp(key, "page_scroll_ms") == 0)
+		cow_config->page_scroll_ms = (int)v;
+	else if (strcmp(key, "repeat_delay_ms") == 0)
+		cow_config->repeat_delay_ms = (int)v;
+	else if (strcmp(key, "repeat_interval_ms") == 0)
+		cow_config->repeat_interval_ms = (int)v;
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+set_layer(const char *key, const char *val, struct cmd_q *cmdq)
+{
+	const char *errstr;
+	long long   v = strtonum(val, 0, 255, &errstr);
+	if (errstr != NULL) {
+		cmdq_error(cmdq, "set: %s: bad value: %s", key, val);
+		return (CMD_RETURN_ERROR);
+	}
+	if (cow_config == NULL)
+		return (CMD_RETURN_NORMAL);
+
+	if (strcmp(key, "default_layer") == 0) {
+		int max = (int)cow_config->max_layer;
+		if ((int)v > max)
+			v = max;
+		cow_config->default_layer = (uint8_t)v;
+		return (CMD_RETURN_NORMAL);
+	}
+
+	cow_config->max_layer = (uint8_t)v;
+	if (cow_config->default_layer > (uint8_t)v)
+		cow_config->default_layer = (uint8_t)v;
+
+	struct cow_view *vw;
+	bool		 any = false;
+	wl_list_for_each(vw, &cow_wm.views, wm_link)
+	{
+		if (vw->layer > (uint8_t)v) {
+			vw->layer = (uint8_t)v;
+			any	  = true;
+		}
+	}
+	if (any) {
+		cow_stack_mark_dirty();
+		cow_wm_request_manage_dirty();
+	}
+	return (CMD_RETURN_NORMAL);
 }
 
 static void
