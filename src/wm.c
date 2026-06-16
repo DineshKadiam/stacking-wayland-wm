@@ -67,6 +67,14 @@ static void handle_wm_finished(void *, struct river_window_manager_v1 *);
 static void handle_wm_manage_start(void *, struct river_window_manager_v1 *);
 static void handle_wm_render_start(void *, struct river_window_manager_v1 *);
 static void drag_ghost_create(struct cow_view *);
+static void manage_destroy_removed(void);
+static void manage_tick_outputs(void);
+static void manage_configure_views(void);
+static void manage_process_seat(struct cow_seat *);
+static void manage_apply_deferred_views(void);
+static void manage_apply_focus(void);
+static void manage_apply_warp(void);
+static void manage_run_deferred_exec(void);
 
 static void handle_wm_session_locked(void *, struct river_window_manager_v1 *);
 static void handle_wm_session_unlocked(void *,
@@ -292,6 +300,32 @@ handle_wm_manage_start(__unused void *data,
 {
 	cow_wm.sequence = COW_WM_SEQUENCE_MANAGE;
 
+	manage_destroy_removed();
+	manage_tick_outputs();
+	manage_configure_views();
+
+	struct cow_seat *s;
+	wl_list_for_each(s, &cow_wm.seats, wm_link)
+		manage_process_seat(s);
+
+	if (cow_wm.exec_pending && !cow_wm.state_restored) {
+		cow_wm.state_restored = true;
+		cow_state_restore();
+	}
+
+	manage_apply_deferred_views();
+	manage_apply_focus();
+	manage_apply_warp();
+
+	river_window_manager_v1_manage_finish(manager);
+	cow_wm.sequence = COW_WM_SEQUENCE_NONE;
+
+	manage_run_deferred_exec();
+}
+
+static void
+manage_destroy_removed(void)
+{
 	struct cow_view *view, *view_tmp;
 	wl_list_for_each_safe(view, view_tmp, &cow_wm.views, wm_link)
 	{
@@ -312,547 +346,347 @@ handle_wm_manage_start(__unused void *data,
 		if (seat->removed)
 			cow_seat_destroy(seat);
 	}
+}
 
+static void
+manage_tick_outputs(void)
+{
 	struct cow_output *out;
 	wl_list_for_each(out, &cow_wm.outputs, wm_link)
 	{
 		cow_output_prepare_background(out);
-		/* Advance smooth page scroll animation if in progress */
 		cow_page_scroll_tick(out);
-		/* Edge-scroll dwell timer */
 		cow_output_pan_frame_tick(out);
 	}
+}
 
+static void
+manage_configure_views(void)
+{
+	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
 		if (!view->configured && !view->closed)
 			cow_view_configure(view);
 	}
+}
 
-	struct cow_seat *s;
-	wl_list_for_each(s, &cow_wm.seats, wm_link)
+static int
+titlebar_button_at(struct cow_view *view, int lx, int ly)
+{
+	int tt = view->dec.title_thickness;
+	int bw = view->dec.border_width;
+
+	if (!cow_titlebar_hit(view, lx, ly))
+		return (-1);
+
+	struct cow_box tbr = cow_titlebar_squeezed_rect(view);
+	int	       l   = tbr.x - bw;
+	int	       r   = l + tbr.width;
+	if (lx >= l && lx < l + tt)
+		return (0);
+	if (lx >= r - 2 * tt && lx < r - tt)
+		return (1);
+	if (lx >= r - tt && lx < r)
+		return (2);
+	return (-1);
+}
+
+static void
+manage_titlebar_button_release(struct cow_seat *seat)
+{
+	if (!seat->op_released ||
+	    seat->titlebar_press != COW_TITLEBAR_PRESS_BUTTON)
+		return;
+
+	struct cow_view *view = seat->pressed_view;
+	if (view != NULL && !view->closed) {
+		bool still_on_button = false;
+		if (seat->has_pointer_position) {
+			int lx = seat->pointer_x - view->x;
+			int ly = seat->pointer_y - view->y;
+			still_on_button = titlebar_button_at(view, lx, ly) ==
+			    seat->pressed_button_idx;
+		}
+		if (still_on_button) {
+			int bi = seat->pressed_button_idx;
+			if (bi >= 0 && bi < 3) {
+				enum cow_button_action act =
+				    view->cfg.titlebar.buttons[bi].action;
+				cow_wm.focused_view = view;
+				if (view->output != NULL)
+					cow_wm.current_output = view->output;
+				if (act == COW_BUTTON_ACTION_CLOSE)
+					river_window_v1_close(
+					    view->river_window);
+				else if (act == COW_BUTTON_ACTION_MAXIMIZE) {
+					if (view->maximized)
+						cow_view_unmaximize(view);
+					else
+						cow_view_maximize(view);
+				} else if (act == COW_BUTTON_ACTION_ICONIFY) {
+					cow_view_iconify(view);
+				}
+			}
+		}
+		view->pressed_button = -1;
+		view->dec.dirty	     = true;
+	}
+
+	river_seat_v1_op_end(seat->river_seat);
+	seat->op_in_progress = false;
+	seat->op_released    = false;
+	seat->titlebar_press = COW_TITLEBAR_PRESS_NONE;
+	seat->pressed_view   = NULL;
+}
+
+static void
+manage_update_container_drag(struct cow_seat *seat)
+{
+	if (!seat->container_drag || !seat->op_in_progress ||
+	    seat->op.type != COW_POINTER_OP_MOVE || !seat->has_pointer_position ||
+	    seat->op.view->container_member != NULL)
+		return;
+
+	struct cow_view *new_target = NULL;
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
-		cow_seat_enable_all_bindings(s);
-		cow_seat_process_bindings(s);
-
-		if (s->op_released &&
-		    s->titlebar_press == COW_TITLEBAR_PRESS_BUTTON) {
-			struct cow_view *pv = s->pressed_view;
-			if (pv != NULL && !pv->closed) {
-				bool still_on_button = false;
-				if (s->has_pointer_position) {
-					int tt = pv->dec.title_thickness;
-					int bw = pv->dec.border_width;
-					int lx = s->pointer_x - pv->x;
-					int ly = s->pointer_y - pv->y;
-					int bi = s->pressed_button_idx;
-					if (cow_titlebar_hit(pv, lx, ly)) {
-						struct cow_box tbr =
-						    cow_titlebar_squeezed_rect(
-							pv);
-						int btn_s = tt;
-						int tbr_l = tbr.x - bw;
-						int tbr_r = tbr_l + tbr.width;
-						int hit	  = -1;
-						if (lx >= tbr_l &&
-						    lx < tbr_l + btn_s)
-							hit = 0;
-						else if (lx >=
-							tbr_r - 2 * btn_s &&
-						    lx < tbr_r - btn_s)
-							hit = 1;
-						else if (lx >= tbr_r - btn_s &&
-						    lx < tbr_r)
-							hit = 2;
-						still_on_button = (hit == bi);
-					}
-				}
-				if (still_on_button) {
-					int bi = s->pressed_button_idx;
-					if (bi >= 0 && bi < 3) {
-						/* Per-view button action
-						 * lives on the view's
-						 * snapshot, not cow_config. */
-						enum cow_button_action act =
-						    pv->cfg.titlebar.buttons[bi]
-							.action;
-						cow_wm.focused_view = pv;
-						if (pv->output != NULL)
-							cow_wm.current_output =
-							    pv->output;
-						if (act ==
-						    COW_BUTTON_ACTION_CLOSE)
-							river_window_v1_close(
-							    pv->river_window);
-						else if (act ==
-						    COW_BUTTON_ACTION_MAXIMIZE) {
-							if (pv->maximized)
-								cow_view_unmaximize(
-								    pv);
-							else
-								cow_view_maximize(
-								    pv);
-						} else if (act ==
-						    COW_BUTTON_ACTION_ICONIFY) {
-							cow_view_iconify(pv);
-						}
-					}
-				}
-				/* Always restore button frame to raised after
-				 * release */
-				pv->pressed_button = -1;
-				pv->dec.dirty	   = true;
-			}
-			river_seat_v1_op_end(s->river_seat);
-			s->op_in_progress = false;
-			s->op_released	  = false;
-			s->titlebar_press = COW_TITLEBAR_PRESS_NONE;
-			s->pressed_view	  = NULL;
+		if (view->closed || view == seat->op.view)
+			continue;
+		if (view->output == NULL || !cow_view_visible(view, view->output))
+			continue;
+		struct cow_box fb = cow_view_frame_box(view);
+		if (seat->pointer_x >= fb.x &&
+		    seat->pointer_x < fb.x + fb.width &&
+		    seat->pointer_y >= fb.y &&
+		    seat->pointer_y < fb.y + fb.height) {
+			new_target = view;
+			break;
 		}
+	}
+	if (new_target == cow_wm.drag_drop_target)
+		return;
+	if (cow_wm.drag_drop_target != NULL)
+		cow_wm.drag_drop_target->dec.dirty = true;
+	cow_wm.drag_drop_target = new_target;
+	if (cow_wm.drag_drop_target != NULL)
+		cow_wm.drag_drop_target->dec.dirty = true;
+}
 
-		/* Process pointer operations (move/resize) */
-		cow_pointer_op_process(s);
+static enum cow_dec_region
+corner_region_from_edges(uint32_t edges)
+{
+	if (edges == (COW_EDGE_TOP | COW_EDGE_LEFT))
+		return (COW_DEC_REGION_NW);
+	if (edges == (COW_EDGE_TOP | COW_EDGE_RIGHT))
+		return (COW_DEC_REGION_NE);
+	if (edges == (COW_EDGE_BOTTOM | COW_EDGE_LEFT))
+		return (COW_DEC_REGION_SW);
+	if (edges == (COW_EDGE_BOTTOM | COW_EDGE_RIGHT))
+		return (COW_DEC_REGION_SE);
+	return (COW_DEC_REGION_NONE);
+}
 
-		/*
-		 * Container drag: scan for a drop target when a -C move is
-		 * in progress.  Highlight any window whose frame contains the
-		 * pointer.
-		 */
-		if (s->container_drag && s->op_in_progress &&
-		    s->op.type == COW_POINTER_OP_MOVE &&
-		    s->has_pointer_position &&
-		    s->op.view->container_member == NULL) {
-			/* Only scan for drop targets when the source is NOT
-			 * already containerised.  A -C drag from a
-			 * containerised view is an uncontainerise operation --
-			 * no highlight needed. */
-			struct cow_view *new_target = NULL;
-			struct cow_view *sv;
-			wl_list_for_each(sv, &cow_wm.views, wm_link)
-			{
-				if (sv->closed || sv == s->op.view)
-					continue;
-				if (sv->output == NULL ||
-				    !cow_view_visible(sv, sv->output))
-					continue;
-				/* Check pointer anywhere in the window's frame
-				 */
-				struct cow_box fb = cow_view_frame_box(sv);
-				if (s->pointer_x >= fb.x &&
-				    s->pointer_x < fb.x + fb.width &&
-				    s->pointer_y >= fb.y &&
-				    s->pointer_y < fb.y + fb.height) {
-					new_target = sv;
-					break;
-				}
-			}
-			/* Update indicator: mark old and new targets dirty */
-			if (new_target != cow_wm.drag_drop_target) {
-				if (cow_wm.drag_drop_target != NULL)
-					cow_wm.drag_drop_target->dec.dirty =
-					    true;
-				cow_wm.drag_drop_target = new_target;
-				if (cow_wm.drag_drop_target != NULL)
-					cow_wm.drag_drop_target->dec.dirty =
-					    true;
-			}
+static uint32_t
+decoration_corner_edges(struct cow_view *view, int lx, int ly, int cw, int ch)
+{
+	int  bw = view->dec.border_width;
+	int  tt = view->dec.title_thickness;
+	int  cl = view->cfg.corner_length;
+	bool in_titlebar_height;
+
+	if (cl < bw)
+		cl = bw;
+
+	int  frame_w   = cw + 2 * bw;
+	int  frame_h   = ch + tt + 2 * bw;
+	int  fx	       = lx + bw;
+	int  fy	       = ly + bw + tt;
+	bool in_border = (fx >= 0 && fx < frame_w && fy >= 0 &&
+	    fy < frame_h &&
+	    (fx < bw || fx >= frame_w - bw || fy < bw || fy >= frame_h - bw));
+	if (!in_border)
+		return (0);
+
+	bool in_tb_btn = false;
+	if (tt > 0 && ly >= -tt && ly < 0) {
+		if (lx >= 0 && lx < tt)
+			in_tb_btn = true;
+		if (lx >= cw - 2 * tt && lx < cw)
+			in_tb_btn = true;
+	}
+	in_titlebar_height = (tt > 0 && ly >= -tt && ly < 0);
+	if (in_titlebar_height)
+		return (0);
+
+	bool near_top	= (fy < cl);
+	bool near_bot	= (fy >= frame_h - cl);
+	bool near_left	= (fx < cl);
+	bool near_right = (fx >= frame_w - cl);
+
+	if (near_top && near_left && !in_tb_btn)
+		return (COW_EDGE_TOP | COW_EDGE_LEFT);
+	if (near_top && near_right && !in_tb_btn)
+		return (COW_EDGE_TOP | COW_EDGE_RIGHT);
+	if (near_bot && near_left)
+		return (COW_EDGE_BOTTOM | COW_EDGE_LEFT);
+	if (near_bot && near_right)
+		return (COW_EDGE_BOTTOM | COW_EDGE_RIGHT);
+	return (0);
+}
+
+static bool
+manage_container_tab_click(struct cow_seat *seat, struct cow_view *view, int lx,
+    int content_w)
+{
+	int		       btn_s = view->dec.title_thickness;
+	struct cow_container *ctr   = cow_view_container(view);
+
+	if (ctr == NULL || ctr->n_members <= 1)
+		return (false);
+
+	int strip_x = btn_s;
+	int strip_w = content_w - 3 * btn_s;
+	if (strip_w <= 0 || lx < strip_x || lx >= strip_x + strip_w)
+		return (false);
+
+	int tab_w = strip_w / ctr->n_members;
+	if (tab_w < 1)
+		tab_w = 1;
+	int tidx = (lx - strip_x) / tab_w;
+	if (tidx < 0)
+		tidx = 0;
+	if (tidx >= ctr->n_members)
+		tidx = ctr->n_members - 1;
+
+	struct cow_container_member *tm = NULL;
+	int			     ti = 0;
+	wl_list_for_each(tm, &ctr->members, link)
+	{
+		if (ti++ == tidx)
+			break;
+	}
+	if (tm == NULL || tm == ctr->active)
+		return (false);
+
+	cow_container_activate(ctr, tm);
+	seat->interacted_view = NULL;
+	return (true);
+}
+
+static void
+manage_decoration_click(struct cow_seat *seat, struct cow_view *view)
+{
+	int tt = view->dec.title_thickness;
+	int lx = seat->pointer_x - view->x;
+	int ly = seat->pointer_y - view->y;
+	int cw = view->sd != COW_SHADE_NONE ? view->shade_saved_width :
+					      view->content_width;
+	int ch = view->sd != COW_SHADE_NONE ? view->shade_saved_height :
+					      view->content_height;
+
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	int clicks = 1;
+	if (seat->last_click_view == view &&
+	    elapsed_ms(&seat->last_click_time, &now) < DOUBLE_CLICK_MS)
+		clicks = 2;
+
+	uint32_t edges = decoration_corner_edges(view, lx, ly, cw, ch);
+	if (edges != 0) {
+		cow_dec_binding_dispatch(seat, view,
+		    corner_region_from_edges(edges), clicks);
+	} else if (cow_titlebar_hit(view, lx, ly)) {
+		int hit_btn = titlebar_button_at(view, lx, ly);
+		if (hit_btn >= 0) {
+			view->pressed_button = hit_btn;
+			view->dec.dirty	     = true;
+			seat->titlebar_press = COW_TITLEBAR_PRESS_BUTTON;
+			seat->pressed_button_idx = hit_btn;
+			seat->pressed_view	= view;
+			river_seat_v1_op_start_pointer(seat->river_seat);
+			seat->op_in_progress = true;
+			seat->op_released    = false;
+		} else if (!manage_container_tab_click(seat, view, lx, cw)) {
+			cow_dec_binding_dispatch(seat, view,
+			    COW_DEC_REGION_TITLEBAR, clicks);
+		} else {
+			return;
 		}
-
-		/* Create drag ghost when container drag first starts */
-		if (s->container_drag && s->op_in_progress &&
-		    cow_wm.drag_ghost_surface == NULL &&
-		    cow_wm.drag_drop_source != NULL)
-			drag_ghost_create(cow_wm.drag_drop_source);
-
-		/* Handle focus + decoration click dispatch */
-		if (s->interacted_view != NULL && !s->interacted_view->closed) {
-			struct cow_view *iv = s->interacted_view;
-			cow_seat_focus_view(s, iv);
-
-			/*
-			 * Make this seat available to commands dispatched
-			 * by cow_dec_binding_fire (window-move,
-			 * window-resize, etc.) so their interactive op
-			 * binds to the seat that initiated the click, not
-			 * to the primary seat -- meaningful for multi-seat
-			 * configurations.  Cleared at the bottom of the
-			 * block.
-			 */
-			cow_wm.current_interaction_seat = s;
-
-			if (s->has_pointer_position && iv->use_ssd &&
-			    !s->op_in_progress) {
-				int bw = iv->dec.border_width;
-				int tt = iv->dec.title_thickness;
-				int lx = s->pointer_x - iv->x;
-				int ly = s->pointer_y - iv->y;
-				int cl = iv->cfg.corner_length;
-				if (cl < bw)
-					cl = bw;
-
-				int hit_cw = iv->sd != COW_SHADE_NONE ?
-				    iv->shade_saved_width :
-				    iv->content_width;
-				int hit_ch = iv->sd != COW_SHADE_NONE ?
-				    iv->shade_saved_height :
-				    iv->content_height;
-
-				/*
-				 * Double-click detection.  Any click on this
-				 * view's decoration within DOUBLE_CLICK_MS of
-				 * the previous one counts as a double-click;
-				 * the per-region dispatch below uses `clicks`
-				 * to look up (region, 2) bindings first,
-				 * falling back to (region, 1) or the built-in
-				 * defaults.  The titlebar-double-shade
-				 * behaviour that used to live here is now
-				 * the default action when no double-click
-				 * titlebar binding is registered; see
-				 * dispatch_dec_click in this file.
-				 *
-				 * Earlier this only tracked titlebar clicks,
-				 * so double-clicks on edges / corners were
-				 * impossible to detect.  Tracking every
-				 * decoration click means a user-bound
-				 * bind-decoration -2 N works the same way as
-				 * -2 titlebar.
-				 */
-				struct timespec now;
-				clock_gettime(CLOCK_MONOTONIC, &now);
-				int clicks = 1;
-				if (s->last_click_view == iv &&
-				    elapsed_ms(&s->last_click_time, &now) <
-					DOUBLE_CLICK_MS)
-					clicks = 2;
-
-				/* Corner resize detection.
-				 *
-				 * The corner zone is an L-shaped region at
-				 * each corner of the frame, extending `cl`
-				 * pixels along each edge.  The pointer must
-				 * be in the border area (not content) AND
-				 * within `cl` of a corner along either axis.
-				 *
-				 * This makes corners much easier to grab
-				 * than requiring the pointer to be within
-				 * `cl` of both edges simultaneously.
-				 */
-				int	 frame_w      = hit_cw + 2 * bw;
-				int	 frame_h      = hit_ch + tt + 2 * bw;
-				int	 fx	      = lx + bw;
-				int	 fy	      = ly + bw + tt;
-				bool	 in_corner    = false;
-				uint32_t corner_edges = 0;
-
-				/* Check if pointer is in the border area
-				 * (outside the content rectangle, excluding the
-				 * titlebar). The titlebar occupies bw <= fy <
-				 * bw+tt in frame coords; using fy < bw+tt would
-				 * erroneously include the entire titlebar in
-				 * the border zone, causing near_top=true for
-				 * all titlebar clicks and triggering false
-				 * corner resizes. Only the thin top-border
-				 * strip (fy < bw, i.e. ly < -tt) is a true
-				 * border. */
-				bool in_border = (fx >= 0 && fx < frame_w &&
-				    fy >= 0 && fy < frame_h &&
-				    (fx < bw || fx >= frame_w - bw || fy < bw ||
-					fy >= frame_h - bw));
-
-				if (in_border) {
-					bool near_top	= (fy < cl);
-					bool near_bot	= (fy >= frame_h - cl);
-					bool near_left	= (fx < cl);
-					bool near_right = (fx >= frame_w - cl);
-
-					/* Don't treat titlebar button areas as
-					 * corners. */
-					bool in_tb_btn = false;
-					if (tt > 0 && ly >= -tt && ly < 0) {
-						if (lx >= 0 && lx < tt)
-							in_tb_btn = true;
-						if (lx >= hit_cw - 2 * tt &&
-						    lx < hit_cw)
-							in_tb_btn = true;
-					}
-
-					/*
-					 * Don't trigger corner detection at
-					 * titlebar height. The left/right
-					 * border strips at titlebar height (lx
-					 * < 0 or lx >= hit_cw while -tt <= ly <
-					 * 0) fall into the titlebar dispatch
-					 * below, where they correctly start a
-					 * move.  Without this exclusion,
-					 * near_top is true for all such clicks
-					 * (cl >= bw+tt) and near_left/
-					 * near_right can also be true,
-					 * spuriously triggering corner resize.
-					 */
-					bool in_titlebar_height = (tt > 0 &&
-					    ly >= -tt && ly < 0);
-
-					if (!in_titlebar_height) {
-						if (near_top && near_left &&
-						    !in_tb_btn) {
-							corner_edges =
-							    COW_EDGE_TOP |
-							    COW_EDGE_LEFT;
-							in_corner = true;
-						} else if (near_top &&
-						    near_right && !in_tb_btn) {
-							corner_edges =
-							    COW_EDGE_TOP |
-							    COW_EDGE_RIGHT;
-							in_corner = true;
-						} else if (near_bot &&
-						    near_left) {
-							corner_edges =
-							    COW_EDGE_BOTTOM |
-							    COW_EDGE_LEFT;
-							in_corner = true;
-						} else if (near_bot &&
-						    near_right) {
-							corner_edges =
-							    COW_EDGE_BOTTOM |
-							    COW_EDGE_RIGHT;
-							in_corner = true;
-						}
-					}
-				}
-
-				if (in_corner && corner_edges != 0) {
-					/*
-					 * Corner click: dispatch via the
-					 * bind-decoration table.  Both
-					 * the historic diagonal-resize default
-					 * and any user override live there;
-					 * no C-side fallback is needed.
-					 */
-					enum cow_dec_region cr =
-					    COW_DEC_REGION_NONE;
-					if (corner_edges ==
-					    (COW_EDGE_TOP | COW_EDGE_LEFT))
-						cr = COW_DEC_REGION_NW;
-					else if (corner_edges ==
-					    (COW_EDGE_TOP | COW_EDGE_RIGHT))
-						cr = COW_DEC_REGION_NE;
-					else if (corner_edges ==
-					    (COW_EDGE_BOTTOM | COW_EDGE_LEFT))
-						cr = COW_DEC_REGION_SW;
-					else if (corner_edges ==
-					    (COW_EDGE_BOTTOM | COW_EDGE_RIGHT))
-						cr = COW_DEC_REGION_SE;
-					cow_dec_binding_dispatch(s, iv, cr, clicks);
-				} else if (cow_titlebar_hit(iv, lx, ly)) {
-					/*
-					 * Titlebar (below north border, above
-					 * content).  Button extents follow
-					 * the squeezed rect so buttons pack
-					 * to the left/right ends of the
-					 * *visible* titlebar, not the
-					 * full-frame strip.
-					 */
-					struct cow_box tbr =
-					    cow_titlebar_squeezed_rect(iv);
-					int btn_s = tt;
-					/* Convert tbr (decoration coords) to
-					 * view-relative: left = tbr.x - bw. */
-					int tbr_left  = tbr.x - bw;
-					int tbr_right = tbr_left + tbr.width;
-					int hit_btn   = -1;
-					if (lx >= tbr_left &&
-					    lx < tbr_left + btn_s)
-						hit_btn = 0;
-					else if (lx >= tbr_right - 2 * btn_s &&
-					    lx < tbr_right - btn_s)
-						hit_btn = 1;
-					else if (lx >= tbr_right - btn_s &&
-					    lx < tbr_right)
-						hit_btn = 2;
-
-					if (hit_btn >= 0) {
-						iv->pressed_button = hit_btn;
-						iv->dec.dirty	   = true;
-						s->titlebar_press =
-						    COW_TITLEBAR_PRESS_BUTTON;
-						s->pressed_button_idx = hit_btn;
-						s->pressed_view	      = iv;
-						river_seat_v1_op_start_pointer(
-						    s->river_seat);
-						s->op_in_progress = true;
-						s->op_released	  = false;
-					} else {
-						/*
-						 * Tab-click: if the view is
-						 * in a container with multiple
-						 * members, check if the click
-						 * landed on a tab label.
-						 *
-						 * Containers force squeeze
-						 * NONE (see
-						 * cow_titlebar_effective_squeeze),
-						 * so the tab strip still
-						 * spans the full content
-						 * width.
-						 */
-						struct cow_container *ctr =
-						    cow_view_container(iv);
-						if (ctr != NULL &&
-						    ctr->n_members > 1) {
-							int strip_x = btn_s;
-							int strip_w = hit_cw -
-							    3 * btn_s;
-							if (strip_w > 0 &&
-							    lx >= strip_x &&
-							    lx < strip_x +
-								    strip_w) {
-								int tab_w =
-								    strip_w /
-								    ctr->n_members;
-								if (tab_w < 1)
-									tab_w =
-									    1;
-								int tidx =
-								    (lx -
-									strip_x) /
-								    tab_w;
-								if (tidx < 0)
-									tidx =
-									    0;
-								if (tidx >=
-								    ctr->n_members)
-									tidx =
-									    ctr->n_members -
-									    1;
-								/* Activate if
-								 * different tab
-								 */
-								struct
-								    cow_container_member
-									*tm =
-									    NULL;
-								int ti = 0;
-								wl_list_for_each(
-								    tm,
-								    &ctr->members,
-								    link)
-								{
-									if (ti++ ==
-									    tidx)
-										break;
-								}
-								if (tm !=
-									NULL &&
-								    tm !=
-									ctr->active) {
-									cow_container_activate(
-									    ctr,
-									    tm);
-									s->interacted_view =
-									    NULL;
-									goto seat_done;
-								}
-							}
-						}
-						/*
-						 * Blank-titlebar click.
-						 * Dispatch via the
-						 * bind-decoration table.  The
-						 * built-in defaults
-						 * (single -> window-move,
-						 * double -> shade) live there
-						 * alongside any user
-						 * override; no inline
-						 * fallback is needed here.
-						 * Buttons and active tab
-						 * clicks above already
-						 * short-circuited so they
-						 * keep their semantics.
-						 */
-						cow_dec_binding_dispatch(s, iv,
-						    COW_DEC_REGION_TITLEBAR,
-						    clicks);
-					}
-				} else if (ly < -tt || ly >= hit_ch || lx < 0 ||
-				    lx >= hit_cw) {
-					/*
-					 * Border edge (not in content, not
-					 * in titlebar, not corner).  All
-					 * action lives in the
-					 * bind-decoration table -- the
-					 * historic one-axis resize default
-					 * is just a stock entry there.
-					 */
-					enum cow_dec_region er =
-					    COW_DEC_REGION_NONE;
-					if (ly < -tt)
-						er = COW_DEC_REGION_N;
-					else if (ly >= hit_ch)
-						er = COW_DEC_REGION_S;
-					else if (lx < 0)
-						er = COW_DEC_REGION_W;
-					else if (lx >= hit_cw)
-						er = COW_DEC_REGION_E;
-					cow_dec_binding_dispatch(s, iv, er, clicks);
-				}
-
-				/*
-				 * Record this click so the next one can be
-				 * detected as a double if it arrives within
-				 * DOUBLE_CLICK_MS on the same view.  A
-				 * successful double-click clears the state
-				 * so a third click starts a fresh single
-				 * (otherwise a triple click would alternate
-				 * single/double/single forever).  Otherwise
-				 * stamp the time of this click.
-				 */
-				if (clicks == 2) {
-					s->last_click_view = NULL;
-				} else {
-					s->last_click_view = iv;
-					s->last_click_time = now;
-				}
-			}
-			s->interacted_view = NULL;
-		}
-	seat_done:
-		/*
-		 * Clear the interaction-seat marker once the decoration
-		 * dispatch above is fully resolved (whether normal exit
-		 * or `goto seat_done` shortcut).  Commands fired beyond
-		 * this point (sloppy focus, deferred manage, …) must
-		 * not see a stale value.
-		 */
-		cow_wm.current_interaction_seat = NULL;
-
-		/* Sloppy focus */
-		if (s->sloppy_focus_view != NULL &&
-		    !s->sloppy_focus_view->closed &&
-		    s->sloppy_focus_view != s->focused_view) {
-			struct cow_view *sv = s->sloppy_focus_view;
-			river_seat_v1_focus_window(s->river_seat,
-			    sv->river_window);
-			s->focused_view	    = sv;
-			cow_wm.focused_view = sv;
-			if (sv->output != NULL)
-				cow_wm.current_output = sv->output;
-			cow_status_emit();
-		}
-		s->sloppy_focus_view = NULL;
+	} else if (ly < -tt || ly >= ch || lx < 0 || lx >= cw) {
+		enum cow_dec_region er = COW_DEC_REGION_NONE;
+		if (ly < -tt)
+			er = COW_DEC_REGION_N;
+		else if (ly >= ch)
+			er = COW_DEC_REGION_S;
+		else if (lx < 0)
+			er = COW_DEC_REGION_W;
+		else if (lx >= cw)
+			er = COW_DEC_REGION_E;
+		cow_dec_binding_dispatch(seat, view, er, clicks);
 	}
 
-	/* Restore saved state on the first manage cycle.  Must happen before
-	 * the pending_resize loop below so restored geometry is applied in
-	 * the same cycle via propose_dimensions. */
-	if (cow_wm.exec_pending && !cow_wm.state_restored) {
-		cow_wm.state_restored = true;
-		cow_state_restore();
+	if (clicks == 2) {
+		seat->last_click_view = NULL;
+	} else {
+		seat->last_click_view = view;
+		seat->last_click_time = now;
 	}
+}
 
-	/* Apply deferred geometry changes from IPC commands and
-	 * keybinding-invoked commands.  propose_dimensions is only
-	 * valid during the manage callback. */
+static void
+manage_interacted_view(struct cow_seat *seat)
+{
+	if (seat->interacted_view == NULL || seat->interacted_view->closed)
+		return;
+
+	struct cow_view *view = seat->interacted_view;
+	cow_seat_focus_view(seat, view);
+	cow_wm.current_interaction_seat = seat;
+	if (seat->has_pointer_position && view->use_ssd && !seat->op_in_progress)
+		manage_decoration_click(seat, view);
+	seat->interacted_view = NULL;
+	cow_wm.current_interaction_seat = NULL;
+}
+
+static void
+manage_sloppy_focus(struct cow_seat *seat)
+{
+	if (seat->sloppy_focus_view != NULL && !seat->sloppy_focus_view->closed &&
+	    seat->sloppy_focus_view != seat->focused_view) {
+		struct cow_view *view = seat->sloppy_focus_view;
+		river_seat_v1_focus_window(seat->river_seat,
+		    view->river_window);
+		seat->focused_view = view;
+		cow_wm.focused_view = view;
+		if (view->output != NULL)
+			cow_wm.current_output = view->output;
+		cow_status_emit();
+	}
+	seat->sloppy_focus_view = NULL;
+}
+
+static void
+manage_process_seat(struct cow_seat *seat)
+{
+	cow_seat_enable_all_bindings(seat);
+	cow_seat_process_bindings(seat);
+	manage_titlebar_button_release(seat);
+	cow_pointer_op_process(seat);
+	manage_update_container_drag(seat);
+	if (seat->container_drag && seat->op_in_progress &&
+	    cow_wm.drag_ghost_surface == NULL &&
+	    cow_wm.drag_drop_source != NULL)
+		drag_ghost_create(cow_wm.drag_drop_source);
+	manage_interacted_view(seat);
+	manage_sloppy_focus(seat);
+}
+
+static void
+manage_apply_deferred_views(void)
+{
+	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
 		if (view->pending_close && !view->closed) {
@@ -860,16 +694,6 @@ handle_wm_manage_start(__unused void *data,
 			view->pending_close = false;
 		}
 		if (view->pending_resize && !view->closed) {
-			/*
-			 * If the proposed dimensions are smaller than
-			 * the current buffer, defer the position update
-			 * until the dimensions ack arrives so the
-			 * rendered surface doesn't briefly bridge the
-			 * new position with the old (larger) size.  On
-			 * multi-output setups this transient looks like
-			 * the window momentarily overshoots into a
-			 * neighbouring monitor.
-			 */
 			bool shrinking =
 			    (view->pending_width < view->content_width ||
 				view->pending_height < view->content_height);
@@ -880,13 +704,10 @@ handle_wm_manage_start(__unused void *data,
 			} else {
 				view->x = view->pending_x;
 				view->y = view->pending_y;
-				if (view->output != NULL &&
-				    view->desk != NULL) {
-					view->vx = (view->x -
-						       view->output->x) +
+				if (view->output != NULL && view->desk != NULL) {
+					view->vx = (view->x - view->output->x) +
 					    view->desk->page_vx;
-					view->vy = (view->y -
-						       view->output->y) +
+					view->vy = (view->y - view->output->y) +
 					    view->desk->page_vy;
 				}
 			}
@@ -895,69 +716,68 @@ handle_wm_manage_start(__unused void *data,
 			view->pending_resize = false;
 			view->dec.dirty	     = true;
 		}
-		/* Note: clip box changes are rendering state and are
-		 * applied in handle_wm_render_start, not here. */
 	}
+}
 
-	/* Apply deferred focus from IPC/keybinding commands. */
+static void
+manage_apply_focus(void)
+{
 	if (cow_wm.pending_focus != NULL && !cow_wm.pending_focus->closed) {
-		struct cow_seat *fs;
-		wl_list_for_each(fs, &cow_wm.seats, wm_link)
+		struct cow_seat *seat;
+		wl_list_for_each(seat, &cow_wm.seats, wm_link)
 		{
-			cow_seat_focus_view(fs, cow_wm.pending_focus);
+			cow_seat_focus_view(seat, cow_wm.pending_focus);
 			break;
 		}
 		cow_wm.pending_focus = NULL;
 	}
 
-	/* Focus newly created windows. */
+	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
 		if (view->needs_focus && !view->closed) {
-			struct cow_seat *nfs = cow_seat_primary();
-			if (nfs != NULL)
-				cow_seat_focus_view(nfs, view);
+			struct cow_seat *seat = cow_seat_primary();
+			if (seat != NULL)
+				cow_seat_focus_view(seat, view);
 			view->needs_focus = false;
 		}
 	}
+}
 
-	/* Apply deferred pointer warp. */
-	if (cow_wm.pending_warp) {
-		struct cow_seat *ws;
-		wl_list_for_each(ws, &cow_wm.seats, wm_link)
-		{
-			river_seat_v1_pointer_warp(ws->river_seat,
-			    cow_wm.warp_x, cow_wm.warp_y);
-			break;
-		}
-		cow_wm.pending_warp = false;
+static void
+manage_apply_warp(void)
+{
+	if (!cow_wm.pending_warp)
+		return;
+
+	struct cow_seat *seat;
+	wl_list_for_each(seat, &cow_wm.seats, wm_link)
+	{
+		river_seat_v1_pointer_warp(seat->river_seat, cow_wm.warp_x,
+		    cow_wm.warp_y);
+		break;
+	}
+	cow_wm.pending_warp = false;
+}
+
+static void
+manage_run_deferred_exec(void)
+{
+	if (!cow_wm.exec_pending)
+		return;
+
+	cow_wm.exec_pending = false;
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (!view->closed)
+			view->dec.dirty = true;
 	}
 
-	river_window_manager_v1_manage_finish(manager);
-	cow_wm.sequence = COW_WM_SEQUENCE_NONE;
-
-	/* Run deferred exec commands on the first manage cycle. */
-	if (cow_wm.exec_pending) {
-		cow_wm.exec_pending = false;
-
-		/* Mark all existing views dirty so any rule-driven config
-		 * changes are picked up on the next render. */
-		struct cow_view *rv;
-		wl_list_for_each(rv, &cow_wm.views, wm_link)
-		{
-			if (!rv->closed)
-				rv->dec.dirty = true;
-		}
-
-		cow_exec_run_deferred();
-
-		/* Config is now fully loaded — create pan frames for any
-		 * edges that are scrollable according to the final config. */
-		pan_frames_update_all();
-
-		if (!cow_wm.restarted)
-			cow_rule_fire(COW_RULE_ON_START, NULL, NULL, NULL);
-	}
+	cow_exec_run_deferred();
+	pan_frames_update_all();
+	if (!cow_wm.restarted)
+		cow_rule_fire(COW_RULE_ON_START, NULL, NULL, NULL);
 }
 
 static void
