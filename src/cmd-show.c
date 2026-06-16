@@ -32,6 +32,7 @@
 #include "cow/ipc.h"
 #include "cow/output.h"
 #include "cow/rule.h"
+#include "cow/status.h"
 #include "cow/titlebar.h"
 #include "cow/view.h"
 #include "cow/wm.h"
@@ -215,18 +216,7 @@ do_show_output(int fd)
 	wl_list_for_each(out, &cow_wm.outputs, wm_link)
 	{
 		cJSON *o = cJSON_CreateObject();
-		cJSON_AddStringToObject(o, "name", out->name ? out->name : "");
-		cJSON_AddNumberToObject(o, "number", out->number);
-		struct cow_box geom = {
-			.x	= out->x,
-			.y	= out->y,
-			.width	= out->width,
-			.height = out->height,
-		};
-		cow_box_json_add(o, &geom);
-		cJSON *ua = cJSON_CreateObject();
-		cow_box_json_add(ua, &out->usable_area);
-		cJSON_AddItemToObject(o, "usable", ua);
+		cow_status_add_output_geometry(o, out);
 		cJSON_AddItemToArray(arr, o);
 	}
 	cow_ipc_respond_data(fd, arr);

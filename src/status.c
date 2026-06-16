@@ -27,6 +27,7 @@
 #include <event2/event.h>
 
 #include "cow/attrs.h"
+#include "cow/config.h"
 #include "cow/event.h"
 #include "cow/memory.h"
 #include "cow/output.h"
@@ -166,6 +167,83 @@ status_broadcast(const char *msg, size_t len)
 }
 
 void
+cow_status_add_output_geometry(cJSON *out, const struct cow_output *output)
+{
+	cJSON_AddStringToObject(out, "name", output->name ? output->name : "");
+	cJSON_AddNumberToObject(out, "number", output->number);
+
+	struct cow_box geom = {
+		.x	= output->x,
+		.y	= output->y,
+		.width	= output->width,
+		.height = output->height,
+	};
+	cow_box_json_add(out, &geom);
+
+	cJSON *ua = cJSON_CreateObject();
+	cow_box_json_add(ua, &output->usable_area);
+	cJSON_AddItemToObject(out, "usable", ua);
+}
+
+void
+cow_status_add_output_desks(cJSON *out, const struct cow_output *output)
+{
+	cJSON_AddBoolToObject(out, "current", output == cow_wm.current_output);
+	cJSON_AddNumberToObject(out, "current_desk",
+	    output->current_desk->nr);
+
+	cJSON *desks = cJSON_AddArrayToObject(out, "desks");
+	bool   global = cow_config->desktop_config == COW_DESKTOP_GLOBAL;
+	struct cow_desk *dk;
+	wl_list_for_each(dk, &output->desk_set.desks, set_link)
+	{
+		int		 count = 0;
+		struct cow_view *view;
+		wl_list_for_each(view, &cow_wm.views, wm_link)
+		{
+			if (view->closed)
+				continue;
+			if (!global && view->output != output)
+				continue;
+			if (view->desk == dk)
+				count++;
+		}
+
+		cJSON *d = cJSON_CreateObject();
+		cJSON_AddNumberToObject(d, "nr", dk->nr);
+		cJSON_AddStringToObject(d, "name",
+		    dk->name != NULL ? dk->name : "");
+		cJSON_AddNumberToObject(d, "windows", count);
+		cJSON_AddBoolToObject(d, "collected",
+		    (output->collected_desks & (1u << dk->nr)) != 0);
+		cJSON_AddBoolToObject(d, "active", dk == output->current_desk);
+		cJSON_AddItemToArray(desks, d);
+	}
+}
+
+void
+cow_status_add_output_pages(cJSON *out, const struct cow_output *output)
+{
+	int pw	  = output->usable_area.width;
+	int ph	  = output->usable_area.height;
+	int pcols = cow_config ? cow_config->page_cols : COW_CFG_DEFAULT_PAGE_COLS;
+	int prows = cow_config ? cow_config->page_rows : COW_CFG_DEFAULT_PAGE_ROWS;
+	int pcol  = (pw > 0 && pcols > 1) ? output->current_desk->page_vx / pw :
+					    0;
+	int prow  = (ph > 0 && prows > 1) ? output->current_desk->page_vy / ph :
+					    0;
+
+	cJSON_AddNumberToObject(out, "page_cols", pcols);
+	cJSON_AddNumberToObject(out, "page_rows", prows);
+	cJSON_AddNumberToObject(out, "page_col", pcol);
+	cJSON_AddNumberToObject(out, "page_row", prow);
+	cJSON_AddNumberToObject(out, "page_vx", output->current_desk->page_vx);
+	cJSON_AddNumberToObject(out, "page_vy", output->current_desk->page_vy);
+	cJSON_AddNumberToObject(out, "output_w", pw);
+	cJSON_AddNumberToObject(out, "output_h", ph);
+}
+
+void
 cow_status_emit(void)
 {
 	if (server_fd < 0)
@@ -179,76 +257,9 @@ cow_status_emit(void)
 	wl_list_for_each(output, &cow_wm.outputs, wm_link)
 	{
 		cJSON *out = cJSON_CreateObject();
-		cJSON_AddStringToObject(out, "name",
-		    output->name ? output->name : "");
-		cJSON_AddNumberToObject(out, "number", output->number);
-		cJSON_AddBoolToObject(out, "current",
-		    output == cow_wm.current_output);
-		cJSON_AddNumberToObject(out, "current_desk",
-		    output->current_desk->nr);
-
-		cJSON *desks = cJSON_AddArrayToObject(out, "desks");
-		bool global  = cow_config->desktop_config == COW_DESKTOP_GLOBAL;
-		struct cow_desk *dk;
-		wl_list_for_each(dk, &output->desk_set.desks, set_link)
-		{
-			int		 count = 0;
-			struct cow_view *v;
-			wl_list_for_each(v, &cow_wm.views, wm_link)
-			{
-				if (v->closed)
-					continue;
-				if (!global && v->output != output)
-					continue;
-				if (v->desk == dk)
-					count++;
-			}
-			cJSON *d = cJSON_CreateObject();
-			cJSON_AddNumberToObject(d, "nr", dk->nr);
-			cJSON_AddStringToObject(d, "name",
-			    dk->name != NULL ? dk->name : "");
-			cJSON_AddNumberToObject(d, "windows", count);
-			cJSON_AddBoolToObject(d, "collected",
-			    (output->collected_desks & (1u << dk->nr)) != 0);
-			cJSON_AddBoolToObject(d, "active",
-			    dk == output->current_desk);
-			cJSON_AddItemToArray(desks, d);
-		}
-
-		/* Page grid state */
-		int pw	  = output->usable_area.width;
-		int ph	  = output->usable_area.height;
-		int pcols = cow_config ? cow_config->page_cols :
-					 COW_CFG_DEFAULT_PAGE_COLS;
-		int prows = cow_config ? cow_config->page_rows :
-					 COW_CFG_DEFAULT_PAGE_ROWS;
-		int pcol  = (pw > 0 && pcols > 1) ?
-		     output->current_desk->page_vx / pw :
-		     0;
-		int prow  = (ph > 0 && prows > 1) ?
-		     output->current_desk->page_vy / ph :
-		     0;
-		cJSON_AddNumberToObject(out, "page_cols", pcols);
-		cJSON_AddNumberToObject(out, "page_rows", prows);
-		cJSON_AddNumberToObject(out, "page_col", pcol);
-		cJSON_AddNumberToObject(out, "page_row", prow);
-		/*
-		 * Raw sub-page viewport offsets in desk pixel space.
-		 * page_col / page_row are truncated to the page index
-		 * the viewport's top-left sits on -- but with the
-		 * `scroll` command (or an interactive scroll-drag) the
-		 * viewport can sit at an arbitrary offset between two
-		 * pages.  Emit the raw pixels too so cowpager can draw
-		 * the viewport's true position rather than snapping to
-		 * a whole-page cell.
-		 */
-		cJSON_AddNumberToObject(out, "page_vx",
-		    output->current_desk->page_vx);
-		cJSON_AddNumberToObject(out, "page_vy",
-		    output->current_desk->page_vy);
-		/* Usable area for cowpager window scaling */
-		cJSON_AddNumberToObject(out, "output_w", pw);
-		cJSON_AddNumberToObject(out, "output_h", ph);
+		cow_status_add_output_geometry(out, output);
+		cow_status_add_output_desks(out, output);
+		cow_status_add_output_pages(out, output);
 
 		cJSON_AddItemToArray(outputs, out);
 	}

@@ -18,6 +18,7 @@
 
 struct cow_view;
 struct cow_output;
+struct cJSON;
 
 /*
  * Initialize the status socket at $XDG_RUNTIME_DIR/cow-status.sock.
@@ -37,5 +38,9 @@ void cow_status_fini(void);
  * window open/close, title change).
  */
 void cow_status_emit(void);
+
+void cow_status_add_output_geometry(struct cJSON *, const struct cow_output *);
+void cow_status_add_output_desks(struct cJSON *, const struct cow_output *);
+void cow_status_add_output_pages(struct cJSON *, const struct cow_output *);
 
 #endif
