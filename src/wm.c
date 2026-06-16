@@ -950,6 +950,8 @@ handle_wm_manage_start(__unused void *data,
 		/* Config is now fully loaded — create pan frames for any
 		 * edges that are scrollable according to the final config. */
 		pan_frames_update_all();
+
+		cow_rule_fire(COW_RULE_ON_START, NULL, NULL, NULL);
 	}
 }
 

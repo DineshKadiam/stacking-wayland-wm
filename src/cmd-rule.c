@@ -178,11 +178,15 @@ do_rule_add(struct args *args, struct cmd_q *cmdq)
 		cmdq_error(cmdq, "rule: unknown event: %s", T_val);
 		return false;
 	}
+	if (type == COW_RULE_ON_START && t_val != NULL) {
+		cmdq_error(cmdq, "rule: -t is not valid for event %s", T_val);
+		return false;
+	}
 
 	/* -s only meaningful for view-bearing events. */
 	if (s_val != NULL &&
 	    (type == COW_RULE_ON_NEW_DESK || type == COW_RULE_ON_NEW_PAGE ||
-		type == COW_RULE_ON_RESTART ||
+		type == COW_RULE_ON_START || type == COW_RULE_ON_RESTART ||
 		type == COW_RULE_ON_OUTPUTS_CHANGED)) {
 		cmdq_error(cmdq, "rule: -s is not valid for event %s", T_val);
 		return false;

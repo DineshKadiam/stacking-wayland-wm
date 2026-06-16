@@ -507,6 +507,8 @@ The following table shows which events are available:
 :  Fired a new desk is switched to.
 |  *on-new-page*
 :  Fired when a new page is switched to.
+|  *on-start*
+:  Fired once after *cow* has completed startup.  Use with *-g*.
 |  *on-restart*
 :  Fired when *cow* is restarted (can also happen via `-USR1` signal.
 |  *on-title-change*

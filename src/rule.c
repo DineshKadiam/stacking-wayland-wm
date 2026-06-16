@@ -43,6 +43,7 @@ static const struct {
 	{ COW_RULE_ON_LAYER_CHANGE, "on-layer-change" },
 	{ COW_RULE_ON_NEW_DESK,	"on-new-desk"     },
 	{ COW_RULE_ON_NEW_PAGE,	"on-new-page"     },
+	{ COW_RULE_ON_START,	      "on-start"	    },
 	{ COW_RULE_ON_RESTART,      "on-restart"	    },
 	{ COW_RULE_ON_TITLE_CHANGE, "on-title-change" },
 	{ COW_RULE_ON_OUTPUTS_CHANGED, "on-outputs-changed" },
@@ -250,6 +251,7 @@ event_carries_view(enum cow_rule_type type)
 		return true;
 	case COW_RULE_ON_NEW_DESK:
 	case COW_RULE_ON_NEW_PAGE:
+	case COW_RULE_ON_START:
 	case COW_RULE_ON_RESTART:
 	case COW_RULE_ON_DESK:
 	default:
@@ -317,12 +319,12 @@ cow_rule_fire_json(enum cow_rule_type type, struct cow_view *view,
 	struct cow_rule *rule;
 
 	/*
-	 * Output topology change: fire once per matching rule, no
+	 * Once-only view-less events: fire once per matching rule, no
 	 * view fan-out.  The rule body is typically a side-effecting
-	 * command (e.g. exec wlr-randr) that must not be repeated
-	 * per-view.
+	 * command that must not be repeated per-view.
 	 */
-	if (type == COW_RULE_ON_OUTPUTS_CHANGED) {
+	if (type == COW_RULE_ON_OUTPUTS_CHANGED ||
+	    type == COW_RULE_ON_START) {
 		wl_list_for_each(rule, &rules, link)
 		{
 			if (rule->type != type)
