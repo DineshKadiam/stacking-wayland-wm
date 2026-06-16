@@ -75,6 +75,7 @@ static void set_focus_option(const char *);
 static void set_placement_option(const char *, struct cmd_q *);
 static void set_font_option(const char *, struct cmd_q *);
 static void set_button_option(const char *, const char *, struct cmd_q *);
+static enum cow_button_action set_button_action(const char *);
 static void refresh_visuals(void);
 
 enum set_option_scope {
@@ -127,6 +128,51 @@ struct set_option {
 	long long	    lo;
 	long long	    hi;
 	unsigned int	    post;
+};
+
+enum set_button_part {
+	SET_BUTTON_VECTOR,
+	SET_BUTTON_ACTION,
+};
+
+struct set_button_option {
+	const char	     *key;
+	enum set_button_part part;
+	int		      idx;
+};
+
+static const struct set_button_option set_button_options[] = {
+	{
+		.key = "titlebar.button_left.vector",
+		.part = SET_BUTTON_VECTOR,
+		.idx = 0,
+	},
+	{
+		.key = "titlebar.button_left.action",
+		.part = SET_BUTTON_ACTION,
+		.idx = 0,
+	},
+	{
+		.key = "titlebar.button_right.vector",
+		.part = SET_BUTTON_VECTOR,
+		.idx = 1,
+	},
+	{
+		.key = "titlebar.button_right.action",
+		.part = SET_BUTTON_ACTION,
+		.idx = 1,
+	},
+	{
+		.key = "titlebar.button_right2.vector",
+		.part = SET_BUTTON_VECTOR,
+		.idx = 2,
+	},
+	{
+		.key = "titlebar.button_right2.action",
+		.part = SET_BUTTON_ACTION,
+		.idx = 2,
+	},
+	{ .key = NULL },
 };
 
 static const struct set_option set_options[] = {
@@ -1210,46 +1256,36 @@ set_font_option(const char *val, struct cmd_q *cmdq)
 static void
 set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 {
-	struct {
-		const char *vector_key;
-		const char *action_key;
-		int	    idx;
-	} btn_fields[] = {
-		{ "titlebar.button_left.vector",	 "titlebar.button_left.action",
-		    0								   },
-		{ "titlebar.button_right.vector",
-		    "titlebar.button_right.action",				    1  },
-		{ "titlebar.button_right2.vector",
-		    "titlebar.button_right2.action",				     2  },
-		{ NULL,			    NULL,			      -1 },
-	};
-
 	struct cow_view_cfg	    *cfg;
 	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
 
-	for (int i = 0; btn_fields[i].vector_key != NULL; i++) {
-		if (strcmp(key, btn_fields[i].vector_key) == 0) {
+	for (const struct set_button_option *opt = set_button_options;
+	    opt->key != NULL; opt++) {
+		if (strcmp(key, opt->key) != 0)
+			continue;
+		if (opt->part == SET_BUTTON_VECTOR) {
 			cow_parse_vector_button_string(
-			    &tb->buttons[btn_fields[i].idx].vector, val);
+			    &tb->buttons[opt->idx].vector, val);
 			finish_visual_update(cfg);
 			return;
 		}
-		if (strcmp(key, btn_fields[i].action_key) == 0) {
-			enum cow_button_action a;
-			if (strcmp(val, "close") == 0)
-				a = COW_BUTTON_ACTION_CLOSE;
-			else if (strcmp(val, "maximize") == 0)
-				a = COW_BUTTON_ACTION_MAXIMIZE;
-			else if (strcmp(val, "iconify") == 0)
-				a = COW_BUTTON_ACTION_ICONIFY;
-			else
-				a = COW_BUTTON_ACTION_NONE;
-			tb->buttons[btn_fields[i].idx].action = a;
-			if (cfg == NULL)
-				stamp_all_views_from_global();
-			return;
-		}
+		tb->buttons[opt->idx].action = set_button_action(val);
+		if (cfg == NULL)
+			stamp_all_views_from_global();
+		return;
 	}
+}
+
+static enum cow_button_action
+set_button_action(const char *val)
+{
+	if (strcmp(val, "close") == 0)
+		return (COW_BUTTON_ACTION_CLOSE);
+	if (strcmp(val, "maximize") == 0)
+		return (COW_BUTTON_ACTION_MAXIMIZE);
+	if (strcmp(val, "iconify") == 0)
+		return (COW_BUTTON_ACTION_ICONIFY);
+	return (COW_BUTTON_ACTION_NONE);
 }
 
 static void
