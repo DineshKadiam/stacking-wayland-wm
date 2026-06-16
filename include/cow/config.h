@@ -278,6 +278,7 @@ struct cow_config {
 		COW_DESKTOP_PER_OUTPUT,
 		COW_DESKTOP_SHARED,
 	} desktop_config;
+	uint8_t desk_count;
 
 	/* Virtual page grid: each desk has page_cols × page_rows pages.
 	 * Default 1×1 preserves the existing single-page behaviour. */

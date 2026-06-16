@@ -135,16 +135,20 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 		}
 		char *cause = NULL;
 
-		struct cow_output *co;
-		wl_list_for_each(co, &cow_wm.outputs, wm_link) {
-			if (!cow_desk_set_resize(co, (uint8_t)n, &cause)) {
-				cmdq_error(cmdq, "%s", cause != NULL ? cause :
-					    "set: desks.count: failed");
-				xfree(cause);
-				xfree(val);
-				return (CMD_RETURN_ERROR);
-			}
+		if (cow_ipc.startup_mode) {
+			cow_config->desk_count = (uint8_t)n;
+			xfree(val);
+			return (CMD_RETURN_NORMAL);
 		}
+
+		if (!cow_desk_sets_resize_all((uint8_t)n, &cause)) {
+			cmdq_error(cmdq, "%s", cause != NULL ? cause :
+				    "set: desks.count: failed");
+			xfree(cause);
+			xfree(val);
+			return (CMD_RETURN_ERROR);
+		}
+		cow_config->desk_count = (uint8_t)n;
 		xfree(cause);
 		cow_status_emit();
 		cow_wm_request_manage_dirty();

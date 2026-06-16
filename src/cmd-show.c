@@ -306,8 +306,8 @@ do_show_config(const char *ckey, int fd, struct cmd_q *cmdq)
 		if (out == NULL && !wl_list_empty(&cow_wm.outputs))
 			out = wl_container_of(cow_wm.outputs.next, out,
 			    wm_link);
-		val = cJSON_CreateNumber(
-		    out != NULL ? cow_desk_count(out) : 0);
+		val = cJSON_CreateNumber(out != NULL ? cow_desk_count(out) :
+		    cow_config->desk_count);
 	}
 	else {
 		cow_ipc_respond_error(fd, "show: unknown config key");

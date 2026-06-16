@@ -69,7 +69,10 @@ cow_desk_set_append_default(struct cow_output *output)
 void
 cow_desk_set_populate_defaults(struct cow_output *output)
 {
-	for (int i = 0; i < COW_DEFAULT_DESK_COUNT; i++)
+	uint8_t count = cow_config != NULL ? cow_config->desk_count :
+	    COW_DEFAULT_DESK_COUNT;
+
+	for (uint8_t i = 0; i < count; i++)
 		(void)cow_desk_set_append_default(output);
 }
 
@@ -396,5 +399,28 @@ cow_desk_set_resize(struct cow_output *output, uint8_t count, char **cause)
 	if (!resize_one_check(output, count, cause))
 		return (false);
 	resize_one_apply(output, count);
+	return (true);
+}
+
+bool
+cow_desk_sets_resize_all(uint8_t count, char **cause)
+{
+	if (count == 0) {
+		xasprintf(cause, "desks.count: must be > 0");
+		return (false);
+	}
+	if (count > COW_MAX_DESK_COUNT) {
+		xasprintf(cause, "desks.count: max %d", COW_MAX_DESK_COUNT);
+		return (false);
+	}
+
+	struct cow_output *o;
+	wl_list_for_each(o, &cow_wm.outputs, wm_link)
+	{
+		if (!resize_one_check(o, count, cause))
+			return (false);
+	}
+	wl_list_for_each(o, &cow_wm.outputs, wm_link)
+	    resize_one_apply(o, count);
 	return (true);
 }
