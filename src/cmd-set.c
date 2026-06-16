@@ -63,6 +63,10 @@ static enum cmd_retval set_titlebar_squeeze_int(const char *, const char *,
     struct cmd_q *);
 static enum cmd_retval set_layer(const char *, const char *, struct cmd_q *);
 static void do_set_colour(const char *, const char *, struct cmd_q *);
+static bool set_output_colour(const char *, const char *, struct cmd_q *);
+static bool set_border_colour(const char *, const char *, struct cmd_q *);
+static bool set_titlebar_colour(const char *, const char *, struct cmd_q *);
+static bool set_container_tab_colour(const char *, const char *, struct cmd_q *);
 static void do_set_border_style(const char *, struct cmd_q *);
 static void do_set_desktop_config(const char *, struct cmd_q *);
 static void do_set_focus(const char *);
@@ -908,14 +912,24 @@ set_layer(const char *key, const char *val, struct cmd_q *cmdq)
 static void
 do_set_colour(const char *key, const char *val, struct cmd_q *cmdq)
 {
-	/* Per-output background: output.colour.background.<name>.
-	 * Per-output, not per-view; no snapshot routing. */
+	if (set_output_colour(key, val, cmdq))
+		return;
+	if (set_titlebar_colour(key, val, cmdq))
+		return;
+	if (set_container_tab_colour(key, val, cmdq))
+		return;
+	(void)set_border_colour(key, val, cmdq);
+}
+
+static bool
+set_output_colour(const char *key, const char *val, struct cmd_q *cmdq)
+{
 	if (strncmp(key, "output.colour.background.", 25) == 0) {
 		const char *oname = key + 25;
 		float	    c[4];
 		if (!cow_colour_parse(val, c)) {
 			cmdq_error(cmdq, "set: invalid colour value");
-			return;
+			return (true);
 		}
 		struct cow_output *out;
 		wl_list_for_each(out, &cow_wm.outputs, wm_link)
@@ -926,50 +940,31 @@ do_set_colour(const char *key, const char *val, struct cmd_q *cmdq)
 				out->has_bg_colour = true;
 				out->bg_dirty	   = true;
 				refresh_visuals();
-				return;
+				return (true);
 			}
 		}
 		cmdq_error(cmdq, "set: unknown output: %s", oname);
-		return;
+		return (true);
 	}
 
-	/* Per-view-able from here on.  Each branch resolves the target
-	 * struct (view->cfg or cow_config) up front, then writes the
-	 * parsed colour into it.  After a global write, all snapshots
-	 * are restamped. */
-	struct cow_view_cfg *cfg = cfg_target(cmdq);
+	if (strcmp(key, "output.colour.background") != 0)
+		return (false);
 
-	/* Uniform colour shortcuts */
-	if (strcmp(key, "colour.active") == 0 ||
-	    strcmp(key, "colour.inactive") == 0) {
-		float c[4];
-		if (!cow_colour_parse(val, c)) {
-			cmdq_error(cmdq, "set: invalid colour value");
-			return;
-		}
-		bool is_active = (strcmp(key, "colour.active") == 0);
-		struct cow_border_colour *bc;
-		if (cfg != NULL) {
-			bc = is_active ? &cfg->border_active :
-					 &cfg->border_inactive;
-		} else {
-			bc = is_active ? &cow_config->border_active :
-					 &cow_config->border_inactive;
-		}
-		memcpy(bc->n, c, sizeof(float) * 4);
-		memcpy(bc->s, c, sizeof(float) * 4);
-		memcpy(bc->e, c, sizeof(float) * 4);
-		memcpy(bc->w, c, sizeof(float) * 4);
-		if (cfg == NULL)
-			stamp_all_views_from_global();
-		refresh_visuals();
-		return;
+	if (!cow_colour_parse(val, cow_config->output_bg_colour)) {
+		cmdq_error(cmdq, "set: invalid colour value");
+		return (true);
 	}
+	cow_config->has_output_bg_colour = true;
+	refresh_visuals();
+	return (true);
+}
 
-	/* Titlebar colours: foreground + background, active + inactive. */
+static bool
+set_titlebar_colour(const char *key, const char *val, struct cmd_q *cmdq)
+{
 	struct {
 		const char *name;
-		size_t	    cfg_off; /* offset into cow_view_cfg.titlebar */
+		size_t	    offset;
 	} tb_fields[] = {
 		{ "titlebar.active_colour",
 		    offsetof(struct cow_titlebar_config, active_colour) },
@@ -981,28 +976,34 @@ do_set_colour(const char *key, const char *val, struct cmd_q *cmdq)
 		    offsetof(struct cow_titlebar_config, fg_inactive) },
 		{ NULL, 0 },
 	};
+
 	for (int i = 0; tb_fields[i].name != NULL; i++) {
 		if (strcmp(key, tb_fields[i].name) != 0)
 			continue;
+		struct cow_view_cfg *cfg = cfg_target(cmdq);
 		struct cow_titlebar_config *tb = (cfg != NULL) ?
 		    &cfg->titlebar :
 		    &cow_config->titlebar;
-		float *ptr = (float *)((char *)tb + tb_fields[i].cfg_off);
+		float *ptr = (float *)((char *)tb + tb_fields[i].offset);
 		if (!cow_colour_parse(val, ptr)) {
 			cmdq_error(cmdq, "set: invalid colour value");
-			return;
+			return (true);
 		}
 		if (cfg == NULL)
 			stamp_all_views_from_global();
 		refresh_visuals();
-		return;
+		return (true);
 	}
+	return (false);
+}
 
-	/* Container tab colours */
+static bool
+set_container_tab_colour(const char *key, const char *val, struct cmd_q *cmdq)
+{
 	struct {
 		const char *name;
-		size_t	    fg_off; /* offset into cow_container_config */
-		size_t	    has_off;
+		size_t	    colour_offset;
+		size_t	    has_offset;
 	} ct_fields[] = {
 		{ "container.tab.active_colour",
 		    offsetof(struct cow_container_config, tab_active),
@@ -1019,52 +1020,65 @@ do_set_colour(const char *key, const char *val, struct cmd_q *cmdq)
 			has_tab_fg_inactive) },
 		{ NULL, 0, 0 },
 	};
+
 	for (int i = 0; ct_fields[i].name != NULL; i++) {
 		if (strcmp(key, ct_fields[i].name) != 0)
 			continue;
+		struct cow_view_cfg *cfg = cfg_target(cmdq);
 		struct cow_container_config *cc = (cfg != NULL) ?
 		    &cfg->container :
 		    &cow_config->container;
-		float *ptr = (float *)((char *)cc + ct_fields[i].fg_off);
-		bool  *has = (bool *)((char *)cc + ct_fields[i].has_off);
+		float *ptr = (float *)((char *)cc +
+		    ct_fields[i].colour_offset);
+		bool *has = (bool *)((char *)cc + ct_fields[i].has_offset);
 		if (!cow_colour_parse(val, ptr)) {
 			cmdq_error(cmdq, "set: invalid colour value");
-			return;
+			return (true);
 		}
 		*has = true;
 		if (cfg == NULL)
 			stamp_all_views_from_global();
 		refresh_visuals();
-		return;
+		return (true);
 	}
+	return (false);
+}
 
-	/* output.colour.background -- global-only (per-output bg lives
-	 * on cow_output via the .<name> form handled above). */
-	if (strcmp(key, "output.colour.background") == 0) {
-		if (!cow_colour_parse(val, cow_config->output_bg_colour)) {
-			cmdq_error(cmdq, "set: invalid colour value");
-			return;
-		}
-		cow_config->has_output_bg_colour = true;
-		refresh_visuals();
-		return;
-	}
-
-	/* Per-edge border colours: colour.{active,inactive}.{n,s,e,w,
-	 * nw,ne,sw,se}.  Resolve the cow_border_colour, then map the
-	 * suffix to the matching field. */
-	bool is_active	 = (strncmp(key, "colour.active.", 14) == 0);
-	bool is_inactive = (strncmp(key, "colour.inactive.", 16) == 0);
+static bool
+set_border_colour(const char *key, const char *val, struct cmd_q *cmdq)
+{
+	bool is_active = (strcmp(key, "colour.active") == 0 ||
+	    strncmp(key, "colour.active.", 14) == 0);
+	bool is_inactive = (strcmp(key, "colour.inactive") == 0 ||
+	    strncmp(key, "colour.inactive.", 16) == 0);
 
 	if (!is_active && !is_inactive)
-		return;
+		return (false);
 
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
 	struct cow_border_colour *bc;
 	if (cfg != NULL) {
 		bc = is_active ? &cfg->border_active : &cfg->border_inactive;
 	} else {
 		bc = is_active ? &cow_config->border_active :
 				 &cow_config->border_inactive;
+	}
+
+	float c[4];
+	if (strcmp(key, "colour.active") == 0 ||
+	    strcmp(key, "colour.inactive") == 0) {
+		if (!cow_colour_parse(val, c)) {
+			cmdq_error(cmdq, "set: invalid colour value");
+			return (true);
+		}
+		memcpy(bc->n, c, sizeof(float) * 4);
+		memcpy(bc->s, c, sizeof(float) * 4);
+		memcpy(bc->e, c, sizeof(float) * 4);
+		memcpy(bc->w, c, sizeof(float) * 4);
+		if (cfg == NULL)
+			stamp_all_views_from_global();
+		refresh_visuals();
+		return (true);
 	}
 
 	const char *edge = key + (is_active ? 14 : 16);
@@ -1091,12 +1105,12 @@ do_set_colour(const char *key, const char *val, struct cmd_q *cmdq)
 		ptr = bc->se;
 		has = &bc->has_se;
 	} else {
-		return;
+		return (true);
 	}
 
 	if (!cow_colour_parse(val, ptr)) {
 		cmdq_error(cmdq, "set: invalid colour value");
-		return;
+		return (true);
 	}
 	if (has != NULL)
 		*has = true;
@@ -1105,6 +1119,7 @@ do_set_colour(const char *key, const char *val, struct cmd_q *cmdq)
 	if (cfg == NULL)
 		stamp_all_views_from_global();
 	refresh_visuals();
+	return (true);
 }
 
 static void
