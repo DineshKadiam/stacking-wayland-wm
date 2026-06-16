@@ -56,11 +56,8 @@ static enum cmd_retval set_scalar_int(const struct set_option *, const char *,
 static enum cmd_retval set_desks_count(const char *, struct cmd_q *);
 static enum cmd_retval set_desktop_size(struct args *, struct cmd_q *);
 static enum cmd_retval set_titlebar_height(const char *, struct cmd_q *);
-static enum cmd_retval set_titlebar_squeeze(const char *, struct cmd_q *);
-static enum cmd_retval set_titlebar_squeeze_justify(const char *,
-    struct cmd_q *);
-static enum cmd_retval set_titlebar_squeeze_int(const char *, const char *,
-    struct cmd_q *);
+static enum cmd_retval set_titlebar_squeeze(const struct set_option *,
+    const char *, const char *, struct cmd_q *);
 static enum cmd_retval set_layer(const char *, const char *, struct cmd_q *);
 static void finish_visual_update(struct cow_view_cfg *);
 static struct cow_titlebar_config *target_titlebar(struct cmd_q *,
@@ -363,18 +360,27 @@ static const struct set_option set_options[] = {
 		.match = SET_MATCH_EXACT,
 		.scope = SET_SCOPE_MIXED,
 		.action = SET_ACTION_TITLEBAR_SQUEEZE_INT,
+		.config_offset = offsetof(struct cow_titlebar_squeeze, width),
+		.lo = 0,
+		.hi = 32767,
 	},
 	{
 		.name = "titlebar.squeeze.offset",
 		.match = SET_MATCH_EXACT,
 		.scope = SET_SCOPE_MIXED,
 		.action = SET_ACTION_TITLEBAR_SQUEEZE_INT,
+		.config_offset = offsetof(struct cow_titlebar_squeeze, offset),
+		.lo = -32768,
+		.hi = 32767,
 	},
 	{
 		.name = "titlebar.squeeze.min_width",
 		.match = SET_MATCH_EXACT,
 		.scope = SET_SCOPE_MIXED,
 		.action = SET_ACTION_TITLEBAR_SQUEEZE_INT,
+		.config_offset = offsetof(struct cow_titlebar_squeeze, min_width),
+		.lo = 0,
+		.hi = 32767,
 	},
 	{
 		.name = "container.tab.sunken",
@@ -694,11 +700,9 @@ set_option_exec(const struct set_option *opt, const char *key, const char *val,
 	case SET_ACTION_TITLEBAR_HEIGHT:
 		return (set_titlebar_height(val, cmdq));
 	case SET_ACTION_TITLEBAR_SQUEEZE:
-		return (set_titlebar_squeeze(val, cmdq));
 	case SET_ACTION_TITLEBAR_SQUEEZE_JUSTIFY:
-		return (set_titlebar_squeeze_justify(val, cmdq));
 	case SET_ACTION_TITLEBAR_SQUEEZE_INT:
-		return (set_titlebar_squeeze_int(key, val, cmdq));
+		return (set_titlebar_squeeze(opt, key, val, cmdq));
 	case SET_ACTION_LAYER:
 		return (set_layer(key, val, cmdq));
 	}
@@ -818,64 +822,43 @@ set_titlebar_height(const char *val, struct cmd_q *cmdq)
 }
 
 static enum cmd_retval
-set_titlebar_squeeze(const char *val, struct cmd_q *cmdq)
-{
-	enum cow_squeeze_mode m;
-	if (!cow_parse_squeeze_mode(val, &m)) {
-		cmdq_error(cmdq,
-		    "set: titlebar.squeeze: bad value: %s "
-		    "(expected none|natural|fixed)",
-		    val);
-		return (CMD_RETURN_ERROR);
-	}
-
-	struct cow_view_cfg	    *cfg;
-	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
-	tb->squeeze.mode = m;
-	finish_visual_update(cfg);
-	return (CMD_RETURN_NORMAL);
-}
-
-static enum cmd_retval
-set_titlebar_squeeze_justify(const char *val, struct cmd_q *cmdq)
-{
-	enum cow_squeeze_just j;
-	if (!cow_parse_squeeze_just(val, &j)) {
-		cmdq_error(cmdq,
-		    "set: titlebar.squeeze.justify: bad value: %s "
-		    "(expected left|centre|right)",
-		    val);
-		return (CMD_RETURN_ERROR);
-	}
-
-	struct cow_view_cfg	    *cfg;
-	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
-	tb->squeeze.justify = j;
-	finish_visual_update(cfg);
-	return (CMD_RETURN_NORMAL);
-}
-
-static enum cmd_retval
-set_titlebar_squeeze_int(const char *key, const char *val, struct cmd_q *cmdq)
+set_titlebar_squeeze(const struct set_option *opt, const char *key,
+    const char *val, struct cmd_q *cmdq)
 {
 	const char *errstr;
-	long long   lo = (strcmp(key, "titlebar.squeeze.offset") == 0) ?
-	      -32768 :
-	      0;
-	long long v = strtonum(val, lo, 32767, &errstr);
-	if (errstr != NULL) {
-		cmdq_error(cmdq, "set: %s: bad value: %s", key, val);
-		return (CMD_RETURN_ERROR);
-	}
-
 	struct cow_view_cfg	    *cfg;
 	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
-	if (strcmp(key, "titlebar.squeeze.width") == 0)
-		tb->squeeze.width = (int)v;
-	else if (strcmp(key, "titlebar.squeeze.offset") == 0)
-		tb->squeeze.offset = (int)v;
-	else
-		tb->squeeze.min_width = (int)v;
+
+	if (opt->action == SET_ACTION_TITLEBAR_SQUEEZE) {
+		enum cow_squeeze_mode m;
+		if (!cow_parse_squeeze_mode(val, &m)) {
+			cmdq_error(cmdq,
+			    "set: titlebar.squeeze: bad value: %s "
+			    "(expected none|natural|fixed)",
+			    val);
+			return (CMD_RETURN_ERROR);
+		}
+		tb->squeeze.mode = m;
+	} else if (opt->action == SET_ACTION_TITLEBAR_SQUEEZE_JUSTIFY) {
+		enum cow_squeeze_just j;
+		if (!cow_parse_squeeze_just(val, &j)) {
+			cmdq_error(cmdq,
+			    "set: titlebar.squeeze.justify: bad value: %s "
+			    "(expected left|centre|right)",
+			    val);
+			return (CMD_RETURN_ERROR);
+		}
+		tb->squeeze.justify = j;
+	} else {
+		long long v = strtonum(val, opt->lo, opt->hi, &errstr);
+		if (errstr != NULL) {
+			cmdq_error(cmdq, "set: %s: bad value: %s", key, val);
+			return (CMD_RETURN_ERROR);
+		}
+		int *ptr = (int *)((char *)&tb->squeeze + opt->config_offset);
+		*ptr = (int)v;
+	}
+
 	finish_visual_update(cfg);
 	return (CMD_RETURN_NORMAL);
 }
