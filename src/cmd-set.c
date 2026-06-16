@@ -71,12 +71,18 @@ static bool set_titlebar_colour(const char *, const char *, struct cmd_q *);
 static bool set_container_tab_colour(const char *, const char *, struct cmd_q *);
 static void set_border_style_option(const char *, struct cmd_q *);
 static void set_desktop_config_option(const char *, struct cmd_q *);
+static void set_desktop_config_global(void);
+static void set_desktop_config_shared(void);
+static bool desk_nr_used_except(struct cow_output *, uint8_t);
 static void set_focus_option(const char *);
 static void set_placement_option(const char *, struct cmd_q *);
 static void set_font_option(const char *, struct cmd_q *);
 static void set_button_option(const char *, const char *, struct cmd_q *);
 static enum cow_button_action set_button_action(const char *);
 static void refresh_visuals(void);
+static int  refreshed_title_thickness(struct cow_view *);
+static void refresh_view_visuals(struct cow_view *);
+static void refresh_output_visuals(struct cow_output *);
 
 enum set_option_scope {
 	SET_SCOPE_GLOBAL,
@@ -141,6 +147,28 @@ struct set_button_option {
 	int		      idx;
 };
 
+struct set_titlebar_colour_option {
+	const char *name;
+	size_t	    offset;
+};
+
+struct set_container_colour_option {
+	const char *name;
+	size_t	    colour_offset;
+	size_t	    has_offset;
+};
+
+struct set_border_edge {
+	const char *name;
+	size_t	    colour_offset;
+	size_t	    has_offset;
+};
+
+struct set_enum_option {
+	const char *name;
+	int	    value;
+};
+
 static const struct set_button_option set_button_options[] = {
 	{
 		.key = "titlebar.button_left.vector",
@@ -173,6 +201,105 @@ static const struct set_button_option set_button_options[] = {
 		.idx = 2,
 	},
 	{ .key = NULL },
+};
+
+static const struct set_enum_option set_border_style_options[] = {
+	{ "fvwm", COW_BORDER_STYLE_FVWM },
+	{ "mwm", COW_BORDER_STYLE_MWM },
+	{ NULL, COW_BORDER_STYLE_NONE },
+};
+
+static const struct set_enum_option set_focus_options[] = {
+	{ "sloppy", COW_FOCUS_MODE_SLOPPY },
+	{ NULL, COW_FOCUS_MODE_CLICK },
+};
+
+static const struct set_enum_option set_placement_options[] = {
+	{ "cascade", COW_PLACEMENT_CASCADE },
+	{ "undermouse", COW_PLACEMENT_UNDERMOUSE },
+	{ "centre", COW_PLACEMENT_CENTRE },
+	{ "center", COW_PLACEMENT_CENTRE },
+	{ NULL, -1 },
+};
+
+static const struct set_enum_option set_button_action_options[] = {
+	{ "close", COW_BUTTON_ACTION_CLOSE },
+	{ "maximize", COW_BUTTON_ACTION_MAXIMIZE },
+	{ "iconify", COW_BUTTON_ACTION_ICONIFY },
+	{ NULL, COW_BUTTON_ACTION_NONE },
+};
+
+static const struct set_titlebar_colour_option set_titlebar_colour_options[] = {
+	{
+		.name = "titlebar.active_colour",
+		.offset = offsetof(struct cow_titlebar_config, active_colour),
+	},
+	{
+		.name = "titlebar.inactive_colour",
+		.offset = offsetof(struct cow_titlebar_config, inactive_colour),
+	},
+	{
+		.name = "titlebar.fg_active",
+		.offset = offsetof(struct cow_titlebar_config, fg_active),
+	},
+	{
+		.name = "titlebar.fg_inactive",
+		.offset = offsetof(struct cow_titlebar_config, fg_inactive),
+	},
+	{ .name = NULL },
+};
+
+static const struct set_container_colour_option
+    set_container_colour_options[] = {
+	{
+		.name = "container.tab.active_colour",
+		.colour_offset = offsetof(struct cow_container_config,
+		    tab_active),
+		.has_offset = offsetof(struct cow_container_config,
+		    has_tab_active),
+	},
+	{
+		.name = "container.tab.inactive_colour",
+		.colour_offset = offsetof(struct cow_container_config,
+		    tab_inactive),
+		.has_offset = offsetof(struct cow_container_config,
+		    has_tab_inactive),
+	},
+	{
+		.name = "container.tab.fg_active",
+		.colour_offset = offsetof(struct cow_container_config,
+		    tab_fg_active),
+		.has_offset = offsetof(struct cow_container_config,
+		    has_tab_fg_active),
+	},
+	{
+		.name = "container.tab.fg_inactive",
+		.colour_offset = offsetof(struct cow_container_config,
+		    tab_fg_inactive),
+		.has_offset = offsetof(struct cow_container_config,
+		    has_tab_fg_inactive),
+	},
+	{ .name = NULL },
+};
+
+static const struct set_border_edge set_border_edges[] = {
+	{ .name = "n", .colour_offset = offsetof(struct cow_border_colour, n),
+	    .has_offset = SET_NO_OFFSET },
+	{ .name = "s", .colour_offset = offsetof(struct cow_border_colour, s),
+	    .has_offset = SET_NO_OFFSET },
+	{ .name = "e", .colour_offset = offsetof(struct cow_border_colour, e),
+	    .has_offset = SET_NO_OFFSET },
+	{ .name = "w", .colour_offset = offsetof(struct cow_border_colour, w),
+	    .has_offset = SET_NO_OFFSET },
+	{ .name = "nw", .colour_offset = offsetof(struct cow_border_colour, nw),
+	    .has_offset = offsetof(struct cow_border_colour, has_nw) },
+	{ .name = "ne", .colour_offset = offsetof(struct cow_border_colour, ne),
+	    .has_offset = offsetof(struct cow_border_colour, has_ne) },
+	{ .name = "sw", .colour_offset = offsetof(struct cow_border_colour, sw),
+	    .has_offset = offsetof(struct cow_border_colour, has_sw) },
+	{ .name = "se", .colour_offset = offsetof(struct cow_border_colour, se),
+	    .has_offset = offsetof(struct cow_border_colour, has_se) },
+	{ .name = NULL },
 };
 
 static const struct set_option set_options[] = {
@@ -978,27 +1105,13 @@ set_output_colour(const char *key, const char *val, struct cmd_q *cmdq)
 static bool
 set_titlebar_colour(const char *key, const char *val, struct cmd_q *cmdq)
 {
-	struct {
-		const char *name;
-		size_t	    offset;
-	} tb_fields[] = {
-		{ "titlebar.active_colour",
-		    offsetof(struct cow_titlebar_config, active_colour) },
-		{ "titlebar.inactive_colour",
-		    offsetof(struct cow_titlebar_config, inactive_colour) },
-		{ "titlebar.fg_active",
-		    offsetof(struct cow_titlebar_config, fg_active) },
-		{ "titlebar.fg_inactive",
-		    offsetof(struct cow_titlebar_config, fg_inactive) },
-		{ NULL, 0 },
-	};
-
-	for (int i = 0; tb_fields[i].name != NULL; i++) {
-		if (strcmp(key, tb_fields[i].name) != 0)
+	for (const struct set_titlebar_colour_option *opt =
+	    set_titlebar_colour_options; opt->name != NULL; opt++) {
+		if (strcmp(key, opt->name) != 0)
 			continue;
 		struct cow_view_cfg	    *cfg;
 		struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
-		float *ptr = (float *)((char *)tb + tb_fields[i].offset);
+		float *ptr = (float *)((char *)tb + opt->offset);
 		if (!cow_colour_parse(val, ptr)) {
 			cmdq_error(cmdq, "set: invalid colour value");
 			return (true);
@@ -1012,35 +1125,14 @@ set_titlebar_colour(const char *key, const char *val, struct cmd_q *cmdq)
 static bool
 set_container_tab_colour(const char *key, const char *val, struct cmd_q *cmdq)
 {
-	struct {
-		const char *name;
-		size_t	    colour_offset;
-		size_t	    has_offset;
-	} ct_fields[] = {
-		{ "container.tab.active_colour",
-		    offsetof(struct cow_container_config, tab_active),
-		    offsetof(struct cow_container_config, has_tab_active) },
-		{ "container.tab.inactive_colour",
-		    offsetof(struct cow_container_config, tab_inactive),
-		    offsetof(struct cow_container_config, has_tab_inactive) },
-		{ "container.tab.fg_active",
-		    offsetof(struct cow_container_config, tab_fg_active),
-		    offsetof(struct cow_container_config, has_tab_fg_active) },
-		{ "container.tab.fg_inactive",
-		    offsetof(struct cow_container_config, tab_fg_inactive),
-		    offsetof(struct cow_container_config,
-			has_tab_fg_inactive) },
-		{ NULL, 0, 0 },
-	};
-
-	for (int i = 0; ct_fields[i].name != NULL; i++) {
-		if (strcmp(key, ct_fields[i].name) != 0)
+	for (const struct set_container_colour_option *opt =
+	    set_container_colour_options; opt->name != NULL; opt++) {
+		if (strcmp(key, opt->name) != 0)
 			continue;
 		struct cow_view_cfg	     *cfg;
 		struct cow_container_config *cc = target_container(cmdq, &cfg);
-		float *ptr = (float *)((char *)cc +
-		    ct_fields[i].colour_offset);
-		bool *has = (bool *)((char *)cc + ct_fields[i].has_offset);
+		float *ptr = (float *)((char *)cc + opt->colour_offset);
+		bool  *has = (bool *)((char *)cc + opt->has_offset);
 		if (!cow_colour_parse(val, ptr)) {
 			cmdq_error(cmdq, "set: invalid colour value");
 			return (true);
@@ -1088,38 +1180,26 @@ set_border_colour(const char *key, const char *val, struct cmd_q *cmdq)
 	}
 
 	const char *edge = key + (is_active ? 14 : 16);
-	float	   *ptr;
-	bool	   *has = NULL;
-	if (strcmp(edge, "n") == 0)
-		ptr = bc->n;
-	else if (strcmp(edge, "s") == 0)
-		ptr = bc->s;
-	else if (strcmp(edge, "e") == 0)
-		ptr = bc->e;
-	else if (strcmp(edge, "w") == 0)
-		ptr = bc->w;
-	else if (strcmp(edge, "nw") == 0) {
-		ptr = bc->nw;
-		has = &bc->has_nw;
-	} else if (strcmp(edge, "ne") == 0) {
-		ptr = bc->ne;
-		has = &bc->has_ne;
-	} else if (strcmp(edge, "sw") == 0) {
-		ptr = bc->sw;
-		has = &bc->has_sw;
-	} else if (strcmp(edge, "se") == 0) {
-		ptr = bc->se;
-		has = &bc->has_se;
-	} else {
-		return (true);
+	const struct set_border_edge *edge_opt = NULL;
+	for (const struct set_border_edge *opt = set_border_edges;
+	    opt->name != NULL; opt++) {
+		if (strcmp(edge, opt->name) == 0) {
+			edge_opt = opt;
+			break;
+		}
 	}
+	if (edge_opt == NULL)
+		return (true);
 
+	float *ptr = (float *)((char *)bc + edge_opt->colour_offset);
 	if (!cow_colour_parse(val, ptr)) {
 		cmdq_error(cmdq, "set: invalid colour value");
 		return (true);
 	}
-	if (has != NULL)
+	if (edge_opt->has_offset != SET_NO_OFFSET) {
+		bool *has = (bool *)((char *)bc + edge_opt->has_offset);
 		*has = true;
+	}
 	if (bc->has_nw || bc->has_ne || bc->has_sw || bc->has_se)
 		bc->has_corners = true;
 	finish_visual_update(cfg);
@@ -1129,13 +1209,14 @@ set_border_colour(const char *key, const char *val, struct cmd_q *cmdq)
 static void
 set_border_style_option(const char *val, struct cmd_q *cmdq)
 {
-	enum cow_border_style style;
-	if (strcmp(val, "fvwm") == 0)
-		style = COW_BORDER_STYLE_FVWM;
-	else if (strcmp(val, "mwm") == 0)
-		style = COW_BORDER_STYLE_MWM;
-	else
-		style = COW_BORDER_STYLE_NONE;
+	enum cow_border_style style = COW_BORDER_STYLE_NONE;
+	for (const struct set_enum_option *opt = set_border_style_options;
+	    opt->name != NULL; opt++) {
+		if (strcmp(val, opt->name) == 0) {
+			style = opt->value;
+			break;
+		}
+	}
 
 	struct cow_view_cfg *cfg = cfg_target(cmdq);
 	if (cfg != NULL)
@@ -1149,64 +1230,11 @@ static void
 set_desktop_config_option(const char *val, struct cmd_q *cmdq)
 {
 	if (strcmp(val, "global") == 0) {
-		cow_config->desktop_config = COW_DESKTOP_GLOBAL;
-
-		if (cow_ipc.startup_mode)
-			return;
-
-		struct cow_output *cur = cow_wm.current_output;
-		if (cur != NULL) {
-			uint8_t		   desk = cur->current_desk->nr;
-			struct cow_output *o;
-			wl_list_for_each(o, &cow_wm.outputs, wm_link)
-			{
-				if (o != cur)
-					cow_desk_switch(o, desk);
-			}
-		}
+		set_desktop_config_global();
 	} else if (strcmp(val, "per-output") == 0) {
 		cow_config->desktop_config = COW_DESKTOP_PER_OUTPUT;
 	} else if (strcmp(val, "shared") == 0) {
-		/* Resolve desk conflicts before enabling shared mode. */
-		cow_config->desktop_config = COW_DESKTOP_PER_OUTPUT;
-
-		struct cow_output *o;
-		wl_list_for_each(o, &cow_wm.outputs, wm_link)
-		{
-			struct cow_output *other;
-			wl_list_for_each(other, &cow_wm.outputs, wm_link)
-			{
-				if (other == o)
-					continue;
-				if (other->current_desk->nr !=
-				    o->current_desk->nr)
-					continue;
-				struct cow_desk *cand;
-				wl_list_for_each(cand, &other->desk_set.desks,
-				    set_link)
-				{
-					bool		   used = false;
-					struct cow_output *chk;
-					wl_list_for_each(chk, &cow_wm.outputs,
-					    wm_link)
-					{
-						if (chk == other)
-							continue;
-						if (chk->current_desk->nr ==
-						    cand->nr) {
-							used = true;
-							break;
-						}
-					}
-					if (!used) {
-						cow_desk_switch(other,
-						    cand->nr);
-						break;
-					}
-				}
-			}
-		}
-		cow_config->desktop_config = COW_DESKTOP_SHARED;
+		set_desktop_config_shared();
 	} else {
 		cmdq_error(cmdq,
 		    "set: desktop-configuration: expected "
@@ -1218,25 +1246,91 @@ set_desktop_config_option(const char *val, struct cmd_q *cmdq)
 }
 
 static void
+set_desktop_config_global(void)
+{
+	cow_config->desktop_config = COW_DESKTOP_GLOBAL;
+
+	if (cow_ipc.startup_mode)
+		return;
+
+	struct cow_output *cur = cow_wm.current_output;
+	if (cur == NULL)
+		return;
+
+	uint8_t		   desk = cur->current_desk->nr;
+	struct cow_output *out;
+	wl_list_for_each(out, &cow_wm.outputs, wm_link)
+	{
+		if (out != cur)
+			cow_desk_switch(out, desk);
+	}
+}
+
+static void
+set_desktop_config_shared(void)
+{
+	cow_config->desktop_config = COW_DESKTOP_PER_OUTPUT;
+
+	struct cow_output *out;
+	wl_list_for_each(out, &cow_wm.outputs, wm_link)
+	{
+		struct cow_output *other;
+		wl_list_for_each(other, &cow_wm.outputs, wm_link)
+		{
+			if (other == out)
+				continue;
+			if (other->current_desk->nr != out->current_desk->nr)
+				continue;
+
+			struct cow_desk *cand;
+			wl_list_for_each(cand, &other->desk_set.desks, set_link)
+			{
+				if (desk_nr_used_except(other, cand->nr))
+					continue;
+				cow_desk_switch(other, cand->nr);
+				break;
+			}
+		}
+	}
+	cow_config->desktop_config = COW_DESKTOP_SHARED;
+}
+
+static bool
+desk_nr_used_except(struct cow_output *skip, uint8_t desk)
+{
+	struct cow_output *out;
+	wl_list_for_each(out, &cow_wm.outputs, wm_link)
+	{
+		if (out != skip && out->current_desk->nr == desk)
+			return (true);
+	}
+	return (false);
+}
+
+static void
 set_focus_option(const char *val)
 {
-	if (strcmp(val, "sloppy") == 0)
-		cow_config->focus_mode = COW_FOCUS_MODE_SLOPPY;
-	else
-		cow_config->focus_mode = COW_FOCUS_MODE_CLICK;
+	cow_config->focus_mode = COW_FOCUS_MODE_CLICK;
+	for (const struct set_enum_option *opt = set_focus_options;
+	    opt->name != NULL; opt++) {
+		if (strcmp(val, opt->name) == 0) {
+			cow_config->focus_mode = opt->value;
+			return;
+		}
+	}
 }
 
 static void
 set_placement_option(const char *val, struct cmd_q *cmdq)
 {
-	if (strcmp(val, "cascade") == 0)
-		cow_config->placement = COW_PLACEMENT_CASCADE;
-	else if (strcmp(val, "undermouse") == 0)
-		cow_config->placement = COW_PLACEMENT_UNDERMOUSE;
-	else if (strcmp(val, "centre") == 0 || strcmp(val, "center") == 0)
-		cow_config->placement = COW_PLACEMENT_CENTRE;
-	else
-		cmdq_error(cmdq, "set: placement: unknown mode: %s", val);
+	for (const struct set_enum_option *opt = set_placement_options;
+	    opt->name != NULL; opt++) {
+		if (strcmp(val, opt->name) == 0) {
+			cow_config->placement = opt->value;
+			return;
+		}
+	}
+	cmdq_error(cmdq, "set: placement: unknown mode: %s", val);
 }
 
 static void
@@ -1279,12 +1373,11 @@ set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 static enum cow_button_action
 set_button_action(const char *val)
 {
-	if (strcmp(val, "close") == 0)
-		return (COW_BUTTON_ACTION_CLOSE);
-	if (strcmp(val, "maximize") == 0)
-		return (COW_BUTTON_ACTION_MAXIMIZE);
-	if (strcmp(val, "iconify") == 0)
-		return (COW_BUTTON_ACTION_ICONIFY);
+	for (const struct set_enum_option *opt = set_button_action_options;
+	    opt->name != NULL; opt++) {
+		if (strcmp(val, opt->name) == 0)
+			return (opt->value);
+	}
 	return (COW_BUTTON_ACTION_NONE);
 }
 
@@ -1296,45 +1389,56 @@ refresh_visuals(void)
 
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
-	{
-		if (view->closed)
-			continue;
-		int new_tt = 0;
-		if (view->cfg.titlebar.enabled) {
-			int h = view->cfg.titlebar.height;
-			if (h > 0) {
-				new_tt = h;
-			} else {
-				struct cow_font tb_font;
-				const char     *fname = view->cfg.font_name ?
-					view->cfg.font_name :
-					"monospace 10";
-				cow_font_init(&tb_font, fname);
-				new_tt = cow_titlebar_compute_thickness(
-				    &tb_font);
-			}
-		}
-		view->dec.dirty		      = true;
-		view->dec.border_width	      = view->cfg.border;
-		view->dec.title_thickness     = new_tt;
-		view->dec.last_content_width  = -1;
-		view->dec.last_content_height = -1;
-		if (view->dec.buffer != NULL) {
-			cow_shm_buffer_destroy(view->dec.buffer);
-			view->dec.buffer = NULL;
-		}
-	}
+		refresh_view_visuals(view);
 
 	struct cow_output *output;
 	wl_list_for_each(output, &cow_wm.outputs, wm_link)
-	{
-		output->usable_area.x	   = output->x;
-		output->usable_area.y	   = output->y;
-		output->usable_area.width  = output->width;
-		output->usable_area.height = output->height;
-		cow_output_apply_reserved_area(output);
-		output->bg_dirty = true;
-	}
+		refresh_output_visuals(output);
 
 	cow_wm_manage_dirty_now();
+}
+
+static int
+refreshed_title_thickness(struct cow_view *view)
+{
+	if (!view->cfg.titlebar.enabled)
+		return (0);
+
+	if (view->cfg.titlebar.height > 0)
+		return (view->cfg.titlebar.height);
+
+	struct cow_font tb_font;
+	const char     *fname = view->cfg.font_name != NULL ?
+	      view->cfg.font_name :
+	      "monospace 10";
+	cow_font_init(&tb_font, fname);
+	return (cow_titlebar_compute_thickness(&tb_font));
+}
+
+static void
+refresh_view_visuals(struct cow_view *view)
+{
+	if (view->closed)
+		return;
+
+	view->dec.dirty		      = true;
+	view->dec.border_width	      = view->cfg.border;
+	view->dec.title_thickness     = refreshed_title_thickness(view);
+	view->dec.last_content_width  = -1;
+	view->dec.last_content_height = -1;
+	if (view->dec.buffer != NULL) {
+		cow_shm_buffer_destroy(view->dec.buffer);
+		view->dec.buffer = NULL;
+	}
+}
+
+static void
+refresh_output_visuals(struct cow_output *output)
+{
+	output->usable_area.x	    = output->x;
+	output->usable_area.y	    = output->y;
+	output->usable_area.width  = output->width;
+	output->usable_area.height = output->height;
+	cow_output_apply_reserved_area(output);
+	output->bg_dirty = true;
 }

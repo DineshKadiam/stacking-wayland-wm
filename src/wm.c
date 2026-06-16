@@ -61,6 +61,16 @@
 
 struct cow_wm cow_wm;
 
+struct dec_frame_hit {
+	int bw;
+	int tt;
+	int cl;
+	int frame_w;
+	int frame_h;
+	int fx;
+	int fy;
+};
+
 /* Forward declarations for protocol listeners */
 static void handle_wm_unavailable(void *, struct river_window_manager_v1 *);
 static void handle_wm_finished(void *, struct river_window_manager_v1 *);
@@ -72,9 +82,33 @@ static void manage_tick_outputs(void);
 static void manage_configure_views(void);
 static void manage_process_seat(struct cow_seat *);
 static void manage_apply_deferred_views(void);
+static void manage_apply_deferred_close(struct cow_view *);
+static void manage_apply_deferred_resize(struct cow_view *);
+static void manage_apply_deferred_position(struct cow_view *, bool);
 static void manage_apply_focus(void);
+static void manage_apply_pending_focus(void);
+static void manage_apply_needs_focus(void);
 static void manage_apply_warp(void);
 static void manage_run_deferred_exec(void);
+static void manage_mark_views_dirty(void);
+static void drag_ghost_draw(struct cow_shm_buffer *);
+static void drag_ghost_position_from_pointer(void);
+static void render_outputs(void);
+static void render_views(void);
+static void render_drag_ghost(void);
+static struct cow_view *session_unlock_focus_target(struct cow_seat *);
+static int  manage_click_count(struct cow_seat *, struct cow_view *,
+    struct timespec *);
+static void manage_store_click(struct cow_seat *, struct cow_view *,
+    struct timespec *, int);
+static void manage_titlebar_button_action(struct cow_view *, int);
+static bool manage_titlebar_button_press(struct cow_seat *, struct cow_view *,
+    int, int);
+static struct cow_view *manage_container_drag_target(struct cow_seat *);
+static struct dec_frame_hit decoration_frame_hit(struct cow_view *, int, int,
+    int, int);
+static bool decoration_in_border(const struct dec_frame_hit *);
+static enum cow_dec_region decoration_outer_region(int, int, int, int, int);
 
 static void handle_wm_session_locked(void *, struct river_window_manager_v1 *);
 static void handle_wm_session_unlocked(void *,
@@ -393,6 +427,28 @@ titlebar_button_at(struct cow_view *view, int lx, int ly)
 }
 
 static void
+manage_titlebar_button_action(struct cow_view *view, int idx)
+{
+	if (idx < 0 || idx >= 3)
+		return;
+
+	enum cow_button_action act = view->cfg.titlebar.buttons[idx].action;
+	cow_wm.focused_view = view;
+	if (view->output != NULL)
+		cow_wm.current_output = view->output;
+	if (act == COW_BUTTON_ACTION_CLOSE)
+		river_window_v1_close(view->river_window);
+	else if (act == COW_BUTTON_ACTION_MAXIMIZE) {
+		if (view->maximized)
+			cow_view_unmaximize(view);
+		else
+			cow_view_maximize(view);
+	} else if (act == COW_BUTTON_ACTION_ICONIFY) {
+		cow_view_iconify(view);
+	}
+}
+
+static void
 manage_titlebar_button_release(struct cow_seat *seat)
 {
 	if (!seat->op_released ||
@@ -409,25 +465,8 @@ manage_titlebar_button_release(struct cow_seat *seat)
 			    seat->pressed_button_idx;
 		}
 		if (still_on_button) {
-			int bi = seat->pressed_button_idx;
-			if (bi >= 0 && bi < 3) {
-				enum cow_button_action act =
-				    view->cfg.titlebar.buttons[bi].action;
-				cow_wm.focused_view = view;
-				if (view->output != NULL)
-					cow_wm.current_output = view->output;
-				if (act == COW_BUTTON_ACTION_CLOSE)
-					river_window_v1_close(
-					    view->river_window);
-				else if (act == COW_BUTTON_ACTION_MAXIMIZE) {
-					if (view->maximized)
-						cow_view_unmaximize(view);
-					else
-						cow_view_maximize(view);
-				} else if (act == COW_BUTTON_ACTION_ICONIFY) {
-					cow_view_iconify(view);
-				}
-			}
+			manage_titlebar_button_action(view,
+			    seat->pressed_button_idx);
 		}
 		view->pressed_button = -1;
 		view->dec.dirty	     = true;
@@ -448,7 +487,19 @@ manage_update_container_drag(struct cow_seat *seat)
 	    seat->op.view->container_member != NULL)
 		return;
 
-	struct cow_view *new_target = NULL;
+	struct cow_view *new_target = manage_container_drag_target(seat);
+	if (new_target == cow_wm.drag_drop_target)
+		return;
+	if (cow_wm.drag_drop_target != NULL)
+		cow_wm.drag_drop_target->dec.dirty = true;
+	cow_wm.drag_drop_target = new_target;
+	if (cow_wm.drag_drop_target != NULL)
+		cow_wm.drag_drop_target->dec.dirty = true;
+}
+
+static struct cow_view *
+manage_container_drag_target(struct cow_seat *seat)
+{
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
@@ -460,18 +511,10 @@ manage_update_container_drag(struct cow_seat *seat)
 		if (seat->pointer_x >= fb.x &&
 		    seat->pointer_x < fb.x + fb.width &&
 		    seat->pointer_y >= fb.y &&
-		    seat->pointer_y < fb.y + fb.height) {
-			new_target = view;
-			break;
-		}
+		    seat->pointer_y < fb.y + fb.height)
+			return (view);
 	}
-	if (new_target == cow_wm.drag_drop_target)
-		return;
-	if (cow_wm.drag_drop_target != NULL)
-		cow_wm.drag_drop_target->dec.dirty = true;
-	cow_wm.drag_drop_target = new_target;
-	if (cow_wm.drag_drop_target != NULL)
-		cow_wm.drag_drop_target->dec.dirty = true;
+	return (NULL);
 }
 
 static enum cow_dec_region
@@ -488,46 +531,53 @@ corner_region_from_edges(uint32_t edges)
 	return (COW_DEC_REGION_NONE);
 }
 
+static struct dec_frame_hit
+decoration_frame_hit(struct cow_view *view, int lx, int ly, int cw, int ch)
+{
+	struct dec_frame_hit hit;
+
+	hit.bw = view->dec.border_width;
+	hit.tt = view->dec.title_thickness;
+	hit.cl = view->cfg.corner_length;
+	if (hit.cl < hit.bw)
+		hit.cl = hit.bw;
+
+	hit.frame_w = cw + 2 * hit.bw;
+	hit.frame_h = ch + hit.tt + 2 * hit.bw;
+	hit.fx	    = lx + hit.bw;
+	hit.fy	    = ly + hit.bw + hit.tt;
+	return (hit);
+}
+
+static bool
+decoration_in_border(const struct dec_frame_hit *hit)
+{
+	if (hit->fx < 0 || hit->fx >= hit->frame_w ||
+	    hit->fy < 0 || hit->fy >= hit->frame_h)
+		return (false);
+	return (hit->fx < hit->bw || hit->fx >= hit->frame_w - hit->bw ||
+	    hit->fy < hit->bw || hit->fy >= hit->frame_h - hit->bw);
+}
+
 static uint32_t
 decoration_corner_edges(struct cow_view *view, int lx, int ly, int cw, int ch)
 {
-	int  bw = view->dec.border_width;
-	int  tt = view->dec.title_thickness;
-	int  cl = view->cfg.corner_length;
-	bool in_titlebar_height;
+	struct dec_frame_hit hit = decoration_frame_hit(view, lx, ly, cw, ch);
 
-	if (cl < bw)
-		cl = bw;
-
-	int  frame_w   = cw + 2 * bw;
-	int  frame_h   = ch + tt + 2 * bw;
-	int  fx	       = lx + bw;
-	int  fy	       = ly + bw + tt;
-	bool in_border = (fx >= 0 && fx < frame_w && fy >= 0 &&
-	    fy < frame_h &&
-	    (fx < bw || fx >= frame_w - bw || fy < bw || fy >= frame_h - bw));
-	if (!in_border)
+	if (!decoration_in_border(&hit))
 		return (0);
 
-	bool in_tb_btn = false;
-	if (tt > 0 && ly >= -tt && ly < 0) {
-		if (lx >= 0 && lx < tt)
-			in_tb_btn = true;
-		if (lx >= cw - 2 * tt && lx < cw)
-			in_tb_btn = true;
-	}
-	in_titlebar_height = (tt > 0 && ly >= -tt && ly < 0);
-	if (in_titlebar_height)
+	if (hit.tt > 0 && ly >= -hit.tt && ly < 0)
 		return (0);
 
-	bool near_top	= (fy < cl);
-	bool near_bot	= (fy >= frame_h - cl);
-	bool near_left	= (fx < cl);
-	bool near_right = (fx >= frame_w - cl);
+	bool near_top	= (hit.fy < hit.cl);
+	bool near_bot	= (hit.fy >= hit.frame_h - hit.cl);
+	bool near_left	= (hit.fx < hit.cl);
+	bool near_right = (hit.fx >= hit.frame_w - hit.cl);
 
-	if (near_top && near_left && !in_tb_btn)
+	if (near_top && near_left)
 		return (COW_EDGE_TOP | COW_EDGE_LEFT);
-	if (near_top && near_right && !in_tb_btn)
+	if (near_top && near_right)
 		return (COW_EDGE_TOP | COW_EDGE_RIGHT);
 	if (near_bot && near_left)
 		return (COW_EDGE_BOTTOM | COW_EDGE_LEFT);
@@ -575,6 +625,64 @@ manage_container_tab_click(struct cow_seat *seat, struct cow_view *view, int lx,
 	return (true);
 }
 
+static int
+manage_click_count(struct cow_seat *seat, struct cow_view *view,
+    struct timespec *now)
+{
+	clock_gettime(CLOCK_MONOTONIC, now);
+	if (seat->last_click_view == view &&
+	    elapsed_ms(&seat->last_click_time, now) < DOUBLE_CLICK_MS)
+		return (2);
+	return (1);
+}
+
+static void
+manage_store_click(struct cow_seat *seat, struct cow_view *view,
+    struct timespec *now, int clicks)
+{
+	if (clicks == 2) {
+		seat->last_click_view = NULL;
+	} else {
+		seat->last_click_view = view;
+		seat->last_click_time = *now;
+	}
+}
+
+static bool
+manage_titlebar_button_press(struct cow_seat *seat, struct cow_view *view,
+    int lx, int ly)
+{
+	int hit_btn = titlebar_button_at(view, lx, ly);
+	if (hit_btn < 0)
+		return (false);
+
+	view->pressed_button	    = hit_btn;
+	view->dec.dirty		    = true;
+	seat->titlebar_press	    = COW_TITLEBAR_PRESS_BUTTON;
+	seat->pressed_button_idx    = hit_btn;
+	seat->pressed_view	    = view;
+	river_seat_v1_op_start_pointer(seat->river_seat);
+	seat->op_in_progress = true;
+	seat->op_released    = false;
+	return (true);
+}
+
+static enum cow_dec_region
+decoration_outer_region(int lx, int ly, int tt, int cw, int ch)
+{
+	if (ly >= -tt && ly < ch && lx >= 0 && lx < cw)
+		return (COW_DEC_REGION_NONE);
+	if (ly < -tt)
+		return (COW_DEC_REGION_N);
+	if (ly >= ch)
+		return (COW_DEC_REGION_S);
+	if (lx < 0)
+		return (COW_DEC_REGION_W);
+	if (lx >= cw)
+		return (COW_DEC_REGION_E);
+	return (COW_DEC_REGION_NONE);
+}
+
 static void
 manage_decoration_click(struct cow_seat *seat, struct cow_view *view)
 {
@@ -587,52 +695,29 @@ manage_decoration_click(struct cow_seat *seat, struct cow_view *view)
 					      view->content_height;
 
 	struct timespec now;
-	clock_gettime(CLOCK_MONOTONIC, &now);
-	int clicks = 1;
-	if (seat->last_click_view == view &&
-	    elapsed_ms(&seat->last_click_time, &now) < DOUBLE_CLICK_MS)
-		clicks = 2;
+	int		clicks = manage_click_count(seat, view, &now);
 
 	uint32_t edges = decoration_corner_edges(view, lx, ly, cw, ch);
 	if (edges != 0) {
 		cow_dec_binding_dispatch(seat, view,
 		    corner_region_from_edges(edges), clicks);
 	} else if (cow_titlebar_hit(view, lx, ly)) {
-		int hit_btn = titlebar_button_at(view, lx, ly);
-		if (hit_btn >= 0) {
-			view->pressed_button = hit_btn;
-			view->dec.dirty	     = true;
-			seat->titlebar_press = COW_TITLEBAR_PRESS_BUTTON;
-			seat->pressed_button_idx = hit_btn;
-			seat->pressed_view	= view;
-			river_seat_v1_op_start_pointer(seat->river_seat);
-			seat->op_in_progress = true;
-			seat->op_released    = false;
+		if (manage_titlebar_button_press(seat, view, lx, ly)) {
+			/* handled */
 		} else if (!manage_container_tab_click(seat, view, lx, cw)) {
 			cow_dec_binding_dispatch(seat, view,
 			    COW_DEC_REGION_TITLEBAR, clicks);
 		} else {
 			return;
 		}
-	} else if (ly < -tt || ly >= ch || lx < 0 || lx >= cw) {
-		enum cow_dec_region er = COW_DEC_REGION_NONE;
-		if (ly < -tt)
-			er = COW_DEC_REGION_N;
-		else if (ly >= ch)
-			er = COW_DEC_REGION_S;
-		else if (lx < 0)
-			er = COW_DEC_REGION_W;
-		else if (lx >= cw)
-			er = COW_DEC_REGION_E;
-		cow_dec_binding_dispatch(seat, view, er, clicks);
+	} else {
+		enum cow_dec_region er =
+		    decoration_outer_region(lx, ly, tt, cw, ch);
+		if (er != COW_DEC_REGION_NONE)
+			cow_dec_binding_dispatch(seat, view, er, clicks);
 	}
 
-	if (clicks == 2) {
-		seat->last_click_view = NULL;
-	} else {
-		seat->last_click_view = view;
-		seat->last_click_time = now;
-	}
+	manage_store_click(seat, view, &now, clicks);
 }
 
 static void
@@ -689,48 +774,80 @@ manage_apply_deferred_views(void)
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
-		if (view->pending_close && !view->closed) {
-			river_window_v1_close(view->river_window);
-			view->pending_close = false;
-		}
-		if (view->pending_resize && !view->closed) {
-			bool shrinking =
-			    (view->pending_width < view->content_width ||
-				view->pending_height < view->content_height);
-			if (shrinking && view->has_dimensions) {
-				view->deferred_position = true;
-				view->deferred_x	= view->pending_x;
-				view->deferred_y	= view->pending_y;
-			} else {
-				view->x = view->pending_x;
-				view->y = view->pending_y;
-				if (view->output != NULL && view->desk != NULL) {
-					view->vx = (view->x - view->output->x) +
-					    view->desk->page_vx;
-					view->vy = (view->y - view->output->y) +
-					    view->desk->page_vy;
-				}
-			}
-			river_window_v1_propose_dimensions(view->river_window,
-			    view->pending_width, view->pending_height);
-			view->pending_resize = false;
-			view->dec.dirty	     = true;
-		}
+		manage_apply_deferred_close(view);
+		manage_apply_deferred_resize(view);
 	}
+}
+
+static void
+manage_apply_deferred_close(struct cow_view *view)
+{
+	if (!view->pending_close || view->closed)
+		return;
+
+	river_window_v1_close(view->river_window);
+	view->pending_close = false;
+}
+
+static void
+manage_apply_deferred_resize(struct cow_view *view)
+{
+	if (!view->pending_resize || view->closed)
+		return;
+
+	bool shrinking = (view->pending_width < view->content_width ||
+	    view->pending_height < view->content_height);
+	manage_apply_deferred_position(view, shrinking);
+	river_window_v1_propose_dimensions(view->river_window,
+	    view->pending_width, view->pending_height);
+	view->pending_resize = false;
+	view->dec.dirty	     = true;
+}
+
+static void
+manage_apply_deferred_position(struct cow_view *view, bool shrinking)
+{
+	if (shrinking && view->has_dimensions) {
+		view->deferred_position = true;
+		view->deferred_x	= view->pending_x;
+		view->deferred_y	= view->pending_y;
+		return;
+	}
+
+	view->x = view->pending_x;
+	view->y = view->pending_y;
+	if (view->output == NULL || view->desk == NULL)
+		return;
+
+	view->vx = (view->x - view->output->x) + view->desk->page_vx;
+	view->vy = (view->y - view->output->y) + view->desk->page_vy;
 }
 
 static void
 manage_apply_focus(void)
 {
-	if (cow_wm.pending_focus != NULL && !cow_wm.pending_focus->closed) {
-		struct cow_seat *seat;
-		wl_list_for_each(seat, &cow_wm.seats, wm_link)
-		{
-			cow_seat_focus_view(seat, cow_wm.pending_focus);
-			break;
-		}
-		cow_wm.pending_focus = NULL;
+	manage_apply_pending_focus();
+	manage_apply_needs_focus();
+}
+
+static void
+manage_apply_pending_focus(void)
+{
+	if (cow_wm.pending_focus == NULL || cow_wm.pending_focus->closed)
+		return;
+
+	struct cow_seat *seat;
+	wl_list_for_each(seat, &cow_wm.seats, wm_link)
+	{
+		cow_seat_focus_view(seat, cow_wm.pending_focus);
+		break;
 	}
+	cow_wm.pending_focus = NULL;
+}
+
+static void
+manage_apply_needs_focus(void)
+{
 
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
@@ -767,17 +884,23 @@ manage_run_deferred_exec(void)
 		return;
 
 	cow_wm.exec_pending = false;
+	manage_mark_views_dirty();
+
+	cow_exec_run_deferred();
+	pan_frames_update_all();
+	if (!cow_wm.restarted)
+		cow_rule_fire(COW_RULE_ON_START, NULL, NULL, NULL);
+}
+
+static void
+manage_mark_views_dirty(void)
+{
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
 		if (!view->closed)
 			view->dec.dirty = true;
 	}
-
-	cow_exec_run_deferred();
-	pan_frames_update_all();
-	if (!cow_wm.restarted)
-		cow_rule_fire(COW_RULE_ON_START, NULL, NULL, NULL);
 }
 
 static void
@@ -808,7 +931,20 @@ drag_ghost_create(__unused struct cow_view *src)
 		return;
 	}
 
-	/* Draw a filled circle with a border using Cairo */
+	drag_ghost_draw(buf);
+
+	cow_wm.drag_ghost_surface   = surf;
+	cow_wm.drag_ghost_shell	    = shell;
+	cow_wm.drag_ghost_node	    = river_shell_surface_v1_get_node(shell);
+	cow_wm.drag_ghost_buffer    = buf;
+	cow_wm.drag_ghost_committed = false;
+	drag_ghost_position_from_pointer();
+}
+
+static void
+drag_ghost_draw(struct cow_shm_buffer *buf)
+{
+	int sz = GHOST_RADIUS * 2;
 	cairo_surface_t *cs =
 	    cairo_image_surface_create_for_data((unsigned char *)buf->data,
 		CAIRO_FORMAT_ARGB32, sz, sz, buf->stride);
@@ -831,14 +967,11 @@ drag_ghost_create(__unused struct cow_view *src)
 
 	cairo_destroy(cr);
 	cairo_surface_destroy(cs);
+}
 
-	cow_wm.drag_ghost_surface   = surf;
-	cow_wm.drag_ghost_shell	    = shell;
-	cow_wm.drag_ghost_node	    = river_shell_surface_v1_get_node(shell);
-	cow_wm.drag_ghost_buffer    = buf;
-	cow_wm.drag_ghost_committed = false;
-	/* Use the current pointer position so the circle appears under
-	 * the cursor immediately, not at the source window's origin. */
+static void
+drag_ghost_position_from_pointer(void)
+{
 	struct cow_seat *gs;
 	wl_list_for_each(gs, &cow_wm.seats, wm_link)
 	{
@@ -876,59 +1009,57 @@ handle_wm_render_start(__unused void *data,
 {
 	cow_wm.sequence = COW_WM_SEQUENCE_RENDER;
 
-	/* Render background surfaces for all outputs */
+	render_outputs();
+	render_views();
+	cow_stack_apply();
+	render_drag_ghost();
+
+	river_window_manager_v1_render_finish(manager);
+	cow_wm.sequence = COW_WM_SEQUENCE_NONE;
+}
+
+static void
+render_outputs(void)
+{
 	struct cow_output *out2;
 	wl_list_for_each(out2, &cow_wm.outputs, wm_link)
-	{
 		cow_output_render_background(out2);
-	}
+}
 
-	/* Apply rendering state for all views */
+static void
+render_views(void)
+{
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
 		if (!view->closed) {
 			cow_view_apply_render(view);
-			/* Render icon for iconified views */
 			if (cow_view_is_iconified(view))
 				cow_view_icon_render(view);
 		}
 	}
+}
 
-	/*
-	 * Apply the global stacking pass: orders every view's
-	 * river_node_v1 by (effective_layer, raise_seq) so layer
-	 * boundaries are honoured and no per-view code path can
-	 * accidentally place a window across a layer.  Iconified
-	 * views' icon_nodes are written below all layered nodes.
-	 *
-	 * Runs after per-view apply_render (which may have set
-	 * needs_raise / pending_lower flags via stack_mark_dirty) and
-	 * before the drag_ghost handling (which deliberately keeps the
-	 * ghost on top via place_top).
-	 */
-	cow_stack_apply();
+static void
+render_drag_ghost(void)
+{
+	if (cow_wm.drag_ghost_node == NULL)
+		return;
 
-	/* Render drag ghost if a container drag is in progress */
-	if (cow_wm.drag_ghost_node != NULL) {
-		river_node_v1_set_position(cow_wm.drag_ghost_node,
-		    cow_wm.drag_ghost_x - GHOST_RADIUS,
-		    cow_wm.drag_ghost_y - GHOST_RADIUS);
-		river_node_v1_place_top(cow_wm.drag_ghost_node);
-		if (!cow_wm.drag_ghost_committed) {
-			wl_surface_attach(cow_wm.drag_ghost_surface,
-			    cow_wm.drag_ghost_buffer->buffer, 0, 0);
-			wl_surface_damage_buffer(cow_wm.drag_ghost_surface, 0,
-			    0, GHOST_RADIUS * 2, GHOST_RADIUS * 2);
-			river_shell_surface_v1_sync_next_commit(
-			    cow_wm.drag_ghost_shell);
-			wl_surface_commit(cow_wm.drag_ghost_surface);
-			cow_wm.drag_ghost_committed = true;
-		}
-	}
+	river_node_v1_set_position(cow_wm.drag_ghost_node,
+	    cow_wm.drag_ghost_x - GHOST_RADIUS,
+	    cow_wm.drag_ghost_y - GHOST_RADIUS);
+	river_node_v1_place_top(cow_wm.drag_ghost_node);
+	if (cow_wm.drag_ghost_committed)
+		return;
 
-	river_window_manager_v1_render_finish(manager);
-	cow_wm.sequence = COW_WM_SEQUENCE_NONE;
+	wl_surface_attach(cow_wm.drag_ghost_surface,
+	    cow_wm.drag_ghost_buffer->buffer, 0, 0);
+	wl_surface_damage_buffer(cow_wm.drag_ghost_surface, 0, 0,
+	    GHOST_RADIUS * 2, GHOST_RADIUS * 2);
+	river_shell_surface_v1_sync_next_commit(cow_wm.drag_ghost_shell);
+	wl_surface_commit(cow_wm.drag_ghost_surface);
+	cow_wm.drag_ghost_committed = true;
 }
 
 static void
@@ -944,29 +1075,10 @@ handle_wm_session_unlocked(__unused void    *data,
 {
 	cow_wm.session_locked = false;
 
-	/* Re-assert keyboard focus on the view we think is focused. */
 	struct cow_seat *seat;
 	wl_list_for_each(seat, &cow_wm.seats, wm_link)
 	{
-		struct cow_view *target = NULL;
-		if (cow_config != NULL && seat->pointer_entered_view != NULL &&
-		    !seat->pointer_entered_view->closed) {
-			target = seat->pointer_entered_view;
-		}
-		if (target == NULL && seat->focused_view != NULL &&
-		    !seat->focused_view->closed)
-			target = seat->focused_view;
-		if (target == NULL && !wl_list_empty(&cow_wm.views)) {
-			/* Last resort: focus any non-closed view. */
-			struct cow_view *v;
-			wl_list_for_each(v, &cow_wm.views, wm_link)
-			{
-				if (!v->closed) {
-					target = v;
-					break;
-				}
-			}
-		}
+		struct cow_view *target = session_unlock_focus_target(seat);
 		if (target != NULL) {
 			river_seat_v1_focus_window(seat->river_seat,
 			    target->river_window);
@@ -978,6 +1090,26 @@ handle_wm_session_unlocked(__unused void    *data,
 	}
 	cow_status_emit();
 	cow_wm_request_manage_dirty();
+}
+
+static struct cow_view *
+session_unlock_focus_target(struct cow_seat *seat)
+{
+	if (cow_config != NULL && seat->pointer_entered_view != NULL &&
+	    !seat->pointer_entered_view->closed)
+		return (seat->pointer_entered_view);
+	if (seat->focused_view != NULL && !seat->focused_view->closed)
+		return (seat->focused_view);
+	if (wl_list_empty(&cow_wm.views))
+		return (NULL);
+
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (!view->closed)
+			return (view);
+	}
+	return (NULL);
 }
 
 static void
