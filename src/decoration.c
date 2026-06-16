@@ -118,6 +118,24 @@ cow_decoration_display_title(const struct cow_view *view)
 	return make_display_title(view);
 }
 
+struct squeeze_paint_ctx {
+	uint32_t *buf;
+	int	  stride_px;
+	int	  frame_w;
+	int	  frame_h;
+	int	  bw;
+	int	  cl;
+	int	  tt;
+	int	  top_band;
+	int	  marker_w;
+	int	  tbr_near_x;
+	bool	  left_side;
+	const float *corner_colour;
+	const struct cow_border_colour *bc;
+	const uint32_t			*scratch;
+	enum cow_border_style		 border_style;
+};
+
 /*
  * Shared post-processing for one side of a squeezed titlebar.
  *
@@ -127,13 +145,24 @@ cow_decoration_display_title(const struct cow_view *view)
  * RIGHT-justify once with left_side=true, and CENTRE calls both.
  */
 static void
-squeeze_paint_side(uint32_t *buf, int stride_px, int frame_w, int frame_h,
-    int bw, int cl, int tt, int top_band, int marker_w,
-    int	 tbr_near_x, /* titlebar's near-edge x for this side */
-    bool left_side, const float *corner_colour,
-    const struct cow_border_colour *bc, const uint32_t *scratch,
-    enum cow_border_style border_style)
+squeeze_paint_side(const struct squeeze_paint_ctx *ctx)
 {
+	uint32_t			    *buf = ctx->buf;
+	int			     stride_px = ctx->stride_px;
+	int			     frame_w = ctx->frame_w;
+	int			     frame_h = ctx->frame_h;
+	int			     bw = ctx->bw;
+	int			     cl = ctx->cl;
+	int			     tt = ctx->tt;
+	int			     top_band = ctx->top_band;
+	int			     marker_w = ctx->marker_w;
+	int			     tbr_near_x = ctx->tbr_near_x;
+	bool			     left_side = ctx->left_side;
+	const float		    *corner_colour = ctx->corner_colour;
+	const struct cow_border_colour *bc = ctx->bc;
+	const uint32_t		    *scratch = ctx->scratch;
+	enum cow_border_style	     border_style = ctx->border_style;
+
 	/*
 	 * Geometry per side:
 	 *
@@ -710,22 +739,47 @@ cow_decoration_update(struct cow_view *view, bool active)
 				 */
 				if (sq.justify == COW_JUST_LEFT ||
 				    sq.justify == COW_JUST_CENTRE) {
-					squeeze_paint_side(dec->buffer->data,
-					    stride_px, frame_w, frame_h, bw, cl,
-					    tt, top_band, marker_w,
-					    tbr.x + tbr.width,
-					    /* left_side = */ false, ne_colour,
-					    bc, scratch,
-					    view->cfg.border_style);
+					struct squeeze_paint_ctx sctx = {
+						.buf = dec->buffer->data,
+						.stride_px = stride_px,
+						.frame_w = frame_w,
+						.frame_h = frame_h,
+						.bw = bw,
+						.cl = cl,
+						.tt = tt,
+						.top_band = top_band,
+						.marker_w = marker_w,
+						.tbr_near_x = tbr.x + tbr.width,
+						.left_side = false,
+						.corner_colour = ne_colour,
+						.bc = bc,
+						.scratch = scratch,
+						.border_style =
+						    view->cfg.border_style,
+					};
+					squeeze_paint_side(&sctx);
 				}
 				if (sq.justify == COW_JUST_RIGHT ||
 				    sq.justify == COW_JUST_CENTRE) {
-					squeeze_paint_side(dec->buffer->data,
-					    stride_px, frame_w, frame_h, bw, cl,
-					    tt, top_band, marker_w, tbr.x,
-					    /* left_side = */ true, nw_colour,
-					    bc, scratch,
-					    view->cfg.border_style);
+					struct squeeze_paint_ctx sctx = {
+						.buf = dec->buffer->data,
+						.stride_px = stride_px,
+						.frame_w = frame_w,
+						.frame_h = frame_h,
+						.bw = bw,
+						.cl = cl,
+						.tt = tt,
+						.top_band = top_band,
+						.marker_w = marker_w,
+						.tbr_near_x = tbr.x,
+						.left_side = true,
+						.corner_colour = nw_colour,
+						.bc = bc,
+						.scratch = scratch,
+						.border_style =
+						    view->cfg.border_style,
+					};
+					squeeze_paint_side(&sctx);
 				}
 
 				xfree(scratch);
