@@ -488,18 +488,6 @@ static const struct set_option set_options[] = {
 	{ .name = NULL },
 };
 
-/*
- * When a `set` command runs with cmdq->target.window resolved (either
- * via -t :::W from the user, or via the rule subsystem fanning out an
- * event to a view), per-view-able style writes are diverted from
- * cow_config into the view's cfg snapshot.  Returns NULL when no
- * target window is set; callers fall back to writing cow_config in
- * that case.
- *
- * After a global write to cow_config (target NULL), callers stamp
- * every existing view's snapshot via cow_view_cfg_apply_global so
- * the change is reflected on already-mapped windows too.
- */
 static struct cow_view_cfg *
 cfg_target(struct cmd_q *cmdq)
 {
@@ -508,18 +496,6 @@ cfg_target(struct cmd_q *cmdq)
 	return &cmdq->target.window->cfg;
 }
 
-/*
- * After a global write to cow_config, walk every view and re-stamp
- * its cfg snapshot.  Without this, existing views would keep stale
- * snapshots and CLI `set border 5` would only take effect on
- * not-yet-created views.
- *
- * Skip during startup: cow_wm.views has not been wl_list_init'd yet
- * when cow_ipc_load_config runs the user's config (cow_wm_init runs
- * later in main()).  No stamping is needed in that case -- views
- * created after startup snapshot the freshly-populated cow_config
- * via cow_view_cfg_init_from_global at create time.
- */
 static void
 stamp_all_views_from_global(void)
 {
@@ -1282,12 +1258,6 @@ refresh_visuals(void)
 	if (cow_ipc.startup_mode)
 		return;
 
-	/* Each view recomputes its decoration scaffolding from its
-	 * own per-view cfg snapshot.  This runs after either a
-	 * view-targeted set (only the targeted view's snapshot
-	 * changed; other views read unchanged data) or a global set
-	 * (every view's snapshot was just stamped from cow_config).
-	 */
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
