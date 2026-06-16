@@ -43,6 +43,16 @@
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_set_exec(struct cmd *, struct cmd_q *);
+struct set_option;
+static enum cmd_retval set_option_exec(const struct set_option *, const char *,
+    const char *, struct args *, struct cmd_q *);
+static const struct set_option *set_option_find(const char *);
+static bool	       set_option_scope_ok(const struct set_option *,
+			   struct cmd_q *);
+static enum cmd_retval set_scalar_bool(const struct set_option *,
+    const char *, struct cmd_q *);
+static enum cmd_retval set_scalar_int(const struct set_option *, const char *,
+    const char *, struct cmd_q *);
 static enum cmd_retval set_desks_count(const char *, struct cmd_q *);
 static enum cmd_retval set_desktop_size(struct args *, struct cmd_q *);
 static enum cmd_retval set_titlebar_height(const char *, struct cmd_q *);
@@ -51,21 +61,417 @@ static enum cmd_retval set_titlebar_squeeze_justify(const char *,
     struct cmd_q *);
 static enum cmd_retval set_titlebar_squeeze_int(const char *, const char *,
     struct cmd_q *);
-static enum cmd_retval set_container_tab_sunken(const char *, struct cmd_q *);
-static enum cmd_retval set_simple_bool(const char *, const char *);
-static enum cmd_retval set_simple_ms(const char *, const char *, long long,
-    long long, struct cmd_q *);
 static enum cmd_retval set_layer(const char *, const char *, struct cmd_q *);
-static void	       do_set_int(const char *, const char *, struct cmd_q *);
 static void do_set_colour(const char *, const char *, struct cmd_q *);
 static void do_set_border_style(const char *, struct cmd_q *);
 static void do_set_desktop_config(const char *, struct cmd_q *);
 static void do_set_focus(const char *);
 static void do_set_placement(const char *, struct cmd_q *);
 static void do_set_font(const char *, struct cmd_q *);
-static void do_set_titlebar(const char *, const char *, struct cmd_q *);
 static void do_set_button(const char *, const char *, struct cmd_q *);
 static void refresh_visuals(void);
+
+enum set_option_scope {
+	SET_SCOPE_GLOBAL,
+	SET_SCOPE_WINDOW,
+	SET_SCOPE_OUTPUT,
+	SET_SCOPE_MIXED,
+};
+
+enum set_option_match {
+	SET_MATCH_EXACT,
+	SET_MATCH_PREFIX,
+};
+
+enum set_option_action {
+	SET_ACTION_SCALAR_BOOL,
+	SET_ACTION_SCALAR_INT,
+	SET_ACTION_COLOUR,
+	SET_ACTION_BORDER_STYLE,
+	SET_ACTION_DESKTOP_CONFIG,
+	SET_ACTION_FOCUS,
+	SET_ACTION_PLACEMENT,
+	SET_ACTION_FONT,
+	SET_ACTION_BUTTON,
+	SET_ACTION_DESKS_COUNT,
+	SET_ACTION_DESKTOP_SIZE,
+	SET_ACTION_TITLEBAR_HEIGHT,
+	SET_ACTION_TITLEBAR_SQUEEZE,
+	SET_ACTION_TITLEBAR_SQUEEZE_JUSTIFY,
+	SET_ACTION_TITLEBAR_SQUEEZE_INT,
+	SET_ACTION_LAYER,
+};
+
+enum set_option_post {
+	SET_POST_NONE		     = 0,
+	SET_POST_REFRESH_VISUALS     = 1 << 0,
+	SET_POST_PAN_FRAMES	     = 1 << 1,
+	SET_POST_ZERO_DISABLE_HANDLES = 1 << 2,
+};
+
+#define SET_NO_OFFSET ((size_t)-1)
+
+struct set_option {
+	const char	   *name;
+	enum set_option_match match;
+	enum set_option_scope scope;
+	enum set_option_action action;
+	size_t		    config_offset;
+	size_t		    view_offset;
+	long long	    lo;
+	long long	    hi;
+	unsigned int	    post;
+};
+
+static const struct set_option set_options[] = {
+	{
+		.name = "desks.count",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_DESKS_COUNT,
+	},
+	{
+		.name = "border",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_SCALAR_INT,
+		.config_offset = offsetof(struct cow_config, border),
+		.view_offset = offsetof(struct cow_view_cfg, border),
+		.lo = 0,
+		.hi = INT_MAX,
+		.post = SET_POST_REFRESH_VISUALS,
+	},
+	{
+		.name = "step",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_SCALAR_INT,
+		.config_offset = offsetof(struct cow_config, step),
+		.view_offset = SET_NO_OFFSET,
+		.lo = 0,
+		.hi = INT_MAX,
+		.post = SET_POST_REFRESH_VISUALS,
+	},
+	{
+		.name = "corner_length",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_SCALAR_INT,
+		.config_offset = offsetof(struct cow_config, corner_length),
+		.view_offset = offsetof(struct cow_view_cfg, corner_length),
+		.lo = 0,
+		.hi = INT_MAX,
+		.post = SET_POST_REFRESH_VISUALS | SET_POST_ZERO_DISABLE_HANDLES,
+	},
+	{
+		.name = "reserved.top",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_SCALAR_INT,
+		.config_offset = offsetof(struct cow_config, reserved.top),
+		.view_offset = SET_NO_OFFSET,
+		.lo = 0,
+		.hi = INT_MAX,
+		.post = SET_POST_REFRESH_VISUALS,
+	},
+	{
+		.name = "reserved.bottom",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_SCALAR_INT,
+		.config_offset = offsetof(struct cow_config, reserved.bottom),
+		.view_offset = SET_NO_OFFSET,
+		.lo = 0,
+		.hi = INT_MAX,
+		.post = SET_POST_REFRESH_VISUALS,
+	},
+	{
+		.name = "reserved.left",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_SCALAR_INT,
+		.config_offset = offsetof(struct cow_config, reserved.left),
+		.view_offset = SET_NO_OFFSET,
+		.lo = 0,
+		.hi = INT_MAX,
+		.post = SET_POST_REFRESH_VISUALS,
+	},
+	{
+		.name = "reserved.right",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_SCALAR_INT,
+		.config_offset = offsetof(struct cow_config, reserved.right),
+		.view_offset = SET_NO_OFFSET,
+		.lo = 0,
+		.hi = INT_MAX,
+		.post = SET_POST_REFRESH_VISUALS,
+	},
+	{
+		.name = "icon.size",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_SCALAR_INT,
+		.config_offset = offsetof(struct cow_config, icon_size),
+		.view_offset = offsetof(struct cow_view_cfg, icon_size),
+		.lo = 0,
+		.hi = INT_MAX,
+		.post = SET_POST_REFRESH_VISUALS,
+	},
+	{
+		.name = "snap_distance",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_SCALAR_INT,
+		.config_offset = offsetof(struct cow_config, snap_distance),
+		.view_offset = SET_NO_OFFSET,
+		.lo = 0,
+		.hi = INT_MAX,
+		.post = SET_POST_REFRESH_VISUALS,
+	},
+	{
+		.name = "colour.",
+		.match = SET_MATCH_PREFIX,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_COLOUR,
+	},
+	{
+		.name = "output.colour.background.",
+		.match = SET_MATCH_PREFIX,
+		.scope = SET_SCOPE_OUTPUT,
+		.action = SET_ACTION_COLOUR,
+	},
+	{
+		.name = "output.colour.",
+		.match = SET_MATCH_PREFIX,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_COLOUR,
+	},
+	{
+		.name = "titlebar.active_colour",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_COLOUR,
+	},
+	{
+		.name = "titlebar.inactive_colour",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_COLOUR,
+	},
+	{
+		.name = "titlebar.fg_active",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_COLOUR,
+	},
+	{
+		.name = "titlebar.fg_inactive",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_COLOUR,
+	},
+	{
+		.name = "container.tab.",
+		.match = SET_MATCH_PREFIX,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_COLOUR,
+	},
+	{
+		.name = "border_style",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_BORDER_STYLE,
+	},
+	{
+		.name = "desktop-configuration",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_DESKTOP_CONFIG,
+	},
+	{
+		.name = "desktop_size",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_DESKTOP_SIZE,
+	},
+	{
+		.name = "focus",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_FOCUS,
+	},
+	{
+		.name = "placement",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_PLACEMENT,
+	},
+	{
+		.name = "font",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_FONT,
+	},
+	{
+		.name = "titlebar.enabled",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_SCALAR_BOOL,
+		.config_offset = offsetof(struct cow_config, titlebar.enabled),
+		.view_offset = offsetof(struct cow_view_cfg, titlebar.enabled),
+		.post = SET_POST_REFRESH_VISUALS,
+	},
+	{
+		.name = "handles",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_SCALAR_BOOL,
+		.config_offset = offsetof(struct cow_config, handles),
+		.view_offset = offsetof(struct cow_view_cfg, handles),
+		.post = SET_POST_REFRESH_VISUALS,
+	},
+	{
+		.name = "titlebar.height",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_TITLEBAR_HEIGHT,
+	},
+	{
+		.name = "titlebar.squeeze",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_TITLEBAR_SQUEEZE,
+	},
+	{
+		.name = "titlebar.squeeze.justify",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_TITLEBAR_SQUEEZE_JUSTIFY,
+	},
+	{
+		.name = "titlebar.squeeze.width",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_TITLEBAR_SQUEEZE_INT,
+	},
+	{
+		.name = "titlebar.squeeze.offset",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_TITLEBAR_SQUEEZE_INT,
+	},
+	{
+		.name = "titlebar.squeeze.min_width",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_TITLEBAR_SQUEEZE_INT,
+	},
+	{
+		.name = "container.tab.sunken",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_SCALAR_BOOL,
+		.config_offset = offsetof(struct cow_config,
+		    container.tab_sunken_inactive),
+		.view_offset = offsetof(struct cow_view_cfg,
+		    container.tab_sunken_inactive),
+		.post = SET_POST_REFRESH_VISUALS,
+	},
+	{
+		.name = "edge_scroll",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_SCALAR_BOOL,
+		.config_offset = offsetof(struct cow_config, edge_scroll),
+		.view_offset = SET_NO_OFFSET,
+		.post = SET_POST_PAN_FRAMES,
+	},
+	{
+		.name = "edge_scroll_delay_ms",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_SCALAR_INT,
+		.config_offset = offsetof(struct cow_config, edge_scroll_delay_ms),
+		.view_offset = SET_NO_OFFSET,
+		.lo = 50,
+		.hi = 5000,
+	},
+	{
+		.name = "page_scroll_animate",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_SCALAR_BOOL,
+		.config_offset = offsetof(struct cow_config, page_scroll_animate),
+		.view_offset = SET_NO_OFFSET,
+	},
+	{
+		.name = "page_scroll_ms",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_SCALAR_INT,
+		.config_offset = offsetof(struct cow_config, page_scroll_ms),
+		.view_offset = SET_NO_OFFSET,
+		.lo = 0,
+		.hi = 5000,
+	},
+	{
+		.name = "repeat_delay_ms",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_SCALAR_INT,
+		.config_offset = offsetof(struct cow_config, repeat_delay_ms),
+		.view_offset = SET_NO_OFFSET,
+		.lo = 0,
+		.hi = 10000,
+	},
+	{
+		.name = "repeat_interval_ms",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_SCALAR_INT,
+		.config_offset = offsetof(struct cow_config, repeat_interval_ms),
+		.view_offset = SET_NO_OFFSET,
+		.lo = 1,
+		.hi = 10000,
+	},
+	{
+		.name = "raise_on_focus",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_SCALAR_BOOL,
+		.config_offset = offsetof(struct cow_config, raise_on_focus),
+		.view_offset = SET_NO_OFFSET,
+	},
+	{
+		.name = "preserve_desk_on_output_loss",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_SCALAR_BOOL,
+		.config_offset = offsetof(struct cow_config,
+		    preserve_desk_on_output_loss),
+		.view_offset = SET_NO_OFFSET,
+	},
+	{
+		.name = "titlebar.button_",
+		.match = SET_MATCH_PREFIX,
+		.scope = SET_SCOPE_MIXED,
+		.action = SET_ACTION_BUTTON,
+	},
+	{
+		.name = "default_layer",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_LAYER,
+	},
+	{
+		.name = "max_layer",
+		.match = SET_MATCH_EXACT,
+		.scope = SET_SCOPE_GLOBAL,
+		.action = SET_ACTION_LAYER,
+	},
+	{ .name = NULL },
+};
 
 /*
  * When a `set` command runs with cmdq->target.window resolved (either
@@ -122,6 +528,148 @@ struct cmd_entry cmd_set_entry = {
 	0,
 };
 
+static const struct set_option *
+set_option_find(const char *key)
+{
+	for (const struct set_option *opt = set_options; opt->name != NULL;
+	    opt++) {
+		if (opt->match == SET_MATCH_EXACT && strcmp(opt->name, key) == 0)
+			return (opt);
+	}
+	for (const struct set_option *opt = set_options; opt->name != NULL;
+	    opt++) {
+		size_t len;
+
+		if (opt->match != SET_MATCH_PREFIX)
+			continue;
+		len = strlen(opt->name);
+		if (strncmp(opt->name, key, len) == 0)
+			return (opt);
+	}
+	return (NULL);
+}
+
+static bool
+set_option_scope_ok(const struct set_option *opt, struct cmd_q *cmdq)
+{
+	if (opt->scope != SET_SCOPE_WINDOW)
+		return (true);
+	return (cmdq != NULL && cmdq->target.window != NULL);
+}
+
+static void
+set_option_post_update(const struct set_option *opt)
+{
+	if ((opt->post & SET_POST_PAN_FRAMES) != 0 && !cow_ipc.startup_mode)
+		pan_frames_update_all();
+	if ((opt->post & SET_POST_REFRESH_VISUALS) != 0)
+		refresh_visuals();
+}
+
+static enum cmd_retval
+set_scalar_bool(const struct set_option *opt, const char *val,
+    struct cmd_q *cmdq)
+{
+	bool b;
+
+	if (!cmd_parse_bool(val, &b))
+		return (CMD_RETURN_NORMAL);
+
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+	if (cfg != NULL && opt->view_offset != SET_NO_OFFSET) {
+		bool *ptr = (bool *)((char *)cfg + opt->view_offset);
+		*ptr = b;
+	} else if (cow_config != NULL) {
+		bool *ptr = (bool *)((char *)cow_config + opt->config_offset);
+		*ptr = b;
+		if (opt->scope == SET_SCOPE_MIXED)
+			stamp_all_views_from_global();
+	}
+	set_option_post_update(opt);
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+set_scalar_int(const struct set_option *opt, const char *key, const char *val,
+    struct cmd_q *cmdq)
+{
+	const char *errstr;
+	long long   v = strtonum(val, opt->lo, opt->hi, &errstr);
+
+	if (errstr != NULL) {
+		if (strncmp(key, "repeat_", 7) == 0)
+			cmdq_error(cmdq, "set: %s: %s: %s", key, val, errstr);
+		else
+			cmdq_error(cmdq, "set: %s: bad value: %s", key, val);
+		return (CMD_RETURN_ERROR);
+	}
+
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+	if (cfg != NULL && opt->view_offset != SET_NO_OFFSET) {
+		int *ptr = (int *)((char *)cfg + opt->view_offset);
+		*ptr = (int)v;
+		if ((opt->post & SET_POST_ZERO_DISABLE_HANDLES) != 0 && v == 0)
+			cfg->handles = false;
+	} else if (cow_config != NULL) {
+		int *ptr = (int *)((char *)cow_config + opt->config_offset);
+		*ptr = (int)v;
+		if ((opt->post & SET_POST_ZERO_DISABLE_HANDLES) != 0 && v == 0)
+			cow_config->handles = false;
+		if (opt->scope == SET_SCOPE_MIXED)
+			stamp_all_views_from_global();
+	}
+	set_option_post_update(opt);
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+set_option_exec(const struct set_option *opt, const char *key, const char *val,
+    struct args *args, struct cmd_q *cmdq)
+{
+	switch (opt->action) {
+	case SET_ACTION_SCALAR_INT:
+		return (set_scalar_int(opt, key, val, cmdq));
+	case SET_ACTION_SCALAR_BOOL:
+		return (set_scalar_bool(opt, val, cmdq));
+	case SET_ACTION_COLOUR:
+		do_set_colour(key, val, cmdq);
+		return (CMD_RETURN_NORMAL);
+	case SET_ACTION_BORDER_STYLE:
+		do_set_border_style(val, cmdq);
+		return (CMD_RETURN_NORMAL);
+	case SET_ACTION_DESKTOP_CONFIG:
+		do_set_desktop_config(val, cmdq);
+		return (CMD_RETURN_NORMAL);
+	case SET_ACTION_FOCUS:
+		do_set_focus(val);
+		return (CMD_RETURN_NORMAL);
+	case SET_ACTION_PLACEMENT:
+		do_set_placement(val, cmdq);
+		return (CMD_RETURN_NORMAL);
+	case SET_ACTION_FONT:
+		do_set_font(val, cmdq);
+		return (CMD_RETURN_NORMAL);
+	case SET_ACTION_BUTTON:
+		do_set_button(key, val, cmdq);
+		return (CMD_RETURN_NORMAL);
+	case SET_ACTION_DESKS_COUNT:
+		return (set_desks_count(val, cmdq));
+	case SET_ACTION_DESKTOP_SIZE:
+		return (set_desktop_size(args, cmdq));
+	case SET_ACTION_TITLEBAR_HEIGHT:
+		return (set_titlebar_height(val, cmdq));
+	case SET_ACTION_TITLEBAR_SQUEEZE:
+		return (set_titlebar_squeeze(val, cmdq));
+	case SET_ACTION_TITLEBAR_SQUEEZE_JUSTIFY:
+		return (set_titlebar_squeeze_justify(val, cmdq));
+	case SET_ACTION_TITLEBAR_SQUEEZE_INT:
+		return (set_titlebar_squeeze_int(key, val, cmdq));
+	case SET_ACTION_LAYER:
+		return (set_layer(key, val, cmdq));
+	}
+	return (CMD_RETURN_ERROR);
+}
+
 static enum cmd_retval
 cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 {
@@ -134,182 +682,18 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	const char *key = args->argv[0];
 	char	   *val = cmd_argv_to_string(args->argc, args->argv, 1);
+	const struct set_option *opt = set_option_find(key);
 
-	if (strcmp(key, "desks.count") == 0) {
-		enum cmd_retval ret = set_desks_count(val, cmdq);
+	if (opt != NULL && set_option_scope_ok(opt, cmdq)) {
+		enum cmd_retval ret = set_option_exec(opt, key, val, args, cmdq);
 		xfree(val);
 		return (ret);
 	}
 
-	if (strcmp(key, "border") == 0 || strcmp(key, "step") == 0 ||
-	    strcmp(key, "corner_length") == 0 ||
-	    strcmp(key, "reserved.top") == 0 ||
-	    strcmp(key, "reserved.bottom") == 0 ||
-	    strcmp(key, "reserved.left") == 0 ||
-	    strcmp(key, "reserved.right") == 0 ||
-	    strcmp(key, "icon.size") == 0 ||
-	    strcmp(key, "snap_distance") == 0) {
-		do_set_int(key, val, cmdq);
-		xfree(val);
-		return (CMD_RETURN_NORMAL);
-	}
-
-	/* Colour fields (per-edge, uniform, per-output background) */
-	if (strncmp(key, "colour.", 7) == 0 ||
-	    strncmp(key, "output.colour.", 14) == 0 ||
-	    strcmp(key, "titlebar.active_colour") == 0 ||
-	    strcmp(key, "titlebar.inactive_colour") == 0 ||
-	    strcmp(key, "titlebar.fg_active") == 0 ||
-	    strcmp(key, "titlebar.fg_inactive") == 0 ||
-	    strncmp(key, "container.tab.", 14) == 0) {
-		do_set_colour(key, val, cmdq);
-		xfree(val);
-		return (CMD_RETURN_NORMAL);
-	}
-
-	if (strcmp(key, "border_style") == 0) {
-		do_set_border_style(val, cmdq);
-		xfree(val);
-		return (CMD_RETURN_NORMAL);
-	}
-
-	if (strcmp(key, "desktop-configuration") == 0) {
-		do_set_desktop_config(val, cmdq);
-		xfree(val);
-		return (CMD_RETURN_NORMAL);
-	}
-
-	if (strcmp(key, "desktop_size") == 0) {
-		enum cmd_retval ret = set_desktop_size(args, cmdq);
-		xfree(val);
-		return (ret);
-	}
-
-	if (strcmp(key, "focus") == 0) {
-		do_set_focus(val);
-		xfree(val);
-		return (CMD_RETURN_NORMAL);
-	}
-
-	if (strcmp(key, "placement") == 0) {
-		do_set_placement(val, cmdq);
-		xfree(val);
-		return (CMD_RETURN_NORMAL);
-	}
-
-	if (strcmp(key, "font") == 0) {
-		do_set_font(val, cmdq);
-		xfree(val);
-		return (CMD_RETURN_NORMAL);
-	}
-	if (strcmp(key, "titlebar.enabled") == 0 ||
-	    strcmp(key, "handles") == 0) {
-		do_set_titlebar(key, val, cmdq);
-		xfree(val);
-		return (CMD_RETURN_NORMAL);
-	}
-
-	if (strcmp(key, "titlebar.height") == 0) {
-		enum cmd_retval ret = set_titlebar_height(val, cmdq);
-		xfree(val);
-		return (ret);
-	}
-
-	if (strcmp(key, "titlebar.squeeze") == 0) {
-		enum cmd_retval ret = set_titlebar_squeeze(val, cmdq);
-		xfree(val);
-		return (ret);
-	}
-
-	if (strcmp(key, "titlebar.squeeze.justify") == 0) {
-		enum cmd_retval ret = set_titlebar_squeeze_justify(val, cmdq);
-		xfree(val);
-		return (ret);
-	}
-
-	if (strcmp(key, "titlebar.squeeze.width") == 0 ||
-	    strcmp(key, "titlebar.squeeze.offset") == 0 ||
-	    strcmp(key, "titlebar.squeeze.min_width") == 0) {
-		enum cmd_retval ret = set_titlebar_squeeze_int(key, val, cmdq);
-		xfree(val);
-		return (ret);
-	}
-
-	if (strcmp(key, "container.tab.sunken") == 0) {
-		enum cmd_retval ret = set_container_tab_sunken(val, cmdq);
-		xfree(val);
-		return (ret);
-	}
-
-	if (strcmp(key, "edge_scroll") == 0) {
-		bool b;
-		if (cow_config != NULL && cmd_parse_bool(val, &b)) {
-			cow_config->edge_scroll = b;
-			if (!cow_ipc.startup_mode)
-				pan_frames_update_all();
-		}
-		xfree(val);
-		return (CMD_RETURN_NORMAL);
-	}
-
-	if (strcmp(key, "edge_scroll_delay_ms") == 0) {
-		enum cmd_retval ret = set_simple_ms(key, val, 50, 5000, cmdq);
-		xfree(val);
-		return (ret);
-	}
-
-	if (strcmp(key, "page_scroll_animate") == 0) {
-		bool b;
-		if (cow_config != NULL && cmd_parse_bool(val, &b))
-			cow_config->page_scroll_animate = b;
-		xfree(val);
-		return (CMD_RETURN_NORMAL);
-	}
-
-	if (strcmp(key, "page_scroll_ms") == 0) {
-		enum cmd_retval ret = set_simple_ms(key, val, 0, 5000, cmdq);
-		xfree(val);
-		return (ret);
-	}
-
-	if (strcmp(key, "repeat_delay_ms") == 0) {
-		enum cmd_retval ret = set_simple_ms(key, val, 0, 10000, cmdq);
-		xfree(val);
-		return (ret);
-	}
-
-	if (strcmp(key, "repeat_interval_ms") == 0) {
-		enum cmd_retval ret = set_simple_ms(key, val, 1, 10000, cmdq);
-		xfree(val);
-		return (ret);
-	}
-
-	if (strcmp(key, "raise_on_focus") == 0) {
-		enum cmd_retval ret = set_simple_bool(key, val);
-		xfree(val);
-		return (ret);
-	}
-
-	if (strcmp(key, "preserve_desk_on_output_loss") == 0) {
-		enum cmd_retval ret = set_simple_bool(key, val);
-		xfree(val);
-		return (ret);
-	}
-
-	if (strncmp(key, "titlebar.button_", 16) == 0) {
-		do_set_button(key, val, cmdq);
-		xfree(val);
-		return (CMD_RETURN_NORMAL);
-	}
-
-	if (strcmp(key, "default_layer") == 0 ||
-	    strcmp(key, "max_layer") == 0) {
-		enum cmd_retval ret = set_layer(key, val, cmdq);
-		xfree(val);
-		return (ret);
-	}
-
-	cmdq_error(cmdq, "set: unknown key: %s", key);
+	if (opt == NULL)
+		cmdq_error(cmdq, "set: unknown key: %s", key);
+	else
+		cmdq_error(cmdq, "set: %s: wrong target scope", key);
 	xfree(val);
 	return (CMD_RETURN_ERROR);
 }
@@ -482,63 +866,6 @@ set_titlebar_squeeze_int(const char *key, const char *val, struct cmd_q *cmdq)
 }
 
 static enum cmd_retval
-set_container_tab_sunken(const char *val, struct cmd_q *cmdq)
-{
-	bool b;
-	if (!cmd_parse_bool(val, &b))
-		return (CMD_RETURN_NORMAL);
-
-	struct cow_view_cfg *cfg = cfg_target(cmdq);
-	if (cfg != NULL) {
-		cfg->container.tab_sunken_inactive = b;
-	} else if (cow_config != NULL) {
-		cow_config->container.tab_sunken_inactive = b;
-		stamp_all_views_from_global();
-	}
-	refresh_visuals();
-	return (CMD_RETURN_NORMAL);
-}
-
-static enum cmd_retval
-set_simple_bool(const char *key, const char *val)
-{
-	bool b;
-	if (cow_config == NULL || !cmd_parse_bool(val, &b))
-		return (CMD_RETURN_NORMAL);
-	if (strcmp(key, "raise_on_focus") == 0)
-		cow_config->raise_on_focus = b;
-	else if (strcmp(key, "preserve_desk_on_output_loss") == 0)
-		cow_config->preserve_desk_on_output_loss = b;
-	return (CMD_RETURN_NORMAL);
-}
-
-static enum cmd_retval
-set_simple_ms(const char *key, const char *val, long long lo, long long hi,
-    struct cmd_q *cmdq)
-{
-	const char *errstr;
-	long long   v = strtonum(val, lo, hi, &errstr);
-	if (errstr != NULL) {
-		if (strncmp(key, "repeat_", 7) == 0)
-			cmdq_error(cmdq, "set: %s: %s: %s", key, val, errstr);
-		else
-			cmdq_error(cmdq, "set: %s: bad value: %s", key, val);
-		return (CMD_RETURN_ERROR);
-	}
-	if (cow_config == NULL)
-		return (CMD_RETURN_NORMAL);
-	if (strcmp(key, "edge_scroll_delay_ms") == 0)
-		cow_config->edge_scroll_delay_ms = (int)v;
-	else if (strcmp(key, "page_scroll_ms") == 0)
-		cow_config->page_scroll_ms = (int)v;
-	else if (strcmp(key, "repeat_delay_ms") == 0)
-		cow_config->repeat_delay_ms = (int)v;
-	else if (strcmp(key, "repeat_interval_ms") == 0)
-		cow_config->repeat_interval_ms = (int)v;
-	return (CMD_RETURN_NORMAL);
-}
-
-static enum cmd_retval
 set_layer(const char *key, const char *val, struct cmd_q *cmdq)
 {
 	const char *errstr;
@@ -576,88 +903,6 @@ set_layer(const char *key, const char *val, struct cmd_q *cmdq)
 		cow_wm_request_manage_dirty();
 	}
 	return (CMD_RETURN_NORMAL);
-}
-
-static void
-do_set_int(const char *key, const char *val, struct cmd_q *cmdq)
-{
-	const char *errstr;
-	long long   v = strtonum(val, 0, INT_MAX, &errstr);
-	if (errstr != NULL) {
-		cmdq_error(cmdq, "set: %s: bad value: %s", key, val);
-		return;
-	}
-
-	struct cow_view_cfg *cfg = cfg_target(cmdq);
-
-	/*
-	 * Per-view-able integer fields.  When a target window is
-	 * resolved, write into the view's cfg snapshot only.  When no
-	 * target is set, write cow_config and stamp every view's
-	 * snapshot so the change is reflected on already-mapped
-	 * windows.
-	 */
-	if (strcmp(key, "border") == 0) {
-		if (cfg != NULL) {
-			cfg->border = (int)v;
-		} else {
-			cow_config->border = (int)v;
-			stamp_all_views_from_global();
-		}
-		refresh_visuals();
-		return;
-	}
-	if (strcmp(key, "corner_length") == 0) {
-		if (cfg != NULL) {
-			cfg->corner_length = (int)v;
-			if (cfg->corner_length == 0)
-				cfg->handles = false;
-		} else {
-			cow_config->corner_length = (int)v;
-			if (cow_config->corner_length == 0)
-				cow_config->handles = false;
-			stamp_all_views_from_global();
-		}
-		refresh_visuals();
-		return;
-	}
-	if (strcmp(key, "icon.size") == 0) {
-		if (cfg != NULL) {
-			cfg->icon_size = (int)v;
-		} else {
-			cow_config->icon_size = (int)v;
-			stamp_all_views_from_global();
-		}
-		refresh_visuals();
-		return;
-	}
-
-	/*
-	 * Global-only integer fields.  These describe behaviour or
-	 * geometry that doesn't make sense per-view: reserved area is
-	 * an output-level subtraction, step is the keyboard move/resize
-	 * granularity, snap_distance is the snap floor for any drag.
-	 */
-	struct {
-		const char *name;
-		int	   *ptr;
-	} fields[] = {
-		{ "step",		  &cow_config->step	    },
-		{ "reserved.top",	  &cow_config->reserved.top    },
-		{ "reserved.bottom", &cow_config->reserved.bottom },
-		{ "reserved.left",   &cow_config->reserved.left   },
-		{ "reserved.right",  &cow_config->reserved.right	},
-		{ "snap_distance",   &cow_config->snap_distance   },
-		{ NULL,		NULL			     },
-	};
-
-	for (int i = 0; fields[i].name != NULL; i++) {
-		if (strcmp(key, fields[i].name) != 0)
-			continue;
-		*fields[i].ptr = (int)v;
-		refresh_visuals();
-		return;
-	}
 }
 
 static void
@@ -988,33 +1233,6 @@ do_set_font(const char *val, struct cmd_q *cmdq)
 		xfree(cow_config->font_name);
 		cow_config->font_name = xstrdup(val);
 		stamp_all_views_from_global();
-	}
-	refresh_visuals();
-}
-
-static void
-do_set_titlebar(const char *key, const char *val, struct cmd_q *cmdq)
-{
-	bool b;
-	if (!cmd_parse_bool(val, &b))
-		return;
-
-	struct cow_view_cfg *cfg = cfg_target(cmdq);
-
-	if (strcmp(key, "titlebar.enabled") == 0) {
-		if (cfg != NULL) {
-			cfg->titlebar.enabled = b;
-		} else {
-			cow_config->titlebar.enabled = b;
-			stamp_all_views_from_global();
-		}
-	} else if (strcmp(key, "handles") == 0) {
-		if (cfg != NULL) {
-			cfg->handles = b;
-		} else {
-			cow_config->handles = b;
-			stamp_all_views_from_global();
-		}
 	}
 	refresh_visuals();
 }
