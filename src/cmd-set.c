@@ -64,17 +64,17 @@ static struct cow_titlebar_config *target_titlebar(struct cmd_q *,
     struct cow_view_cfg **);
 static struct cow_container_config *target_container(struct cmd_q *,
     struct cow_view_cfg **);
-static void do_set_colour(const char *, const char *, struct cmd_q *);
+static void set_colour_option(const char *, const char *, struct cmd_q *);
 static bool set_output_colour(const char *, const char *, struct cmd_q *);
 static bool set_border_colour(const char *, const char *, struct cmd_q *);
 static bool set_titlebar_colour(const char *, const char *, struct cmd_q *);
 static bool set_container_tab_colour(const char *, const char *, struct cmd_q *);
-static void do_set_border_style(const char *, struct cmd_q *);
-static void do_set_desktop_config(const char *, struct cmd_q *);
-static void do_set_focus(const char *);
-static void do_set_placement(const char *, struct cmd_q *);
-static void do_set_font(const char *, struct cmd_q *);
-static void do_set_button(const char *, const char *, struct cmd_q *);
+static void set_border_style_option(const char *, struct cmd_q *);
+static void set_desktop_config_option(const char *, struct cmd_q *);
+static void set_focus_option(const char *);
+static void set_placement_option(const char *, struct cmd_q *);
+static void set_font_option(const char *, struct cmd_q *);
+static void set_button_option(const char *, const char *, struct cmd_q *);
 static void refresh_visuals(void);
 
 enum set_option_scope {
@@ -673,25 +673,25 @@ set_option_exec(const struct set_option *opt, const char *key, const char *val,
 	case SET_ACTION_SCALAR_BOOL:
 		return (set_scalar_bool(opt, val, cmdq));
 	case SET_ACTION_COLOUR:
-		do_set_colour(key, val, cmdq);
+		set_colour_option(key, val, cmdq);
 		return (CMD_RETURN_NORMAL);
 	case SET_ACTION_BORDER_STYLE:
-		do_set_border_style(val, cmdq);
+		set_border_style_option(val, cmdq);
 		return (CMD_RETURN_NORMAL);
 	case SET_ACTION_DESKTOP_CONFIG:
-		do_set_desktop_config(val, cmdq);
+		set_desktop_config_option(val, cmdq);
 		return (CMD_RETURN_NORMAL);
 	case SET_ACTION_FOCUS:
-		do_set_focus(val);
+		set_focus_option(val);
 		return (CMD_RETURN_NORMAL);
 	case SET_ACTION_PLACEMENT:
-		do_set_placement(val, cmdq);
+		set_placement_option(val, cmdq);
 		return (CMD_RETURN_NORMAL);
 	case SET_ACTION_FONT:
-		do_set_font(val, cmdq);
+		set_font_option(val, cmdq);
 		return (CMD_RETURN_NORMAL);
 	case SET_ACTION_BUTTON:
-		do_set_button(key, val, cmdq);
+		set_button_option(key, val, cmdq);
 		return (CMD_RETURN_NORMAL);
 	case SET_ACTION_DESKS_COUNT:
 		return (set_desks_count(val, cmdq));
@@ -904,7 +904,7 @@ set_layer(const char *key, const char *val, struct cmd_q *cmdq)
 }
 
 static void
-do_set_colour(const char *key, const char *val, struct cmd_q *cmdq)
+set_colour_option(const char *key, const char *val, struct cmd_q *cmdq)
 {
 	if (set_output_colour(key, val, cmdq))
 		return;
@@ -1105,7 +1105,7 @@ set_border_colour(const char *key, const char *val, struct cmd_q *cmdq)
 }
 
 static void
-do_set_border_style(const char *val, struct cmd_q *cmdq)
+set_border_style_option(const char *val, struct cmd_q *cmdq)
 {
 	enum cow_border_style style;
 	if (strcmp(val, "fvwm") == 0)
@@ -1124,7 +1124,7 @@ do_set_border_style(const char *val, struct cmd_q *cmdq)
 }
 
 static void
-do_set_desktop_config(const char *val, struct cmd_q *cmdq)
+set_desktop_config_option(const char *val, struct cmd_q *cmdq)
 {
 	if (strcmp(val, "global") == 0) {
 		cow_config->desktop_config = COW_DESKTOP_GLOBAL;
@@ -1196,7 +1196,7 @@ do_set_desktop_config(const char *val, struct cmd_q *cmdq)
 }
 
 static void
-do_set_focus(const char *val)
+set_focus_option(const char *val)
 {
 	if (strcmp(val, "sloppy") == 0)
 		cow_config->focus_mode = COW_FOCUS_MODE_SLOPPY;
@@ -1205,7 +1205,7 @@ do_set_focus(const char *val)
 }
 
 static void
-do_set_placement(const char *val, struct cmd_q *cmdq)
+set_placement_option(const char *val, struct cmd_q *cmdq)
 {
 	if (strcmp(val, "cascade") == 0)
 		cow_config->placement = COW_PLACEMENT_CASCADE;
@@ -1218,7 +1218,7 @@ do_set_placement(const char *val, struct cmd_q *cmdq)
 }
 
 static void
-do_set_font(const char *val, struct cmd_q *cmdq)
+set_font_option(const char *val, struct cmd_q *cmdq)
 {
 	struct cow_view_cfg *cfg = cfg_target(cmdq);
 	if (cfg != NULL) {
@@ -1232,7 +1232,7 @@ do_set_font(const char *val, struct cmd_q *cmdq)
 }
 
 static void
-do_set_button(const char *key, const char *val, struct cmd_q *cmdq)
+set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 {
 	struct {
 		const char *vector_key;
