@@ -8,6 +8,8 @@ moocow - send commands to a running cow instance
 
 *moocow* _command_ [_args_ ...]
 
+*moocow* *-p*
+
 # DESCRIPTION
 
 *moocow* is the command-line IPC client for the *cow*(1) window manager. It
@@ -17,6 +19,10 @@ response, and prints it to standard output.
 All arguments are joined with spaces and sent as a single newline-terminated
 line. The full command language is described in *cow*(1).
 
+With *-p*, *moocow* stays running and reads commands from standard input.  When
+run interactively it prints the prompt *>>> * before each command.  A backslash
+(*\\*) at the end of a line continues the command on the next line.
+
 # EXIT STATUS
 
 *0*
@@ -25,7 +31,8 @@ line. The full command language is described in *cow*(1).
 *1*
 	A connection error occurred, or *cow* responded with _"ok": false_.
 	The error message is included in the JSON response and printed to
-	standard output.
+	standard output.  In *-p* mode, *moocow* keeps reading commands but
+	exits with status *1* if any command failed.
 
 # ENVIRONMENT
 
@@ -78,6 +85,12 @@ List all available commands:
 
 ```
 moocow list-commands
+```
+
+Run commands persistently:
+
+```
+moocow -p
 ```
 
 # SEE ALSO

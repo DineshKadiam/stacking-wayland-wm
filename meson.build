@@ -328,6 +328,8 @@ executable('cow',
 
 executable('moocow',
     'src/moocow.c',
+    'src/cmd-scan.c',
+    include_directories: include_dirs,
     install: true,
 )
 

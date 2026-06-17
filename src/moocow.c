@@ -27,12 +27,28 @@
  */
 
 #include <errno.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+
+#include "cow/cmd_scan.h"
+
+static const char *usage =
+    "Usage: moocow [-h] [-p]\n"
+    "       moocow COMMAND [ARGS...]\n"
+    "\n"
+    "Examples:\n"
+    "  moocow -p\n"
+    "  moocow set border 10\n"
+    "  moocow get windows\n"
+    "  moocow view-close\n"
+    "  moocow bind L+q view-quit\n"
+    "  moocow action terminal xterm\n"
+    "  moocow exec foot\n";
 
 static const char *
 get_socket_path(void)
@@ -82,76 +98,236 @@ connect_to_cow(void)
 	return fd;
 }
 
-int
-main(int argc, char *argv[])
+static bool
+append_buf(char **buf, size_t *len, size_t *cap, const char *s, size_t slen)
 {
-	if (argc < 2) {
-		fprintf(stderr,
-		    "Usage: moocow COMMAND [ARGS...]\n"
-		    "\n"
-		    "Examples:\n"
-		    "  moocow set border 10\n"
-		    "  moocow get windows\n"
-		    "  moocow view-close\n"
-		    "  moocow bind L+q view-quit\n"
-		    "  moocow action terminal xterm\n"
-		    "  moocow exec foot\n");
-		return 1;
-	}
-
-	int fd = connect_to_cow();
-	if (fd < 0)
-		return 1;
-
-	/* Join all arguments into a single command line */
-	char cmd[4096];
-	int  pos = 0;
-	for (int i = 1; i < argc; i++) {
-		if (i > 1)
-			cmd[pos++] = ' ';
-		int len = strlen(argv[i]);
-		if (pos + len + 2 >= (int)sizeof(cmd)) {
-			fprintf(stderr, "moocow: command too long\n");
-			close(fd);
-			return 1;
+	if (*len + slen + 1 > *cap) {
+		size_t new_cap = *cap ? *cap : 128;
+		while (*len + slen + 1 > new_cap)
+			new_cap *= 2;
+		char *new_buf = realloc(*buf, new_cap);
+		if (new_buf == NULL) {
+			perror("moocow: realloc");
+			return false;
 		}
-		memcpy(cmd + pos, argv[i], len);
-		pos += len;
-	}
-	cmd[pos++] = '\n';
-	cmd[pos]   = '\0';
-
-	/* Send command */
-	if (write(fd, cmd, pos) < 0) {
-		perror("moocow: write");
-		close(fd);
-		return 1;
+		*buf = new_buf;
+		*cap = new_cap;
 	}
 
-	/* Read response */
+	memcpy(*buf + *len, s, slen);
+	*len += slen;
+	(*buf)[*len] = '\0';
+	return true;
+}
+
+static char *
+build_command(int argc, char *argv[])
+{
+	char  *cmd = NULL;
+	size_t len = 0, cap = 0;
+
+	for (int i = 0; i < argc; i++) {
+		if (i > 0 && !append_buf(&cmd, &len, &cap, " ", 1))
+			goto error;
+		if (!append_buf(&cmd, &len, &cap, argv[i], strlen(argv[i])))
+			goto error;
+	}
+	if (!append_buf(&cmd, &len, &cap, "\n", 1))
+		goto error;
+	return cmd;
+
+error:
+	free(cmd);
+	return NULL;
+}
+
+static char *
+collapse_continuations(const char *cmd)
+{
+	char  *out = NULL;
+	size_t len = 0, cap = 0;
+
+	for (size_t i = 0; cmd[i] != '\0'; i++) {
+		if (cmd[i] == '\\' && cmd[i + 1] == '\n') {
+			i++;
+			continue;
+		}
+		if (!append_buf(&out, &len, &cap, &cmd[i], 1))
+			goto error;
+	}
+	return out;
+
+error:
+	free(out);
+	return NULL;
+}
+
+static bool
+write_all(int fd, const char *buf, size_t len)
+{
+	while (len > 0) {
+		ssize_t n = write(fd, buf, len);
+		if (n < 0) {
+			if (errno == EINTR)
+				continue;
+			perror("moocow: write");
+			return false;
+		}
+		if (n == 0)
+			return false;
+		buf += n;
+		len -= n;
+	}
+	return true;
+}
+
+static int
+read_response(int fd)
+{
 	char resp[65536];
 	int  total = 0;
+
 	while (total < (int)sizeof(resp) - 1) {
 		int n = read(fd, resp + total, sizeof(resp) - 1 - total);
-		if (n <= 0)
+		if (n < 0) {
+			if (errno == EINTR)
+				continue;
+			perror("moocow: read");
+			return 1;
+		}
+		if (n == 0)
 			break;
 		total += n;
-		/* Check if we got a complete line */
 		if (memchr(resp, '\n', total) != NULL)
 			break;
 	}
 	resp[total] = '\0';
 
-	/* Print response */
 	printf("%s", resp);
 	if (total > 0 && resp[total - 1] != '\n')
 		printf("\n");
 
-	close(fd);
+	return strstr(resp, "\"ok\":false") != NULL ? 1 : 0;
+}
 
-	/* Exit with error if response indicates failure */
-	if (strstr(resp, "\"ok\":false") != NULL)
+static int
+send_command(const char *cmd)
+{
+	int fd = connect_to_cow();
+	if (fd < 0)
 		return 1;
 
-	return 0;
+	char *out = collapse_continuations(cmd);
+	if (out == NULL) {
+		close(fd);
+		return 1;
+	}
+
+	int ret = 1;
+	if (write_all(fd, out, strlen(out)))
+		ret = read_response(fd);
+
+	free(out);
+	close(fd);
+	return ret;
+}
+
+static bool
+skip_command(const char *cmd)
+{
+	while (*cmd == ' ' || *cmd == '\t')
+		cmd++;
+	return (*cmd == '\0' || *cmd == '\n' || *cmd == '#');
+}
+
+static bool
+command_complete(const char *cmd, size_t len)
+{
+	size_t end;
+	return cow_cmd_find_terminator(cmd, len, &end) == COW_CMD_SCAN_COMPLETE;
+}
+
+static int
+persistent_mode(void)
+{
+	bool interactive = isatty(STDIN_FILENO) && isatty(STDOUT_FILENO);
+	char *cmd = NULL, *line = NULL;
+	size_t cmd_len = 0, cmd_cap = 0, line_cap = 0;
+	int ret = 0;
+
+	for (;;) {
+		if (interactive) {
+			fputs(">>> ", stdout);
+			fflush(stdout);
+		}
+
+		errno = 0;
+		ssize_t line_len = getline(&line, &line_cap, stdin);
+		if (line_len < 0) {
+			if (errno != 0) {
+				perror("moocow: getline");
+				ret = 1;
+			} else if (cmd_len > 0) {
+				fprintf(stderr, "moocow: incomplete command\n");
+				ret = 1;
+			}
+			break;
+		}
+
+		if (!append_buf(&cmd, &cmd_len, &cmd_cap, line, line_len)) {
+			ret = 1;
+			break;
+		}
+		if (!command_complete(cmd, cmd_len))
+			continue;
+
+		if (!skip_command(cmd) && send_command(cmd) != 0)
+			ret = 1;
+		cmd_len = 0;
+		if (cmd != NULL)
+			cmd[0] = '\0';
+	}
+
+	free(line);
+	free(cmd);
+	return ret;
+}
+
+int
+main(int argc, char *argv[])
+{
+	int ch;
+
+	while ((ch = getopt(argc, argv, "hp")) != -1) {
+		switch (ch) {
+		case 'p':
+			if (argc - optind > 0) {
+				fputs(usage, stderr);
+				return 1;
+			}
+			return persistent_mode();
+		case 'h':
+			fputs(usage, stdout);
+			return 0;
+		default:
+			fputs(usage, stderr);
+			return 1;
+		}
+	}
+
+	argc -= optind;
+	argv += optind;
+
+	if (argc < 1) {
+		fputs(usage, stderr);
+		return 1;
+	}
+
+	char *cmd = build_command(argc, argv);
+	if (cmd == NULL)
+		return 1;
+
+	int ret = send_command(cmd);
+	free(cmd);
+	return ret;
 }
