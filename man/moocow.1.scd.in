@@ -20,10 +20,10 @@ All arguments are joined with spaces and sent as a single newline-terminated
 line. The full command language is described in *cow*(1).
 
 With *-p*, *moocow* stays running and reads commands from standard input.  When
-run interactively it prints a version banner and the prompt *>>> * before each
-command.  Incomplete commands use the prompt *... * until the command is
-complete.  A backslash (*\\*) at the end of a line continues the command on the
-next line.
+run interactively it prints a connection banner containing the *moocow* version
+and client ID, then the prompt *>>> * before each command.  Incomplete commands
+use the prompt *... * until the command is complete.  A backslash (*\\*) at the
+end of a line continues the command on the next line.
 
 # OPTIONS
 
@@ -31,7 +31,8 @@ next line.
 	Print usage and exit.
 
 *-p*
-	Read and evaluate commands persistently.
+	Read and evaluate commands persistently.  The client ID shown in the
+	connection banner is the *moocow* process ID.
 
 *-P* _prompt_
 	Set the primary prompt used by *-p*.  The default is *>>> *.

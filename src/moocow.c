@@ -308,7 +308,8 @@ persistent_mode(const char *primary_prompt, const char *secondary_prompt,
 	int ret = 0;
 
 	if (interactive)
-		printf("moocow (%s)\n\n", COW_VERSION);
+		printf("*moocow (%s) [client %ld]\n\n", COW_VERSION,
+		    (long)getpid());
 
 	for (;;) {
 		if (interactive)
