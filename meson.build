@@ -46,6 +46,7 @@ srcs = [
     'src/cmd-resize.c',
     'src/cmd-rule.c',
     'src/cmd-script.c',
+    'src/cmd-scan.c',
     'src/cmd-scroll.c',
     'src/cmd-set.c',
     'src/cmd-show.c',

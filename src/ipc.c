@@ -26,6 +26,7 @@
 
 #include "cow/compat.h"
 #include "cow/cmd.h"
+#include "cow/cmd_scan.h"
 #include "cow/command.h"
 #include "cow/config.h"
 #include "cow/event.h"
@@ -222,9 +223,9 @@ cow_ipc_load_config(const char *path)
 	struct cmd_q *cmdq = cmdq_new();
 	cmdq->client_fd	   = -1;
 
-	size_t lineno = 0;
-	size_t len;
-	char  *line;
+	size_t lineno = 0, cmd_lineno = 0;
+	size_t len, cmd_len = 0, cmd_cap = 0;
+	char  *line, *cmd_buf = NULL;
 	/* Custom delimiters: escape=\, continuation=\, comment=\0.
 	 * Disable fparseln's comment handling so that # inside
 	 * quoted strings (e.g. '#66ba66') is preserved.
@@ -232,30 +233,52 @@ cow_ipc_load_config(const char *path)
 	const char delim[3] = { '\\', '\\', '\0' };
 	while ((line = fparseln(f, &len, &lineno, delim, FPARSELN_UNESCCONT)) !=
 	    NULL) {
-		/* Skip blank lines */
 		char *p = line;
-		while (*p == ' ' || *p == '\t')
-			p++;
-		if (*p == '\0') {
+		if (cmd_len == 0) {
+			while (*p == ' ' || *p == '\t')
+				p++;
+		}
+		if (cmd_len == 0 && *p == '\0') {
 			xfree(line);
 			continue;
 		}
+		if (cmd_len == 0)
+			cmd_lineno = lineno;
 
-		/* Parse line into a cmd_list and append to queue */
+		size_t add = strlen(p);
+		if (cmd_len + add + 2 > cmd_cap) {
+			cmd_cap = cmd_cap ? cmd_cap : 128;
+			while (cmd_len + add + 2 > cmd_cap)
+				cmd_cap *= 2;
+			cmd_buf = xrealloc(cmd_buf, cmd_cap, 1);
+		}
+		memcpy(cmd_buf + cmd_len, p, add);
+		cmd_len += add;
+		cmd_buf[cmd_len++] = '\n';
+		cmd_buf[cmd_len]   = '\0';
+		xfree(line);
+
+		size_t end = 0;
+		if (cow_cmd_find_terminator(cmd_buf, cmd_len, &end) !=
+		    COW_CMD_SCAN_COMPLETE)
+			continue;
+
+		cmd_buf[end] = '\0';
 		char		*cause = NULL;
 		struct cmd_list *cmdlist;
-		if (cmd_string_parse(p, &cmdlist, path, lineno, &cause) != 0) {
+		if (cmd_string_parse(cmd_buf, &cmdlist, path, cmd_lineno,
+			&cause) != 0) {
 			if (cause != NULL) {
 				char *msg;
-				xasprintf(&msg, "%s:%zu: %s", path, lineno,
+				xasprintf(&msg, "%s:%zu: %s", path, cmd_lineno,
 				    cause);
 				ARRAY_ADD(&cfg_causes, msg);
 				xfree(cause);
 			}
-			xfree(line);
+			cmd_len = 0;
 			continue;
 		}
-		xfree(line);
+		cmd_len = 0;
 
 		if (cmdlist == NULL)
 			continue;
@@ -263,6 +286,13 @@ cow_ipc_load_config(const char *path)
 		cmdq_append(cmdq, cmdlist);
 		cmd_list_free(cmdlist);
 	}
+	if (cmd_len > 0) {
+		char *msg;
+		xasprintf(&msg, "%s:%zu: unterminated command", path,
+		    cmd_lineno);
+		ARRAY_ADD(&cfg_causes, msg);
+	}
+	xfree(cmd_buf);
 
 	fclose(f);
 
@@ -362,60 +392,17 @@ ipc_handle_client_data(struct cow_ipc_client *client)
 	client->buf_len += n;
 	client->buf[client->buf_len] = '\0';
 
-	/*
-	 * Process complete commands.  Commands are terminated by '\n',
-	 * but an unterminated `{ ... }` block (used by script bodies)
-	 * may legitimately contain newlines: balance braces outside
-	 * any single- or double-quoted strings before treating a '\n'
-	 * as the command terminator.  Until braces balance, we keep
-	 * buffering and wait for more bytes.
-	 */
 	char *start = client->buf;
-	char *nl;
-	while ((nl = strchr(start, '\n')) != NULL) {
-		bool in_squote = false;
-		bool in_dquote = false;
-		bool escaping  = false;
-		int  depth     = 0;
-		for (char *p = start; p < nl; p++) {
-			char c = *p;
-			if (escaping) {
-				escaping = false;
-				continue;
-			}
-			if (in_squote) {
-				if (c == '\'')
-					in_squote = false;
-				continue;
-			}
-			if (in_dquote) {
-				if (c == '\\')
-					escaping = true;
-				else if (c == '"')
-					in_dquote = false;
-				continue;
-			}
-			if (c == '\'')
-				in_squote = true;
-			else if (c == '"')
-				in_dquote = true;
-			else if (c == '{')
-				depth++;
-			else if (c == '}' && depth > 0)
-				depth--;
-		}
-		if (depth > 0) {
-			/* unterminated block -- keep accumulating */
-			char *next = strchr(nl + 1, '\n');
-			if (next == NULL)
-				break; /* wait for more data */
-			nl = next;
-			continue;
-		}
+	for (;;) {
+		size_t end = 0;
+		enum cow_cmd_scan_result r = cow_cmd_find_terminator(start,
+		    client->buf_len - (start - client->buf), &end);
+		if (r != COW_CMD_SCAN_COMPLETE)
+			break;
 
-		*nl = '\0';
+		start[end] = '\0';
 		cow_ipc_dispatch(start, client->fd);
-		start = nl + 1;
+		start += end + 1;
 		/* Close after each command: moocow sends one command and
 		 * reads until EOF, so closing here unblocks it. */
 		ipc_remove_client(client);
