@@ -140,6 +140,21 @@ slight misnomer.
 
 That said though, I like cows and, I'm going to stick with that name for now.
 
+## The cow logo isn't a cow.  Why?
+
+Astute observers will have noticed that the logo on the Codeberg page actually
+shows a Hereford bull, rather than a cow (which is female).  Although this is
+considered wholly incorrect use of grammar, I reserve the right to use the
+word `cow` to mean both cows and bulls.  Even though I should say "cattle".
+
+For more information see:
+
+https://bsd.network/web/@thomasadam/116766630953558702
+
+Yes, this is all tongue-in-cheek.
+
+:)
+
 ## Moocow?  Seriously?
 
 Well, the way I see it, if you want `cow` to do anything, you need to "moo
