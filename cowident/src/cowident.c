@@ -19,7 +19,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <pango/pangocairo.h>
-#include <poll.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>

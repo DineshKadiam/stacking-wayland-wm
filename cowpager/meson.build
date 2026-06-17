@@ -9,6 +9,7 @@ pager_deps = [
     dependency('wayland-client'),
     dependency('cairo'),
     dependency('threads'),
+    dependency('libevent'),
 ]
 
 executable('cowpager',

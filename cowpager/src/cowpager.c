@@ -36,7 +36,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <math.h>
-#include <poll.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,6 +45,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <event2/event.h>
 #include <wayland-client.h>
 
 #include "cow/attrs.h"
@@ -188,6 +188,40 @@ static state_t	       g_state;
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static int	       g_dirty;
 static int	       wake_pipe[2];
+
+static void do_render(const state_t *);
+
+static void
+handle_wake(void)
+{
+	char buf[64];
+	while (read(wake_pipe[0], buf, sizeof(buf)) > 0)
+		;
+
+	pthread_mutex_lock(&g_lock);
+	int dirty = g_dirty;
+	g_dirty	  = 0;
+	state_t st = g_state;
+	pthread_mutex_unlock(&g_lock);
+
+	if (dirty && surface_configured)
+		do_render(&st);
+}
+
+static void
+wayland_cb(__unused evutil_socket_t fd, __unused short events,
+    __unused void *data)
+{
+	if (wl_display_dispatch(display) < 0)
+		opt_running = 0;
+}
+
+static void
+wake_cb(__unused evutil_socket_t fd, __unused short events,
+    __unused void *data)
+{
+	handle_wake();
+}
 
 static void
 ipc_send(const char *cmd)
@@ -2666,36 +2700,36 @@ main(int argc, char *argv[])
 	pthread_create(&tid, NULL, status_thread, NULL);
 	pthread_detach(tid);
 
-	int wlfd = wl_display_get_fd(display);
+	struct event_base *base = event_base_new();
+	struct event	  *wl_ev = NULL, *wake_ev = NULL;
+	if (base == NULL) {
+		fprintf(stderr, "cowpager: failed to initialise event loop\n");
+		return 1;
+	}
+
+	wl_ev = event_new(base, wl_display_get_fd(display), EV_READ | EV_PERSIST,
+	    wayland_cb, NULL);
+	wake_ev = event_new(base, wake_pipe[0], EV_READ | EV_PERSIST,
+	    wake_cb, NULL);
+	if (wl_ev == NULL || wake_ev == NULL ||
+	    event_add(wl_ev, NULL) < 0 || event_add(wake_ev, NULL) < 0) {
+		fprintf(stderr, "cowpager: failed to add events\n");
+		opt_running = 0;
+	}
+
 	while (opt_running) {
 		if (wl_display_flush(display) < 0 && errno != EAGAIN)
 			break;
 
-		struct pollfd fds[2] = {
-			{ wlfd,		POLLIN, 0 },
-			{ wake_pipe[0], POLLIN, 0 },
-		};
-		int r = poll(fds, 2, 500);
-		if (r < 0 && errno != EINTR)
+		if (event_base_loop(base, EVLOOP_ONCE) < 0)
 			break;
-
-		if (fds[0].revents & POLLIN)
-			if (wl_display_dispatch(display) < 0)
-				break;
-
-		if (fds[1].revents & POLLIN) {
-			char buf[64];
-			read(wake_pipe[0], buf, sizeof(buf));
-			pthread_mutex_lock(&g_lock);
-			int dirty  = g_dirty;
-			g_dirty	   = 0;
-			state_t st = g_state;
-			pthread_mutex_unlock(&g_lock);
-
-			if (dirty && surface_configured)
-				do_render(&st);
-		}
 	}
+
+	if (wl_ev != NULL)
+		event_free(wl_ev);
+	if (wake_ev != NULL)
+		event_free(wake_ev);
+	event_base_free(base);
 
 	xdg_toplevel_destroy(xdg_toplevel);
 	xdg_surface_destroy(xdg_surface);
