@@ -89,7 +89,7 @@ struct dsl_source_spec {
 
 %token LBRACE RBRACE LPAREN RPAREN
 %token DOT EQUALS
-%token LET FOR IN IF ELSE WHERE AND OR NOT
+%token LET FOR IN IF ELSE BREAK CONTINUE WHERE AND OR NOT
 %token SELF
 %token TRUE_LIT FALSE_LIT NIL_LIT
 %token <src> SOURCE_NAME
@@ -100,7 +100,8 @@ struct dsl_source_spec {
 %token STR_BEGIN STR_END
 %token NEWLINE
 
-%type <node> script stmt_list stmt let_stmt for_stmt if_stmt cmd_stmt block
+%type <node> script stmt_list stmt let_stmt for_stmt if_stmt control_stmt
+%type <node> cmd_stmt block
 %type <node> expr or_expr and_expr not_expr rel_expr atom path
 %type <source_spec> source
 
@@ -132,6 +133,7 @@ stmt
 	: let_stmt
 	| for_stmt
 	| if_stmt
+	| control_stmt
 	| cmd_stmt
 	;
 
@@ -188,6 +190,19 @@ if_stmt
 		{
 			$$ = dsl_node_if(ctx->ast, @1.first_line,
 			    @1.first_column, $2, $3, $5);
+		}
+	;
+
+control_stmt
+	: BREAK
+		{
+			$$ = dsl_node_break(ctx->ast, @1.first_line,
+			    @1.first_column);
+		}
+	| CONTINUE
+		{
+			$$ = dsl_node_continue(ctx->ast, @1.first_line,
+			    @1.first_column);
 		}
 	;
 

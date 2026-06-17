@@ -146,6 +146,10 @@ classify_word(const char *word, YYSTYPE *lval, bool *push_cmd_arg)
 		return (IF);
 	if (strcmp(word, "else") == 0)
 		return (ELSE);
+	if (strcmp(word, "break") == 0)
+		return (BREAK);
+	if (strcmp(word, "continue") == 0)
+		return (CONTINUE);
 	if (strcmp(word, "where") == 0)
 		return (WHERE);
 	if (strcmp(word, "and") == 0)

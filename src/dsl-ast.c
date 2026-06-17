@@ -172,6 +172,18 @@ dsl_node_cmd(struct dsl_ast *ast, int line, int col, const char *verb)
 }
 
 struct dsl_node *
+dsl_node_break(struct dsl_ast *ast, int line, int col)
+{
+	return (node_new(ast, DSL_N_BREAK, line, col));
+}
+
+struct dsl_node *
+dsl_node_continue(struct dsl_ast *ast, int line, int col)
+{
+	return (node_new(ast, DSL_N_CONTINUE, line, col));
+}
+
+struct dsl_node *
 dsl_node_or(struct dsl_ast *ast, int line, int col, struct dsl_node *lhs,
     struct dsl_node *rhs)
 {

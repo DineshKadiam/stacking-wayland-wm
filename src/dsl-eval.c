@@ -111,10 +111,18 @@ struct dsl_env {
 	size_t		      cap;
 };
 
+enum dsl_control {
+	DSL_CTL_NONE,
+	DSL_CTL_BREAK,
+	DSL_CTL_CONTINUE,
+};
+
 struct dsl_eval_ctx {
 	struct cmd_q	 *cmdq;
 	struct dsl_error *err;
 	bool		  failed;
+	enum dsl_control control;
+	size_t		  loop_depth;
 
 	/*
 	 * Implicit target for commands enqueued inside a `for w in
@@ -575,7 +583,7 @@ static void exec_block(struct dsl_eval_ctx *, struct dsl_env *,
 static void
 exec_stmt(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 {
-	if (ctx->failed || n == NULL)
+	if (ctx->failed || ctx->control != DSL_CTL_NONE || n == NULL)
 		return;
 
 	switch (n->kind) {
@@ -648,15 +656,41 @@ exec_stmt(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 					ctx->implicit_target_id = saved_target;
 			}
 
+			ctx->loop_depth++;
 			exec_block(ctx, sub, n->u.forstmt.body);
+			ctx->loop_depth--;
 			env_free(sub);
 			if (ctx->failed)
 				break;
+			if (ctx->control == DSL_CTL_BREAK) {
+				ctx->control = DSL_CTL_NONE;
+				break;
+			}
+			if (ctx->control == DSL_CTL_CONTINUE) {
+				ctx->control = DSL_CTL_NONE;
+				continue;
+			}
 		}
 		ctx->implicit_target_id = saved_target;
 		dsl_value_unref(list);
 		return;
 	}
+	case DSL_N_BREAK:
+		if (ctx->loop_depth == 0) {
+			fail_at(ctx, n->line, n->col,
+			    "break outside loop");
+			return;
+		}
+		ctx->control = DSL_CTL_BREAK;
+		return;
+	case DSL_N_CONTINUE:
+		if (ctx->loop_depth == 0) {
+			fail_at(ctx, n->line, n->col,
+			    "continue outside loop");
+			return;
+		}
+		ctx->control = DSL_CTL_CONTINUE;
+		return;
 	case DSL_N_CMD:
 		enqueue_command(ctx, env, n);
 		return;
@@ -671,7 +705,8 @@ exec_block(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *blk)
 {
 	if (blk == NULL || blk->kind != DSL_N_BLOCK)
 		return;
-	for (size_t i = 0; i < blk->u.block.n && !ctx->failed; i++)
+	for (size_t i = 0; i < blk->u.block.n && !ctx->failed &&
+	    ctx->control == DSL_CTL_NONE; i++)
 		exec_stmt(ctx, env, blk->u.block.stmts[i]);
 }
 

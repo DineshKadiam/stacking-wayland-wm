@@ -42,6 +42,8 @@ enum dsl_node_kind {
 	DSL_N_FOR, /* for IDENT in source block */
 	DSL_N_IF,  /* if expr block (else block-or-if)? */
 	DSL_N_CMD, /* VERB arg*  (a cow command invocation) */
+	DSL_N_BREAK,
+	DSL_N_CONTINUE,
 
 	/* Expressions */
 	DSL_N_OR,
@@ -213,6 +215,8 @@ struct dsl_node *dsl_node_if(struct dsl_ast *, int line, int col,
     struct dsl_node *cond, struct dsl_node *body, struct dsl_node *otherwise);
 struct dsl_node *dsl_node_cmd(struct dsl_ast *, int line, int col,
     const char *verb);
+struct dsl_node *dsl_node_break(struct dsl_ast *, int line, int col);
+struct dsl_node *dsl_node_continue(struct dsl_ast *, int line, int col);
 struct dsl_node *dsl_node_or(struct dsl_ast *, int line, int col,
     struct dsl_node *lhs, struct dsl_node *rhs);
 struct dsl_node *dsl_node_and(struct dsl_ast *, int line, int col,

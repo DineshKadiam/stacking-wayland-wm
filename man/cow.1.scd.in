@@ -245,6 +245,12 @@ newlines) separates them.
 	zero; strings are false when empty; lists are false when
 	empty; records are always true; nil and false are false).
 
+*break*
+	Exit the nearest enclosing *for* loop.
+
+*continue*
+	Skip to the next iteration of the nearest enclosing *for* loop.
+
 _COMMAND_ [_ARGS_ ...]
 	Invoke any registered cow command.  Each argument is either
 	a raw text chunk (passed verbatim) or an interpolation of
