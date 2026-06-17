@@ -33,6 +33,7 @@ void pan_frames_update_output(struct cow_output *);
 void pan_frames_update_all(void);
 void pan_frames_destroy_output(struct cow_output *);
 void pan_frames_destroy_all(void);
+void cow_pan_suppress_for(long);
 
 /* Paint a specific edge orange (true) or transparent (false). */
 void pan_frame_set_orange(struct cow_output *, int, bool);

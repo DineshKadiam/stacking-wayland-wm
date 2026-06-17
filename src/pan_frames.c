@@ -129,6 +129,8 @@ pan_edge_has_page(const struct cow_output *output, int edge)
 static void
 pan_arm_edge(struct cow_output *output, int edge)
 {
+	if (cow_mono_ms() < cow_wm.pan_global_cooldown_ms)
+		return;
 	if (cow_wm.pan_lock_output == output && cow_wm.pan_lock_edge == edge)
 		return;
 	/* No page in that direction -- skip arming so the cursor isn't
@@ -633,6 +635,16 @@ pan_frames_init(void)
 }
 
 void
+cow_pan_suppress_for(long ms)
+{
+	long until = cow_mono_ms() + ms;
+
+	if (cow_wm.pan_global_cooldown_ms < until)
+		cow_wm.pan_global_cooldown_ms = until;
+	pan_disarm();
+}
+
+void
 pan_frame_set_orange(struct cow_output *output, int edge, bool orange)
 {
 	if (edge < 0 || edge > 3)
@@ -924,6 +936,8 @@ cow_output_pan_frame_tick(struct cow_output *output)
 		return;
 
 	long now     = cow_mono_ms();
+	if (now < cow_wm.pan_global_cooldown_ms)
+		return;
 	long elapsed = now - output->pan_arm_ms;
 	int  dwell   = pan_dwell_ms();
 	int  level   = (elapsed * 5) / (dwell > 0 ? dwell : 1);
@@ -1033,6 +1047,8 @@ cow_output_pan_op_arm(struct cow_seat *seat)
 			output->pan_arm_ms = now;
 		}
 
+		if (now < cow_wm.pan_global_cooldown_ms)
+			continue;
 		if (now < output->pan_giveup_until_ms)
 			continue;
 

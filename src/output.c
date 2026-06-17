@@ -35,6 +35,8 @@
 
 #include "river-window-management-v1-client-protocol.h"
 
+#define OUTPUT_PAN_SUPPRESS_MS 1000
+
 /*
  * Recompute the usable area from the output dimensions (or layer shell
  * non_exclusive_area), subtracting the configured reserved area.
@@ -162,6 +164,8 @@ struct cow_output *
 cow_output_create(struct river_output_v1 *river_output)
 {
 	struct cow_output *output = xcalloc(1, sizeof(*output));
+
+	cow_pan_suppress_for(OUTPUT_PAN_SUPPRESS_MS);
 
 	output->river_output = river_output;
 	output->removed	     = false;
@@ -505,6 +509,7 @@ cow_output_destroy(struct cow_output *output)
 	/* Cancel any in-flight pick session: its per-output overlay is
 	 * about to be torn down anyway. */
 	cow_pick_cancel_active();
+	cow_pan_suppress_for(OUTPUT_PAN_SUPPRESS_MS);
 	output_session_save(output);
 
 	/*
