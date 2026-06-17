@@ -136,9 +136,8 @@ void cow_rebind_all_seats(void);
 /*
  * Return ms-from-now until the next held repeatable binding is due
  * to re-fire, across all seats.  Returns -1 if no repeatable
- * binding is currently held (in which case the main loop can
- * poll() without a timeout from this source).  Used by the main
- * loop to shorten its poll timeout so the next repeat fires
+ * binding is currently held.  Used by the main loop to arm its
+ * timer so the next repeat fires
  * promptly instead of waiting for an unrelated river event.
  */
 int cow_seat_next_repeat_ms(void);

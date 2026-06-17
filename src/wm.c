@@ -15,7 +15,6 @@
  */
 #include <errno.h>
 #include <stdint.h>
-#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,6 +22,7 @@
 #include <unistd.h>
 #include <cairo.h>
 #include <math.h>
+#include <event2/event.h>
 
 #include <wayland-client.h>
 
@@ -1339,161 +1339,179 @@ cow_wm_fini(void)
 		wl_display_disconnect(cow_wm.display);
 }
 
+static void cow_wm_after_event(void);
+static void cow_wm_schedule_tick(struct event *);
+static bool cow_wm_flush_display(void);
+
+static void
+cow_wm_signal_cb(evutil_socket_t sig, __unused short events,
+    __unused void *data)
+{
+	if (sig == SIGUSR1)
+		cow_wm_restart_requested = true;
+	else
+		cow_wm_shutdown_requested = true;
+	cow_wm.running = false;
+}
+
+static void
+cow_wm_wayland_cb(__unused evutil_socket_t fd, __unused short events,
+    __unused void *data)
+{
+	if (wl_display_dispatch(cow_wm.display) < 0)
+		cow_wm.running = false;
+	wl_display_dispatch_pending(cow_wm.display);
+}
+
+static void
+cow_wm_tick_cb(__unused evutil_socket_t fd, __unused short events,
+    __unused void *data)
+{
+	cow_wm.needs_manage_dirty = true;
+}
+
+static bool
+cow_wm_flush_display(void)
+{
+	if (wl_display_flush(cow_wm.display) >= 0 || errno == EAGAIN)
+		return true;
+
+	int err = wl_display_get_error(cow_wm.display);
+	if (err != 0) {
+		uint32_t		   id	 = 0;
+		const struct wl_interface *iface = NULL;
+		int proto_err = wl_display_get_protocol_error(cow_wm.display,
+		    &iface, &id);
+		fprintf(stderr, "cow: protocol error %d on %s@%u\n",
+		    proto_err, iface ? iface->name : "unknown", id);
+	}
+	return false;
+}
+
+static void
+cow_wm_schedule_tick(struct event *tick_ev)
+{
+	int tick_ms = -1;
+
+	if (cow_wm.pan_lock_output != NULL)
+		tick_ms = 50;
+
+	int repeat_ms = cow_seat_next_repeat_ms();
+	if (repeat_ms >= 0) {
+		int wait = repeat_ms < 1 ? 1 : repeat_ms;
+		if (tick_ms < 0 || wait < tick_ms)
+			tick_ms = wait;
+	}
+
+	if (cow_wm.outputs_changed_deadline_ms >= 0) {
+		long delta = cow_wm.outputs_changed_deadline_ms -
+		    cow_mono_ms();
+		int wait = delta < 1 ? 1 : (int)delta;
+		if (tick_ms < 0 || wait < tick_ms)
+			tick_ms = wait;
+	}
+
+	if (tick_ms < 0) {
+		event_del(tick_ev);
+		return;
+	}
+
+	struct timeval tv = {
+		.tv_sec	 = tick_ms / 1000,
+		.tv_usec = (tick_ms % 1000) * 1000,
+	};
+	event_add(tick_ev, &tv);
+}
+
+static void
+cow_wm_fire_outputs_changed(void)
+{
+	if (cow_wm.outputs_changed_deadline_ms < 0 ||
+	    cow_mono_ms() < cow_wm.outputs_changed_deadline_ms)
+		return;
+
+	bool ready = !wl_list_empty(&cow_wm.outputs);
+	struct cow_output *po;
+	if (ready) {
+		wl_list_for_each(po, &cow_wm.outputs, wm_link)
+		{
+			if (po->name == NULL) {
+				ready = false;
+				break;
+			}
+		}
+	}
+	if (!ready) {
+		cow_wm.outputs_changed_deadline_ms =
+		    cow_mono_ms() + COW_OUTPUTS_CHANGED_DEBOUNCE_MS;
+		return;
+	}
+
+	cow_wm.outputs_changed_deadline_ms = -1;
+	cow_rule_fire(COW_RULE_ON_OUTPUTS_CHANGED, NULL, NULL, NULL);
+}
+
+static void
+cow_wm_after_event(void)
+{
+	cow_wm_fire_outputs_changed();
+
+	if (cow_wm.needs_manage_dirty) {
+		cow_wm.needs_manage_dirty = false;
+		wl_display_roundtrip(cow_wm.display);
+		cow_wm_manage_dirty_now();
+	}
+
+	if (cow_wm_shutdown_requested || cow_wm_restart_requested)
+		cow_wm.running = false;
+}
+
 void
 cow_wm_run(void)
 {
-	int wl_fd = wl_display_get_fd(cow_wm.display);
+	struct event_base *base = cow_event_base();
+	struct event	  *wl_ev = NULL, *tick_ev = NULL, *sigint_ev = NULL;
+	struct event	  *sigterm_ev = NULL, *sigusr1_ev = NULL;
+
+	wl_ev = event_new(base, wl_display_get_fd(cow_wm.display),
+	    EV_READ | EV_PERSIST, cow_wm_wayland_cb, NULL);
+	tick_ev = evtimer_new(base, cow_wm_tick_cb, NULL);
+	sigint_ev = evsignal_new(base, SIGINT, cow_wm_signal_cb, NULL);
+	sigterm_ev = evsignal_new(base, SIGTERM, cow_wm_signal_cb, NULL);
+	sigusr1_ev = evsignal_new(base, SIGUSR1, cow_wm_signal_cb, NULL);
+
+	if (wl_ev == NULL || tick_ev == NULL || sigint_ev == NULL ||
+	    sigterm_ev == NULL || sigusr1_ev == NULL)
+		goto out;
+
+	event_add(wl_ev, NULL);
+	event_add(sigint_ev, NULL);
+	event_add(sigterm_ev, NULL);
+	event_add(sigusr1_ev, NULL);
 
 	while (cow_wm.running) {
-		/* Flush outgoing requests */
-		if (wl_display_flush(cow_wm.display) < 0 && errno != EAGAIN) {
-			int err = wl_display_get_error(cow_wm.display);
-			if (err != 0) {
-				uint32_t		   id	 = 0;
-				const struct wl_interface *iface = NULL;
-				int proto_err = wl_display_get_protocol_error(
-				    cow_wm.display, &iface, &id);
-				fprintf(stderr,
-				    "cow: protocol error %d on %s@%u\n",
-				    proto_err, iface ? iface->name : "unknown",
-				    id);
-			}
+		if (!cow_wm_flush_display())
 			break;
-		}
-
-		/* Prepare to read Wayland events (non-blocking) */
-		while (wl_display_prepare_read(cow_wm.display) != 0)
-			wl_display_dispatch_pending(cow_wm.display);
-
-		/* Build poll fd array: Wayland fd + IPC fds */
-		struct pollfd fds[COW_IPC_MAX_CLIENTS + 2];
-		int	      nfds = 0;
-
-		fds[nfds].fd	  = wl_fd;
-		fds[nfds].events  = POLLIN;
-		fds[nfds].revents = 0;
-		nfds++;
-
-		int ipc_nfds  = cow_ipc_fill_pollfds(fds + nfds);
-		int total_fds = nfds + ipc_nfds;
-
-		int poll_timeout = -1;
-
-		/* If a pan-frame dwell timer is armed, wake the loop
-		 * frequently so the dwell fires on time. */
-		if (cow_wm.pan_lock_output != NULL)
-			poll_timeout = 50;
-
-		/*
-		 * Shorten the poll timeout to the next held repeatable
-		 * binding's due instant so the next repeat fires on
-		 * schedule even when river is otherwise silent.  Floor
-		 * at 1ms so a binding whose due instant is in the past
-		 * doesn't busy-loop with poll(...,0).
-		 */
-		int repeat_ms = cow_seat_next_repeat_ms();
-		if (repeat_ms >= 0) {
-			int wait = repeat_ms < 1 ? 1 : repeat_ms;
-			if (poll_timeout < 0 || wait < poll_timeout)
-				poll_timeout = wait;
-		}
-
-		/*
-		 * Shorten the poll timeout to the on-outputs-changed
-		 * deadline so the debounced rule fires promptly when
-		 * the topology has been quiet long enough.
-		 */
-		if (cow_wm.outputs_changed_deadline_ms >= 0) {
-			long delta = cow_wm.outputs_changed_deadline_ms -
-			    cow_mono_ms();
-			int  wait  = delta < 1 ? 1 : (int)delta;
-			if (poll_timeout < 0 || wait < poll_timeout)
-				poll_timeout = wait;
-		}
-
-		int ret = poll(fds, total_fds, poll_timeout);
-		if (ret < 0) {
-			if (errno == EINTR) {
-				wl_display_cancel_read(cow_wm.display);
-				if (cow_wm_shutdown_requested ||
-				    cow_wm_restart_requested)
-					cow_wm.running = false;
-				continue;
-			}
-			wl_display_cancel_read(cow_wm.display);
-			break;
-		}
-
-		/* Handle Wayland events */
-		if (fds[0].revents & POLLIN) {
-			wl_display_read_events(cow_wm.display);
-		} else {
-			wl_display_cancel_read(cow_wm.display);
-		}
 		wl_display_dispatch_pending(cow_wm.display);
+		cow_wm_schedule_tick(tick_ev);
 
-		/* Poll timeout: kick a manage cycle so dwell-based
-		 * mechanisms (pan-frame edge scroll, key-repeat) can
-		 * fire promptly without waiting for an unrelated river
-		 * event. */
-		if (ret == 0 && poll_timeout > 0)
-			cow_wm.needs_manage_dirty = true;
+		if (event_base_loop(base, EVLOOP_ONCE) < 0)
+			break;
 
-		/*
-		 * Fire on-outputs-changed once the debounce window
-		 * has elapsed AND the topology is in a "ready" state:
-		 * at least one output present and every output has
-		 * been named (i.e. its wl_output is bound and the
-		 * `name` event has arrived).  Without these guards
-		 * the rule body could run while no outputs are
-		 * registered with other clients (a transient
-		 * blackout) or while names are still propagating, so
-		 * a wlr-randr call inside the body would fail with
-		 * "unknown output X" for every name it tried.  When
-		 * not ready, push the deadline forward so we
-		 * re-check after another debounce window.
-		 */
-		if (cow_wm.outputs_changed_deadline_ms >= 0 &&
-		    cow_mono_ms() >= cow_wm.outputs_changed_deadline_ms) {
-			bool		   ready = !wl_list_empty(
-			    &cow_wm.outputs);
-			struct cow_output *po;
-			if (ready) {
-				wl_list_for_each(po, &cow_wm.outputs, wm_link)
-				{
-					if (po->name == NULL) {
-						ready = false;
-						break;
-					}
-				}
-			}
-			if (!ready) {
-				cow_wm.outputs_changed_deadline_ms =
-				    cow_mono_ms() +
-				    COW_OUTPUTS_CHANGED_DEBOUNCE_MS;
-			} else {
-				cow_wm.outputs_changed_deadline_ms = -1;
-				cow_rule_fire(COW_RULE_ON_OUTPUTS_CHANGED,
-				    NULL, NULL, NULL);
-			}
-		}
-
-		/* Handle IPC events */
-		if (ipc_nfds > 0)
-			cow_ipc_process_events(fds + nfds, ipc_nfds);
-
-		/* If any IPC commands deferred state changes, do a
-		 * round-trip to ensure the previous render_finish was
-		 * processed, then request a new render cycle. */
-		if (cow_wm.needs_manage_dirty) {
-			cow_wm.needs_manage_dirty = false;
-			wl_display_roundtrip(cow_wm.display);
-			cow_wm_manage_dirty_now();
-		}
-
-		if (cow_wm_shutdown_requested || cow_wm_restart_requested)
-			cow_wm.running = false;
+		cow_wm_after_event();
 	}
+
+out:
+	if (wl_ev != NULL)
+		event_free(wl_ev);
+	if (tick_ev != NULL)
+		event_free(tick_ev);
+	if (sigint_ev != NULL)
+		event_free(sigint_ev);
+	if (sigterm_ev != NULL)
+		event_free(sigterm_ev);
+	if (sigusr1_ev != NULL)
+		event_free(sigusr1_ev);
 }
 
 void

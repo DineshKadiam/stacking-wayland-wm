@@ -16,7 +16,6 @@
 #if !defined(COW_IPC_H)
 #define COW_IPC_H
 
-#include <poll.h>
 #include <stdbool.h>
 
 #define COW_IPC_MAX_CLIENTS 32
@@ -24,13 +23,16 @@
 #define COW_IPC_MAX_ARGS 64
 
 struct cow_ipc_client {
-	int  fd;
-	char buf[COW_IPC_BUF_SIZE];
-	int  buf_len;
+	int	      fd;
+	char	      buf[COW_IPC_BUF_SIZE];
+	int	      buf_len;
+	bool	      active;
+	struct event *ev;
 };
 
 struct cow_ipc {
 	int		      server_fd;
+	struct event	     *server_ev;
 	char		     *socket_path;
 	char		     *config_path;
 	struct cow_ipc_client clients[COW_IPC_MAX_CLIENTS];
@@ -50,19 +52,6 @@ bool cow_ipc_init(void);
  * Shut down IPC: close all clients, close server, unlink socket.
  */
 void cow_ipc_fini(void);
-
-/*
- * Add the IPC server and client fds to a poll array.
- * Returns the number of fds added.
- */
-int cow_ipc_fill_pollfds(struct pollfd *);
-
-/*
- * Process IPC events from poll results.
- * fds points to the IPC portion of the poll array (after the Wayland fd).
- * nfds is the count returned by cow_ipc_fill_pollfds.
- */
-void cow_ipc_process_events(struct pollfd *, int);
 
 /*
  * Dispatch a single command line.

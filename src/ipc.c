@@ -22,12 +22,14 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <event2/event.h>
 
 #include "cow/compat.h"
 #include "cow/cmd.h"
-#include "cow/ipc.h"
 #include "cow/command.h"
 #include "cow/config.h"
+#include "cow/event.h"
+#include "cow/ipc.h"
 #include "cow/keybinding.h"
 #include "cow/memory.h"
 #include "cow/util.h"
@@ -35,11 +37,16 @@
 
 struct cow_ipc cow_ipc;
 
+static void ipc_accept_cb(evutil_socket_t, short, void *);
+static void ipc_client_cb(evutil_socket_t, short, void *);
+
 bool
 cow_ipc_init(void)
 {
 	memset(&cow_ipc, 0, sizeof(cow_ipc));
 	cow_ipc.server_fd = -1;
+	for (int i = 0; i < COW_IPC_MAX_CLIENTS; i++)
+		cow_ipc.clients[i].fd = -1;
 
 	char path[108]; /* sockaddr_un.sun_path size */
 	int  fd = cow_unix_listen("cow-cmd.sock", path, sizeof(path),
@@ -49,6 +56,12 @@ cow_ipc_init(void)
 
 	cow_ipc.server_fd   = fd;
 	cow_ipc.socket_path = xstrdup(path);
+	cow_ipc.server_ev   = event_new(cow_event_base(), fd,
+	    EV_READ | EV_PERSIST, ipc_accept_cb, NULL);
+	if (cow_ipc.server_ev == NULL || event_add(cow_ipc.server_ev, NULL) < 0) {
+		cow_ipc_fini();
+		return false;
+	}
 	fprintf(stderr, "cow: ipc: listening on %s\n", cow_ipc.socket_path);
 	fflush(stderr);
 	return true;
@@ -57,11 +70,23 @@ cow_ipc_init(void)
 void
 cow_ipc_fini(void)
 {
-	for (int i = 0; i < cow_ipc.num_clients; i++) {
-		if (cow_ipc.clients[i].fd >= 0)
+	for (int i = 0; i < COW_IPC_MAX_CLIENTS; i++) {
+		if (cow_ipc.clients[i].ev != NULL) {
+			event_free(cow_ipc.clients[i].ev);
+			cow_ipc.clients[i].ev = NULL;
+		}
+		if (cow_ipc.clients[i].fd >= 0) {
 			close(cow_ipc.clients[i].fd);
+			cow_ipc.clients[i].fd = -1;
+		}
+		cow_ipc.clients[i].active = false;
 	}
 	cow_ipc.num_clients = 0;
+
+	if (cow_ipc.server_ev != NULL) {
+		event_free(cow_ipc.server_ev);
+		cow_ipc.server_ev = NULL;
+	}
 
 	if (cow_ipc.server_fd >= 0) {
 		close(cow_ipc.server_fd);
@@ -73,30 +98,6 @@ cow_ipc_fini(void)
 		xfree(cow_ipc.socket_path);
 		cow_ipc.socket_path = NULL;
 	}
-}
-
-int
-cow_ipc_fill_pollfds(struct pollfd *fds)
-{
-	int n = 0;
-
-	if (cow_ipc.server_fd >= 0) {
-		fds[n].fd      = cow_ipc.server_fd;
-		fds[n].events  = POLLIN;
-		fds[n].revents = 0;
-		n++;
-	}
-
-	for (int i = 0; i < cow_ipc.num_clients; i++) {
-		if (cow_ipc.clients[i].fd >= 0) {
-			fds[n].fd      = cow_ipc.clients[i].fd;
-			fds[n].events  = POLLIN;
-			fds[n].revents = 0;
-			n++;
-		}
-	}
-
-	return n;
 }
 
 void
@@ -286,6 +287,35 @@ cow_ipc_load_config(const char *path)
 	return true;
 }
 
+static struct cow_ipc_client *
+ipc_find_free_client(void)
+{
+	for (int i = 0; i < COW_IPC_MAX_CLIENTS; i++) {
+		if (!cow_ipc.clients[i].active)
+			return (&cow_ipc.clients[i]);
+	}
+	return (NULL);
+}
+
+static void
+ipc_remove_client(struct cow_ipc_client *client)
+{
+	if (client == NULL || !client->active)
+		return;
+	if (client->ev != NULL) {
+		event_free(client->ev);
+		client->ev = NULL;
+	}
+	if (client->fd >= 0) {
+		close(client->fd);
+		client->fd = -1;
+	}
+	client->buf_len = 0;
+	client->active  = false;
+	if (cow_ipc.num_clients > 0)
+		cow_ipc.num_clients--;
+}
+
 static void
 ipc_accept_client(void)
 {
@@ -294,7 +324,8 @@ ipc_accept_client(void)
 	if (fd < 0)
 		return;
 
-	if (cow_ipc.num_clients >= COW_IPC_MAX_CLIENTS) {
+	struct cow_ipc_client *client = ipc_find_free_client();
+	if (client == NULL) {
 		const char *msg =
 		    "{\"ok\":false,\"error\":\"too many clients\"}\n";
 		write(fd, msg, strlen(msg));
@@ -302,39 +333,31 @@ ipc_accept_client(void)
 		return;
 	}
 
-	struct cow_ipc_client *client = &cow_ipc.clients[cow_ipc.num_clients++];
-	client->fd		      = fd;
-	client->buf_len		      = 0;
+	client->fd	 = fd;
+	client->buf_len	 = 0;
+	client->active	 = true;
+	client->ev	 = event_new(cow_event_base(), fd, EV_READ | EV_PERSIST,
+	     ipc_client_cb, client);
+	if (client->ev == NULL || event_add(client->ev, NULL) < 0) {
+		ipc_remove_client(client);
+		return;
+	}
+	cow_ipc.num_clients++;
 }
 
 static void
-ipc_remove_client(int idx)
+ipc_handle_client_data(struct cow_ipc_client *client)
 {
-	close(cow_ipc.clients[idx].fd);
-	cow_ipc.clients[idx] = cow_ipc.clients[--cow_ipc.num_clients];
-}
-
-/*
- * Handle a POLLIN event on client 'idx'.  Returns true if the client
- * was removed (either because the read reached EOF/error or because
- * the dispatched command completed and we closed the connection);
- * the caller must then NOT advance past this slot, since the last
- * client was swapped into it by ipc_remove_client().
- */
-static bool
-ipc_handle_client_data(int idx)
-{
-	struct cow_ipc_client *client = &cow_ipc.clients[idx];
-	int		       avail  = COW_IPC_BUF_SIZE - client->buf_len - 1;
+	int avail = COW_IPC_BUF_SIZE - client->buf_len - 1;
 	if (avail <= 0) {
 		client->buf_len = 0;
-		return false;
+		return;
 	}
 
 	int n = read(client->fd, client->buf + client->buf_len, avail);
 	if (n <= 0) {
-		ipc_remove_client(idx);
-		return true;
+		ipc_remove_client(client);
+		return;
 	}
 	client->buf_len += n;
 	client->buf[client->buf_len] = '\0';
@@ -348,8 +371,8 @@ ipc_handle_client_data(int idx)
 		start = nl + 1;
 		/* Close after each command: moocow sends one command and
 		 * reads until EOF, so closing here unblocks it. */
-		ipc_remove_client(idx);
-		return true;
+		ipc_remove_client(client);
+		return;
 	}
 
 	/* Shift remaining data to front */
@@ -357,41 +380,25 @@ ipc_handle_client_data(int idx)
 	if (remaining > 0 && start != client->buf)
 		memmove(client->buf, start, remaining);
 	client->buf_len = remaining;
-	return false;
 }
 
-void
-cow_ipc_process_events(struct pollfd *fds, int nfds)
+static void
+ipc_accept_cb(__unused evutil_socket_t fd, __unused short events,
+    __unused void *data)
 {
-	if (nfds <= 0)
+	for (;; ) {
+		int before = cow_ipc.num_clients;
+		ipc_accept_client();
+		if (cow_ipc.num_clients == before)
+			break;
+	}
+}
+
+static void
+ipc_client_cb(__unused evutil_socket_t fd, short events, void *data)
+{
+	struct cow_ipc_client *client = data;
+	if ((events & EV_READ) == 0)
 		return;
-
-	int idx = 0;
-
-	/* First fd is the server socket */
-	if (cow_ipc.server_fd >= 0 && idx < nfds) {
-		if (fds[idx].revents & POLLIN)
-			ipc_accept_client();
-		idx++;
-	}
-
-	/*
-	 * Remaining fds are clients.  Walk the original pollfd array --
-	 * both ipc_handle_client_data() and the POLLHUP/POLLERR branch
-	 * may call ipc_remove_client(), which swaps the last client into
-	 * slot i and decrements num_clients.  When that happens we must
-	 * re-examine slot i instead of advancing, but we still move on
-	 * in the pollfd array since those revents were already consumed.
-	 */
-	for (int i = 0; i < cow_ipc.num_clients && idx < nfds; idx++) {
-		short rev = fds[idx].revents;
-		if (rev & POLLIN) {
-			if (ipc_handle_client_data(i))
-				continue; /* slot refilled; re-examine */
-		} else if (rev & (POLLHUP | POLLERR)) {
-			ipc_remove_client(i);
-			continue; /* slot refilled; re-examine */
-		}
-		i++;
-	}
+	ipc_handle_client_data(client);
 }
