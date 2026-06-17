@@ -37,6 +37,10 @@
 
 #include "cow/cmd_scan.h"
 
+#ifndef COW_VERSION
+#define COW_VERSION "unknown"
+#endif
+
 static const char *usage =
     "Usage: moocow [-h] [-p]\n"
     "       moocow COMMAND [ARGS...]\n"
@@ -254,6 +258,9 @@ persistent_mode(void)
 	char *cmd = NULL, *line = NULL;
 	size_t cmd_len = 0, cmd_cap = 0, line_cap = 0;
 	int ret = 0;
+
+	if (interactive)
+		printf("moocow (%s)\n\n", COW_VERSION);
 
 	for (;;) {
 		if (interactive) {
