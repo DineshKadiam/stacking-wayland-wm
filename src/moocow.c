@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -42,11 +43,13 @@
 #endif
 
 static const char *usage =
-    "Usage: moocow [-h] [-p]\n"
+    "Usage: moocow [-h]\n"
+    "       moocow -p [-P prompt] [-S prompt] [-C colour]\n"
     "       moocow COMMAND [ARGS...]\n"
     "\n"
     "Examples:\n"
     "  moocow -p\n"
+    "  moocow -p -P 'cow> ' -S '...> ' -C green\n"
     "  moocow set border 10\n"
     "  moocow get windows\n"
     "  moocow view-close\n"
@@ -236,6 +239,50 @@ send_command(const char *cmd)
 	return ret;
 }
 
+static const char *
+prompt_colour_code(const char *colour)
+{
+	if (colour == NULL || strcasecmp(colour, "red") == 0)
+		return "31";
+	if (strcasecmp(colour, "black") == 0)
+		return "30";
+	if (strcasecmp(colour, "green") == 0)
+		return "32";
+	if (strcasecmp(colour, "yellow") == 0)
+		return "33";
+	if (strcasecmp(colour, "blue") == 0)
+		return "34";
+	if (strcasecmp(colour, "magenta") == 0)
+		return "35";
+	if (strcasecmp(colour, "cyan") == 0)
+		return "36";
+	if (strcasecmp(colour, "white") == 0)
+		return "37";
+	if (strcasecmp(colour, "none") == 0)
+		return NULL;
+	return "";
+}
+
+static bool
+prompt_colour_valid(const char *colour)
+{
+	const char *code = prompt_colour_code(colour);
+
+	return code == NULL || code[0] != '\0';
+}
+
+static void
+print_prompt(const char *prompt, const char *colour)
+{
+	const char *code = prompt_colour_code(colour);
+
+	if (code == NULL)
+		fputs(prompt, stdout);
+	else
+		printf("\033[%sm%s\033[0m", code, prompt);
+	fflush(stdout);
+}
+
 static bool
 skip_command(const char *cmd)
 {
@@ -252,7 +299,8 @@ command_complete(const char *cmd, size_t len)
 }
 
 static int
-persistent_mode(void)
+persistent_mode(const char *primary_prompt, const char *secondary_prompt,
+    const char *prompt_colour)
 {
 	bool interactive = isatty(STDIN_FILENO) && isatty(STDOUT_FILENO);
 	char *cmd = NULL, *line = NULL;
@@ -263,10 +311,9 @@ persistent_mode(void)
 		printf("moocow (%s)\n\n", COW_VERSION);
 
 	for (;;) {
-		if (interactive) {
-			fputs(cmd_len == 0 ? ">>> " : "... ", stdout);
-			fflush(stdout);
-		}
+		if (interactive)
+			print_prompt(cmd_len == 0 ? primary_prompt :
+			    secondary_prompt, prompt_colour);
 
 		errno = 0;
 		ssize_t line_len = getline(&line, &line_cap, stdin);
@@ -303,16 +350,29 @@ persistent_mode(void)
 int
 main(int argc, char *argv[])
 {
+	bool persistent = false, prompt_option = false;
+	const char *primary_prompt = ">>> ";
+	const char *secondary_prompt = "... ";
+	const char *prompt_colour = "red";
 	int ch;
 
-	while ((ch = getopt(argc, argv, "hp")) != -1) {
+	while ((ch = getopt(argc, argv, "hP:S:C:p")) != -1) {
 		switch (ch) {
 		case 'p':
-			if (argc - optind > 0) {
-				fputs(usage, stderr);
-				return 1;
-			}
-			return persistent_mode();
+			persistent = true;
+			break;
+		case 'P':
+			primary_prompt = optarg;
+			prompt_option = true;
+			break;
+		case 'S':
+			secondary_prompt = optarg;
+			prompt_option = true;
+			break;
+		case 'C':
+			prompt_colour = optarg;
+			prompt_option = true;
+			break;
 		case 'h':
 			fputs(usage, stdout);
 			return 0;
@@ -324,6 +384,26 @@ main(int argc, char *argv[])
 
 	argc -= optind;
 	argv += optind;
+
+	if (!prompt_colour_valid(prompt_colour)) {
+		fprintf(stderr, "moocow: unknown prompt colour: %s\n",
+		    prompt_colour);
+		return 1;
+	}
+
+	if (persistent) {
+		if (argc != 0) {
+			fputs(usage, stderr);
+			return 1;
+		}
+		return persistent_mode(primary_prompt, secondary_prompt,
+		    prompt_colour);
+	}
+
+	if (prompt_option) {
+		fputs(usage, stderr);
+		return 1;
+	}
 
 	if (argc < 1) {
 		fputs(usage, stderr);

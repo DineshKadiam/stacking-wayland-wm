@@ -8,7 +8,7 @@ moocow - send commands to a running cow instance
 
 *moocow* _command_ [_args_ ...]
 
-*moocow* *-p*
+*moocow* *-p* [*-P* _prompt_] [*-S* _prompt_] [*-C* _colour_]
 
 # DESCRIPTION
 
@@ -24,6 +24,25 @@ run interactively it prints a version banner and the prompt *>>> * before each
 command.  Incomplete commands use the prompt *... * until the command is
 complete.  A backslash (*\\*) at the end of a line continues the command on the
 next line.
+
+# OPTIONS
+
+*-h*
+	Print usage and exit.
+
+*-p*
+	Read and evaluate commands persistently.
+
+*-P* _prompt_
+	Set the primary prompt used by *-p*.  The default is *>>> *.
+
+*-S* _prompt_
+	Set the continuation prompt used by *-p*.  The default is *... *.
+
+*-C* _colour_
+	Set the prompt colour used by *-p*.  The default is *red*.  Supported
+	colours are *black*, *red*, *green*, *yellow*, *blue*, *magenta*,
+	*cyan*, *white*, and *none*.
 
 # EXIT STATUS
 
@@ -93,6 +112,12 @@ Run commands persistently:
 
 ```
 moocow -p
+```
+
+Run persistently with custom prompts:
+
+```
+moocow -p -P 'cow> ' -S '...> ' -C green
 ```
 
 # SEE ALSO
