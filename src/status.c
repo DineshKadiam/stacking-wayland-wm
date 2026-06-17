@@ -24,7 +24,10 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <event2/event.h>
 
+#include "cow/attrs.h"
+#include "cow/event.h"
 #include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/util.h"
@@ -34,11 +37,14 @@
 #define MAX_STATUS_CLIENTS 64
 
 static int    server_fd	  = -1;
+static struct event *server_ev = NULL;
 static char  *socket_path = NULL;
 static int    clients[MAX_STATUS_CLIENTS];
 static int    nclients		= 0;
 static char  *last_snapshot	= NULL;
 static size_t last_snapshot_len = 0;
+
+static void status_accept_cb(evutil_socket_t, short, void *);
 
 void
 cow_status_init(void)
@@ -51,6 +57,12 @@ cow_status_init(void)
 
 	server_fd   = fd;
 	socket_path = xstrdup(path);
+	server_ev = event_new(cow_event_base(), fd, EV_READ | EV_PERSIST,
+	    status_accept_cb, NULL);
+	if (server_ev == NULL || event_add(server_ev, NULL) < 0) {
+		cow_status_fini();
+		return;
+	}
 	fprintf(stderr, "cow: status: listening on %s\n", socket_path);
 }
 
@@ -65,6 +77,11 @@ cow_status_fini(void)
 	last_snapshot	  = NULL;
 	last_snapshot_len = 0;
 
+	if (server_ev != NULL) {
+		event_free(server_ev);
+		server_ev = NULL;
+	}
+
 	if (server_fd >= 0) {
 		close(server_fd);
 		server_fd = -1;
@@ -76,9 +93,6 @@ cow_status_fini(void)
 	}
 }
 
-/*
- * Accept any pending connections.  Called before emitting.
- */
 static void
 status_accept(void)
 {
@@ -108,6 +122,13 @@ status_accept(void)
 		}
 		clients[nclients++] = fd;
 	}
+}
+
+static void
+status_accept_cb(__unused evutil_socket_t fd, __unused short events,
+    __unused void *data)
+{
+	status_accept();
 }
 
 /*
@@ -148,12 +169,6 @@ void
 cow_status_emit(void)
 {
 	if (server_fd < 0)
-		return;
-
-	/* Accept new clients first */
-	status_accept();
-
-	if (nclients == 0)
 		return;
 
 	cJSON *root = cJSON_CreateObject();
