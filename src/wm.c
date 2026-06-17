@@ -17,6 +17,7 @@
 #include <stdint.h>
 #include <poll.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
@@ -47,6 +48,8 @@
 #include "cow/wm.h"
 
 #include "cursor-shape-v1-client-protocol.h"
+
+#define COW_RESTART_ENV "COW_RESTARTING"
 #include "pointer-constraints-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "river-layer-shell-v1-client-protocol.h"
@@ -951,7 +954,8 @@ handle_wm_manage_start(__unused void *data,
 		 * edges that are scrollable according to the final config. */
 		pan_frames_update_all();
 
-		cow_rule_fire(COW_RULE_ON_START, NULL, NULL, NULL);
+		if (!cow_wm.restarted)
+			cow_rule_fire(COW_RULE_ON_START, NULL, NULL, NULL);
 	}
 }
 
@@ -1189,6 +1193,15 @@ bool
 cow_wm_init(void)
 {
 	memset(&cow_wm, 0, sizeof(cow_wm));
+
+	const char *restart_pid = getenv(COW_RESTART_ENV);
+	if (restart_pid != NULL) {
+		char *end = NULL;
+		long  pid = strtol(restart_pid, &end, 10);
+		cow_wm.restarted = end != restart_pid && *end == '\0' &&
+		    pid == (long)getpid();
+		unsetenv(COW_RESTART_ENV);
+	}
 
 	cow_wm.raise_seq_counter	    = UINT64_MAX / 2;
 	cow_wm.outputs_changed_deadline_ms = -1;
@@ -1536,6 +1549,10 @@ cow_wm_restart(char **argv)
 	 * the existing window manager session immediately. */
 	cow_status_fini();
 	cow_ipc_fini();
+
+	char restart_pid[32];
+	snprintf(restart_pid, sizeof restart_pid, "%ld", (long)getpid());
+	setenv(COW_RESTART_ENV, restart_pid, 1);
 
 	fprintf(stderr, "cow: restarting (%s)...\n", argv[0]);
 	execvp(argv[0], argv);

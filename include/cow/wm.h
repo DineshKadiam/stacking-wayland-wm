@@ -98,6 +98,7 @@ struct cow_wm {
 	enum cow_wm_sequence sequence;
 	bool		     running;
 	bool		     session_locked;
+	bool		     restarted;
 	bool state_restored; /* true after first manage restores saved state */
 
 	/* Lists of tracked objects */
