@@ -249,10 +249,8 @@ eval_path(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 		struct dsl_value *field = dsl_record_get(cur,
 		    n->u.path.parts[i]);
 		if (field == NULL) {
-			fail_at(ctx, n->line, n->col,
-			    "no such field '%s' on record", n->u.path.parts[i]);
 			dsl_value_unref(cur);
-			return (NULL);
+			return (dsl_value_nil());
 		}
 		dsl_value_ref(field);
 		dsl_value_unref(cur);
@@ -337,6 +335,15 @@ compare(struct dsl_eval_ctx *ctx, struct dsl_node *n, struct dsl_value *lhs,
 					    (lhs->u.b != rhs->u.b);
 		return (true);
 	}
+	if (lhs->type == DSL_V_NIL) {
+		if (op != DSL_CMP_EQ && op != DSL_CMP_NE) {
+			fail_at(ctx, n->line, n->col,
+			    "ordering comparison on nil");
+			return (false);
+		}
+		*out = op == DSL_CMP_EQ;
+		return (true);
+	}
 	fail_at(ctx, n->line, n->col, "comparison not defined for this type");
 	return (false);
 }
@@ -354,6 +361,8 @@ eval_expr(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 		return (dsl_value_string(n->u.str.s));
 	case DSL_N_BOOL:
 		return (dsl_value_bool(n->u.boolean.b));
+	case DSL_N_NIL:
+		return (dsl_value_nil());
 	case DSL_N_PATH:
 		return (eval_path(ctx, env, n));
 	case DSL_N_NOT: {
@@ -677,6 +686,12 @@ dsl_eval(struct dsl_ast *ast, struct cmd_q *cmdq, struct dsl_error *err)
 	ctx.err			= err;
 
 	struct dsl_env *env = env_new(NULL);
+	if (cmdq != NULL && cmdq->default_target.window != NULL) {
+		struct dsl_value *self =
+		    dsl_snapshot_view(cmdq->default_target.window);
+		env_set(env, "self", self);
+		dsl_value_unref(self);
+	}
 	exec_block(&ctx, env, ast->root);
 	env_free(env);
 

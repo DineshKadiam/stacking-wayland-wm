@@ -234,8 +234,8 @@ newlines) separates them.
 *for* _NAME_ *in* *(*_SOURCE_ [*where* _EXPR_]*)* *{* ... *}*
 	Snapshot _SOURCE_ at loop entry and execute the body once
 	per matching element with _NAME_ bound to the current
-	record.  _SOURCE_ is one of *windows*, *desks*, *outputs*,
-	*rules*.  An optional *where* clause filters the snapshot
+	record.  _SOURCE_ is one of *windows*, *desks*, *outputs*
+	(or *screens*), *rules*.  An optional *where* clause filters the snapshot
 	with the supplied expression (evaluated per element with
 	_NAME_ in scope).  The body sees a fresh sub-scope; let
 	bindings inside the body don't leak out.
@@ -267,6 +267,8 @@ in v1; it covers what's needed to choose work to do.
 :  string literal (escapes: \\n \\t \\r \\" \\\\)
 |  *true*, *false*
 :  boolean literal
+|  *nil*
+:  absence of a value; missing record fields also evaluate to *nil*
 |  _NAME_
 :  variable in the current or enclosing scope
 |  _NAME_._FIELD_._FIELD_
@@ -274,7 +276,7 @@ in v1; it covers what's needed to choose work to do.
 |  _A_ *==* _B_
 :  comparison (also *!=*, *<*, *<=*, *>*, *>=*); cross-type
    compares are evaluation errors; ordering on booleans is an
-   evaluation error
+   evaluation error; *nil* supports only *==* and *!=*
 |  *not* _A_
 :  unary negation
 |  _A_ *and* _B_, _A_ *or* _B_
@@ -288,10 +290,15 @@ Each iterable source yields records whose fields match the matching
 *show* topic JSON (see *show windows*, *show desk*, *show output*,
 *show rules*).  Common window fields include *id*, *app_id*,
 *title*, *desk*, *output*, *layer*, *focused*, *iconified*,
-*maximized*, *width*, *height*.  Common desk fields: *nr*, *output*,
-*current*, *window_count*.  Common output fields: *name*, *number*,
-*current*, *current_desk*.  Common rule fields: *name*, *type*,
-*global*, *match*.
+*maximized*, *width*, *height*, *sticky_desk*, *sticky_page*,
+*border_width*, *title_thickness*, *squeeze*, and *squeezed_rect*.
+Common desk fields include *nr*, *name*, *output*, *current*,
+*active*, *collected*, *window_count*, *page_col*, *page_row*,
+*page_cols*, *page_rows*, *page_vx*, and *page_vy*.  Common output
+fields include *name*, *number*, geometry, usable geometry, *current*,
+*current_desk*, *current_desk_name*, and page state.  Common rule
+fields include *name*, *type*, *global*, *output*, *desk*, *match*,
+and *body*.
 
 Inside a rule body, the identifier *self* resolves to a record for
 the event's target view; outside a rule body it is unbound.
@@ -331,8 +338,7 @@ script {
 ```
 
 Multi-line scripts may also be submitted ad-hoc via IPC by piping
-the body to *moocow*'s stdin (a future addition; for now use
-*moocow 'script { ... }'* on one line).
+the body to *moocow*'s stdin.
 
 # DESKTOP BEHAVIOUR
 

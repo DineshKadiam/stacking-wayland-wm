@@ -20,11 +20,14 @@
 #include "dsl-ast.h"
 #include "dsl-value.h"
 
+struct cow_view;
+
 /*
  * Snapshot the named collection from live wm state.  Returned value
  * is a freshly-owned DSL_V_LIST of records; caller dsl_value_unref's
  * when done.
  */
 struct dsl_value *dsl_source_snapshot(enum dsl_source);
+struct dsl_value *dsl_snapshot_view(const struct cow_view *);
 
 #endif /* COW_DSL_SOURCES_H */

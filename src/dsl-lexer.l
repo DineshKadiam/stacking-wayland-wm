@@ -158,6 +158,8 @@ classify_word(const char *word, YYSTYPE *lval, bool *push_cmd_arg)
 		return (TRUE_LIT);
 	if (strcmp(word, "false") == 0)
 		return (FALSE_LIT);
+	if (strcmp(word, "nil") == 0)
+		return (NIL_LIT);
 	if (strcmp(word, "self") == 0)
 		return (SELF);
 	if (strcmp(word, "windows") == 0) {
@@ -169,6 +171,10 @@ classify_word(const char *word, YYSTYPE *lval, bool *push_cmd_arg)
 		return (SOURCE_NAME);
 	}
 	if (strcmp(word, "outputs") == 0) {
+		lval->src = DSL_SRC_OUTPUTS;
+		return (SOURCE_NAME);
+	}
+	if (strcmp(word, "screens") == 0) {
 		lval->src = DSL_SRC_OUTPUTS;
 		return (SOURCE_NAME);
 	}

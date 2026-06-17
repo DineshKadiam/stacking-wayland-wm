@@ -219,6 +219,12 @@ dsl_node_path(struct dsl_ast *ast, int line, int col, const char *base)
 }
 
 struct dsl_node *
+dsl_node_nil(struct dsl_ast *ast, int line, int col)
+{
+	return (node_new(ast, DSL_N_NIL, line, col));
+}
+
+struct dsl_node *
 dsl_node_num(struct dsl_ast *ast, int line, int col, double v)
 {
 	struct dsl_node *n = node_new(ast, DSL_N_NUM, line, col);

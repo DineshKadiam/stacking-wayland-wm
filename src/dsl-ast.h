@@ -49,6 +49,7 @@ enum dsl_node_kind {
 	DSL_N_NOT,
 	DSL_N_CMP,  /* binary comparison; op encoded in u.cmp.op */
 	DSL_N_PATH, /* IDENT(.IDENT)*  -- variable + field access */
+	DSL_N_NIL,
 	DSL_N_NUM,
 	DSL_N_STR,
 	DSL_N_BOOL,
@@ -222,6 +223,7 @@ struct dsl_node *dsl_node_cmp(struct dsl_ast *, int line, int col,
     enum dsl_cmp_op, struct dsl_node *lhs, struct dsl_node *rhs);
 struct dsl_node *dsl_node_path(struct dsl_ast *, int line, int col,
     const char *base);
+struct dsl_node *dsl_node_nil(struct dsl_ast *, int line, int col);
 struct dsl_node *dsl_node_num(struct dsl_ast *, int line, int col, double);
 struct dsl_node *dsl_node_str(struct dsl_ast *, int line, int col,
     const char *s);

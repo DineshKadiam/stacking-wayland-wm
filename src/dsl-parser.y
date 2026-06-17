@@ -91,7 +91,7 @@ struct dsl_source_spec {
 %token DOT EQUALS
 %token LET FOR IN IF ELSE WHERE AND OR NOT
 %token SELF
-%token TRUE_LIT FALSE_LIT
+%token TRUE_LIT FALSE_LIT NIL_LIT
 %token <src> SOURCE_NAME
 %token <str> IDENT STRING_LIT RAW_STRING CMD_VERB
 %token <num> NUMBER_LIT
@@ -303,6 +303,11 @@ atom
 		{
 			$$ = dsl_node_bool(ctx->ast, @1.first_line,
 			    @1.first_column, false);
+		}
+	| NIL_LIT
+		{
+			$$ = dsl_node_nil(ctx->ast, @1.first_line,
+			    @1.first_column);
 		}
 	| LPAREN expr RPAREN
 		{

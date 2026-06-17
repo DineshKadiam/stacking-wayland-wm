@@ -79,7 +79,7 @@ Layer-related keys:
 
 Evaluate an embedded `script { ... }` block.  The block may use
 `let` bindings, `for` loops over the named sources (`windows`,
-`desks`, `outputs`, `rules`) with an optional `where` filter, and
+`desks`, `outputs`/`screens`, `rules`) with an optional `where` filter, and
 `if` / `else` conditionals; any cow command inside the block is
 invoked with the rest of its argv (with `#{expr}` interpolations
 expanded).  See the SCRIPTING section in cow(1) for full grammar
