@@ -59,6 +59,7 @@ srcs = [
     'src/desk.c',
     'src/desk_ops.c',
     'src/draw.c',
+    'src/event.c',
     'src/font.c',
     'src/ipc.c',
     'src/json_util.c',
@@ -231,12 +232,14 @@ wayland_protos = dependency('wayland-protocols', version: '>=1.41', default_opti
 xkbcommon      = dependency('xkbcommon')
 pangocairo     = dependency('pangocairo')
 cairo          = dependency('cairo')
+libevent       = dependency('libevent')
 
 all_deps = [
     wayland_client,
     xkbcommon,
     pangocairo,
     cairo,
+    libevent,
 ]
 if libbsd.found()
     all_deps += libbsd
@@ -346,5 +349,6 @@ summary({
     'pangocairo': pangocairo,
     'cairo': cairo,
     'libbsd': libbsd,
+    'libevent': libevent,
     'scdoc': scdoc,
 }, bool_yn: true, section: 'Dependencies')

@@ -29,6 +29,7 @@
 #include "cow/cmd.h"
 #include "cow/command.h"
 #include "cow/config.h"
+#include "cow/event.h"
 #include "cow/ipc.h"
 #include "cow/keybinding.h"
 #include "cow/memory.h"
@@ -1270,6 +1271,11 @@ cow_wm_init(void)
 	cow_wm.running	    = true;
 	cow_wm.exec_pending = true;
 
+	if (!cow_event_init()) {
+		fprintf(stderr, "cow: failed to initialise event loop\n");
+		goto fail;
+	}
+
 	/* Initialize IPC command socket */
 	if (!cow_ipc_init())
 		fprintf(stderr, "cow: warning: IPC init failed\n");
@@ -1297,6 +1303,7 @@ cow_wm_fini(void)
 	cow_state_save();
 	cow_status_fini();
 	cow_ipc_fini();
+	cow_event_fini();
 	cow_rule_fini();
 
 	if (cow_wm.layer_shell != NULL)
