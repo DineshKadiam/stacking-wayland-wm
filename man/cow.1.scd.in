@@ -218,8 +218,7 @@ Beyond the line-oriented command language, *cow* understands
 collections, filter them, branch on conditions, and invoke any cow
 command on the results.  A *script* block is itself a cow command,
 so it can appear anywhere a command is accepted: the top-level
-configuration file, the body of a *rule*, or as an IPC submission
-on *cow-cmd.sock*.
+configuration file, or the body of a rule.
 
 ## Statements
 
@@ -343,8 +342,18 @@ script {
 }
 ```
 
-Multi-line scripts may also be submitted ad-hoc via IPC by piping
-the body to *moocow*'s stdin.
+When *cow* starts, for the output (screen) _HDMI-A-1_, set every desk to start
+on page 1,1:
+
+```
+rule -g -T on-start -n startup-pages script {
+    let output = "HDMI-A-1"
+    for d in (desks where d.output == output) {
+        desk -t '#{output}' -d #{d.nr}
+        scroll -t '#{output}' -a 1,1
+    }
+}
+```
 
 # DESKTOP BEHAVIOUR
 
