@@ -26,7 +26,7 @@
 #include <unistd.h>
 #include <event2/event.h>
 
-#include "cow/attrs.h"
+#include "cow/compat.h"
 #include "cow/config.h"
 #include "cow/event.h"
 #include "cow/memory.h"

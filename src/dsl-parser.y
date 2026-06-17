@@ -47,8 +47,8 @@ void dsl_yyerror(YYLTYPE *llocp, struct dsl_parse_ctx *ctx, void *scanner,
 #include <stdlib.h>
 #include <string.h>
 
-#include "cow/attrs.h"
 #include "cow/cmd.h"
+#include "cow/attrs.h"
 #include "cow/memory.h"
 
 #include "dsl-lexer.h"

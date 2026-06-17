@@ -29,7 +29,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "cow/attrs.h"
 #include "cow/cmd.h"
 #include "cow/dsl.h"
 #include "cow/memory.h"
