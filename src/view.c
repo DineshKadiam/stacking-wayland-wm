@@ -499,9 +499,19 @@ cow_view_destroy(struct cow_view *view)
 	xfree(view->identifier);
 	xfree(view->app_id);
 	xfree(view->title);
-	xfree(view->orphan_output_name);
+	cow_view_clear_orphan(view);
 	cow_view_cfg_fini(&view->cfg);
 	xfree(view);
+}
+
+void
+cow_view_clear_orphan(struct cow_view *view)
+{
+	xfree(view->orphan_output_name);
+	view->orphan_output_name = NULL;
+	view->orphan_desk_nr	 = -1;
+	view->orphan_page_vx	 = 0;
+	view->orphan_page_vy	 = 0;
 }
 
 void
@@ -915,9 +925,7 @@ cow_view_update_output(struct cow_view *view)
 	struct cow_output *target = cow_output_at(cx, cy);
 	if (target != NULL && target != view->output) {
 		cow_view_reassign_output(view, target);
-		xfree(view->orphan_output_name);
-		view->orphan_output_name = NULL;
-		view->orphan_desk_nr	 = -1;
+		cow_view_clear_orphan(view);
 	}
 }
 

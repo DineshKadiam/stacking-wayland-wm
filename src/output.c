@@ -245,6 +245,82 @@ static struct {
 	int page_vy;
 } pending_session = { .desk_nr = -1 };
 
+struct output_session {
+	struct wl_list link;
+	char	      *name;
+	int	       desk_nr;
+	int	       page_vx;
+	int	       page_vy;
+};
+
+static struct wl_list output_sessions;
+static bool	      output_sessions_init;
+
+static void
+output_sessions_ensure_init(void)
+{
+	if (output_sessions_init)
+		return;
+	wl_list_init(&output_sessions);
+	output_sessions_init = true;
+}
+
+static struct output_session *
+output_session_find(const char *name)
+{
+	struct output_session *session;
+
+	output_sessions_ensure_init();
+	wl_list_for_each(session, &output_sessions, link)
+	{
+		if (strcmp(session->name, name) == 0)
+			return (session);
+	}
+	return (NULL);
+}
+
+static void
+output_session_save(struct cow_output *output)
+{
+	if (output == NULL || output->name == NULL ||
+	    output->current_desk == NULL)
+		return;
+
+	struct output_session *session = output_session_find(output->name);
+	if (session == NULL) {
+		session	      = xcalloc(1, sizeof(*session));
+		session->name = xstrdup(output->name);
+		wl_list_insert(&output_sessions, &session->link);
+	}
+
+	session->desk_nr = (int)output->current_desk->nr;
+	session->page_vx = output->current_desk->page_vx;
+	session->page_vy = output->current_desk->page_vy;
+}
+
+static void
+output_session_restore(struct cow_output *output)
+{
+	if (output == NULL || output->name == NULL)
+		return;
+
+	struct output_session *session = output_session_find(output->name);
+	if (session == NULL)
+		return;
+
+	struct cow_desk *desk = cow_desk_by_nr(output,
+	    (uint8_t)session->desk_nr);
+	if (desk != NULL) {
+		output->current_desk = desk;
+		desk->page_vx	     = session->page_vx;
+		desk->page_vy	     = session->page_vy;
+	}
+
+	wl_list_remove(&session->link);
+	xfree(session->name);
+	xfree(session);
+}
+
 /*
  * Move every view currently on `dying` onto `target` (when there is
  * one).
@@ -305,8 +381,11 @@ output_migrate_views(struct cow_output *dying, struct cow_output *target)
 		 * arbitrary current desk of the sibling we migrated to.
 		 */
 		if (view->orphan_desk_nr < 0 && preserve &&
-		    view->desk != NULL)
+		    view->desk != NULL) {
 			view->orphan_desk_nr = (int8_t)view->desk->nr;
+			view->orphan_page_vx = view->desk->page_vx;
+			view->orphan_page_vy = view->desk->page_vy;
+		}
 
 		if (target != NULL) {
 			uint8_t old_nr = view->desk != NULL ?
@@ -336,10 +415,12 @@ adopt_one(struct cow_view *view, struct cow_output *adopter)
 	cow_view_reassign_output(view, adopter);
 	if (view->orphan_desk_nr >= 0) {
 		cow_view_assign_desk(view, (uint8_t)view->orphan_desk_nr);
-		view->orphan_desk_nr = -1;
+		if (view->desk != NULL) {
+			view->desk->page_vx = view->orphan_page_vx;
+			view->desk->page_vy = view->orphan_page_vy;
+		}
 	}
-	xfree(view->orphan_output_name);
-	view->orphan_output_name = NULL;
+	cow_view_clear_orphan(view);
 }
 
 /*
@@ -414,6 +495,7 @@ output_adopt_orphan_views(struct cow_output *adopter)
 void
 cow_output_name_known(struct cow_output *output)
 {
+	output_session_restore(output);
 	output_adopt_orphan_views(output);
 }
 
@@ -423,6 +505,7 @@ cow_output_destroy(struct cow_output *output)
 	/* Cancel any in-flight pick session: its per-output overlay is
 	 * about to be torn down anyway. */
 	cow_pick_cancel_active();
+	output_session_save(output);
 
 	/*
 	 * Detach every view from this output before tearing it down.

@@ -206,10 +206,11 @@ struct cow_view {
 	struct cow_desk	  *desk;
 	struct cow_output *output;
 
-	/* While orphaned (no output present at all), remember the
-	 * desk number we were on so the next output to appear can
-	 * re-home us onto its desk of the same number.  -1 = none. */
+	/* While orphaned, remember where this view came from so the
+	 * next matching output can restore the same desk and page. */
 	int8_t orphan_desk_nr;
+	int    orphan_page_vx;
+	int    orphan_page_vy;
 
 	/* Name of the output the view lived on at the moment it was
 	 * orphaned.
@@ -361,6 +362,7 @@ struct cow_view *cow_view_create(struct river_window_v1 *);
  * Destroy a view wrapper.
  */
 void cow_view_destroy(struct cow_view *);
+void cow_view_clear_orphan(struct cow_view *);
 
 /*
  * Configure a new view: propose dimensions, set SSD, assign to desk.

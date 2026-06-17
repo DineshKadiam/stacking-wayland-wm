@@ -556,9 +556,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 				    seat->pointer_x, seat->pointer_y);
 				if (target != NULL && target != view->output) {
 					cow_view_reassign_output(view, target);
-					xfree(view->orphan_output_name);
-					view->orphan_output_name = NULL;
-					view->orphan_desk_nr	 = -1;
+					cow_view_clear_orphan(view);
 				}
 			} else {
 				cow_view_update_output(view);
