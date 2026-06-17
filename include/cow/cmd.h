@@ -103,6 +103,7 @@ struct cmd_ctx {
  *
  * Output selectors:
  *   <name>        by output name (e.g. "DP-1")
+ *   @<number>     by output number
  *   @next/@prev   relative to current output
  *
  * Desk selectors:

@@ -51,8 +51,8 @@ order is top-down, left-to-right, so far example, the following diagram
 illustrates output configuration and their assigned number:
 
 ```
-out1 (0)
-out2 (1)    out3 (2)    out4 (3)
+out1 (1)
+out2 (2)    out3 (3)    out4 (4)
 ```
 
 # ANATOMY OF A WINDOW
@@ -295,7 +295,7 @@ Each iterable source yields records whose fields match the matching
 Common desk fields include *nr*, *name*, *output*, *current*,
 *active*, *collected*, *window_count*, *page_col*, *page_row*,
 *page_cols*, *page_rows*, *page_vx*, and *page_vy*.  Common output
-fields include *name*, *number*, geometry, usable geometry, *current*,
+fields include *name*, *nr*, *number*, geometry, usable geometry, *current*,
 *current_desk*, *current_desk_name*, and page state.  Common rule
 fields include *name*, *type*, *global*, *output*, *desk*, *match*,
 and *body*.
@@ -401,7 +401,7 @@ That is to say, there's three components -- the delimiters between the parts are
 literal and must be specified:
 
 *output*
-	Output name, *@next*, or *@prev*.
+	Output name, *@*_N_ by output number, *@next*, or *@prev*.
 
 *desk*
 	Desk number (0-9), *@next*, or *@prev*.

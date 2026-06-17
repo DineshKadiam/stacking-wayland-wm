@@ -194,6 +194,7 @@ snapshot_output(const struct cow_output *out)
 {
 	struct dsl_value *r = dsl_value_record();
 	rec_set_string(r, "name", out->name);
+	rec_set_number(r, "nr", out->number);
 	rec_set_number(r, "number", out->number);
 	rec_set_number(r, "x", out->x);
 	rec_set_number(r, "y", out->y);

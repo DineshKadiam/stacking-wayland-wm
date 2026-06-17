@@ -34,6 +34,30 @@
  * Output resolution
  * ================================================================ */
 
+static bool
+output_spec_is_nr(const char *spec)
+{
+	if (spec[0] != '@' || spec[1] < '0' || spec[1] > '9')
+		return false;
+
+	for (const char *p = spec + 2; *p != '\0'; p++) {
+		if (*p < '0' || *p > '9')
+			return false;
+	}
+	return true;
+}
+
+static long long
+outputs_count(void)
+{
+	long long	   n = 0;
+	struct cow_output *out;
+
+	wl_list_for_each(out, &cow_wm.outputs, wm_link)
+		n++;
+	return n;
+}
+
 static struct cow_output *
 resolve_output(const char *spec, char **cause)
 {
@@ -62,6 +86,28 @@ resolve_output(const char *spec, char **cause)
 		return wl_container_of(prev, cow_wm.current_output, wm_link);
 	}
 
+	if (output_spec_is_nr(spec)) {
+		if (!cow_ipc.startup_mode) {
+			const char *errstr;
+			long long   count = outputs_count();
+			long long   nr;
+
+			if (count == 0)
+				goto unknown;
+
+			nr = strtonum(spec + 1, 1, count, &errstr);
+			if (errstr != NULL)
+				goto unknown;
+
+			struct cow_output *out;
+			wl_list_for_each(out, &cow_wm.outputs, wm_link)
+			{
+				if ((long long)out->number == nr)
+					return out;
+			}
+		}
+	}
+
 	/* Match by name.  Skip the iteration during startup when
 	 * cow_wm.outputs has not been wl_list_init'd yet (cow_wm_init
 	 * runs after cow_ipc_load_config); no outputs exist at that
@@ -75,6 +121,7 @@ resolve_output(const char *spec, char **cause)
 		}
 	}
 
+unknown:
 	xasprintf(cause, "unknown output: %s", spec);
 	return NULL;
 }
@@ -310,7 +357,7 @@ cmd_ctx_parse(const char *spec, struct cmd_ctx *ctx, char **cause)
 			 * subsequent resolve_window will return the right
 			 * "no such window" error rather than crashing.
 			 */
-			bool is_output = false;
+			bool is_output = output_spec_is_nr(buf);
 			if (!cow_ipc.startup_mode) {
 				struct cow_output *o;
 				wl_list_for_each(o, &cow_wm.outputs, wm_link)
