@@ -21,7 +21,8 @@ line. The full command language is described in *cow*(1).
 
 With *-p*, *moocow* stays running and reads commands from standard input.  When
 run interactively it prints a version banner and the prompt *>>> * before each
-command.  A backslash (*\\*) at the end of a line continues the command on the
+command.  Incomplete commands use the prompt *... * until the command is
+complete.  A backslash (*\\*) at the end of a line continues the command on the
 next line.
 
 # EXIT STATUS

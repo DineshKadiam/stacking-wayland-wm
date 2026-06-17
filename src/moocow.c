@@ -264,7 +264,7 @@ persistent_mode(void)
 
 	for (;;) {
 		if (interactive) {
-			fputs(">>> ", stdout);
+			fputs(cmd_len == 0 ? ">>> " : "... ", stdout);
 			fflush(stdout);
 		}
 
