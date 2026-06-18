@@ -14,7 +14,7 @@ moocow - send commands to a running cow instance
 
 *moocow* is the command-line IPC client for the *cow*(1) window manager. It
 connects to the cow IPC socket, sends the given command, waits for the JSON
-response, and prints it to standard output.
+response, and prints it as formatted JSON to standard output.
 
 All arguments are joined with spaces and sent as a single newline-terminated
 line. The full command language is described in *cow*(1).
@@ -24,6 +24,15 @@ run interactively it prints a connection banner containing the *moocow* version
 and client ID, then the prompt *>>> * before each command.  Incomplete commands
 use the prompt *... * until the command is complete.  A backslash (*\\*) at the
 end of a line continues the command on the next line.
+
+Persistent mode also recognises local commands which begin with *.* and are not
+sent to *cow*:
+
+*.moocow-set pretty-print-json* _boolean_
+	Enable or disable formatted JSON responses.  The default is *true*.
+
+*.moocow-show*
+	Print current local *moocow* settings.
 
 # OPTIONS
 

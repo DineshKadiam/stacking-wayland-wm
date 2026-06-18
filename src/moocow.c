@@ -36,6 +36,8 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <cJSON.h>
+
 #include "cow/cmd_scan.h"
 
 #ifndef COW_VERSION
@@ -56,6 +58,13 @@ static const char *usage =
     "  moocow bind L+q view-quit\n"
     "  moocow action terminal xterm\n"
     "  moocow exec foot\n";
+
+struct moocow_state {
+	const char *primary_prompt;
+	const char *secondary_prompt;
+	const char *prompt_colour;
+	bool	    pretty_json;
+};
 
 static const char *
 get_socket_path(void)
@@ -189,7 +198,7 @@ write_all(int fd, const char *buf, size_t len)
 }
 
 static int
-read_response(int fd)
+read_response(int fd, bool pretty_json)
 {
 	char resp[65536];
 	int  total = 0;
@@ -210,15 +219,35 @@ read_response(int fd)
 	}
 	resp[total] = '\0';
 
-	printf("%s", resp);
-	if (total > 0 && resp[total - 1] != '\n')
-		printf("\n");
+	if (pretty_json) {
+		cJSON *json = cJSON_Parse(resp);
+		if (json != NULL) {
+			char *pretty = cJSON_Print(json);
+			if (pretty != NULL) {
+				printf("%s\n", pretty);
+				cJSON_free(pretty);
+			} else {
+				printf("%s", resp);
+				if (total > 0 && resp[total - 1] != '\n')
+					printf("\n");
+			}
+			cJSON_Delete(json);
+		} else {
+			printf("%s", resp);
+			if (total > 0 && resp[total - 1] != '\n')
+				printf("\n");
+		}
+	} else {
+		printf("%s", resp);
+		if (total > 0 && resp[total - 1] != '\n')
+			printf("\n");
+	}
 
 	return strstr(resp, "\"ok\":false") != NULL ? 1 : 0;
 }
 
 static int
-send_command(const char *cmd)
+send_command(const char *cmd, bool pretty_json)
 {
 	int fd = connect_to_cow();
 	if (fd < 0)
@@ -232,7 +261,7 @@ send_command(const char *cmd)
 
 	int ret = 1;
 	if (write_all(fd, out, strlen(out)))
-		ret = read_response(fd);
+		ret = read_response(fd, pretty_json);
 
 	free(out);
 	close(fd);
@@ -298,9 +327,105 @@ command_complete(const char *cmd, size_t len)
 	return cow_cmd_find_terminator(cmd, len, &end) == COW_CMD_SCAN_COMPLETE;
 }
 
+static char *
+copy_command(const char *cmd)
+{
+	size_t len = strlen(cmd);
+	char  *copy = malloc(len + 1);
+
+	if (copy == NULL) {
+		perror("moocow: malloc");
+		return NULL;
+	}
+	memcpy(copy, cmd, len + 1);
+	return copy;
+}
+
+static bool
+parse_bool(const char *s, bool *out)
+{
+	if (strcasecmp(s, "true") == 0 || strcasecmp(s, "on") == 0 ||
+	    strcmp(s, "1") == 0) {
+		*out = true;
+		return true;
+	}
+	if (strcasecmp(s, "false") == 0 || strcasecmp(s, "off") == 0 ||
+	    strcmp(s, "0") == 0) {
+		*out = false;
+		return true;
+	}
+	return false;
+}
+
+static void
+show_moocow_state(const struct moocow_state *state)
+{
+	printf("pretty-print-json %s\n", state->pretty_json ? "true" : "false");
+}
+
+static bool
+handle_moocow_command(struct moocow_state *state, const char *cmd,
+    bool *failed)
+{
+	while (*cmd == ' ' || *cmd == '\t')
+		cmd++;
+	if (*cmd != '.')
+		return false;
+
+	char *copy = copy_command(cmd);
+	if (copy == NULL) {
+		*failed = true;
+		return true;
+	}
+
+	char *name = strtok(copy, " \t\r\n");
+	if (name == NULL) {
+		free(copy);
+		return true;
+	}
+
+	if (strcmp(name, ".moocow-show") == 0) {
+		if (strtok(NULL, " \t\r\n") != NULL) {
+			fprintf(stderr, "moocow: usage: .moocow-show\n");
+			*failed = true;
+		} else
+			show_moocow_state(state);
+		free(copy);
+		return true;
+	}
+
+	if (strcmp(name, ".moocow-set") == 0) {
+		char *key = strtok(NULL, " \t\r\n");
+		char *val = strtok(NULL, " \t\r\n");
+		if (key == NULL || val == NULL ||
+		    strtok(NULL, " \t\r\n") != NULL) {
+			fprintf(stderr,
+			    "moocow: usage: .moocow-set key value\n");
+			*failed = true;
+		} else if (strcmp(key, "pretty-print-json") == 0) {
+			bool b;
+			if (!parse_bool(val, &b)) {
+				fprintf(stderr,
+				    "moocow: bad boolean value: %s\n", val);
+				*failed = true;
+			} else
+				state->pretty_json = b;
+		} else {
+			fprintf(stderr, "moocow: unknown setting: %s\n", key);
+			*failed = true;
+		}
+		free(copy);
+		return true;
+	}
+
+	fprintf(stderr, "moocow: unknown command: %s\n", name);
+	*failed = true;
+	free(copy);
+	return true;
+}
+
 static int
-persistent_mode(const char *primary_prompt, const char *secondary_prompt,
-    const char *prompt_colour)
+persistent_mode(struct moocow_state *state)
 {
 	bool interactive = isatty(STDIN_FILENO) && isatty(STDOUT_FILENO);
 	char *cmd = NULL, *line = NULL;
@@ -313,8 +438,8 @@ persistent_mode(const char *primary_prompt, const char *secondary_prompt,
 
 	for (;;) {
 		if (interactive)
-			print_prompt(cmd_len == 0 ? primary_prompt :
-			    secondary_prompt, prompt_colour);
+			print_prompt(cmd_len == 0 ? state->primary_prompt :
+			    state->secondary_prompt, state->prompt_colour);
 
 		errno = 0;
 		ssize_t line_len = getline(&line, &line_cap, stdin);
@@ -336,7 +461,12 @@ persistent_mode(const char *primary_prompt, const char *secondary_prompt,
 		if (!command_complete(cmd, cmd_len))
 			continue;
 
-		if (!skip_command(cmd) && send_command(cmd) != 0)
+		bool failed = false;
+		if (!skip_command(cmd) &&
+		    !handle_moocow_command(state, cmd, &failed) &&
+		    send_command(cmd, state->pretty_json) != 0)
+			failed = true;
+		if (failed)
 			ret = 1;
 		cmd_len = 0;
 		if (cmd != NULL)
@@ -352,9 +482,12 @@ int
 main(int argc, char *argv[])
 {
 	bool persistent = false, prompt_option = false;
-	const char *primary_prompt = ">>> ";
-	const char *secondary_prompt = "... ";
-	const char *prompt_colour = "red";
+	struct moocow_state state = {
+		.primary_prompt		= ">>> ",
+		.secondary_prompt	= "... ",
+		.prompt_colour		= "red",
+		.pretty_json		= true,
+	};
 	int ch;
 
 	while ((ch = getopt(argc, argv, "hP:S:C:p")) != -1) {
@@ -363,15 +496,15 @@ main(int argc, char *argv[])
 			persistent = true;
 			break;
 		case 'P':
-			primary_prompt = optarg;
+			state.primary_prompt = optarg;
 			prompt_option = true;
 			break;
 		case 'S':
-			secondary_prompt = optarg;
+			state.secondary_prompt = optarg;
 			prompt_option = true;
 			break;
 		case 'C':
-			prompt_colour = optarg;
+			state.prompt_colour = optarg;
 			prompt_option = true;
 			break;
 		case 'h':
@@ -386,9 +519,9 @@ main(int argc, char *argv[])
 	argc -= optind;
 	argv += optind;
 
-	if (!prompt_colour_valid(prompt_colour)) {
+	if (!prompt_colour_valid(state.prompt_colour)) {
 		fprintf(stderr, "moocow: unknown prompt colour: %s\n",
-		    prompt_colour);
+		    state.prompt_colour);
 		return 1;
 	}
 
@@ -397,8 +530,7 @@ main(int argc, char *argv[])
 			fputs(usage, stderr);
 			return 1;
 		}
-		return persistent_mode(primary_prompt, secondary_prompt,
-		    prompt_colour);
+		return persistent_mode(&state);
 	}
 
 	if (prompt_option) {
@@ -415,7 +547,7 @@ main(int argc, char *argv[])
 	if (cmd == NULL)
 		return 1;
 
-	int ret = send_command(cmd);
+	int ret = send_command(cmd, state.pretty_json);
 	free(cmd);
 	return ret;
 }

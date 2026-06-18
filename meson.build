@@ -330,6 +330,7 @@ executable('cow',
 executable('moocow',
     'src/moocow.c',
     'src/cmd-scan.c',
+    'vendor/cJSON.c',
     include_directories: include_dirs,
     install: true,
 )
