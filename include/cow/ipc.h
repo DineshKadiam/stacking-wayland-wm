@@ -67,6 +67,7 @@ bool cow_ipc_dispatch(const char *, int);
  * Returns true on success.
  */
 bool cow_ipc_load_config(const char *);
+bool cow_ipc_include_config(const char *, int);
 
 /*
  * Look up a command by name.  Returns NULL if not found.

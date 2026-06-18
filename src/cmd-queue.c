@@ -82,7 +82,8 @@ cmdq_error(struct cmd_q *cmdq, const char *fmt, ...)
 	vasprintf(&msg, fmt, ap);
 	va_end(ap);
 
-	xasprintf(&cause, "%s:%u: %s", cmd->file, cmd->line, msg);
+	xasprintf(&cause, "%s:%u: %s",
+	    cmd->file != NULL ? cmd->file : "<command>", cmd->line, msg);
 	ARRAY_ADD(&cfg_causes, cause);
 
 	xfree(msg);

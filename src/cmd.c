@@ -33,6 +33,7 @@ struct cmd_entry *cmd_table[] = {
 	&cmd_desk_name_entry,
 	&cmd_exec_entry,
 	&cmd_focus_entry,
+	&cmd_include_entry,
 	&cmd_list_commands_entry,
 	&cmd_mouse_entry,
 	&cmd_move_entry,

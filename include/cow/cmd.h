@@ -352,6 +352,7 @@ extern struct cmd_entry cmd_window_maximize_entry;
 extern struct cmd_entry cmd_move_entry;
 extern struct cmd_entry cmd_resize_entry;
 extern struct cmd_entry cmd_focus_entry;
+extern struct cmd_entry cmd_include_entry;
 extern struct cmd_entry cmd_desk_entry;
 extern struct cmd_entry cmd_desk_name_entry;
 extern struct cmd_entry cmd_scroll_entry;

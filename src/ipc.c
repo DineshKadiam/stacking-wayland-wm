@@ -40,6 +40,7 @@ struct cow_ipc cow_ipc;
 
 static void ipc_accept_cb(evutil_socket_t, short, void *);
 static void ipc_client_cb(evutil_socket_t, short, void *);
+static bool cow_ipc_load_file(const char *, int);
 
 bool
 cow_ipc_init(void)
@@ -205,23 +206,52 @@ cow_ipc_dispatch(const char *line, int client_fd)
 bool
 cow_ipc_load_config(const char *path)
 {
-	FILE *f = fopen(path, "r");
-	if (f == NULL) {
+	cow_ipc.startup_mode = true;
+
+	bool ok = cow_ipc_load_file(path, -1);
+
+	cow_ipc.startup_mode = false;
+
+	if (!ok)
 		fprintf(stderr, "cow: cannot open config: %s\n", path);
-		return false;
+
+	if (ok) {
+		/* Remember the path so that 'moocow quit -r' doesn't crash. */
+		char *new_path = xstrdup(path);
+		xfree(cow_ipc.config_path);
+		cow_ipc.config_path = new_path;
 	}
 
-	/* Remember the path so that 'moocow quit -r' doesn't crash. */
-	char *new_path = xstrdup(path);
-	xfree(cow_ipc.config_path);
-	cow_ipc.config_path = new_path;
+	/* Report any errors */
+	if (!ARRAY_EMPTY(&cfg_causes)) {
+		for (u_int i = 0; i < ARRAY_LENGTH(&cfg_causes); i++) {
+			char *c = ARRAY_ITEM(&cfg_causes, i);
+			fprintf(stderr, "cow: %s\n", c);
+			xfree(c);
+		}
+		ARRAY_FREE(&cfg_causes);
+	}
 
-	cow_ipc.startup_mode = true;
+	return ok;
+}
+
+bool
+cow_ipc_include_config(const char *path, int client_fd)
+{
+	return cow_ipc_load_file(path, client_fd);
+}
+
+static bool
+cow_ipc_load_file(const char *path, int client_fd)
+{
+	FILE *f = fopen(path, "r");
+	if (f == NULL)
+		return false;
 
 	/* Build a command queue from all config lines.
 	 * exec commands are deferred internally by cmd_exec_exec. */
 	struct cmd_q *cmdq = cmdq_new();
-	cmdq->client_fd	   = -1;
+	cmdq->client_fd	   = client_fd;
 
 	size_t lineno = 0, cmd_lineno = 0;
 	size_t len, cmd_len = 0, cmd_cap = 0;
@@ -299,18 +329,6 @@ cow_ipc_load_config(const char *path)
 	/* Execute all queued commands */
 	cmdq_continue(cmdq);
 	cmdq_free(cmdq);
-
-	cow_ipc.startup_mode = false;
-
-	/* Report any errors */
-	if (!ARRAY_EMPTY(&cfg_causes)) {
-		for (u_int i = 0; i < ARRAY_LENGTH(&cfg_causes); i++) {
-			char *c = ARRAY_ITEM(&cfg_causes, i);
-			fprintf(stderr, "cow: %s\n", c);
-			xfree(c);
-		}
-		ARRAY_FREE(&cfg_causes);
-	}
 
 	fprintf(stderr, "cow: config loaded from %s (%zu lines)\n", path,
 	    lineno);

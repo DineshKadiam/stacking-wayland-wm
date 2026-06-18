@@ -380,6 +380,10 @@ The configuration file is plain text. Each line is a *cow* command, using the
 Lines beginning with *#* are comments.  A backslash (*\\*) at the end of a
 line continues the command on the next line.
 
+The *include* command reads additional commands from another file.  Absolute
+paths are used as-is, paths beginning with *~/* are resolved relative to
+*$HOME*, and other relative paths are resolved relative to *$XDG\_RUNTIME\_DIR*.
+
 Example:
 
 ```
@@ -727,6 +731,12 @@ Without any options, *cow* quits. With *-r*, reload the configuration
 from the file *cow* was started with, instead of quitting.
 
 Keybindings and window decorations are updated immediately on reload.
+
+## include file
+
+Read and execute commands from _file_.  Absolute paths are used as-is, *~/* is
+resolved relative to *$HOME*, and other relative paths are resolved relative to
+*$XDG\_RUNTIME\_DIR*.
 
 ## list-commands
 
