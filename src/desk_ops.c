@@ -30,22 +30,8 @@
 #include "river-window-management-v1-client-protocol.h"
 
 /*
- * A view is visible on the given output's current desk if:
- * - It is on the current desk, OR
- * - It has the STICKY flag set
- * AND it is not iconified.
- */
-/*
  * Predicate: is 'view' (assumed to be on the current desk of
- * 'output') visible on the current page?  Returns true when the page
- * grid is 1x1 (single page) or the view is page-sticky.  Otherwise
- * applies one of two rules:
- *
- *   edge_scroll = true  : page-strict.  A view lives on the page
- *                         containing its top-left corner.
- *   edge_scroll = false : FVWM-style overlap.  A view is visible if
- *                         its virtual frame rectangle intersects the
- *                         current viewport.
+ * 'output') visible on the current page?
  */
 static bool
 view_visible_in_page(const struct cow_view *view,
@@ -63,19 +49,7 @@ view_visible_in_page(const struct cow_view *view,
 	int		 vpx  = desk->page_vx;
 	int		 vpy  = desk->page_vy;
 
-	/*
-	 * Page-strict visibility ("a window lives on the page that
-	 * contains its top-left corner") only makes sense when the
-	 * viewport is aligned to a page boundary.  After a sub-page
-	 * `scroll` -- whether one-shot or via an interactive drag --
-	 * vpx / vpy lie somewhere between two pages, and the user
-	 * naturally expects any window whose frame rectangle intrudes
-	 * into the current viewport to remain drawn.  Fall through to
-	 * overlap-style culling in that case regardless of the
-	 * edge_scroll setting; otherwise windows on the adjacent page
-	 * would pop out of view as soon as the viewport shifted by a
-	 * single pixel away from their page boundary.
-	 */
+	/* Sub-page scrolls use overlap visibility even with edge_scroll. */
 	bool aligned = (w > 0 && h > 0 && vpx % w == 0 && vpy % h == 0);
 
 	if (cow_config->edge_scroll && aligned) {
@@ -114,9 +88,7 @@ cow_view_visible(const struct cow_view *view, const struct cow_output *output)
 	return false;
 }
 
-/*
- * Switch a single output to a new desk (internal helper).
- */
+/* Switch one output to a new desk. */
 static void
 switch_output_desk(struct cow_output *output, uint8_t desk_nr)
 {
@@ -148,8 +120,7 @@ switch_output_desk(struct cow_output *output, uint8_t desk_nr)
 	output->current_desk	= target;
 	output->collected_desks = 0;
 
-	/* Mark views on this output dirty so the new desk's geometry is
-	 * applied on the next render. */
+	/* Recompute geometry on next render. */
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
@@ -200,8 +171,7 @@ cow_desk_switch(struct cow_output *output, uint8_t desk_nr)
 		break;
 
 	case COW_DESKTOP_SHARED:
-		/* Each output views a different desk number.  If another
-		 * output is already showing the target desk, swap with it. */
+		/* Swap if another output already shows the target desk. */
 		{
 			struct cow_output *other;
 			wl_list_for_each(other, &cow_wm.outputs, wm_link)
@@ -259,10 +229,6 @@ cow_view_assign_desk(struct cow_view *view, uint8_t desk_nr)
 	cow_wm_request_manage_dirty();
 }
 
-/* -----------------------------------------------------------------------
- * Page navigation
- * ----------------------------------------------------------------------- */
-
 int
 cow_page_col(const struct cow_output *output)
 {
@@ -293,12 +259,6 @@ switch_output_page(struct cow_output *output, int new_vx, int new_vy)
 	if (desk->page_vx == new_vx && desk->page_vy == new_vy)
 		return;
 
-	/*
-	 * Snapshot the previous origin BEFORE we mutate it.  Page-
-	 * sticky views below need to know how much the viewport moved
-	 * so they can shift by exactly that amount, keeping their
-	 * screen position constant.
-	 */
 	int old_vx = desk->page_vx;
 	int old_vy = desk->page_vy;
 
@@ -321,34 +281,11 @@ switch_output_page(struct cow_output *output, int new_vx, int new_vy)
 		if (view->closed || view->output != output)
 			continue;
 
-		/*
-		 * Only views on the desk being scrolled are affected by
-		 * the page change.  Page-sticky views whose *home desk*
-		 * is some other desk on the same output (e.g. a window
-		 * that's both desk-sticky and page-sticky) must NOT be
-		 * shifted here: their on-screen position is computed
-		 * from their home desk's page_vx, which doesn't move
-		 * when we scroll a different desk.  Shifting them by
-		 * this desk's delta would push them off-screen.
-		 */
+		/* Only the scrolled desk's views need page adjustment. */
 		if (view->desk != desk)
 			continue;
 
-		/*
-		 * Page-sticky windows must follow the viewport so their
-		 * screen position stays constant.  Shift the view's vx /
-		 * vy by the same delta the viewport just moved -- this
-		 * works for both whole-page jumps (cow_page_switch) and
-		 * arbitrary sub-page steps (cow_page_scroll_to and the
-		 * interactive scroll-drag).
-		 *
-		 * Earlier this used view->vx % w to recover a "within
-		 * page" offset, but that only works when both old and
-		 * new page_vx are multiples of w.  During a drag, each
-		 * delta would re-add the previous step's contribution
-		 * and the sticky view appeared to slide across the
-		 * screen.
-		 */
+		/* Page-sticky views track the viewport delta. */
 		if (view->flags & COW_VIEW_STICKY_PAGE_FLAG) {
 			view->vx += new_vx - old_vx;
 			view->vy += new_vy - old_vy;
@@ -387,13 +324,6 @@ cow_page_switch(struct cow_output *output, int col, int row)
 	int new_vx = col * w;
 	int new_vy = row * h;
 
-	/*
-	 * Respect desktop-configuration:
-	 * - global:     all outputs switch to the same page together
-	 * - per-output: only the given output switches
-	 * - shared:     only the given output switches (each output
-	 *               already has an independent current desk)
-	 */
 	switch (cow_config->desktop_config) {
 	case COW_DESKTOP_GLOBAL: {
 		struct cow_output *o;
@@ -409,7 +339,6 @@ cow_page_switch(struct cow_output *output, int col, int row)
 		break;
 	}
 	default:
-		/* per-output or shared: only switch the requested output */
 		switch_output_page(output, new_vx, new_vy);
 		break;
 	}
@@ -448,11 +377,7 @@ cow_page_scroll_to(struct cow_output *output, int new_vx, int new_vy, bool wrap)
 		if (new_vy < 0)
 			new_vy += desk_h;
 	} else {
-		/* Clamp to the same range cow_page_switch reaches:
-		 * [0, (cols-1)*w] x [0, (rows-1)*h].  Sub-page offsets
-		 * within the last column / row are not exposed -- the
-		 * viewport's right/bottom edge lines up with the desk's
-		 * right/bottom edge. */
+		/* Clamp to the range cow_page_switch reaches. */
 		int vx_max = (cols - 1) * w;
 		int vy_max = (rows - 1) * h;
 		if (new_vx < 0)
@@ -465,17 +390,7 @@ cow_page_scroll_to(struct cow_output *output, int new_vx, int new_vy, bool wrap)
 			new_vy = vy_max;
 	}
 
-	/*
-	 * Bypass the per-page-jump scroll animation: sub-page scroll
-	 * is by definition step-by-step (interactive drag) or
-	 * intentionally instant (a `scroll H V` keybind).  Letting the
-	 * animation logic engage here would either re-animate between
-	 * every drag delta or smoothly slide an arbitrary pixel
-	 * distance the user expected to land at immediately.  Save
-	 * and restore the global animate flag around switch_output_page
-	 * so any concurrent whole-page `page`/`desk-switch` animation
-	 * state is left alone.
-	 */
+	/* Sub-page scroll is intentionally instant. */
 	bool saved_animate = false;
 	if (cow_config != NULL) {
 		saved_animate = cow_config->page_scroll_animate;
@@ -512,13 +427,12 @@ cow_view_move_to_page(struct cow_view *view, int col, int row)
 	if (row >= rows)
 		row = rows - 1;
 
-	/* Compute within-page position (offset from current page origin) */
+	/* Preserve within-page position. */
 	int cur_page_vx = (view->vx / w) * w;
 	int cur_page_vy = (view->vy / h) * h;
 	int within_x	= view->vx - cur_page_vx;
 	int within_y	= view->vy - cur_page_vy;
 
-	/* Place on the new page preserving within-page position */
 	view->vx = col * w + within_x;
 	view->vy = row * h + within_y;
 
@@ -557,12 +471,7 @@ cow_page_clamp_views(struct cow_output *output)
 		if (view->closed || view->output != output)
 			continue;
 
-		/*
-		 * Clamp to nearest valid page.  Truncating signed division
-		 * rounds toward zero, not toward minus-infinity, so negative
-		 * coordinates would be treated as page 0; use floor-div here.
-		 * The modulo is normalised into [0, dim) for the same reason.
-		 */
+		/* Floor-div keeps negative virtual coordinates on their page. */
 		int page_col = (view->vx >= 0) ? view->vx / w :
 						 -((-view->vx + w - 1) / w);
 		int page_row = (view->vy >= 0) ? view->vy / h :
@@ -586,11 +495,7 @@ cow_page_clamp_views(struct cow_output *output)
 	cow_wm_request_manage_dirty();
 }
 
-/*
- * Advance the smooth page scroll animation for one output.
- * Call this from the manage cycle.  Returns true while animation is
- * in progress (so the caller should set needs_manage_dirty again).
- */
+/* Advance one output's smooth page-scroll animation. */
 bool
 cow_page_scroll_tick(struct cow_output *output)
 {

@@ -37,10 +37,7 @@
 
 #define OUTPUT_PAN_SUPPRESS_MS 1000
 
-/*
- * Recompute the usable area from the output dimensions (or layer shell
- * non_exclusive_area), subtracting the configured reserved area.
- */
+/* Subtract the configured reserved area. */
 void
 cow_output_apply_reserved_area(struct cow_output *output)
 {
@@ -137,15 +134,11 @@ output_handle_dimensions(void	    *data,
 	output->usable_area.width  = width;
 	output->usable_area.height = height;
 
-	/* At runtime (after startup) apply reserved immediately.
-	 * During startup this is skipped — wm.c applies reserved once
-	 * after the second roundtrip when all initial events have settled. */
+	/* Startup applies reserved area after initial output events settle. */
 	if (!cow_wm.exec_pending)
 		cow_output_apply_reserved_area(output);
 
-	/* If config has already been loaded, (re-)create pan frames now that
-	 * we have valid dimensions.  During startup this is skipped and
-	 * pan_frames_update_all() is called once at end of exec_pending. */
+	/* Startup creates pan frames once at the end of exec_pending. */
 	if (!cow_wm.exec_pending)
 		pan_frames_update_output(output);
 }
@@ -188,41 +181,20 @@ cow_output_create(struct river_output_v1 *river_output)
 	/* Register with layer shell for non_exclusive_area events */
 	cow_layer_shell_init_output(output);
 
-	/*
-	 * Views with no remembered output name (mapped during a
-	 * total blackout) have no preferred home; adopt them now.
-	 * Name-keyed orphans wait for cow_output_name_known() which
-	 * fires once river/wl_output has populated output->name.
-	 */
+	/* Adopt unkeyed orphans before the output name is known. */
 	output_adopt_unnamed_orphans(output);
 
-	/* Assign a tentative ordinal.  The compositor will follow this
-	 * with `position` and `dimensions` events; renumber again
-	 * there so the ordering reflects the final geometry. */
+	/* Tentative ordinal until position/dimensions arrive. */
 	cow_outputs_renumber();
 
-	/*
-	 * Debounce: many outputs can be created in a burst (e.g. a
-	 * VT-switch round-trip with several monitors).  Each event
-	 * pushes the deadline; the main loop fires
-	 * on-outputs-changed once after the topology has been quiet
-	 * for COW_OUTPUTS_CHANGED_DEBOUNCE_MS.  This also gives
-	 * wlroots time to propagate every new wl_output global to
-	 * other clients before a rule body such as
-	 * `exec wlr-randr ...` runs.
-	 */
+	/* Debounce bursty topology changes. */
 	cow_wm.outputs_changed_deadline_ms = cow_mono_ms() +
 	    COW_OUTPUTS_CHANGED_DEBOUNCE_MS;
 
 	return output;
 }
 
-/*
- * Find a surviving output to migrate orphaned views onto.  Returns the
- * first entry of cow_wm.outputs that isn't `dying`, or NULL if `dying`
- * is the only output left.  Called while `dying` is still on the
- * outputs list, so any other entry is a valid target.
- */
+/* Find a surviving output while `dying` is still linked. */
 static struct cow_output *
 output_find_migration_target(struct cow_output *dying)
 {
@@ -235,14 +207,7 @@ output_find_migration_target(struct cow_output *dying)
 	return (NULL);
 }
 
-/*
- * Snapshot of the dying output's active desk and that desk's page
- * state.  Captured when the last surviving output goes away and
- * consumed by the first output to appear afterwards, so the user's
- * "where am I" returns with their windows.
- *
- * desk_nr == -1 means no snapshot pending.
- */
+/* Last-output session snapshot; desk_nr == -1 means none. */
 static struct {
 	int desk_nr;
 	int page_vx;
@@ -325,35 +290,14 @@ output_session_restore(struct cow_output *output)
 	xfree(session);
 }
 
-/*
- * Move every view currently on `dying` onto `target` (when there is
- * one).
- *
- * Desk identity is preserved when possible:
- *   - with a target: if the source view was on desk N and `target`
- *     also has a desk N, the view lands on target's desk N rather
- *     than on target's current_desk.
- *   - without a target: the source desk number is remembered on the
- *     view (view->orphan_desk_nr) so that when a new output appears
- *     and adopts the view (output_adopt_orphan_views) the same desk
- *     number is restored.
- *
- * Views are NOT closed on the no-target path: the session may be
- * spending a brief period with every monitor disabled (e.g. a laptop
- * whose internal panel is forced off and whose only external display
- * was just powered off).  When a monitor returns the views resume
- * normally.
- */
+/* Migrate or orphan views from a disappearing output. */
 static void
 output_migrate_views(struct cow_output *dying, struct cow_output *target)
 {
 	bool	preserve = cow_config != NULL &&
 		     cow_config->preserve_desk_on_output_loss;
 
-	/*
-	 * Last output going away: snapshot its active desk + page so
-	 * the next output to appear can restore the session.
-	 */
+	/* Last output going away: remember desk/page. */
 	if (target == NULL && dying != NULL &&
 	    dying->current_desk != NULL) {
 		pending_session.desk_nr = (int)dying->current_desk->nr;
@@ -366,24 +310,11 @@ output_migrate_views(struct cow_output *dying, struct cow_output *target)
 	{
 		if (view->output != dying)
 			continue;
-		/*
-		 * Remember the view's source output the first time it
-		 * encounters a dying output -- whether this destroy
-		 * cascades the view onto a still-living sibling (which
-		 * is itself doomed) or strands it as an orphan.  Without
-		 * this, a cascade of N destroys would overwrite the
-		 * "real" original with the name of whichever sibling
-		 * happened to be destroyed last, and every view would
-		 * end up tagged for the same output.
-		 */
+		/* Preserve the original source output across cascaded removal. */
 		if (view->orphan_output_name == NULL && dying != NULL &&
 		    dying->name != NULL)
 			view->orphan_output_name = xstrdup(dying->name);
-		/*
-		 * Remember the source desk number too, only on first
-		 * encounter, so a cascade doesn't reset it to the
-		 * arbitrary current desk of the sibling we migrated to.
-		 */
+		/* Preserve source desk/page across cascaded removal. */
 		if (view->orphan_desk_nr < 0 && preserve &&
 		    view->desk != NULL) {
 			view->orphan_desk_nr = (int8_t)view->desk->nr;
@@ -409,10 +340,7 @@ output_migrate_views(struct cow_output *dying, struct cow_output *target)
 	}
 }
 
-/*
- * Adopt a single orphan view onto `adopter`: restore its desk
- * number, clear its orphan bookkeeping, and re-link it.
- */
+/* Adopt one orphan view. */
 static void
 adopt_one(struct cow_view *view, struct cow_output *adopter)
 {
@@ -427,10 +355,7 @@ adopt_one(struct cow_view *view, struct cow_output *adopter)
 	cow_view_clear_orphan(view);
 }
 
-/*
- * Restore the snapshot of the dying output's active desk + page onto
- * the first adopter after a total blackout.  One-shot.
- */
+/* One-shot restore after every output disappeared. */
 static void
 restore_pending_session(struct cow_output *adopter)
 {
@@ -446,11 +371,7 @@ restore_pending_session(struct cow_output *adopter)
 	pending_session.desk_nr = -1;
 }
 
-/*
- * Adopt orphans that have no preferred home (mapped during a
- * blackout, no remembered output name).  Called from cow_output_create
- * since the adopter's name has no bearing on these views.
- */
+/* Adopt orphans with no remembered output name. */
 static void
 output_adopt_unnamed_orphans(struct cow_output *adopter)
 {
@@ -469,12 +390,7 @@ output_adopt_unnamed_orphans(struct cow_output *adopter)
 	}
 }
 
-/*
- * Adopt orphans whose remembered output name matches the adopter's
- * name.  Called from cow_output_name_known() once river/wl_output
- * has populated output->name; firing this earlier would skip every
- * named orphan because adopter->name would still be NULL.
- */
+/* Adopt orphans matching this output name. */
 static void
 output_adopt_orphan_views(struct cow_output *adopter)
 {
@@ -512,13 +428,7 @@ cow_output_destroy(struct cow_output *output)
 	cow_pan_suppress_for(OUTPUT_PAN_SUPPRESS_MS);
 	output_session_save(output);
 
-	/*
-	 * Detach every view from this output before tearing it down.
-	 * cow_view_reassign_output() rewrites the inline desk_views /
-	 * output_views links, so it must run while the old output's
-	 * desk_set is still intact (cow_desk_set_fini below frees the
-	 * desks themselves).
-	 */
+	/* Detach views before freeing this output's desk set. */
 	output_migrate_views(output, output_find_migration_target(output));
 
 	pan_frames_destroy_output(output);

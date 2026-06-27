@@ -14,31 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/*
- * CoW DSL lexer.
- *
- * Three start conditions:
- *
- *   INITIAL    -- the default "expression" mode.  Recognises DSL
- *                 keywords, identifiers, literals, comparisons, etc.
- *                 Identifiers that match a registered cow command
- *                 verb are emitted as CMD_VERB and switch the lexer
- *                 into <CMDARG> mode for the rest of that statement.
- *
- *   <CMDARG>   -- command-argument mode.  Each whitespace-delimited
- *                 chunk is emitted as a RAW_STRING.  Recognises `#{`
- *                 (-> INTERP_BEGIN, push <INTERP> on the start-condition
- *                 stack) and statement terminators (newline, ; or
- *                 reaching the enclosing }), which pop back to
- *                 INITIAL so the parser is ready for the next stmt.
- *
- *   <INTERP>   -- inside #{ ... }, behaves like the expression mode
- *                 until the matching } which emits INTERP_END and
- *                 pops back to <CMDARG>.
- *
- *   <STRLIT>   -- inside a "..." string literal, accumulates chars
- *                 (with escape processing) until the closing quote.
- */
+/* CoW DSL lexer. */
 
 %option reentrant
 %option bison-bridge
@@ -62,10 +38,7 @@
 #include "dsl-ast.h"
 #include "dsl-parser.h"
 
-/*
- * Track column ourselves; flex updates yylineno but not column.  We
- * reset col to 1 on newline and add yyleng on every match.
- */
+/* flex tracks lines, not columns. */
 #define YY_USER_ACTION                                                         \
 	do {                                                                   \
 		yylloc->first_line   = yylineno;                               \
@@ -75,17 +48,8 @@
 		yycol_start += (int)yyleng;                                    \
 	} while (0);
 
-/* These live in lexer-local extra storage; flex's reentrancy
- * normally requires yyextra, but we cheat a little since the column
- * counter is purely local to this translation unit and never read
- * from outside.  For multi-instance correctness we use a thread-
- * local; cow is single-threaded so this is safe. */
 static __thread int yycol_start = 1;
 
-/*
- * Accumulator for string-literal content.  Filled by the <STRLIT>
- * rules; emitted as a STRING_LIT token on the closing quote.
- */
 struct str_accum {
 	char  *buf;
 	size_t len;
@@ -126,11 +90,7 @@ strbuf_take(void)
 	return (out);
 }
 
-/*
- * Classify a bare-word.  Returns the token id; if the word is a
- * cow command verb, *push_cmd_arg is set to true so the caller
- * (which has access to yy_push_state) can transition the lexer.
- */
+/* Classify a bare word and flag command-argument mode. */
 static int
 classify_word(const char *word, YYSTYPE *lval, bool *push_cmd_arg)
 {
@@ -209,11 +169,6 @@ DEC	[0-9]+\.[0-9]+
 
 %%
 
-	/*
-	 * Whitespace + comments: skipped in INITIAL and INTERP modes.
-	 * In CMDARG mode newline / ; pops back to INITIAL because the
-	 * statement is over.
-	 */
 <INITIAL,INTERP>{
 	[ \t]+			{ /* skip */ }
 	\n			{ yycol_start = 1; }
@@ -234,21 +189,11 @@ DEC	[0-9]+\.[0-9]+
 				return (INTERP_BEGIN);
 			}
 	\"			{
-				/*
-				 * Double-quoted command argument.  The
-				 * inner content (with #{...} interpolations
-				 * honoured) is concatenated into a single
-				 * argv element.
-				 */
 				yy_push_state(CMDSTR, yyscanner);
 				return (STR_BEGIN);
 			}
 	"}"			{
-				/*
-				 * Statement ends because the enclosing
-				 * block is closing; pop back to INITIAL
-				 * and re-scan this `}` as the block close.
-				 */
+				/* Re-scan as a block close. */
 				yy_pop_state(yyscanner);
 				yyless(0);
 			}

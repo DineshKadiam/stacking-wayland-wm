@@ -23,69 +23,28 @@ struct cow_output;
 struct cow_desk;
 struct cow_view;
 
-/*
- * Switch the current output to display the given desk number (0-9).
- *
- * Views on the current desk are hidden; views on the target desk
- * (and views with the STICKY flag) are shown.
- */
+/* Switch the output to a desk. */
 void cow_desk_switch(struct cow_output *, uint8_t);
 
-/*
- * Assign the focused view to the given desk number.
- * The view is moved from its current desk to the target desk.
- * If the target desk is not the current desk, the view is hidden.
- */
+/* Assign a view to a desk. */
 void cow_view_assign_desk(struct cow_view *, uint8_t);
 
-/*
- * Switch the current page on the given output to (col, row).
- * col must be in [0, page_cols-1]; row in [0, page_rows-1].
- * Clamped silently if out of range.
- * Triggers a manage cycle; smooth animation is applied if configured.
- */
+/* Switch the output to page (col, row). */
 void cow_page_switch(struct cow_output *, int, int);
 
-/*
- * Return the current page column/row for the given output's current desk.
- */
 int cow_page_col(const struct cow_output *);
 int cow_page_row(const struct cow_output *);
 
-/*
- * Move view->vx/vy so the window lives on page (col, row) of its output,
- * preserving its within-page position.
- * Triggers a manage cycle and re-renders the view.
- */
+/* Move a view to page (col, row). */
 void cow_view_move_to_page(struct cow_view *, int, int);
 
-/*
- * Pan the current desk's viewport on the given output to an arbitrary
- * virtual pixel offset.  Unlike cow_page_switch, the result need not
- * align with page boundaries -- this is what the `scroll` command uses
- * to do sub-page panning.
- *
- * If wrap is true the offset wraps around the desk extent
- * (cols * output_width, rows * output_height); otherwise it is clamped
- * to [0, (cols-1)*w] x [0, (rows-1)*h] -- matching cow_page_switch's
- * clamp behaviour.
- *
- * Animation, sticky-page handling, and the on-new-page / on-desk
- * rule fires all run as for cow_page_switch.
- */
+/* Pan the current desk viewport to a virtual pixel offset. */
 void cow_page_scroll_to(struct cow_output *, int, int, bool);
 
-/*
- * Clamp any views whose vx/vy fall outside the current page grid.
- * Called after desktop_size is reduced.
- */
+/* Clamp view/page offsets after desktop_size shrinks. */
 void cow_page_clamp_views(struct cow_output *);
 
-/*
- * Advance the smooth page scroll animation for one output.
- * Returns true while the animation is in progress; the caller should
- * keep the manage cycle running until this returns false.
- */
+/* Advance one output's page-scroll animation. */
 bool cow_page_scroll_tick(struct cow_output *);
 
 #endif

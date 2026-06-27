@@ -37,12 +37,7 @@ enum maximize_type {
 	MAX_TOGGLE_KEEP,
 };
 
-/*
- * Axis selector for the maximise operation.  MAX_AXIS_BOTH is the
- * historic "fill the usable area" behaviour; MAX_AXIS_H / MAX_AXIS_V
- * are the fvwm-style horizontal-only / vertical-only variants from
- * the -h / -v flags.
- */
+/* Maximize axes. */
 enum maximize_axis {
 	MAX_AXIS_BOTH,
 	MAX_AXIS_H,
@@ -210,13 +205,6 @@ cmd_window_maximize_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (view == NULL)
 		return (CMD_RETURN_ERROR);
 
-	/*
-	 * Axis selector: -h and -v are independent flags.  Neither
-	 * given, or both given, means full maximise (historic
-	 * behaviour); just -h is horizontal-only, just -v is
-	 * vertical-only.  Modelled on fvwm's `Maximize <x> <y>`
-	 * where 100/0 means full-horizontal-only etc.
-	 */
 	bool		   want_h = args_has(args, 'h');
 	bool		   want_v = args_has(args, 'v');
 	enum maximize_axis axis;
@@ -359,17 +347,7 @@ do_set_layer(struct cow_view *view, const char *arg, struct cmd_q *cmdq)
 	return (CMD_RETURN_NORMAL);
 }
 
-/*
- * Map an axis selector + the current per-axis maximised state to
- * the two booleans (touch_h, touch_v) describing which axes a
- * MAX_TOGGLE or UNMAXIMIZE operation should restore.  Returns true
- * if either axis is currently maximised on the requested side
- * (i.e. there is something to restore).
- *
- *   axis = BOTH: restore every axis that's currently maxed.
- *   axis = H:    restore only horizontal if currently maxed.
- *   axis = V:    restore only vertical if currently maxed.
- */
+/* Resolve which maximized axes a restore operation should touch. */
 static bool
 maxaxis_to_restore(const struct cow_view *view, enum maximize_axis axis,
     bool *touch_h, bool *touch_v)
@@ -398,20 +376,11 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 	if (view->output == NULL)
 		return;
 
-	/*
-	 * UNMAXIMIZE / MAX_TOGGLE restore path.  Toggle only restores
-	 * if the requested axis (or any axis, for AXIS_BOTH) is
-	 * currently maximised.  When only one of the two axes is being
-	 * restored, mix the saved value for that axis with the current
-	 * value for the other so the user's intervening edits to the
-	 * un-restored axis are preserved.
-	 */
+	/* Restore only the requested maximized axes. */
 	if (mt == UNMAXIMIZE || mt == MAX_TOGGLE || mt == MAX_TOGGLE_KEEP) {
 		bool touch_h, touch_v;
 		if (maxaxis_to_restore(view, axis, &touch_h, &touch_v)) {
-			/* Build target geom: start from current frame
-			 * (so non-restored axis stays put), substitute
-			 * saved values for axes we're restoring. */
+			/* Preserve the untouched axis. */
 			int gx = view->x;
 			int gy = view->y;
 			int gw = view->content_width;
@@ -443,14 +412,7 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 				view->icon_inverted_button = -1;
 			return;
 		}
-		/*
-		 * MAX_TOGGLE with nothing maximised in the requested
-		 * axis falls through to the maximise path below, so a
-		 * lone `-T -h` on an unmaxed window grows horizontally.
-		 * MAX_TOGGLE_KEEP follows the same toggle rule but marks
-		 * the axis maximised without changing geometry.
-		 * UNMAXIMIZE without state to restore is a no-op.
-		 */
+		/* Toggle with no restore state becomes maximize. */
 		if (mt == UNMAXIMIZE)
 			return;
 		if (mt == MAX_TOGGLE_KEEP)
@@ -461,13 +423,7 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 	int		bw = view->dec.border_width;
 	int		tt = view->dec.title_thickness;
 
-	/*
-	 * Save geometry for the axes we're about to maximise.  When
-	 * promoting an already-h-maxed window to v-max (or vice
-	 * versa), don't overwrite the side that already holds a
-	 * pre-maximise value -- we want to remember the original
-	 * "before any maximise" geom for each axis.
-	 */
+	/* Save only axes that do not already have pre-maximize geometry. */
 	if ((axis == MAX_AXIS_BOTH || axis == MAX_AXIS_H) &&
 	    !view->maximized_h) {
 		view->saved_x	  = view->vx;

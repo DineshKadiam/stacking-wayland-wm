@@ -23,13 +23,12 @@ struct zwp_confined_pointer_v1;
 
 #include "cow/cow_box.h"
 
-/* The maximum number of desks available. */
+/* Desk limits. */
 #define COW_MAX_DESK_COUNT 32
 
-/* The default number of desks exposed. */
 #define COW_DEFAULT_DESK_COUNT 10
 
-/* COW_NR_OF_DESKS is now compat for COW_DEFAULT_DESK_COUNT */
+/* Compatibility alias. */
 #define COW_NR_OF_DESKS COW_DEFAULT_DESK_COUNT
 
 struct river_output_v1;
@@ -57,10 +56,7 @@ struct cow_desk_set {
 	bool	       user_named;
 };
 
-/*
- * A logical output tracked by the window manager.
- * Wraps a river_output_v1 object.
- */
+/* A managed river output. */
 struct cow_output {
 	struct river_output_v1 *river_output;
 	struct wl_list		wm_link; /* cow_wm.outputs */
@@ -69,9 +65,7 @@ struct cow_output {
 	int x, y;
 	int width, height;
 
-	/* The usable area (after subtracting layer shell exclusive zones).
-	 * Initially equals the full output dimensions. Updated by
-	 * river-layer-shell-v1 non_exclusive_area events in Phase 10. */
+	/* Output area after layer-shell/reserved exclusions. */
 	struct cow_box usable_area;
 
 	/* Corresponding wl_output global name (for wl_registry binding) */
@@ -83,15 +77,7 @@ struct cow_output {
 	/* Human-readable output name (e.g. "DP-1", "HDMI-A-1") */
 	char *name;
 
-	/*
-	 * Stable 1-based ordinal assigned by cow_outputs_renumber().
-	 * Outputs are sorted top-to-bottom (by y), then left-to-right
-	 * (by x), then by insertion order as a tiebreaker; the result
-	 * is rank 1..N.  Recomputed whenever an output is added,
-	 * removed, or repositioned.  Surfaced as "number" in IPC so
-	 * external tools (cowpager) can refer to monitors by the same
-	 * digit users see.
-	 */
+	/* Stable 1-based raster-order ordinal. */
 	int number;
 
 	/* Per-output background colour (overrides global if set) */
@@ -101,9 +87,7 @@ struct cow_output {
 	struct cow_desk_set desk_set;
 	struct cow_desk	   *current_desk;
 
-	/* Bitmask of desks whose windows are temporarily shown
-	 * on the current desk (collect overlay).  Bit N set means
-	 * desk N is collected. */
+	/* Desk collect overlay bitmask. */
 	uint32_t collected_desks;
 
 	/* Views currently visible on this output */
@@ -121,19 +105,7 @@ struct cow_output {
 	/* Per-output layer-shell state (opaque to consumers). */
 	struct cow_layer_shell_output *layer_shell_state;
 
-	/*
-	 * Edge-scroll dwell state.
-	 *
-	 * pan_edge:            armed edge (-1 none; 0=top 1=bottom 2=left
-	 *                      3=right).
-	 * pan_arm_ms:          monotonic ms when the dwell timer started.
-	 * pan_resist_motion:   cumulative cursor motion while armed,
-	 *                      used to add light resistance before the
-	 *                      cursor crosses to a neighbouring monitor.
-	 * pan_resist_done:     once true, no more warp-backs this arm.
-	 * pan_giveup_until_ms: post-fire cooldown.
-	 * pan_last_fire_ms:    monotonic ms of the last successful fire.
-	 */
+	/* Edge-scroll dwell state. */
 	int  pan_edge;
 	int  pan_resist_motion;
 	bool pan_resist_done;
@@ -152,77 +124,30 @@ struct cow_output {
 	bool  pan_entered[4];	     /* pointer is over this frame */
 };
 
-/*
- * Create a new output wrapper for the given river_output_v1.
- * Initializes desks and adds to cow_wm.outputs.
- */
+/* Create/destroy output wrappers. */
 struct cow_output *cow_output_create(struct river_output_v1 *);
-
-/*
- * Destroy an output wrapper (called on river_output_v1.removed).
- */
 void cow_output_destroy(struct cow_output *);
 
-/*
- * Called after an output's `name` field is set (in either river's
- * wl_output handler or the wl_output `name` event).  Triggers a pass
- * of orphan-view adoption: views remembered for this output's name
- * come home.
- */
+/* Called once the human-readable output name is known. */
 void cow_output_name_known(struct cow_output *);
 
-/*
- * Recompute the usable area by applying the configured reserved area
- * on top of the current usable area (from output dimensions or
- * layer shell non_exclusive_area).
- */
+/* Apply configured reserved area to output->usable_area. */
 void cow_output_apply_reserved_area(struct cow_output *);
 
-/*
- * Create the background shell surface if needed.
- * Must be called during a manage sequence.
- */
+/* Background surface lifecycle. */
 void cow_output_prepare_background(struct cow_output *);
-
-/*
- * Render and commit the background surface.
- * Must be called during a render sequence.
- */
 void cow_output_render_background(struct cow_output *);
 
-/*
- * Find the output that contains the given global coordinate.
- */
 struct cow_output *cow_output_at(int, int);
-
-/*
- * Find an output by its river_output_v1 pointer.
- */
 struct cow_output *cow_output_find(struct river_output_v1 *);
-
-/*
- * Find an output by its human-readable name (e.g. "DP-1").
- * Returns NULL if not found.
- */
 struct cow_output *cow_output_find_by_name(const char *);
 
-/*
- * Return the largest (output->y + output->height) over all outputs,
- * i.e. the bottom edge of the union bounding box of every output.
- * Used by view-parking math that needs an off-screen y coordinate
- * guaranteed not to land inside any physical monitor.
- */
+/* Bottom edge of the output union. */
 int cow_outputs_max_bottom(void);
 
 void cow_output_update_current(void);
 
-/*
- * Recompute every output's `number` field in raster-scan order
- * (top-to-bottom by y, then left-to-right by x, then by current
- * list order as a stable tiebreaker).  Cheap (O(n log n) where n
- * is the number of outputs, typically <= 8); safe to call from any
- * code path that mutates output geometry or membership.
- */
+/* Recompute output->number in raster-scan order. */
 void cow_outputs_renumber(void);
 
 /* Desk management. */

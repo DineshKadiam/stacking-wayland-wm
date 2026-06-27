@@ -25,10 +25,7 @@ struct cow_view;
 struct cow_desk;
 struct cow_output;
 
-/*
- * Lifecycle events that rules can attach to.  COW_RULE_NONE is a
- * sentinel; COW_RULE_TYPE_COUNT is the number of real values.
- */
+/* Lifecycle events for rules. */
 enum cow_rule_type {
 	COW_RULE_NONE = 0,
 	COW_RULE_ON_MAP,
@@ -45,30 +42,12 @@ enum cow_rule_type {
 	COW_RULE_ON_RESTART,
 	COW_RULE_ON_TITLE_CHANGE,
 	COW_RULE_ON_OUTPUTS_CHANGED,
-	/*
-	 * Declarative desk style.  Unlike the other ON_* events which
-	 * fire once per lifecycle event, ON_DESK rules express a desk's
-	 * persistent style and re-fire whenever the desk's effective
-	 * configuration may need to be re-applied:
-	 *   - a desk becomes the current desk on an output (on-new-desk)
-	 *   - the page within a desk changes (on-new-page)
-	 *   - a view maps onto a desk (on-map)
-	 * Use with "-t :N" or ":N:" scope to target a specific desk.
-	 */
+	/* Declarative desk style; re-applied as desk/page/view state changes. */
 	COW_RULE_ON_DESK,
 	COW_RULE_TYPE_COUNT,
 };
 
-/*
- * A registered rule.  Each rule binds a parsed command list to one
- * lifecycle event.  Rules are scoped via either is_global=true (fires
- * for every event of this type) or by output_name / desk_nr (fires
- * only when the event's output / desk match).
- *
- * For view-bearing events (on-map, on-move, etc.) match_spec further
- * restricts firing to views matching the selector grammar (%app,
- * /title/, #id).
- */
+/* A registered rule and its scope. */
 struct cow_rule {
 	char		  *name;
 	enum cow_rule_type type;
@@ -91,40 +70,19 @@ const char *cow_rule_type_name(enum cow_rule_type);
 
 struct cow_rule *cow_rule_find_by_name(const char *);
 
-/*
- * Return the file-scope list of registered rules so external callers
- * (e.g. `show rules`) can iterate them.  The list head is owned by
- * rule.c; callers must not modify it.  Returns NULL until
- * cow_rule_init() has been called.
- */
+/* Borrow the registered-rule list. */
 const struct wl_list *cow_rules_head(void);
 
-/*
- * Take ownership of 'rule' (caller must have populated all fields,
- * including a parsed cmdlist).  Appends to the rules list.
- */
+/* Take ownership of 'rule'. */
 void cow_rule_add(struct cow_rule *);
 
-/*
- * Remove and free the first rule with the given name.  Returns true
- * if a rule was removed.
- */
+/* Remove and free the first rule with this name. */
 bool cow_rule_remove_by_name(const char *);
 
 /*
  * Fire all rules of 'type' whose scope matches the supplied context.
- * 'view' / 'desk' / 'output' may be NULL when the event has no
- * associated view (on-restart) or no associated output (some
- * iconify paths).
- *
- * Most call sites use the cow_rule_fire() wrapper.  Events that
- * carry structured per-fire information (e.g. on-layer-change's
- * previous + current layer) call cow_rule_fire_json() instead and
- * pass a JSON object string; rule bodies see it via
- * cmd_q->event_json (cmd-exec exposes it as $COW_EVENT to the
- * spawned shell).  Ownership of `event_json` stays with the caller:
- * cow_rule_fire_json() copies it once per fire into each rule
- * body's cmd_q.
+ * Context pointers may be NULL.  event_json is copied into each
+ * matching rule queue and exposed to exec as $COW_EVENT.
  */
 void cow_rule_fire(enum cow_rule_type, struct cow_view *, struct cow_desk *,
     struct cow_output *);

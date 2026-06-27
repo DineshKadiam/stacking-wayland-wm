@@ -14,14 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/*
- * DSL public entry points + tree-walking evaluator.
- *
- * dsl_parse() drives the bison/flex pair.  dsl_eval() walks the
- * resulting AST under a chain of lexical scopes; loop bodies and
- * command atoms enqueue cmd_lists on the calling cmd_q so the
- * existing cmdq_continue loop drains them like any other commands.
- */
+/* DSL parser entry points and tree-walking evaluator. */
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -38,10 +31,6 @@
 #include "dsl-lexer.h"
 #include "dsl-sources.h"
 #include "dsl-value.h"
-
-/* -------------------------------------------------------------------
- * Parse entry point.
- * ------------------------------------------------------------------- */
 
 struct dsl_ast *
 dsl_parse(const char *src, const char *file, struct dsl_error *err)
@@ -69,10 +58,6 @@ dsl_parse(const char *src, const char *file, struct dsl_error *err)
 
 	YY_BUFFER_STATE buf = dsl_yy_scan_string(src, scanner);
 
-	/*
-	 * yy_scan_string doesn't initialise the buffer's lineno, so
-	 * force it to 1 here.
-	 */
 	dsl_yyset_lineno(1, scanner);
 
 	struct dsl_parse_ctx ctx = { 0 };
@@ -92,10 +77,6 @@ dsl_parse(const char *src, const char *file, struct dsl_error *err)
 
 	return (ctx.ast);
 }
-
-/* -------------------------------------------------------------------
- * Evaluator scope + state.
- * ------------------------------------------------------------------- */
 
 struct dsl_env_entry {
 	char		 *name;
@@ -122,20 +103,7 @@ struct dsl_eval_ctx {
 	enum dsl_control control;
 	size_t		  loop_depth;
 
-	/*
-	 * Implicit target for commands enqueued inside a `for w in
-	 * (windows where ...)` body.  When set, enqueue_command
-	 * injects `-t <id>` into argv unless the script explicitly
-	 * provides one.  Without this, commands like `set ...` inside
-	 * a window-for-loop would mutate the *global* config rather
-	 * than the per-view config (because cmd-queue resolves a
-	 * missing -t to NULL, and cmd-set's cfg_target() routes to
-	 * cow_config in that case).
-	 *
-	 * Set/restored in the DSL_N_FOR handler around each iteration
-	 * of a windows source.  Other sources (desks / outputs /
-	 * rules) leave this NULL.
-	 */
+	/* Default -t for commands inside window loops. */
 	const char *implicit_target_id;
 };
 
@@ -191,10 +159,6 @@ env_get(const struct dsl_env *e, const char *name)
 	return (NULL);
 }
 
-/* -------------------------------------------------------------------
- * Error reporting.
- * ------------------------------------------------------------------- */
-
 static void
 fail_at(struct dsl_eval_ctx *ctx, int line, int col, const char *fmt, ...)
 {
@@ -217,19 +181,10 @@ fail_at(struct dsl_eval_ctx *ctx, int line, int col, const char *fmt, ...)
 	ctx->err->message = xstrdup(buf);
 }
 
-/* -------------------------------------------------------------------
- * Expression evaluation.  Returns a fresh value reference; caller
- * unref's when done.  NULL on failure (with ctx->err populated).
- * ------------------------------------------------------------------- */
-
 static struct dsl_value *eval_expr(struct dsl_eval_ctx *, struct dsl_env *,
     struct dsl_node *);
 
-/*
- * Walk a path node.  parts[0] is the base identifier (looked up in
- * the env); parts[1..] are field accesses on a record.  Returns a
- * fresh reference.
- */
+/* Evaluate a dotted path and return a fresh reference. */
 static struct dsl_value *
 eval_path(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 {
@@ -265,11 +220,7 @@ eval_path(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 	return (cur);
 }
 
-/*
- * Comparison.  Numbers compare numerically; strings string-compare
- * with == / != / lexicographic ordering; bools compare equality
- * only.  Cross-type comparison is an evaluation error.
- */
+/* Typed comparison. */
 static bool
 compare(struct dsl_eval_ctx *ctx, struct dsl_node *n, struct dsl_value *lhs,
     struct dsl_value *rhs, bool *out)
@@ -432,19 +383,7 @@ eval_expr(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 	}
 }
 
-/* -------------------------------------------------------------------
- * Command enqueueing.
- *
- * For each command atom, build an argv (raw chunks verbatim, interp
- * results stringified), call cmd_parse to produce a single struct
- * cmd, wrap in a cmd_list, and cmdq_append onto the calling cmdq.
- * ------------------------------------------------------------------- */
-
-/*
- * Does the script's own argv pieces include an explicit -t option?
- * A single-piece raw "-t" arg means the user provided a target and
- * the implicit per-window one should be left alone.
- */
+/* True when the script supplied its own -t. */
 static bool
 cmd_has_explicit_t(struct dsl_node *cmd_node)
 {
@@ -468,12 +407,7 @@ enqueue_command(struct dsl_eval_ctx *ctx, struct dsl_env *env,
 	for (size_t i = 0; i < cmd_node->u.cmd.n; i++) {
 		struct dsl_cmd_arg *a = &cmd_node->u.cmd.args[i];
 
-		/*
-		 * Concatenate all pieces of this argument into a single
-		 * argv element.  A bare RAW_STRING / interp argument is
-		 * just one piece; double-quoted arguments are an
-		 * ordered list of (raw, interp) pieces.
-		 */
+		/* Concatenate raw/interpolated pieces into one argv element. */
 		size_t cap = 64;
 		size_t len = 0;
 		char  *buf = xmalloc(cap);
@@ -530,15 +464,7 @@ enqueue_command(struct dsl_eval_ctx *ctx, struct dsl_env *env,
 		goto fail;
 	}
 
-	/*
-	 * If an implicit per-window target is in scope (we're inside a
-	 * `for w in (windows where ...)` body) and the user did not
-	 * provide an explicit -t in the script, attach the matching
-	 * live view to the cmd's per-command default target.  cmd-queue
-	 * picks this up when resolving -t for the deferred exec, so
-	 * commands like `set ...` route to the view's own cfg rather
-	 * than mutating the global config.
-	 */
+	/* Window loops provide an implicit per-command target. */
 	if (ctx->implicit_target_id != NULL && !cmd_has_explicit_t(cmd_node)) {
 		struct cow_view *v = cow_view_find_by_identifier(
 		    ctx->implicit_target_id);
@@ -555,8 +481,7 @@ enqueue_command(struct dsl_eval_ctx *ctx, struct dsl_env *env,
 	TAILQ_INSERT_TAIL(&cl->list, cmd, qentry);
 
 	cmdq_append(ctx->cmdq, cl);
-	/* cmdq_append bumps cl->references; release our ref now so the
-	 * queue's reference is the only one left. */
+	/* Keep only the queue's reference. */
 	cmd_list_free(cl);
 
 	for (size_t i = 0; i < argc; i++)
@@ -570,10 +495,6 @@ fail:
 	xfree(argv);
 	return (false);
 }
-
-/* -------------------------------------------------------------------
- * Statement execution.
- * ------------------------------------------------------------------- */
 
 static void exec_block(struct dsl_eval_ctx *, struct dsl_env *,
     struct dsl_node *);
@@ -636,13 +557,7 @@ exec_stmt(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 				}
 			}
 
-			/*
-			 * For window iteration, expose the current
-			 * record's id as the implicit -t target for
-			 * commands inside the body.  Other sources have
-			 * no natural per-record target, so leave the
-			 * outer value undisturbed.
-			 */
+			/* Window iteration gets an implicit -t target. */
 			if (n->u.forstmt.src == DSL_SRC_WINDOWS &&
 			    item->type == DSL_V_RECORD) {
 				struct dsl_value *idv = dsl_record_get(item,

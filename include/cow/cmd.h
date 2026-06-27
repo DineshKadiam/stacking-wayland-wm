@@ -49,10 +49,7 @@ struct cow_view;
 struct cmd_q;
 struct cJSON;
 
-/*
- * Cardinal direction used by focus, move, resize, page, etc.
- * COW_DIR_NONE signals an unrecognised input.
- */
+/* Shared direction token. */
 enum cow_direction {
 	COW_DIR_NONE = -1,
 	COW_DIR_UP,
@@ -61,65 +58,22 @@ enum cow_direction {
 	COW_DIR_RIGHT,
 };
 
-/*
- * Parse a direction token ("up"/"down"/"left"/"right").
- * Returns COW_DIR_NONE on any other input (including NULL).
- */
 enum cow_direction cow_parse_direction(const char *);
 
-/*
- * Parse a boolean from a config/command value.
- *   true/yes/on/1  -> true
- *   false/no/off/0 -> false
- * Returns true on success; on any other input *out is untouched
- * and the return is false.  NULL input also returns false.
- */
+/* Parse true/false, yes/no, on/off, or 1/0. */
 bool cmd_parse_bool(const char *, bool *);
 
-/*
- * Resolve the target window from cmdq or emit a canonical error.
- * cmd_name is embedded in the error message.  Returns NULL (and
- * has already reported via cmdq_error) if there is no usable
- * target, which the caller should translate to CMD_RETURN_ERROR.
- */
+/* Resolve the target window or emit a canonical error. */
 struct cow_view *cmd_require_target_window(struct cmd_q *, const char *);
 
-/*
- * Resolved command context.  Produced by parsing a specifier string
- * of the form "[output]:[desk].[window]".
- *
- * NULL fields mean "use current/default".
- */
+/* Resolved command context; NULL fields mean current/default. */
 struct cmd_ctx {
 	struct cow_output *output;
 	struct cow_desk	  *desk;
 	struct cow_view	  *window;
 };
 
-/*
- * Parse a target/source specifier string into a cmd_ctx.
- *
- * Specifier format:  [output]:[desk].[window]
- *
- * Output selectors:
- *   <name>        by output name (e.g. "DP-1")
- *   @<number>     by output number
- *   @next/@prev   relative to current output
- *
- * Desk selectors:
- *   <number>      by desk number (0-9)
- *   @next/@prev   relative to current desk
-
- *
- * Window selectors:
- *   %<app_id>     by app_id (e.g. "%XTerm")
- *   /<substring>/ by title substring
- *   #<id>         by river window identifier
- *   @focused      the currently focused window
- *   @next/@prev   cycle relative to focused
- *
- * Returns true on success.  On failure, sets *cause and returns false.
- */
+/* Parse [output]:[desk].[window] into a cmd_ctx. */
 bool cmd_ctx_parse(const char *, struct cmd_ctx *, char **);
 
 /* Forward declarations. */
@@ -132,16 +86,7 @@ enum cmd_retval {
 	CMD_RETURN_NORMAL = 0,
 };
 
-/*
- * Command flags.
- *
- * CMD_OWN_TS - the command parses -t / -s itself with its own semantics
- *              (e.g. `rule` uses -t for output[:desk] scope and -s for a
- *              deferred view selector).  The queue dispatcher must not
- *              pre-resolve these as ctx specifiers before running the
- *              command, or registration would fail at parse time when
- *              the target view doesn't yet exist.
- */
+/* Command parses -t/-s itself. */
 #define CMD_OWN_TS (1u << 0)
 
 /* Command definition. */
@@ -167,19 +112,7 @@ struct cmd {
 	char *file;
 	u_int line;
 
-	/*
-	 * Per-command default target.  When `window` (or `desk` /
-	 * `output`) is non-NULL, the cmd-queue resolver uses this
-	 * instead of the cmd_q's shared `default_target` when the
-	 * command has no explicit -t.  This lets a single cmd_q hold
-	 * many enqueued commands each carrying their own target,
-	 * which is how script for-window bodies route per-view
-	 * commands (e.g. `set ...`) to the right view.
-	 *
-	 * Zero-initialised in cmd_parse(); writes happen in callers
-	 * that enqueue a cmd outside of plain config-file or IPC
-	 * parsing.
-	 */
+	/* Per-command default target. */
 	struct cmd_ctx default_target;
 
 	TAILQ_ENTRY(cmd) qentry;
@@ -216,29 +149,14 @@ struct cmd_q {
 	/* IPC client fd for response routing (-1 = config file mode). */
 	int client_fd;
 
-	/* Resolved target/source context from -t/-s flags.
-	 * Populated by cmdq_continue before calling cmd->exec. */
+	/* Resolved -t/-s contexts. */
 	struct cmd_ctx target;
 	struct cmd_ctx source;
 
-	/*
-	 * Fallback target context, applied by cmdq_continue when the
-	 * current cmd has no -t flag.  Used by the rule subsystem to
-	 * pass the event's view / desk / output through to commands
-	 * inside a rule body without forcing every command to spell
-	 * out a -t.  Zero-initialised; assign via
-	 * cmdq_set_default_target().
-	 */
+	/* Queue-level default target. */
 	struct cmd_ctx default_target;
 
-	/*
-	 * Per-event JSON payload, set by the rule subsystem before
-	 * running a rule body.  Commands inside the body can read it
-	 * (e.g. cmd-exec exposes it as the COW_EVENT environment
-	 * variable to the spawned shell, so an `exec` body can `jq`
-	 * the payload).  Owned by the cmd_q; freed in cmdq_free.
-	 * NULL when the firing event has no structured payload.
-	 */
+	/* Per-event JSON payload, exposed to exec as COW_EVENT. */
 	char *event_json;
 
 	int in_rule;
@@ -248,92 +166,40 @@ struct cmd_q {
 ARRAY_DECL(causelist, char *);
 extern struct causelist cfg_causes;
 
-/*
- * Convenience: get the target window from a cmd_q, falling back
- * to the focused view if no -t was specified.
- */
 struct cow_view *cmd_ctx_target_window(struct cmd_q *);
-
-/*
- * Convenience: get the target output, falling back to current.
- */
 struct cow_output *cmd_ctx_target_output(struct cmd_q *);
-
-/*
- * Convenience: get the target desk, falling back to current.
- */
 struct cow_desk *cmd_ctx_target_desk(struct cmd_q *);
 
-/*
- * Like cmd_require_target_window, but resolve from the source (-s)
- * specifier rather than the target (-t).
- */
+/* Resolve from -s instead of -t. */
 struct cow_view *cmd_require_source_window(struct cmd_q *, const char *);
 
-/*
- * Resolve the target output (or current) from cmdq.  Emits a canonical
- * error and returns NULL when no usable output exists.
- */
 struct cow_output *cmd_require_target_output(struct cmd_q *, const char *);
-
-/*
- * Resolve the target desk (or current) from cmdq.  Emits a canonical
- * error and returns NULL when no usable desk exists.
- */
 struct cow_desk *cmd_require_target_desk(struct cmd_q *, const char *);
 
-/*
- * Parse an integer in [lo, hi] from 'val'.  On success, *out is set
- * and the function returns true.  On failure, emits a canonical
- * "<cmd_name>: <field>: bad value: <val>" error via cmdq_error and
- * returns false (leaving *out untouched).
- */
+/* Parse an integer and emit the standard command error on failure. */
 bool cmd_parse_int(struct cmd_q *, const char *, const char *, const char *,
     long long, long long, long long *);
 
-/*
- * Combined args lookup + integer parse.  If the flag is absent, returns
- * false and leaves *out alone (caller can pre-seed with a default).
- * If present but malformed, emits the canonical error and returns
- * false.  On success, returns true.
- */
+/* Lookup a flag and parse its integer value if present. */
 bool cmd_args_int(struct cmd_q *, const char *, struct args *, u_char,
     long long, long long, long long *);
 
-/*
- * Resolve a direction-flag.  If 'required' is true and the flag is
- * absent, emits the canonical error.  Returns COW_DIR_NONE on absence
- * or parse failure (and emits an error in the failure case).
- */
+/* Resolve a direction flag. */
 enum cow_direction cmd_args_direction(struct cmd_q *, const char *,
     struct args *, u_char, bool);
 
-/*
- * Mark a view as needing visual + manage refresh.  Combines
- * "view->dec.dirty = true" with cow_wm.needs_manage_dirty = true so
- * that the two flags don't drift apart.
- */
+/* Mark a view as needing visual and manage refresh. */
 void cmd_view_dirty(struct cow_view *);
 
-/*
- * Send a JSON response for the cmdq's IPC client.  No-op if the cmdq
- * has no client (config-file context, client_fd == -1).  Takes
- * ownership of the cJSON object (it will be deleted after sending).
- */
+/* Send an IPC JSON response; takes ownership of the object. */
 void cmdq_respond_data(struct cmd_q *, struct cJSON *);
 
-/*
- * Send a textual error response for the cmdq's IPC client.  No-op if
- * the cmdq has no client.
- */
+/* Send an IPC error response. */
 void cmdq_respond_error(struct cmd_q *, const char *);
 
 extern struct cmd_entry *cmd_table[];
 
-/*
- * Run any exec commands that were deferred during config loading.
- * Called from main() after the WM is connected.
- */
+/* Run exec commands deferred during config loading. */
 void cow_exec_run_deferred(void);
 
 /* Built-in commands. */
@@ -395,10 +261,7 @@ int		 cmdq_continue(struct cmd_q *);
 void		 cmdq_flush(struct cmd_q *);
 void		 cmdq_set_default_target(struct cmd_q *, struct cow_view *,
 		struct cow_desk *, struct cow_output *);
-/*
- * Attach (or replace) a per-event JSON payload on the queue.  Takes
- * ownership of `json` (caller must not free).  Pass NULL to clear.
- */
+/* Attach/replace the queue event JSON; takes ownership. */
 void cmdq_set_event_json(struct cmd_q *, char *json);
 
 /* Memory wrappers -- declared in cow/memory.h */
