@@ -34,6 +34,7 @@ enum maximize_type {
 	MAXIMIZE_KEEP,
 	UNMAXIMIZE,
 	MAX_TOGGLE,
+	MAX_TOGGLE_KEEP,
 };
 
 /*
@@ -191,10 +192,10 @@ cmd_window_expand_exec(struct cmd *self, struct cmd_q *cmdq)
 
 struct cmd_entry cmd_window_maximize_entry = {
 	"window-maximize",
-	"t:Tmuhv",
+	"t:Tmuhvk",
 	0,
 	0,
-	"window-maximize [-t target] [-T] [-m] [-u] [-h] [-v]",
+	"window-maximize [-t target] [-T] [-m] [-u] [-h] [-v] [-k]",
 	cmd_window_maximize_exec,
 	0,
 };
@@ -227,11 +228,13 @@ cmd_window_maximize_exec(struct cmd *self, struct cmd_q *cmdq)
 		axis = MAX_AXIS_BOTH;
 
 	if (args_has(args, 'T'))
-		do_maximize(view, MAX_TOGGLE, axis);
+		do_maximize(view, args_has(args, 'k') ? MAX_TOGGLE_KEEP :
+		    MAX_TOGGLE, axis);
 	else if (args_has(args, 'u'))
 		do_maximize(view, UNMAXIMIZE, axis);
 	else
-		do_maximize(view, MAXIMIZE, axis);
+		do_maximize(view, args_has(args, 'k') ? MAXIMIZE_KEEP :
+		    MAXIMIZE, axis);
 
 	cow_wm_request_manage_dirty();
 	view->dec.dirty = true;
@@ -403,7 +406,7 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 	 * value for the other so the user's intervening edits to the
 	 * un-restored axis are preserved.
 	 */
-	if (mt == UNMAXIMIZE || mt == MAX_TOGGLE) {
+	if (mt == UNMAXIMIZE || mt == MAX_TOGGLE || mt == MAX_TOGGLE_KEEP) {
 		bool touch_h, touch_v;
 		if (maxaxis_to_restore(view, axis, &touch_h, &touch_v)) {
 			/* Build target geom: start from current frame
@@ -444,10 +447,14 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 		 * MAX_TOGGLE with nothing maximised in the requested
 		 * axis falls through to the maximise path below, so a
 		 * lone `-T -h` on an unmaxed window grows horizontally.
+		 * MAX_TOGGLE_KEEP follows the same toggle rule but marks
+		 * the axis maximised without changing geometry.
 		 * UNMAXIMIZE without state to restore is a no-op.
 		 */
 		if (mt == UNMAXIMIZE)
 			return;
+		if (mt == MAX_TOGGLE_KEEP)
+			mt = MAXIMIZE_KEEP;
 	}
 
 	struct cow_box *ua = &view->output->usable_area;

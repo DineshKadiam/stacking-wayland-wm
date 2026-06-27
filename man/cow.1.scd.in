@@ -936,7 +936,7 @@ the window is the only window on that monitor.
 *-T*
 	Toggle: restore original geometry if the window is already expanded.
 
-## window-maximize [-t target] [-T] [-m] [-u] [-h] [-v]
+## window-maximize [-t target] [-T] [-m] [-u] [-h] [-v] [-k]
 
 Maximize or restore a window.
 
@@ -963,6 +963,11 @@ Maximize or restore a window.
 	Maximize vertically only -- the window's height grows to the
 	output's usable area.
 
+*-k*
+	Keep the current geometry while marking the window as maximized.
+	Combined with *-T*, restore if the requested axis is already
+	maximized; otherwise mark it maximized without changing size.
+
 Per-axis maximised state is independent: *window-maximize -h*
 followed by *window-maximize -v* leaves the window maximised on
 both axes, and each axis can be restored separately with *-T -h* and *-T -v*.
@@ -976,6 +981,7 @@ window-maximize -h     # horizontal only
 window-maximize -v     # vertical only
 window-maximize -T -h  # toggle horizontal maximised state only
 window-maximize -u -v  # un-maximise vertical only, keep horizontal
+window-maximize -k     # mark maximised without changing size
 ```
 
 ## pick-window command ...

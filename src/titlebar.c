@@ -370,7 +370,8 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 		if (bx + btn_s > tb_x + tb_w)
 			break;
 
-		bool btn_sunken = (pressed_button == i);
+		bool btn_sunken = (pressed_button == i) ||
+		    (icon_inverted_button == i);
 
 		/* Fill button background */
 		for (int py = by; py < by + btn_s; py++)
@@ -409,7 +410,8 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 		if (bx < tb_x)
 			break;
 
-		bool btn_sunken = (pressed_button == btn_idx);
+		bool btn_sunken = (pressed_button == btn_idx) ||
+		    (icon_inverted_button == btn_idx);
 
 		/* Fill button background */
 		for (int py = by; py < by + btn_s; py++)
