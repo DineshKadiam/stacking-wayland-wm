@@ -22,9 +22,11 @@ ident_deps = [
 
 executable('cowident',
     ['src/cowident.c'] + ident_generated,
+    '../src/module.c',
     '../vendor/cJSON.c',
     include_directories: [
         include_directories('..'),
+        include_directories('../include'),
         include_directories('../vendor'),
     ],
     dependencies: ident_deps,

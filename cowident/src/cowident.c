@@ -16,7 +16,6 @@
 
 #include <cJSON.h>
 #include <cairo.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <pango/pangocairo.h>
 #include <stdbool.h>
@@ -24,12 +23,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <unistd.h>
 #include <wayland-client.h>
 #include <wayland-cursor.h>
 #include <xkbcommon/xkbcommon.h>
+
+#include "cow/module.h"
 
 #include "cursor-shape-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
@@ -113,8 +112,6 @@ static int	  n_outs;
 static struct view_info views[MAX_VIEWS];
 static int		n_views;
 
-static char cmd_sock[4096];
-
 /* xkb */
 static struct xkb_context *xkb_ctx;
 static struct xkb_keymap  *xkb_keymap;
@@ -146,60 +143,10 @@ static bool		    popup_configured;
 /* Configured font for popup */
 static char cfg_font[256] = "monospace 10";
 
-/* ----------------------------------------------------------------------
- * IPC to cow
- * ---------------------------------------------------------------------- */
-
 static char *
 ipc_query(const char *cmd)
 {
-	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (fd < 0)
-		return NULL;
-
-	struct sockaddr_un a = { .sun_family = AF_UNIX };
-	if (strlen(cmd_sock) >= sizeof(a.sun_path)) {
-		fprintf(stderr, "cowident: socket path too long: %s\n",
-		    cmd_sock);
-		close(fd);
-		return NULL;
-	}
-	strncpy(a.sun_path, cmd_sock, sizeof(a.sun_path) - 1);
-
-	if (connect(fd, (struct sockaddr *)&a, sizeof(a)) != 0) {
-		fprintf(stderr, "cowident: connect %s: %s\n", cmd_sock,
-		    strerror(errno));
-		close(fd);
-		return NULL;
-	}
-
-	if (write(fd, cmd, strlen(cmd)) < 0 || write(fd, "\n", 1) < 0) {
-		close(fd);
-		return NULL;
-	}
-
-	size_t cap = 16384;
-	char  *buf = malloc(cap);
-	if (!buf) {
-		close(fd);
-		return NULL;
-	}
-
-	size_t	off = 0;
-	ssize_t n;
-	while ((n = read(fd, buf + off, cap - 1 - off)) > 0) {
-		off += (size_t)n;
-		if (off + 1 >= cap) {
-			cap *= 2;
-			char *nbuf = realloc(buf, cap);
-			if (!nbuf)
-				break;
-			buf = nbuf;
-		}
-	}
-	close(fd);
-	buf[off] = '\0';
-	return buf;
+	return cow_module_cmd_request("cowident", cmd, true);
 }
 
 static bool
@@ -1424,28 +1371,9 @@ popup_destroy(void)
 	wl_display_roundtrip(display);
 }
 
-static void
-init_socket_path(void)
-{
-	const char *override = getenv("COW_IPC_SOCKET");
-	if (override) {
-		strncpy(cmd_sock, override, sizeof(cmd_sock) - 1);
-		cmd_sock[sizeof(cmd_sock) - 1] = '\0';
-		return;
-	}
-	const char *runtime = getenv("XDG_RUNTIME_DIR");
-	if (!runtime) {
-		fprintf(stderr, "cowident: XDG_RUNTIME_DIR not set\n");
-		exit(1);
-	}
-	snprintf(cmd_sock, sizeof(cmd_sock), "%s/cow-cmd.sock", runtime);
-}
-
 int
 main(void)
 {
-	init_socket_path();
-
 	display = wl_display_connect(NULL);
 	if (!display) {
 		fprintf(stderr, "cowident: cannot connect to display\n");

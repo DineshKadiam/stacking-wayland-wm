@@ -13,17 +13,15 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#include <errno.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
 
 #include <cJSON.h>
+
+#include "cow/module.h"
 
 #define MIN_WIN_W 50
 #define MIN_WIN_H 50
@@ -66,107 +64,10 @@ struct win {
 	int   raise_seq; /* tie-breaker for stable order */
 };
 
-static const char *
-ipc_socket_path(void)
-{
-	static char path[4096];
-	const char *override = getenv("COW_IPC_SOCKET");
-	if (override != NULL)
-		return override;
-	const char *rt = getenv("XDG_RUNTIME_DIR");
-	if (rt == NULL) {
-		fprintf(stderr, "cowrearrange: XDG_RUNTIME_DIR not set\n");
-		return NULL;
-	}
-	snprintf(path, sizeof(path), "%s/cow-cmd.sock", rt);
-	return path;
-}
-
-static int
-ipc_connect(void)
-{
-	const char *path = ipc_socket_path();
-	if (path == NULL)
-		return -1;
-	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (fd < 0) {
-		perror("cowrearrange: socket");
-		return -1;
-	}
-	struct sockaddr_un addr = { .sun_family = AF_UNIX };
-	if (strlen(path) >= sizeof(addr.sun_path)) {
-		fprintf(stderr, "cowrearrange: socket path too long: %s\n",
-		    path);
-		close(fd);
-		return -1;
-	}
-	strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
-	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		fprintf(stderr, "cowrearrange: cannot connect to %s: %s\n",
-		    path, strerror(errno));
-		close(fd);
-		return -1;
-	}
-	return fd;
-}
-
-/*
- * Send one newline-terminated command string and read a single
- * newline-terminated JSON response.  Opens its own connection per
- * call -- the server closes the connection after each command.
- * Returns a malloc'd string the caller must free, or NULL on
- * transport error.
- */
 static char *
 ipc_request(const char *cmd)
 {
-	int fd = ipc_connect();
-	if (fd < 0)
-		return NULL;
-
-	size_t len = strlen(cmd);
-	if (write(fd, cmd, len) < 0) {
-		perror("cowrearrange: write");
-		close(fd);
-		return NULL;
-	}
-	if (cmd[len - 1] != '\n') {
-		if (write(fd, "\n", 1) < 0) {
-			perror("cowrearrange: write");
-			close(fd);
-			return NULL;
-		}
-	}
-
-	size_t cap   = 65536;
-	size_t total = 0;
-	char  *buf   = malloc(cap);
-	if (buf == NULL) {
-		close(fd);
-		return NULL;
-	}
-	for (;;) {
-		if (total + 1 >= cap) {
-			size_t ncap = cap * 2;
-			char  *nb   = realloc(buf, ncap);
-			if (nb == NULL) {
-				free(buf);
-				close(fd);
-				return NULL;
-			}
-			buf = nb;
-			cap = ncap;
-		}
-		ssize_t n = read(fd, buf + total, cap - total - 1);
-		if (n <= 0)
-			break;
-		total += (size_t)n;
-		if (memchr(buf, '\n', total) != NULL)
-			break;
-	}
-	buf[total] = '\0';
-	close(fd);
-	return buf;
+	return cow_module_cmd_request("cowrearrange", cmd, true);
 }
 
 /*

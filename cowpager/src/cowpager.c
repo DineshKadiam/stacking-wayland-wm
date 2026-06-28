@@ -42,13 +42,12 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/mman.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <unistd.h>
 #include <event2/event.h>
 #include <wayland-client.h>
 
 #include "cow/attrs.h"
+#include "cow/module.h"
 #include "xdg-shell-client-protocol.h"
 
 #define MAX_DESKS 32
@@ -137,8 +136,6 @@ static int    surface_configured;
 static int    win_w, win_h; /* current window size from configure */
 static double ptr_x, ptr_y;
 static int    opt_running = 1;
-static char   status_sock[4096];
-static char   cmd_sock[4096];
 static int    opt_rows = 0;	/* -r ROWS; 0 = auto */
 static int    opt_cols = 0;	/* -c COLS; 0 = auto */
 static int    opt_current_only; /* -1: only show the active desk */
@@ -229,24 +226,12 @@ ipc_send(const char *cmd)
 	if (opt_verbose)
 		fprintf(stderr, "cowpager: ipc_send: %s\n", cmd);
 
-	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+	int fd = cow_module_cmd_connect("cowpager");
 	if (fd < 0)
 		return;
 
-	struct sockaddr_un a = { .sun_family = AF_UNIX };
-	if (strlen(cmd_sock) >= sizeof(a.sun_path)) {
-		fprintf(stderr, "cowpager: socket path too long: %s\n",
-		    cmd_sock);
-		close(fd);
-		return;
-	}
-	strncpy(a.sun_path, cmd_sock, sizeof(a.sun_path) - 1);
-
-	if (connect(fd, (struct sockaddr *)&a, sizeof(a)) == 0) {
-		write(fd, cmd, strlen(cmd));
-		write(fd, "\n", 1);
-
-		char b[4096];
+	if (cow_module_cmd_send(fd, cmd, true)) {
+		char b[COW_MODULE_ACK_BUFFER_SIZE];
 		read(fd, b, sizeof(b));
 	}
 	close(fd);
@@ -255,43 +240,7 @@ ipc_send(const char *cmd)
 static char *
 ipc_query(const char *cmd)
 {
-	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (fd < 0)
-		return NULL;
-
-	struct sockaddr_un a = { .sun_family = AF_UNIX };
-	if (strlen(cmd_sock) >= sizeof(a.sun_path)) {
-		fprintf(stderr, "cowpager: socket path too long: %s\n",
-		    cmd_sock);
-		close(fd);
-		return NULL;
-	}
-	strncpy(a.sun_path, cmd_sock, sizeof(a.sun_path) - 1);
-
-	if (connect(fd, (struct sockaddr *)&a, sizeof(a)) != 0) {
-		close(fd);
-		return NULL;
-	}
-
-	write(fd, cmd, strlen(cmd));
-	write(fd, "\n", 1);
-
-	/* FIXME: this should be calculated dynamically, rather than an
-	 * arbitrary value.
-	 */
-	char *resp = malloc(131072);
-	if (!resp) {
-		close(fd);
-		return NULL;
-	}
-
-	ssize_t tot = 0, n;
-	while ((n = read(fd, resp + tot, 131072 - 1 - tot)) > 0)
-		tot += n;
-	close(fd);
-
-	resp[tot] = '\0';
-	return resp;
+	return cow_module_cmd_request("cowpager", cmd, true);
 }
 
 static struct wl_buffer *
@@ -2531,37 +2480,18 @@ fetch_windows(void)
 static void *
 status_thread(__unused void *arg)
 {
-	int fd = -1;
-	for (int r = 0; r < 30; r++) {
-		fd = socket(AF_UNIX, SOCK_STREAM, 0);
-		if (fd < 0)
-			return NULL;
-		struct sockaddr_un a = { .sun_family = AF_UNIX };
-		if (strlen(status_sock) >= sizeof(a.sun_path)) {
-			fprintf(stderr, "cowpager: socket path too long: %s\n",
-			    status_sock);
-			close(fd);
-			return NULL;
-		}
-		strncpy(a.sun_path, status_sock, sizeof(a.sun_path) - 1);
-		if (connect(fd, (struct sockaddr *)&a, sizeof(a)) == 0)
-			break;
-		close(fd);
-		fd = -1;
-		sleep(1);
-	}
-	if (fd < 0) {
-		fprintf(stderr, "cowpager: cannot connect to %s\n",
-		    status_sock);
+	int fd = cow_module_status_connect("cowpager",
+	    COW_MODULE_STATUS_RETRIES, COW_MODULE_STATUS_RETRY_DELAY);
+	if (fd < 0)
 		return NULL;
-	}
+
 	FILE *f = fdopen(fd, "r");
 	if (!f) {
 		close(fd);
 		return NULL;
 	}
 	setlinebuf(f);
-	char line[131072];
+	char line[COW_MODULE_STATUS_LINE_MAX];
 	while (opt_running && fgets(line, sizeof(line), f)) {
 		size_t len = strlen(line);
 		if (len > 0 && line[len - 1] == '\n')
@@ -2645,16 +2575,6 @@ main(int argc, char *argv[])
 			return 1;
 		}
 	}
-
-	const char *rt = getenv("XDG_RUNTIME_DIR");
-	if (!rt) {
-		fprintf(stderr, "cowpager: XDG_RUNTIME_DIR not set\n");
-		return 1;
-	}
-
-	/* FIXME: these should be discoverable. */
-	snprintf(status_sock, sizeof(status_sock), "%s/cow-status.sock", rt);
-	snprintf(cmd_sock, sizeof(cmd_sock), "%s/cow-cmd.sock", rt);
 
 	if (pipe(wake_pipe) < 0) {
 		perror("pipe");

@@ -39,9 +39,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <unistd.h>
+
+#include "cow/module.h"
 
 static void
 usage(void)
@@ -351,41 +351,10 @@ main(int argc, char *argv[])
 		return 1;
 	}
 
-	const char *runtime = getenv("XDG_RUNTIME_DIR");
-	if (runtime == NULL) {
-		fprintf(stderr, "cowbar: XDG_RUNTIME_DIR not set\n");
+	int sockfd = cow_module_status_connect("cowbar",
+	    COW_MODULE_STATUS_RETRIES, COW_MODULE_STATUS_RETRY_DELAY);
+	if (sockfd < 0)
 		return 1;
-	}
-
-	char sock_path[4096];
-	snprintf(sock_path, sizeof(sock_path), "%s/cow-status.sock", runtime);
-
-	int sockfd = -1;
-	for (int retry = 0; retry < 30; retry++) {
-		sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
-		if (sockfd < 0) {
-			perror("cowbar: socket");
-			return 1;
-		}
-		struct sockaddr_un addr = { .sun_family = AF_UNIX };
-		if (strlen(sock_path) >= sizeof(addr.sun_path)) {
-			fprintf(stderr, "cowbar: socket path too long: %s\n",
-			    sock_path);
-			close(sockfd);
-			return 1;
-		}
-		strncpy(addr.sun_path, sock_path, sizeof(addr.sun_path) - 1);
-		if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) ==
-		    0)
-			break;
-		close(sockfd);
-		sockfd = -1;
-		sleep(1);
-	}
-	if (sockfd < 0) {
-		fprintf(stderr, "cowbar: cannot connect to %s\n", sock_path);
-		return 1;
-	}
 
 	FILE *f = fdopen(sockfd, "r");
 	if (f == NULL) {
@@ -395,7 +364,7 @@ main(int argc, char *argv[])
 	}
 	setlinebuf(f);
 
-	char line[65536];
+	char line[COW_MODULE_RESPONSE_INITIAL];
 	while (fgets(line, sizeof(line), f) != NULL) {
 		size_t len = strlen(line);
 		if (len > 0 && line[len - 1] == '\n')

@@ -2,9 +2,11 @@
 
 executable('cowrearrange',
     ['src/cowrearrange.c'],
+    '../src/module.c',
     '../vendor/cJSON.c',
     include_directories: [
         include_directories('..'),
+        include_directories('../include'),
         include_directories('../vendor'),
     ],
     dependencies: [

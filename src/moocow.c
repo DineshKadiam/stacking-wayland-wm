@@ -32,13 +32,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <unistd.h>
 
 #include <cJSON.h>
 
 #include "cow/cmd_scan.h"
+#include "cow/module.h"
 
 #ifndef COW_VERSION
 #define COW_VERSION "unknown"
@@ -65,54 +64,6 @@ struct moocow_state {
 	const char *prompt_colour;
 	bool	    pretty_json;
 };
-
-static const char *
-get_socket_path(void)
-{
-	static char path[4096];
-	const char *override = getenv("COW_IPC_SOCKET");
-	if (override != NULL)
-		return override;
-
-	const char *runtime = getenv("XDG_RUNTIME_DIR");
-	if (runtime == NULL) {
-		fprintf(stderr, "moocow: XDG_RUNTIME_DIR not set\n");
-		return NULL;
-	}
-	snprintf(path, sizeof(path), "%s/cow-cmd.sock", runtime);
-	return path;
-}
-
-static int
-connect_to_cow(void)
-{
-	const char *path = get_socket_path();
-	if (path == NULL)
-		return -1;
-
-	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (fd < 0) {
-		perror("moocow: socket");
-		return -1;
-	}
-
-	struct sockaddr_un addr = { .sun_family = AF_UNIX };
-	if (strlen(path) >= sizeof(addr.sun_path)) {
-		fprintf(stderr, "moocow: socket path too long: %s\n", path);
-		close(fd);
-		return -1;
-	}
-	strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
-
-	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		fprintf(stderr, "moocow: cannot connect to %s: %s\n", path,
-		    strerror(errno));
-		close(fd);
-		return -1;
-	}
-
-	return fd;
-}
 
 static bool
 append_buf(char **buf, size_t *len, size_t *cap, const char *s, size_t slen)
@@ -178,46 +129,10 @@ error:
 	return NULL;
 }
 
-static bool
-write_all(int fd, const char *buf, size_t len)
-{
-	while (len > 0) {
-		ssize_t n = write(fd, buf, len);
-		if (n < 0) {
-			if (errno == EINTR)
-				continue;
-			perror("moocow: write");
-			return false;
-		}
-		if (n == 0)
-			return false;
-		buf += n;
-		len -= n;
-	}
-	return true;
-}
-
 static int
-read_response(int fd, bool pretty_json)
+print_response(char *resp, bool pretty_json)
 {
-	char resp[65536];
-	int  total = 0;
-
-	while (total < (int)sizeof(resp) - 1) {
-		int n = read(fd, resp + total, sizeof(resp) - 1 - total);
-		if (n < 0) {
-			if (errno == EINTR)
-				continue;
-			perror("moocow: read");
-			return 1;
-		}
-		if (n == 0)
-			break;
-		total += n;
-		if (memchr(resp, '\n', total) != NULL)
-			break;
-	}
-	resp[total] = '\0';
+	size_t len = strlen(resp);
 
 	if (pretty_json) {
 		cJSON *json = cJSON_Parse(resp);
@@ -228,18 +143,18 @@ read_response(int fd, bool pretty_json)
 				cJSON_free(pretty);
 			} else {
 				printf("%s", resp);
-				if (total > 0 && resp[total - 1] != '\n')
+				if (len > 0 && resp[len - 1] != '\n')
 					printf("\n");
 			}
 			cJSON_Delete(json);
 		} else {
 			printf("%s", resp);
-			if (total > 0 && resp[total - 1] != '\n')
+			if (len > 0 && resp[len - 1] != '\n')
 				printf("\n");
 		}
 	} else {
 		printf("%s", resp);
-		if (total > 0 && resp[total - 1] != '\n')
+		if (len > 0 && resp[len - 1] != '\n')
 			printf("\n");
 	}
 
@@ -249,7 +164,7 @@ read_response(int fd, bool pretty_json)
 static int
 send_command(const char *cmd, bool pretty_json)
 {
-	int fd = connect_to_cow();
+	int fd = cow_module_cmd_connect("moocow");
 	if (fd < 0)
 		return 1;
 
@@ -260,8 +175,15 @@ send_command(const char *cmd, bool pretty_json)
 	}
 
 	int ret = 1;
-	if (write_all(fd, out, strlen(out)))
-		ret = read_response(fd, pretty_json);
+	if (cow_module_cmd_send(fd, out, false)) {
+		char *resp = cow_module_read_response(fd,
+		    COW_MODULE_RESPONSE_INITIAL, true);
+		if (resp != NULL) {
+			ret = print_response(resp, pretty_json);
+			free(resp);
+		}
+	} else
+		perror("moocow: write");
 
 	free(out);
 	close(fd);
