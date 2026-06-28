@@ -88,10 +88,10 @@ The labels of the window indicate the different components that can be changed.
 
 A window is made up of sides -- and are referenced like that of a compass.
 
-All eight parts of the window border (which includes corners) can be styled via
-the *set* command,
+All eight parts of the window border (including corners) can be styled via
+the *decor* command.
 
-The titlebar can also be styled or disabled completely, via the *set* command.
+The titlebar can also be styled or disabled completely via *decor*.
 
 # THE VIRTUAL DESKTOP
 
@@ -182,13 +182,14 @@ changes -- this is the hook for visual cues that depend on layer.
 For example, to tint the titlebar of any window in the top layer:
 
 ```
+decor -d top-layer titlebar.active_colour 0xC04030
 rule -g -n top-layer-tint -T on-layer-change \
-    set titlebar.active_colour 0xC04030
+    decor -a top-layer
 ```
 
 The rule receives the same per-view scope as other view-bearing
-events, so *-s* / *-t* selectors and per-view *set* writes all work
-as expected.
+events, so *-s* / *-t* selectors and per-view *decor* applies all
+work as expected.
 
 When the rule body is an *exec* line, the per-firing JSON payload is
 available to the spawned shell as the *COW_EVENT* environment
@@ -313,11 +314,13 @@ the event's target view; outside a rule body it is unbound.
 Tint titlebars of windows promoted to the top layer:
 
 ```
+decor -d top-tint titlebar.active_colour 0xC04030
+decor -d normal-tint titlebar.active_colour 0x303030
 rule -g -n top-tint -T on-layer-change script {
     if self.layer == 16 {
-        set titlebar.active_colour 0xC04030
+        decor -a top-tint
     } else {
-        set titlebar.active_colour 0x303030
+        decor -a normal-tint
     }
 }
 ```
@@ -388,8 +391,9 @@ Example:
 
 ```
 # This is a comment which cow ignores.
-set border 10
-set border_style fvwm
+decor -d default border.width 10
+decor -d default border.style fvwm
+decor -a default
 
 # This command is split over multiple lines for clarity.
 bind \\
@@ -678,10 +682,10 @@ specific defined rules.  For example:
 rule -g -Ton-map -ng-on-map exec notify-send "A window has appeared."
 
 # Define a rule to change a window property when windows appears on desk 2
-rule -t :2 -Ton-map -ndesk2 \
-	set titlebar.active_colour 0xFF8C00 \; \
-        set titlebar.inactive_colour 0xB28E4C \; \
-        set colour.inactive 0xB28E4C
+decor -d desk2 titlebar.active_colour 0xFF8C00
+decor -d desk2 titlebar.inactive_colour 0xB28E4C
+decor -d desk2 border.inactive 0xB28E4C
+rule -t :2 -Ton-map -ndesk2 decor -a desk2
 ```
 
 Rules can be deleted with the `-d` option.  Additionally, `-n` is needed to
@@ -722,7 +726,8 @@ When used via *moocow*(1) the JSON is printed to standard output.
 
 *show config* _key_
 	Return the current value of a configuration key. Supported keys:
-	_border_, _step_, _corner\_length_, _border\_style_, _focus_.
+	_border.width_, _step_, _border.corner\_length_, _border.style_,
+	_focus_.
 	Also accepted as *show config.*_key_.
 
 ## quit [-r]
@@ -743,9 +748,34 @@ resolved relative to *$HOME*, and other relative paths are resolved relative to
 Return a JSON array of all registered commands, each with _name_ and _usage_
 fields.
 
+## decor -d name key value
+
+Define or replace one key in a named, sparse decoration profile.  The key is a
+decoration key without the *set* prefix.
+
+```
+decor -d alert border.width 8
+decor -d alert titlebar.active_colour 0xC04030
+decor -d alert border.inactive 0x303030
+```
+
+Theme packs can be split into files and loaded with *include*, for example:
+
+```
+include themes/fvwm
+decor -a fvwm
+```
+
+## decor -a name [-t target]
+
+Apply a named decoration profile.  With *-t*, the profile patches that window's
+decoration.  Without *-t*, it patches the global decoration defaults and stamps
+existing windows.  Rule bodies use the rule's default window target.
+
 ## set [-v] key value
 
 Set a configuration option at runtime. *-v* prints the resulting value.
+Window decoration keys are rejected by *set*; use *decor* for those.
 
 The specific keys/values for this command are detailed under relevant section in
 this man page.
@@ -1016,73 +1046,66 @@ its border visible.
 # WINDOW DECORATION SETTINGS
 
 The following tables show which settings are available to control the look and
-feel of a window.  All of these can be used with the *set* command.
+feel of a window.  All of these can be used with *decor -d*.
 
-*General / Misc:*
+*General Decoration Settings:*
 
 [[ *Key*
 :< *Description*
-|  *border*
+|  *border.width*
 :  Border thickness in pixels (default: 1).
-|  *step*
-:  Move/resize step in pixels (default: 100).
-|  *corner\_length*
+|  *border.corner\_length*
 :  Length of border corner handles in pixels (default: 20).
 |  *icon.size*
 :  Iconified window icon size in pixels (default: 64).
-|  *snap\_distance*
-:  Snap attraction distance in pixels; 0 disables (default: 10).
-|  *raise_on_focus*
-:  Raise windows when they receive focus.
-|  *preserve_desk_on_output_loss*
+|  *titlebar.font*
+:  Pango font string for titlebars.
+|  *border.handles*
 :  _true_ | _false_
-:  When an output is unplugged, the windows on it are moved onto
-   one of the remaining outputs.  Defaults to _true_ which keeps each window
-   on the same desk number on the new output.  Set to _false_ to move them all
-   onto the new output's current desk.
+:  Draw handle marks on border corners.
 
 *Border Colour Settings* (values are hexadecimal RGB, e.g. *0xFF0000*):
 
 [[ *Key*
 :< *Description*
-|  *colour.active*
+|  *border.active*
 :  Active (focused) window border colour.
-|  *colour.active.gradient*
+|  *border.active.gradient*
 :  Border gradient.  Value is _HGradient colour colour_,
    _VGradient colour colour_, or _none_.
-|  *colour.active.n*
+|  *border.active.n*
 :  Active border: north edge.
-|  *colour.active.n.gradient*
+|  *border.active.n.gradient*
 :  Active north edge gradient.  The same *.gradient* suffix is available for
    _s_, _e_, _w_, _nw_, _ne_, _sw_, and _se_.
-|  *colour.active.s*
+|  *border.active.s*
 :  Active border: south edge.
-|  *colour.active.e*
+|  *border.active.e*
 :  Active border: east edge.
-|  *colour.active.w*
+|  *border.active.w*
 :  Active border: west edge.
-|  *colour.active.nw*
+|  *border.active.nw*
 :  Active border: north-west corner.
-|  *colour.active.ne*
+|  *border.active.ne*
 :  Active border: north-east corner.
-|  *colour.active.sw*
+|  *border.active.sw*
 :  Active border: south-west corner.
-|  *colour.active.se*
+|  *border.active.se*
 :  Active border: south-east corner.
-|  *colour.inactive*
+|  *border.inactive*
 :  Inactive (unfocused) border colour.
-|  *colour.inactive.gradient*
+|  *border.inactive.gradient*
 :  Inactive border gradient.
-|  *colour.inactive.n*
+|  *border.inactive.n*
 :  Inactive border: north edge.
-|  *colour.inactive.n.gradient*
+|  *border.inactive.n.gradient*
 :  Inactive north edge gradient.  The same *.gradient* suffix is available for
    _s_, _e_, _w_, _nw_, _ne_, _sw_, and _se_.
-|  *colour.inactive.s*
+|  *border.inactive.s*
 :  Inactive border: south edge.
-|  *colour.inactive.e*
+|  *border.inactive.e*
 :  Inactive border: east edge.
-|  *colour.inactive.w*
+|  *border.inactive.w*
 :  Inactive border: west edge.
 
 
@@ -1103,12 +1126,12 @@ feel of a window.  All of these can be used with the *set* command.
 |  *titlebar.fg\_inactive*
 :  Titlebar foreground (text) when unfocused.
 
-*Window Decoration Settings:*
+*Titlebar and Frame Settings:*
 
 [[ *Key*
 :[ *Values*
 :< *Description*
-|  *border\_style*
+|  *border.style*
 :  _fvwm_ | _mwm_ | _none_
 :  Border rendering style. Default: _none_.
 |  *focus*
@@ -1121,12 +1144,6 @@ feel of a window.  All of these can be used with the *set* command.
 |  *placement*
 :  _cascade_ | _undermouse_ | _centre_ | _center_
 :  New window placement. Default: _cascade_.
-|  *font* _name_
-:  Pango font string
-:  Font for titlebars. Default: _monospace 10_.
-|  *handles*
-:  _true_ | _1_
-:  Draw handle marks on border corners.
 |  *titlebar.enabled*
 :  _true_ | _1_
 :  Show titlebars.
@@ -1134,22 +1151,22 @@ feel of a window.  All of these can be used with the *set* command.
 :  integer (pixels)
 :  Fix the titlebar height in pixels. When set to 0 (the default) the
    height is derived from the font size.
-|  *titlebar.button\_left.vector*
+|  *titlebar.button.left.vector*
 :  vector string
 :  Geometry of the left titlebar button.
-|  *titlebar.button\_left.action*
+|  *titlebar.button.left.action*
 :  command string
 :  Action for the left titlebar button.
-|  *titlebar.button\_right.vector*
+|  *titlebar.button.right.vector*
 :  vector string
 :  Geometry of the right titlebar button.
-|  *titlebar.button\_right.action*
+|  *titlebar.button.right.action*
 :  command string
 :  Action for the right titlebar button.
-|  *titlebar.button\_right2.vector*
+|  *titlebar.button.right2.vector*
 :  vector string
 :  Geometry of the second right titlebar button.
-|  *titlebar.button\_right2.action*
+|  *titlebar.button.right2.action*
 :  command string
 :  Action for the second right titlebar button.
 |  *titlebar.squeeze*
@@ -1237,8 +1254,8 @@ bind L+Tab window-container -n
 
 ## Container Settings
 
-The following options can be used with the *set* command to change the behaviour
-of containers:
+The following options can be used inside *decor -d* profile blocks to style
+container tabs:
 
 [[ *Key*
 :[ *Values*

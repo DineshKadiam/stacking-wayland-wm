@@ -52,6 +52,8 @@ static bool	       set_option_scope_ok(const struct cow_option_entry *,
 			   struct cmd_q *);
 static enum cmd_retval set_scalar_bool(const struct cow_option_entry *,
     const char *, struct cmd_q *);
+static bool	       set_option_is_decor(const struct cow_option_entry *,
+			   const char *);
 static enum cmd_retval set_scalar_int(const struct cow_option_entry *, const char *,
     const char *, struct cmd_q *);
 static enum cmd_retval set_desks_count(const char *, struct cmd_q *);
@@ -130,37 +132,37 @@ struct set_enum_option {
 
 static const struct set_button_option set_button_options[] = {
 	{
-		.key = "titlebar.button_left.vector",
+		.key = "titlebar.button.left.vector",
 		.id = COW_VIEW_CFG_TITLEBAR_BUTTON_LEFT_VECTOR,
 		.part = SET_BUTTON_VECTOR,
 		.idx = 0,
 	},
 	{
-		.key = "titlebar.button_left.action",
+		.key = "titlebar.button.left.action",
 		.id = COW_VIEW_CFG_TITLEBAR_BUTTON_LEFT_ACTION,
 		.part = SET_BUTTON_ACTION,
 		.idx = 0,
 	},
 	{
-		.key = "titlebar.button_right.vector",
+		.key = "titlebar.button.right.vector",
 		.id = COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT_VECTOR,
 		.part = SET_BUTTON_VECTOR,
 		.idx = 1,
 	},
 	{
-		.key = "titlebar.button_right.action",
+		.key = "titlebar.button.right.action",
 		.id = COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT_ACTION,
 		.part = SET_BUTTON_ACTION,
 		.idx = 1,
 	},
 	{
-		.key = "titlebar.button_right2.vector",
+		.key = "titlebar.button.right2.vector",
 		.id = COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT2_VECTOR,
 		.part = SET_BUTTON_VECTOR,
 		.idx = 2,
 	},
 	{
-		.key = "titlebar.button_right2.action",
+		.key = "titlebar.button.right2.action",
 		.id = COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT2_ACTION,
 		.part = SET_BUTTON_ACTION,
 		.idx = 2,
@@ -396,6 +398,71 @@ set_option_find(const char *key)
 	return (NULL);
 }
 
+bool
+cmd_set_is_decor_key(const char *key)
+{
+	const struct cow_option_entry *opt = set_option_find(key);
+
+	return (opt != NULL && set_option_is_decor(opt, key));
+}
+
+static bool
+set_option_is_decor(const struct cow_option_entry *opt, const char *key)
+{
+	if (opt->scope != COW_OPTION_MIXED)
+		return (false);
+	if (strcmp(key, "border.corner_length") == 0 ||
+	    strcmp(key, "border.width") == 0 ||
+	    strcmp(key, "icon.size") == 0 ||
+	    strcmp(key, "border.style") == 0 ||
+	    strcmp(key, "titlebar.font") == 0 ||
+	    strcmp(key, "titlebar.enabled") == 0 ||
+	    strcmp(key, "border.handles") == 0 ||
+	    strcmp(key, "titlebar.height") == 0 ||
+	    strcmp(key, "titlebar.squeeze") == 0 ||
+	    strcmp(key, "titlebar.squeeze.justify") == 0 ||
+	    strcmp(key, "titlebar.squeeze.width") == 0 ||
+	    strcmp(key, "titlebar.squeeze.offset") == 0 ||
+	    strcmp(key, "titlebar.squeeze.min_width") == 0 ||
+	    strcmp(key, "container.tab.sunken") == 0)
+		return (true);
+	if (strcmp(key, "titlebar.active_colour") == 0 ||
+	    strcmp(key, "titlebar.inactive_colour") == 0 ||
+	    strcmp(key, "titlebar.fg_active") == 0 ||
+	    strcmp(key, "titlebar.fg_inactive") == 0)
+		return (true);
+	if (strcmp(key, "border.active") == 0 ||
+	    strcmp(key, "border.inactive") == 0)
+		return (true);
+	if (strncmp(key, "border.active.", 14) == 0 ||
+	    strncmp(key, "border.inactive.", 16) == 0) {
+		const char *edge = key + (key[7] == 'a' ? 14 : 16);
+		for (const struct set_border_edge *e = set_border_edges;
+		    e->name != NULL; e++) {
+			if (strcmp(edge, e->name) == 0)
+				return (true);
+		}
+		return (false);
+	}
+	if (strncmp(key, "titlebar.button.", 16) == 0) {
+		for (const struct set_button_option *b = set_button_options;
+		    b->key != NULL; b++) {
+			if (strcmp(key, b->key) == 0)
+				return (true);
+		}
+		return (false);
+	}
+	if (strncmp(key, "container.tab.", 14) == 0) {
+		for (const struct set_container_colour_option *c =
+		    set_container_colour_options; c->name != NULL; c++) {
+			if (strcmp(key, c->name) == 0)
+				return (true);
+		}
+		return (false);
+	}
+	return (false);
+}
+
 static bool
 set_option_scope_ok(const struct cow_option_entry *opt, struct cmd_q *cmdq)
 {
@@ -534,6 +601,12 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 	char	   *val = cmd_argv_to_string(args->argc, args->argv, 1);
 	const struct cow_option_entry *opt = set_option_find(key);
 
+	if (opt != NULL && set_option_is_decor(opt, key)) {
+		cmdq_error(cmdq, "set: %s is decoration-only; use decor", key);
+		xfree(val);
+		return (CMD_RETURN_ERROR);
+	}
+
 	if (opt != NULL && set_option_scope_ok(opt, cmdq)) {
 		enum cmd_retval ret = set_option_exec(opt, key, val, args, cmdq);
 		xfree(val);
@@ -546,6 +619,22 @@ cmd_set_exec(struct cmd *self, struct cmd_q *cmdq)
 		cmdq_error(cmdq, "set: %s: wrong target scope", key);
 	xfree(val);
 	return (CMD_RETURN_ERROR);
+}
+
+enum cmd_retval
+cmd_set_apply_decor(const char *key, const char *val, struct cmd_q *cmdq)
+{
+	const struct cow_option_entry *opt = set_option_find(key);
+
+	if (opt == NULL || !set_option_is_decor(opt, key)) {
+		cmdq_error(cmdq, "decor: unknown key: %s", key);
+		return (CMD_RETURN_ERROR);
+	}
+	if (!set_option_scope_ok(opt, cmdq)) {
+		cmdq_error(cmdq, "decor: %s: wrong target scope", key);
+		return (CMD_RETURN_ERROR);
+	}
+	return (set_option_exec(opt, key, val, NULL, cmdq));
 }
 
 static enum cmd_retval
@@ -784,10 +873,10 @@ set_container_tab_gradient(const char *key, const char *val, struct cmd_q *cmdq)
 static bool
 set_border_gradient(const char *key, const char *val, struct cmd_q *cmdq)
 {
-	bool is_active = (strcmp(key, "colour.active.gradient") == 0 ||
-	    strncmp(key, "colour.active.", 14) == 0);
-	bool is_inactive = (strcmp(key, "colour.inactive.gradient") == 0 ||
-	    strncmp(key, "colour.inactive.", 16) == 0);
+	bool is_active = (strcmp(key, "border.active.gradient") == 0 ||
+	    strncmp(key, "border.active.", 14) == 0);
+	bool is_inactive = (strcmp(key, "border.inactive.gradient") == 0 ||
+	    strncmp(key, "border.inactive.", 16) == 0);
 
 	if (!is_active && !is_inactive)
 		return (false);
@@ -802,8 +891,8 @@ set_border_gradient(const char *key, const char *val, struct cmd_q *cmdq)
 	    COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT :
 	    COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT;
 
-	if (strcmp(key, "colour.active.gradient") == 0 ||
-	    strcmp(key, "colour.inactive.gradient") == 0) {
+	if (strcmp(key, "border.active.gradient") == 0 ||
+	    strcmp(key, "border.inactive.gradient") == 0) {
 		g = cow_border_gradient_for_option(bc, id);
 	} else {
 		const char *edge = key + (is_active ? 14 : 16);
@@ -935,10 +1024,10 @@ set_container_tab_colour(const char *key, const char *val, struct cmd_q *cmdq)
 static bool
 set_border_colour(const char *key, const char *val, struct cmd_q *cmdq)
 {
-	bool is_active = (strcmp(key, "colour.active") == 0 ||
-	    strncmp(key, "colour.active.", 14) == 0);
-	bool is_inactive = (strcmp(key, "colour.inactive") == 0 ||
-	    strncmp(key, "colour.inactive.", 16) == 0);
+	bool is_active = (strcmp(key, "border.active") == 0 ||
+	    strncmp(key, "border.active.", 14) == 0);
+	bool is_inactive = (strcmp(key, "border.inactive") == 0 ||
+	    strncmp(key, "border.inactive.", 16) == 0);
 
 	if (!is_active && !is_inactive)
 		return (false);
@@ -953,8 +1042,8 @@ set_border_colour(const char *key, const char *val, struct cmd_q *cmdq)
 	}
 
 	float c[4];
-	if (strcmp(key, "colour.active") == 0 ||
-	    strcmp(key, "colour.inactive") == 0) {
+	if (strcmp(key, "border.active") == 0 ||
+	    strcmp(key, "border.inactive") == 0) {
 		if (!cow_colour_parse(val, c)) {
 			cmdq_error(cmdq, "set: invalid colour value");
 			return (true);

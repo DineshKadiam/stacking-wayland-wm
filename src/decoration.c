@@ -321,7 +321,7 @@ squeeze_paint_side(const struct squeeze_paint_ctx *ctx)
 	 * default mark (ec->n[1]) which is the right shade for the
 	 * border's base colour, and overriding it here would change
 	 * the handle's appearance on inactive windows where the user
-	 * hasn't set colour.inactive.ne (the corner falls back to the
+	 * hasn't set border.inactive.ne (the corner falls back to the
 	 * N-edge colour and should use the matching default handle).
 	 */
 	if (!left_side && bc->has_ne) {

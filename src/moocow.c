@@ -20,7 +20,7 @@
  * then prints the JSON response.
  *
  * Usage:
- *   moocow set border 10
+ *   moocow decor -a default
  *   moocow view-close
  *   moocow get windows
  *   moocow bind L+q view-quit
@@ -51,7 +51,7 @@ static const char *usage =
     "Examples:\n"
     "  moocow -p\n"
     "  moocow -p -P 'cow> ' -S '...> ' -C green\n"
-    "  moocow set border 10\n"
+    "  moocow decor -a default\n"
     "  moocow get windows\n"
     "  moocow view-close\n"
     "  moocow bind L+q view-quit\n"

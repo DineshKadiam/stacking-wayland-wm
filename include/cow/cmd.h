@@ -204,6 +204,7 @@ void cow_exec_run_deferred(void);
 
 /* Built-in commands. */
 extern struct cmd_entry cmd_set_entry;
+extern struct cmd_entry cmd_decor_entry;
 extern struct cmd_entry cmd_bind_entry;
 extern struct cmd_entry cmd_bind_decoration_entry;
 extern struct cmd_entry cmd_mouse_entry;
@@ -226,6 +227,10 @@ extern struct cmd_entry cmd_script_entry;
 extern struct cmd_entry cmd_window_shade_entry;
 extern struct cmd_entry cmd_container_entry;
 extern struct cmd_entry cmd_pick_window_entry;
+
+bool cmd_set_is_decor_key(const char *);
+enum cmd_retval cmd_set_apply_decor(const char *, const char *,
+    struct cmd_q *);
 
 int args_cmp(struct args_entry *, struct args_entry *);
 RB_PROTOTYPE(args_tree, args_entry, entry, args_cmp);

@@ -196,7 +196,7 @@ cow_config_create(void)
 	 * Container tab colours are intentionally left unset (has_* = false).
 	 * titlebar.c falls back to the titlebar's base/dk/fg colours so that
 	 * tabs inherit the window's own titlebar style automatically.  Users
-	 * can override any or all four values with 'set container.tab.*'.
+	 * can override any or all four values with decor profiles.
 	 */
 
 	/* Default button vectors: close (X), maximize (rect), iconify (bar) */

@@ -88,10 +88,10 @@ Query all managed windows:
 moocow show windows
 ```
 
-Change the border width at runtime:
+Apply a decoration profile:
 
 ```
-moocow set border 5
+moocow decor -a default
 ```
 
 Switch to desk 3:

@@ -29,6 +29,7 @@ struct cmd_entry *cmd_table[] = {
 	&cmd_bind_entry,
 	&cmd_bind_decoration_entry,
 	&cmd_container_entry,
+	&cmd_decor_entry,
 	&cmd_desk_entry,
 	&cmd_desk_name_entry,
 	&cmd_exec_entry,

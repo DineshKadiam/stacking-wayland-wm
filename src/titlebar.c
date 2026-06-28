@@ -60,7 +60,7 @@ cow_titlebar_effective_squeeze(const struct cow_view *view,
 	}
 
 	/* Read from the view's snapshot.  on-map / on-desk rules that
-	 * write `set titlebar.squeeze ...` against this view's target
+	 * apply a decor profile against this view's target
 	 * land in view->cfg, so this read picks them up automatically. */
 	*out = view->cfg.titlebar.squeeze;
 }
@@ -513,7 +513,7 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 	 * Container tab strip.  When n_tabs > 1, divide the title area into
 	 * equal-width segments.  Active/inactive tab colours come from the
 	 * cc parameter (the view's cow_view_cfg.container snapshot) so
-	 * users can style them per-view via 'set container.tab.*'.  Falls
+	 * users can style them per-view via decor profiles.  Falls
 	 * back to the titlebar base/dk colours when cc is NULL.
 	 */
 	if (n_tabs > 1 && tab_titles != NULL && title_w > 0) {

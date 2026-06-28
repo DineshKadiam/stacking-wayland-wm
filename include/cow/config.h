@@ -226,7 +226,7 @@ struct cow_titlebar_button_config {
  * Container tab strip styling.
  * Controls the colours used for tab labels inside a container titlebar.
  * Defaults are set in cow_config_create(); all four values can be
- * overridden via 'set container.tab.*' commands.
+ * overridden via decor profiles.
  */
 struct cow_container_config {
 	float tab_active[4];	  /* background of the active tab label   */

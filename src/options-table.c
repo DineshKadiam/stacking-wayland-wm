@@ -27,7 +27,7 @@ const struct cow_option_entry cow_options_table[] = {
 		.action = COW_OPTION_DESKS_COUNT,
 	},
 	{
-		.name = "border",
+		.name = "border.width",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_MIXED,
 		.action = COW_OPTION_SCALAR_INT,
@@ -50,7 +50,7 @@ const struct cow_option_entry cow_options_table[] = {
 		.post = COW_OPTION_POST_REFRESH_VISUALS,
 	},
 	{
-		.name = "corner_length",
+		.name = "border.corner_length",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_MIXED,
 		.action = COW_OPTION_SCALAR_INT,
@@ -129,7 +129,7 @@ const struct cow_option_entry cow_options_table[] = {
 		.post = COW_OPTION_POST_REFRESH_VISUALS,
 	},
 	{
-		.name = "colour.",
+		.name = "border.",
 		.match = COW_OPTION_PREFIX,
 		.scope = COW_OPTION_MIXED,
 		.action = COW_OPTION_COLOUR,
@@ -189,7 +189,7 @@ const struct cow_option_entry cow_options_table[] = {
 		.action = COW_OPTION_COLOUR,
 	},
 	{
-		.name = "border_style",
+		.name = "border.style",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_MIXED,
 		.action = COW_OPTION_BORDER_STYLE,
@@ -226,7 +226,7 @@ const struct cow_option_entry cow_options_table[] = {
 		.action = COW_OPTION_PLACEMENT,
 	},
 	{
-		.name = "font",
+		.name = "titlebar.font",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_MIXED,
 		.action = COW_OPTION_FONT,
@@ -243,7 +243,7 @@ const struct cow_option_entry cow_options_table[] = {
 		.post = COW_OPTION_POST_REFRESH_VISUALS,
 	},
 	{
-		.name = "handles",
+		.name = "border.handles",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_MIXED,
 		.action = COW_OPTION_SCALAR_BOOL,
@@ -390,7 +390,7 @@ const struct cow_option_entry cow_options_table[] = {
 		.view_offset = COW_OPTION_NO_OFFSET,
 	},
 	{
-		.name = "titlebar.button_",
+		.name = "titlebar.button.",
 		.match = COW_OPTION_PREFIX,
 		.scope = COW_OPTION_MIXED,
 		.action = COW_OPTION_BUTTON,

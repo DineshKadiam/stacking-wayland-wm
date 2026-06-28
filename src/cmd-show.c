@@ -270,13 +270,13 @@ do_show_config(const char *ckey, int fd, struct cmd_q *cmdq)
 {
 	cJSON *val = NULL;
 
-	if (strcmp(ckey, "border") == 0)
+	if (strcmp(ckey, "border.width") == 0)
 		val = cJSON_CreateNumber(cow_config->border);
 	else if (strcmp(ckey, "step") == 0)
 		val = cJSON_CreateNumber(cow_config->step);
-	else if (strcmp(ckey, "corner_length") == 0)
+	else if (strcmp(ckey, "border.corner_length") == 0)
 		val = cJSON_CreateNumber(cow_config->corner_length);
-	else if (strcmp(ckey, "border_style") == 0)
+	else if (strcmp(ckey, "border.style") == 0)
 		val = cJSON_CreateString(
 		    cow_config->border_style == COW_BORDER_STYLE_FVWM ? "fvwm" :
 			cow_config->border_style == COW_BORDER_STYLE_MWM ?
