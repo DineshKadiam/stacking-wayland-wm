@@ -299,6 +299,7 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 	uint32_t px_lt	 = cow_colour_to_pixel(lt);
 	uint32_t px_dk	 = cow_colour_to_pixel(dk);
 	uint32_t px_fg	 = cow_colour_to_pixel(fg);
+	static const float transparent[4] = { 0, 0, 0, 0 };
 
 	/*
 	 * Titlebar geometry within the decoration frame.  The caller
@@ -330,6 +331,13 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 	};
 	cow_draw_clear_rect(&strip_p, strip_x, strip_y, strip_w, tb_h);
 	cow_draw_fill_rect(&strip_p, tb_x, tb_y, tb_w, tb_h, px_base);
+	const struct cow_gradient *tb_gradient = NULL;
+	if (style_colour == NULL && tb_cfg != NULL)
+		tb_gradient = active ? &tb_cfg->active_gradient :
+				       &tb_cfg->inactive_gradient;
+	if (tb_gradient != NULL && tb_gradient->mode != COW_GRADIENT_NONE)
+		cow_draw_gradient_rect(&strip_p, tb_x, tb_y, tb_w, tb_h,
+		    tb_gradient);
 
 	/* Button size = titlebar height */
 	int btn_s      = tb_h;
@@ -376,10 +384,12 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 
 		bool btn_sunken = (pressed_button == i);
 
-		/* Fill button background */
-		for (int py = by; py < by + btn_s; py++)
-			for (int px = bx; px < bx + btn_s; px++)
-				pixels[py * stride_px + px] = px_base;
+		if (tb_gradient == NULL ||
+		    tb_gradient->mode == COW_GRADIENT_NONE) {
+			for (int py = by; py < by + btn_s; py++)
+				for (int px = bx; px < bx + btn_s; px++)
+					pixels[py * stride_px + px] = px_base;
+		}
 
 		/* FVWM relief on button: sunken if pressed */
 		draw_fvwm_relief(pixels, stride_px, bx, by, btn_s, btn_s, px_lt,
@@ -415,10 +425,12 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 
 		bool btn_sunken = (pressed_button == btn_idx);
 
-		/* Fill button background */
-		for (int py = by; py < by + btn_s; py++)
-			for (int px = bx; px < bx + btn_s; px++)
-				pixels[py * stride_px + px] = px_base;
+		if (tb_gradient == NULL ||
+		    tb_gradient->mode == COW_GRADIENT_NONE) {
+			for (int py = by; py < by + btn_s; py++)
+				for (int px = bx; px < bx + btn_s; px++)
+					pixels[py * stride_px + px] = px_base;
+		}
 
 		/* FVWM relief on button: sunken if pressed */
 		draw_fvwm_relief(pixels, stride_px, bx, by, btn_s, btn_s, px_lt,
@@ -449,6 +461,10 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 
 	/* Render title text with cairo/pango */
 	if (title != NULL && title_w > 4 && font != NULL) {
+		const float *label_bg = (tb_gradient != NULL &&
+		    tb_gradient->mode != COW_GRADIENT_NONE) ?
+		    transparent :
+		    base;
 		struct cow_pixbuf dst = {
 			.pixels	   = pixels,
 			.stride_px = stride_px,
@@ -456,7 +472,8 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 			.height	   = INT_MAX,
 		};
 		cow_font_render_label(&dst, title_x, tb_y, title_w, tb_h, font,
-		    title, base, fg, COW_TITLEBAR_PADDING, &rendered_text_w);
+		    title, label_bg, fg, COW_TITLEBAR_PADDING,
+		    &rendered_text_w);
 	}
 
 	/* Draw stipple for sticky windows in the empty areas
@@ -590,6 +607,22 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 			for (int py = tb_y; py < tb_y + tb_h; py++)
 				for (int px = tx; px < tx + tw; px++)
 					pixels[py * stride_px + px] = tab_bg_px;
+			const struct cow_gradient *tab_gradient = NULL;
+			if (active && cc != NULL)
+				tab_gradient = is_active ?
+				    &cc->tab_active_gradient :
+				    &cc->tab_inactive_gradient;
+			if (tab_gradient != NULL &&
+			    tab_gradient->mode != COW_GRADIENT_NONE) {
+				struct cow_pixbuf dst = {
+					.pixels	   = pixels,
+					.stride_px = stride_px,
+					.width	   = INT_MAX,
+					.height	   = INT_MAX,
+				};
+				cow_draw_gradient_rect(&dst, tx, tb_y, tw, tb_h,
+				    tab_gradient);
+			}
 
 			/* Tab bevel — active is always raised; inactive is
 			 * sunken only when container.tab.sunken is true
@@ -602,6 +635,10 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 			/* Tab label text */
 			const char *lbl = tab_titles[ti];
 			if (lbl != NULL && tw > 6 && font != NULL) {
+				const float *label_bg = (tab_gradient != NULL &&
+				    tab_gradient->mode != COW_GRADIENT_NONE) ?
+				    transparent :
+				    tab_bg_f;
 				struct cow_pixbuf dst = {
 					.pixels	   = pixels,
 					.stride_px = stride_px,
@@ -609,7 +646,7 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 					.height	   = INT_MAX,
 				};
 				cow_font_render_label(&dst, tx, tb_y, tw, tb_h,
-				    font, lbl, tab_bg_f, tab_fg,
+				    font, lbl, label_bg, tab_fg,
 				    COW_TITLEBAR_PADDING, NULL);
 			}
 		}

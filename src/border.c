@@ -280,6 +280,43 @@ fill_border_base(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
 }
 
 static void
+fill_gradient_rect(struct cow_pixbuf *p, const struct cow_gradient *g, int x,
+    int y, int w, int h)
+{
+	if (g != NULL && g->mode != COW_GRADIENT_NONE)
+		cow_draw_gradient_rect(p, x, y, w, h, g);
+}
+
+static void
+fill_border_gradients(uint32_t *pixels, int stride, int fw_s, int fh_s,
+    int bws, int cls, const struct cow_border_colour *colors)
+{
+	struct cow_pixbuf p = border_pixbuf(pixels, stride, fw_s, fh_s);
+
+	fill_gradient_rect(&p, &colors->gradient, 0, 0, fw_s, bws);
+	fill_gradient_rect(&p, &colors->gradient, 0, fh_s - bws, fw_s, bws);
+	fill_gradient_rect(&p, &colors->gradient, 0, 0, bws, fh_s);
+	fill_gradient_rect(&p, &colors->gradient, fw_s - bws, 0, bws, fh_s);
+
+	fill_gradient_rect(&p, &colors->gradient_n, 0, 0, fw_s, bws);
+	fill_gradient_rect(&p, &colors->gradient_s, 0, fh_s - bws, fw_s,
+	    bws);
+	fill_gradient_rect(&p, &colors->gradient_w, 0, 0, bws, fh_s);
+	fill_gradient_rect(&p, &colors->gradient_e, fw_s - bws, 0, bws,
+	    fh_s);
+
+	if (cls <= 0)
+		cls = bws;
+	fill_gradient_rect(&p, &colors->gradient_nw, 0, 0, cls, cls);
+	fill_gradient_rect(&p, &colors->gradient_ne, fw_s - cls, 0, cls,
+	    cls);
+	fill_gradient_rect(&p, &colors->gradient_sw, 0, fh_s - cls, cls,
+	    cls);
+	fill_gradient_rect(&p, &colors->gradient_se, fw_s - cls, fh_s - cls,
+	    cls, cls);
+}
+
+static void
 draw_relief_rings(uint32_t *pixels, int stride, int fw_s, int fh_s,
     const int w[7], const struct edge_colours *ec)
 {
@@ -545,6 +582,8 @@ cow_border_style_render(uint32_t *pixels, int stride_px, int frame_w,
 	 * When corners are disabled, use cls=0 to skip diagonal splits. */
 	fill_border_base(pixels, stride_px, frame_w, frame_h, bws,
 	    corners_enabled ? cls : 0, &ec, colors);
+	fill_border_gradients(pixels, stride_px, frame_w, frame_h, bws,
+	    corners_enabled ? cls : 0, colors);
 
 	/* NONE = flat fill only, no 3D relief */
 	if (style == COW_BORDER_STYLE_NONE)

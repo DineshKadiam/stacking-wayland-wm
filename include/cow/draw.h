@@ -19,6 +19,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "cow/colour.h"
+
 /*
  * 2-D ARGB32 software pixel buffer.
  *
@@ -45,6 +47,9 @@ void cow_draw_vline(struct cow_pixbuf *, int, int, int, uint32_t);
 
 /* Solid fill of [x, x+w) x [y, y+h). */
 void cow_draw_fill_rect(struct cow_pixbuf *, int, int, int, int, uint32_t);
+
+void cow_draw_gradient_rect(struct cow_pixbuf *, int, int, int, int,
+    const struct cow_gradient *);
 
 /* Equivalent to cow_draw_fill_rect with colour=0 (transparent). */
 void cow_draw_clear_rect(struct cow_pixbuf *, int, int, int, int);

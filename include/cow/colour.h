@@ -37,6 +37,20 @@ uint32_t cow_colour_to_pixel(const float *);
  */
 bool cow_colour_parse(const char *, float *);
 
+enum cow_gradient_mode {
+	COW_GRADIENT_NONE,
+	COW_GRADIENT_H,
+	COW_GRADIENT_V,
+};
+
+struct cow_gradient {
+	enum cow_gradient_mode mode;
+	float		       from[4];
+	float		       to[4];
+};
+
+bool cow_gradient_parse(struct cow_gradient *, const char *);
+
 /*
  * A "triple" of pre-packed pixels for a single base colour: the colour
  * itself and its standard light/dark shades.  Used everywhere that

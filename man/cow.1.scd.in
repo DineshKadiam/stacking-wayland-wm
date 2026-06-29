@@ -1047,8 +1047,14 @@ feel of a window.  All of these can be used with the *set* command.
 :< *Description*
 |  *colour.active*
 :  Active (focused) window border colour.
+|  *colour.active.gradient*
+:  Border gradient.  Value is _HGradient colour colour_,
+   _VGradient colour colour_, or _none_.
 |  *colour.active.n*
 :  Active border: north edge.
+|  *colour.active.n.gradient*
+:  Active north edge gradient.  The same *.gradient* suffix is available for
+   _s_, _e_, _w_, _nw_, _ne_, _sw_, and _se_.
 |  *colour.active.s*
 :  Active border: south edge.
 |  *colour.active.e*
@@ -1065,8 +1071,13 @@ feel of a window.  All of these can be used with the *set* command.
 :  Active border: south-east corner.
 |  *colour.inactive*
 :  Inactive (unfocused) border colour.
+|  *colour.inactive.gradient*
+:  Inactive border gradient.
 |  *colour.inactive.n*
 :  Inactive border: north edge.
+|  *colour.inactive.n.gradient*
+:  Inactive north edge gradient.  The same *.gradient* suffix is available for
+   _s_, _e_, _w_, _nw_, _ne_, _sw_, and _se_.
 |  *colour.inactive.s*
 :  Inactive border: south edge.
 |  *colour.inactive.e*
@@ -1080,8 +1091,13 @@ feel of a window.  All of these can be used with the *set* command.
 :< *Description*
 |  *titlebar.active\_colour*
 :  Titlebar background when focused.
+|  *titlebar.active\_gradient*
+:  Titlebar gradient when focused.  Value is _HGradient colour colour_,
+   _VGradient colour colour_, or _none_.
 |  *titlebar.inactive\_colour*
 :  Titlebar background when unfocused.
+|  *titlebar.inactive\_gradient*
+:  Titlebar gradient when unfocused.
 |  *titlebar.fg\_active*
 :  Titlebar foreground (text) when focused.
 |  *titlebar.fg\_inactive*
@@ -1226,9 +1242,15 @@ of containers:
 |  *container.tab.active\_colour*
 :  hex colour (_0xRRGGBB_)
 :  Background colour of the active tab label. Default: _0xC0C0C0_.
+|  *container.tab.active\_gradient*
+:  _HGradient colour colour_ | _VGradient colour colour_ | _none_
+:  Background gradient of the active tab label.
 |  *container.tab.inactive\_colour*
 :  hex colour (_0xRRGGBB_)
 :  Background colour of inactive tab labels. Default: _0x808080_.
+|  *container.tab.inactive\_gradient*
+:  _HGradient colour colour_ | _VGradient colour colour_ | _none_
+:  Background gradient of inactive tab labels.
 |  *container.tab.fg\_active*
 :  hex colour (_0xRRGGBB_)
 :  Foreground (text) colour of the active tab label. Default: _0x000000_.

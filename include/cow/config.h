@@ -95,6 +95,9 @@ enum cow_placement_mode {
 struct cow_border_colour {
 	float n[4], s[4], e[4], w[4];
 	float nw[4], ne[4], sw[4], se[4];
+	struct cow_gradient gradient;
+	struct cow_gradient gradient_n, gradient_s, gradient_e, gradient_w;
+	struct cow_gradient gradient_nw, gradient_ne, gradient_sw, gradient_se;
 	bool  has_corners;
 	bool  has_nw, has_ne, has_sw, has_se;
 };
@@ -223,6 +226,8 @@ struct cow_container_config {
 	float tab_inactive[4];	  /* background of inactive tab labels    */
 	float tab_fg_active[4];	  /* foreground (text) of the active tab  */
 	float tab_fg_inactive[4]; /* foreground (text) of inactive tabs   */
+	struct cow_gradient tab_active_gradient;
+	struct cow_gradient tab_inactive_gradient;
 
 	/* Set to true when the user explicitly configures the value.
 	 * When false, titlebar.c falls back to the titlebar's base/dk/fg. */
@@ -246,6 +251,8 @@ struct cow_titlebar_config {
 	float				  inactive_colour[4];
 	float				  fg_active[4];
 	float				  fg_inactive[4];
+	struct cow_gradient		  active_gradient;
+	struct cow_gradient		  inactive_gradient;
 	char				 *font_name;
 	/* Explicit height override; 0 means derive from font. */
 	int height;

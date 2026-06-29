@@ -159,6 +159,18 @@ const struct cow_option_entry cow_options_table[] = {
 		.action = COW_OPTION_COLOUR,
 	},
 	{
+		.name = "titlebar.active_gradient",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_MIXED,
+		.action = COW_OPTION_COLOUR,
+	},
+	{
+		.name = "titlebar.inactive_gradient",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_MIXED,
+		.action = COW_OPTION_COLOUR,
+	},
+	{
 		.name = "titlebar.fg_active",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_MIXED,

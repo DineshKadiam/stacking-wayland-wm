@@ -31,6 +31,7 @@
 #include "cow/config.h"
 #include "cow/desk_ops.h"
 #include "cow/font.h"
+#include "cow/gradient.h"
 #include "cow/ipc.h"
 #include "cow/memory.h"
 #include "cow/options.h"
@@ -66,6 +67,7 @@ static struct cow_titlebar_config *target_titlebar(struct cmd_q *,
 static struct cow_container_config *target_container(struct cmd_q *,
     struct cow_view_cfg **);
 static void set_colour_option(const char *, const char *, struct cmd_q *);
+static bool set_gradient_option(const char *, const char *, struct cmd_q *);
 static bool set_output_colour(const char *, const char *, struct cmd_q *);
 static bool set_border_colour(const char *, const char *, struct cmd_q *);
 static bool set_titlebar_colour(const char *, const char *, struct cmd_q *);
@@ -114,6 +116,8 @@ struct set_border_edge {
 	const char *name;
 	enum cow_view_cfg_option active_id;
 	enum cow_view_cfg_option inactive_id;
+	enum cow_view_cfg_option active_gradient_id;
+	enum cow_view_cfg_option inactive_gradient_id;
 	size_t	    colour_offset;
 	size_t	    has_offset;
 };
@@ -253,34 +257,50 @@ static const struct set_container_colour_option
 static const struct set_border_edge set_border_edges[] = {
 	{ .name = "n", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_N,
 	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_N,
+	    .active_gradient_id = COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_N,
+	    .inactive_gradient_id = COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_N,
 	    .colour_offset = offsetof(struct cow_border_colour, n),
 	    .has_offset = COW_OPTION_NO_OFFSET },
 	{ .name = "s", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_S,
 	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_S,
+	    .active_gradient_id = COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_S,
+	    .inactive_gradient_id = COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_S,
 	    .colour_offset = offsetof(struct cow_border_colour, s),
 	    .has_offset = COW_OPTION_NO_OFFSET },
 	{ .name = "e", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_E,
 	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_E,
+	    .active_gradient_id = COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_E,
+	    .inactive_gradient_id = COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_E,
 	    .colour_offset = offsetof(struct cow_border_colour, e),
 	    .has_offset = COW_OPTION_NO_OFFSET },
 	{ .name = "w", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_W,
 	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_W,
+	    .active_gradient_id = COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_W,
+	    .inactive_gradient_id = COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_W,
 	    .colour_offset = offsetof(struct cow_border_colour, w),
 	    .has_offset = COW_OPTION_NO_OFFSET },
 	{ .name = "nw", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_NW,
 	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_NW,
+	    .active_gradient_id = COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_NW,
+	    .inactive_gradient_id = COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_NW,
 	    .colour_offset = offsetof(struct cow_border_colour, nw),
 	    .has_offset = offsetof(struct cow_border_colour, has_nw) },
 	{ .name = "ne", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_NE,
 	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_NE,
+	    .active_gradient_id = COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_NE,
+	    .inactive_gradient_id = COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_NE,
 	    .colour_offset = offsetof(struct cow_border_colour, ne),
 	    .has_offset = offsetof(struct cow_border_colour, has_ne) },
 	{ .name = "sw", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_SW,
 	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_SW,
+	    .active_gradient_id = COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_SW,
+	    .inactive_gradient_id = COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_SW,
 	    .colour_offset = offsetof(struct cow_border_colour, sw),
 	    .has_offset = offsetof(struct cow_border_colour, has_sw) },
 	{ .name = "se", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_SE,
 	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_SE,
+	    .active_gradient_id = COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_SE,
+	    .inactive_gradient_id = COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_SE,
 	    .colour_offset = offsetof(struct cow_border_colour, se),
 	    .has_offset = offsetof(struct cow_border_colour, has_se) },
 	{ .name = NULL },
@@ -682,9 +702,135 @@ set_layer(const char *key, const char *val, struct cmd_q *cmdq)
 	return (CMD_RETURN_NORMAL);
 }
 
+static bool
+has_suffix(const char *s, const char *suffix)
+{
+	size_t slen = strlen(s), suffix_len = strlen(suffix);
+
+	return (slen >= suffix_len &&
+	    strcmp(s + slen - suffix_len, suffix) == 0);
+}
+
+static bool
+set_gradient_value(struct cow_gradient *g, const char *key, const char *val,
+    struct cmd_q *cmdq)
+{
+	if (!cow_gradient_parse(g, val)) {
+		cmdq_error(cmdq,
+		    "set: %s: expected none|HGradient colour colour|"
+		    "VGradient colour colour",
+		    key);
+		return (false);
+	}
+	return (true);
+}
+
+static bool
+set_titlebar_gradient(const char *key, const char *val, struct cmd_q *cmdq)
+{
+	struct cow_view_cfg	    *cfg;
+	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
+	struct cow_gradient	    *g;
+	enum cow_view_cfg_option   id;
+
+	if (strcmp(key, "titlebar.active_gradient") == 0) {
+		g = &tb->active_gradient;
+		id = COW_VIEW_CFG_TITLEBAR_ACTIVE_GRADIENT;
+	} else if (strcmp(key, "titlebar.inactive_gradient") == 0) {
+		g = &tb->inactive_gradient;
+		id = COW_VIEW_CFG_TITLEBAR_INACTIVE_GRADIENT;
+	} else
+		return (false);
+
+	if (set_gradient_value(g, key, val, cmdq))
+		finish_visual_update(id, cfg);
+	return (true);
+}
+
+static bool
+set_container_tab_gradient(const char *key, const char *val, struct cmd_q *cmdq)
+{
+	struct cow_view_cfg	     *cfg;
+	struct cow_container_config *cc = target_container(cmdq, &cfg);
+	struct cow_gradient	     *g;
+	enum cow_view_cfg_option    id;
+
+	if (strcmp(key, "container.tab.active_gradient") == 0) {
+		g = &cc->tab_active_gradient;
+		id = COW_VIEW_CFG_CONTAINER_TAB_ACTIVE_GRADIENT;
+	} else if (strcmp(key, "container.tab.inactive_gradient") == 0) {
+		g = &cc->tab_inactive_gradient;
+		id = COW_VIEW_CFG_CONTAINER_TAB_INACTIVE_GRADIENT;
+	} else
+		return (false);
+
+	if (set_gradient_value(g, key, val, cmdq))
+		finish_visual_update(id, cfg);
+	return (true);
+}
+
+static bool
+set_border_gradient(const char *key, const char *val, struct cmd_q *cmdq)
+{
+	bool is_active = (strcmp(key, "colour.active.gradient") == 0 ||
+	    strncmp(key, "colour.active.", 14) == 0);
+	bool is_inactive = (strcmp(key, "colour.inactive.gradient") == 0 ||
+	    strncmp(key, "colour.inactive.", 16) == 0);
+
+	if (!is_active && !is_inactive)
+		return (false);
+
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+	struct cow_border_colour *bc = cfg != NULL ?
+	    (is_active ? &cfg->border_active : &cfg->border_inactive) :
+	    (is_active ? &cow_config->border_active :
+			 &cow_config->border_inactive);
+	struct cow_gradient *g = NULL;
+	enum cow_view_cfg_option id = is_active ?
+	    COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT :
+	    COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT;
+
+	if (strcmp(key, "colour.active.gradient") == 0 ||
+	    strcmp(key, "colour.inactive.gradient") == 0) {
+		g = cow_border_gradient_for_option(bc, id);
+	} else {
+		const char *edge = key + (is_active ? 14 : 16);
+		for (const struct set_border_edge *opt = set_border_edges;
+		    opt->name != NULL; opt++) {
+			size_t len = strlen(opt->name);
+			if (strncmp(edge, opt->name, len) == 0 &&
+			    strcmp(edge + len, ".gradient") == 0) {
+				id = is_active ? opt->active_gradient_id :
+				    opt->inactive_gradient_id;
+				g = cow_border_gradient_for_option(bc, id);
+				break;
+			}
+		}
+	}
+	if (g == NULL) {
+		cmdq_error(cmdq, "set: unknown key: %s", key);
+		return (true);
+	}
+	if (set_gradient_value(g, key, val, cmdq))
+		finish_visual_update(id, cfg);
+	return (true);
+}
+
+static bool
+set_gradient_option(const char *key, const char *val, struct cmd_q *cmdq)
+{
+	return (set_titlebar_gradient(key, val, cmdq) ||
+	    set_container_tab_gradient(key, val, cmdq) ||
+	    set_border_gradient(key, val, cmdq));
+}
+
 static void
 set_colour_option(const char *key, const char *val, struct cmd_q *cmdq)
 {
+	if (has_suffix(key, "_gradient") || has_suffix(key, ".gradient")) {
+		(void)set_gradient_option(key, val, cmdq);
+		return;
+	}
 	if (set_output_colour(key, val, cmdq))
 		return;
 	if (set_titlebar_colour(key, val, cmdq))

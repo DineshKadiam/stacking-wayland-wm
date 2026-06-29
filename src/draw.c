@@ -70,6 +70,40 @@ cow_draw_fill_rect(struct cow_pixbuf *p, int x, int y, int w, int h,
 }
 
 void
+cow_draw_gradient_rect(struct cow_pixbuf *p, int x, int y, int w, int h,
+    const struct cow_gradient *g)
+{
+	if (p == NULL || p->pixels == NULL || g == NULL ||
+	    g->mode == COW_GRADIENT_NONE || w <= 0 || h <= 0)
+		return;
+
+	int x0 = x < 0 ? 0 : x;
+	int y0 = y < 0 ? 0 : y;
+	int x1 = x + w;
+	int y1 = y + h;
+	if (x1 > p->width)
+		x1 = p->width;
+	if (y1 > p->height)
+		y1 = p->height;
+
+	int denom = g->mode == COW_GRADIENT_H ? w - 1 : h - 1;
+	if (denom <= 0)
+		denom = 1;
+
+	for (int yy = y0; yy < y1; yy++) {
+		uint32_t *row = p->pixels + yy * p->stride_px;
+		for (int xx = x0; xx < x1; xx++) {
+			int pos = g->mode == COW_GRADIENT_H ? xx - x : yy - y;
+			float t = (float)pos / (float)denom;
+			float c[4];
+			for (int i = 0; i < 4; i++)
+				c[i] = g->from[i] + (g->to[i] - g->from[i]) * t;
+			row[xx] = cow_colour_to_pixel(c);
+		}
+	}
+}
+
+void
 cow_draw_clear_rect(struct cow_pixbuf *p, int x, int y, int w, int h)
 {
 	cow_draw_fill_rect(p, x, y, w, h, 0u);

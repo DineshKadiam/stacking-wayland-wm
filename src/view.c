@@ -29,6 +29,7 @@
 #include "cow/decoration.h"
 #include "cow/desk_ops.h"
 #include "cow/draw.h"
+#include "cow/gradient.h"
 #include "cow/keybinding.h"
 #include "cow/memory.h"
 #include "cow/output.h"
@@ -83,12 +84,15 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 	dst->icon_size		= cow_config->icon_size;
 }
 
-static uint64_t
-view_cfg_option_bit(enum cow_view_cfg_option option)
+static bool
+view_cfg_option_index(enum cow_view_cfg_option option, size_t *word,
+    uint64_t *bit)
 {
-	if (option >= COW_VIEW_CFG_OPTION_COUNT || option >= 64)
-		return 0;
-	return 1ULL << option;
+	if (option >= COW_VIEW_CFG_OPTION_COUNT)
+		return false;
+	*word = option / 64;
+	*bit = 1ULL << (option % 64);
+	return true;
 }
 
 static void
@@ -151,19 +155,23 @@ void
 cow_view_cfg_set_override(struct cow_view_cfg *cfg,
     enum cow_view_cfg_option option)
 {
-	uint64_t bit = view_cfg_option_bit(option);
+	size_t	 word;
+	uint64_t bit;
 
-	if (bit != 0)
-		cfg->overrides |= bit;
+	if (view_cfg_option_index(option, &word, &bit))
+		cfg->overrides[word] |= bit;
 }
 
 void
 cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
     enum cow_view_cfg_option option)
 {
-	uint64_t bit = view_cfg_option_bit(option);
+	size_t	 word;
+	uint64_t bit;
 
-	if (cow_config == NULL || bit == 0 || (cfg->overrides & bit) != 0)
+	if (cow_config == NULL ||
+	    !view_cfg_option_index(option, &word, &bit) ||
+	    (cfg->overrides[word] & bit) != 0)
 		return;
 
 	switch (option) {
@@ -198,6 +206,20 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		border_colour_set_edge(&cfg->border_active,
 		    &cow_config->border_active, option);
 		break;
+	case COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT:
+		cfg->border_active.gradient = cow_config->border_active.gradient;
+		break;
+	case COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_N:
+	case COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_S:
+	case COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_E:
+	case COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_W:
+	case COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_NW:
+	case COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_NE:
+	case COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_SW:
+	case COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_SE:
+		cow_border_gradient_copy_for_option(&cfg->border_active,
+		    &cow_config->border_active, option);
+		break;
 	case COW_VIEW_CFG_BORDER_INACTIVE_N:
 	case COW_VIEW_CFG_BORDER_INACTIVE_S:
 	case COW_VIEW_CFG_BORDER_INACTIVE_E:
@@ -207,6 +229,21 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 	case COW_VIEW_CFG_BORDER_INACTIVE_SW:
 	case COW_VIEW_CFG_BORDER_INACTIVE_SE:
 		border_colour_set_edge(&cfg->border_inactive,
+		    &cow_config->border_inactive, option);
+		break;
+	case COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT:
+		cfg->border_inactive.gradient =
+		    cow_config->border_inactive.gradient;
+		break;
+	case COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_N:
+	case COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_S:
+	case COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_E:
+	case COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_W:
+	case COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_NW:
+	case COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_NE:
+	case COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_SW:
+	case COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_SE:
+		cow_border_gradient_copy_for_option(&cfg->border_inactive,
 		    &cow_config->border_inactive, option);
 		break;
 	case COW_VIEW_CFG_TITLEBAR_ENABLED:
@@ -219,6 +256,14 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 	case COW_VIEW_CFG_TITLEBAR_INACTIVE_COLOUR:
 		memcpy(cfg->titlebar.inactive_colour,
 		    cow_config->titlebar.inactive_colour, sizeof(float) * 4);
+		break;
+	case COW_VIEW_CFG_TITLEBAR_ACTIVE_GRADIENT:
+		cfg->titlebar.active_gradient =
+		    cow_config->titlebar.active_gradient;
+		break;
+	case COW_VIEW_CFG_TITLEBAR_INACTIVE_GRADIENT:
+		cfg->titlebar.inactive_gradient =
+		    cow_config->titlebar.inactive_gradient;
 		break;
 	case COW_VIEW_CFG_TITLEBAR_FG_ACTIVE:
 		memcpy(cfg->titlebar.fg_active, cow_config->titlebar.fg_active,
@@ -279,6 +324,14 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		    cow_config->container.tab_inactive, sizeof(float) * 4);
 		cfg->container.has_tab_inactive =
 		    cow_config->container.has_tab_inactive;
+		break;
+	case COW_VIEW_CFG_CONTAINER_TAB_ACTIVE_GRADIENT:
+		cfg->container.tab_active_gradient =
+		    cow_config->container.tab_active_gradient;
+		break;
+	case COW_VIEW_CFG_CONTAINER_TAB_INACTIVE_GRADIENT:
+		cfg->container.tab_inactive_gradient =
+		    cow_config->container.tab_inactive_gradient;
 		break;
 	case COW_VIEW_CFG_CONTAINER_TAB_FG_ACTIVE:
 		memcpy(cfg->container.tab_fg_active,

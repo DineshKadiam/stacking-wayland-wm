@@ -15,7 +15,11 @@
  */
 #include "cow/colour.h"
 
+#include "cow/memory.h"
+
+#include <ctype.h>
 #include <stdlib.h>
+#include <string.h>
 
 bool
 cow_colour_parse(const char *str, float *out)
@@ -25,6 +29,59 @@ cow_colour_parse(const char *str, float *out)
 	if (end == str)
 		return false;
 	cow_colour_convert(out, (uint32_t)v);
+	return true;
+}
+
+static bool
+token_eq(const char *a, const char *b)
+{
+	while (*a != '\0' && *b != '\0') {
+		if (tolower((unsigned char)*a) !=
+		    tolower((unsigned char)*b))
+			return false;
+		a++;
+		b++;
+	}
+	return (*a == '\0' && *b == '\0');
+}
+
+bool
+cow_gradient_parse(struct cow_gradient *g, const char *s)
+{
+	char *copy = xstrdup(s);
+
+	char *tok = strtok(copy, " \t\r\n");
+	if (tok == NULL) {
+		free(copy);
+		return false;
+	}
+	if (token_eq(tok, "none")) {
+		g->mode = COW_GRADIENT_NONE;
+		free(copy);
+		return true;
+	}
+
+	enum cow_gradient_mode mode;
+	if (token_eq(tok, "HGradient"))
+		mode = COW_GRADIENT_H;
+	else if (token_eq(tok, "VGradient"))
+		mode = COW_GRADIENT_V;
+	else {
+		free(copy);
+		return false;
+	}
+
+	char *from = strtok(NULL, " \t\r\n");
+	char *to = strtok(NULL, " \t\r\n");
+	char *extra = strtok(NULL, " \t\r\n");
+	if (from == NULL || to == NULL || extra != NULL ||
+	    !cow_colour_parse(from, g->from) || !cow_colour_parse(to, g->to)) {
+		free(copy);
+		return false;
+	}
+
+	g->mode = mode;
+	free(copy);
 	return true;
 }
 
