@@ -222,11 +222,15 @@ draw_fvwm_relief(uint32_t *pixels, int stride, int rx, int ry, int rw, int rh,
 	uint32_t br = sunken ? px_lt : px_dk;
 
 	for (int r = 0; r < 2 && r < rw / 2 && r < rh / 2; r++) {
-		cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + r, ul);
-		cow_draw_vline(&p, rx + r, ry + r, ry + rh - 1 - r, ul);
+		int y1 = ry + r + 1;
+
+		if (r > 0)
+			cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + r,
+			    ul);
+		cow_draw_vline(&p, rx + r, y1, ry + rh - 1 - r, ul);
 		cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + rh - 1 - r,
 		    br);
-		cow_draw_vline(&p, rx + rw - 1 - r, ry + r, ry + rh - 1 - r,
+		cow_draw_vline(&p, rx + rw - 1 - r, y1, ry + rh - 1 - r,
 		    br);
 	}
 }
