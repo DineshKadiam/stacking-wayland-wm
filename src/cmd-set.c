@@ -59,7 +59,8 @@ static enum cmd_retval set_titlebar_height(const char *, struct cmd_q *);
 static enum cmd_retval set_titlebar_squeeze(const struct set_option *,
     const char *, const char *, struct cmd_q *);
 static enum cmd_retval set_layer(const char *, const char *, struct cmd_q *);
-static void finish_visual_update(struct cow_view_cfg *);
+static void finish_visual_update(enum cow_view_cfg_option,
+    struct cow_view_cfg *);
 static struct cow_titlebar_config *target_titlebar(struct cmd_q *,
     struct cow_view_cfg **);
 static struct cow_container_config *target_container(struct cmd_q *,
@@ -129,6 +130,7 @@ struct set_option {
 	enum set_option_match match;
 	enum set_option_scope scope;
 	enum set_option_action action;
+	enum cow_view_cfg_option id;
 	size_t		    config_offset;
 	size_t		    view_offset;
 	long long	    lo;
@@ -143,23 +145,28 @@ enum set_button_part {
 
 struct set_button_option {
 	const char	     *key;
+	enum cow_view_cfg_option id;
 	enum set_button_part part;
 	int		      idx;
 };
 
 struct set_titlebar_colour_option {
 	const char *name;
+	enum cow_view_cfg_option id;
 	size_t	    offset;
 };
 
 struct set_container_colour_option {
 	const char *name;
+	enum cow_view_cfg_option id;
 	size_t	    colour_offset;
 	size_t	    has_offset;
 };
 
 struct set_border_edge {
 	const char *name;
+	enum cow_view_cfg_option active_id;
+	enum cow_view_cfg_option inactive_id;
 	size_t	    colour_offset;
 	size_t	    has_offset;
 };
@@ -172,31 +179,37 @@ struct set_enum_option {
 static const struct set_button_option set_button_options[] = {
 	{
 		.key = "titlebar.button_left.vector",
+		.id = COW_VIEW_CFG_TITLEBAR_BUTTON_LEFT_VECTOR,
 		.part = SET_BUTTON_VECTOR,
 		.idx = 0,
 	},
 	{
 		.key = "titlebar.button_left.action",
+		.id = COW_VIEW_CFG_TITLEBAR_BUTTON_LEFT_ACTION,
 		.part = SET_BUTTON_ACTION,
 		.idx = 0,
 	},
 	{
 		.key = "titlebar.button_right.vector",
+		.id = COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT_VECTOR,
 		.part = SET_BUTTON_VECTOR,
 		.idx = 1,
 	},
 	{
 		.key = "titlebar.button_right.action",
+		.id = COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT_ACTION,
 		.part = SET_BUTTON_ACTION,
 		.idx = 1,
 	},
 	{
 		.key = "titlebar.button_right2.vector",
+		.id = COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT2_VECTOR,
 		.part = SET_BUTTON_VECTOR,
 		.idx = 2,
 	},
 	{
 		.key = "titlebar.button_right2.action",
+		.id = COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT2_ACTION,
 		.part = SET_BUTTON_ACTION,
 		.idx = 2,
 	},
@@ -232,18 +245,22 @@ static const struct set_enum_option set_button_action_options[] = {
 static const struct set_titlebar_colour_option set_titlebar_colour_options[] = {
 	{
 		.name = "titlebar.active_colour",
+		.id = COW_VIEW_CFG_TITLEBAR_ACTIVE_COLOUR,
 		.offset = offsetof(struct cow_titlebar_config, active_colour),
 	},
 	{
 		.name = "titlebar.inactive_colour",
+		.id = COW_VIEW_CFG_TITLEBAR_INACTIVE_COLOUR,
 		.offset = offsetof(struct cow_titlebar_config, inactive_colour),
 	},
 	{
 		.name = "titlebar.fg_active",
+		.id = COW_VIEW_CFG_TITLEBAR_FG_ACTIVE,
 		.offset = offsetof(struct cow_titlebar_config, fg_active),
 	},
 	{
 		.name = "titlebar.fg_inactive",
+		.id = COW_VIEW_CFG_TITLEBAR_FG_INACTIVE,
 		.offset = offsetof(struct cow_titlebar_config, fg_inactive),
 	},
 	{ .name = NULL },
@@ -253,6 +270,7 @@ static const struct set_container_colour_option
     set_container_colour_options[] = {
 	{
 		.name = "container.tab.active_colour",
+		.id = COW_VIEW_CFG_CONTAINER_TAB_ACTIVE_COLOUR,
 		.colour_offset = offsetof(struct cow_container_config,
 		    tab_active),
 		.has_offset = offsetof(struct cow_container_config,
@@ -260,6 +278,7 @@ static const struct set_container_colour_option
 	},
 	{
 		.name = "container.tab.inactive_colour",
+		.id = COW_VIEW_CFG_CONTAINER_TAB_INACTIVE_COLOUR,
 		.colour_offset = offsetof(struct cow_container_config,
 		    tab_inactive),
 		.has_offset = offsetof(struct cow_container_config,
@@ -267,6 +286,7 @@ static const struct set_container_colour_option
 	},
 	{
 		.name = "container.tab.fg_active",
+		.id = COW_VIEW_CFG_CONTAINER_TAB_FG_ACTIVE,
 		.colour_offset = offsetof(struct cow_container_config,
 		    tab_fg_active),
 		.has_offset = offsetof(struct cow_container_config,
@@ -274,6 +294,7 @@ static const struct set_container_colour_option
 	},
 	{
 		.name = "container.tab.fg_inactive",
+		.id = COW_VIEW_CFG_CONTAINER_TAB_FG_INACTIVE,
 		.colour_offset = offsetof(struct cow_container_config,
 		    tab_fg_inactive),
 		.has_offset = offsetof(struct cow_container_config,
@@ -283,21 +304,37 @@ static const struct set_container_colour_option
 };
 
 static const struct set_border_edge set_border_edges[] = {
-	{ .name = "n", .colour_offset = offsetof(struct cow_border_colour, n),
+	{ .name = "n", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_N,
+	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_N,
+	    .colour_offset = offsetof(struct cow_border_colour, n),
 	    .has_offset = SET_NO_OFFSET },
-	{ .name = "s", .colour_offset = offsetof(struct cow_border_colour, s),
+	{ .name = "s", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_S,
+	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_S,
+	    .colour_offset = offsetof(struct cow_border_colour, s),
 	    .has_offset = SET_NO_OFFSET },
-	{ .name = "e", .colour_offset = offsetof(struct cow_border_colour, e),
+	{ .name = "e", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_E,
+	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_E,
+	    .colour_offset = offsetof(struct cow_border_colour, e),
 	    .has_offset = SET_NO_OFFSET },
-	{ .name = "w", .colour_offset = offsetof(struct cow_border_colour, w),
+	{ .name = "w", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_W,
+	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_W,
+	    .colour_offset = offsetof(struct cow_border_colour, w),
 	    .has_offset = SET_NO_OFFSET },
-	{ .name = "nw", .colour_offset = offsetof(struct cow_border_colour, nw),
+	{ .name = "nw", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_NW,
+	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_NW,
+	    .colour_offset = offsetof(struct cow_border_colour, nw),
 	    .has_offset = offsetof(struct cow_border_colour, has_nw) },
-	{ .name = "ne", .colour_offset = offsetof(struct cow_border_colour, ne),
+	{ .name = "ne", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_NE,
+	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_NE,
+	    .colour_offset = offsetof(struct cow_border_colour, ne),
 	    .has_offset = offsetof(struct cow_border_colour, has_ne) },
-	{ .name = "sw", .colour_offset = offsetof(struct cow_border_colour, sw),
+	{ .name = "sw", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_SW,
+	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_SW,
+	    .colour_offset = offsetof(struct cow_border_colour, sw),
 	    .has_offset = offsetof(struct cow_border_colour, has_sw) },
-	{ .name = "se", .colour_offset = offsetof(struct cow_border_colour, se),
+	{ .name = "se", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_SE,
+	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_SE,
+	    .colour_offset = offsetof(struct cow_border_colour, se),
 	    .has_offset = offsetof(struct cow_border_colour, has_se) },
 	{ .name = NULL },
 };
@@ -314,6 +351,7 @@ static const struct set_option set_options[] = {
 		.match = SET_MATCH_EXACT,
 		.scope = SET_SCOPE_MIXED,
 		.action = SET_ACTION_SCALAR_INT,
+		.id = COW_VIEW_CFG_BORDER,
 		.config_offset = offsetof(struct cow_config, border),
 		.view_offset = offsetof(struct cow_view_cfg, border),
 		.lo = 0,
@@ -336,6 +374,7 @@ static const struct set_option set_options[] = {
 		.match = SET_MATCH_EXACT,
 		.scope = SET_SCOPE_MIXED,
 		.action = SET_ACTION_SCALAR_INT,
+		.id = COW_VIEW_CFG_CORNER_LENGTH,
 		.config_offset = offsetof(struct cow_config, corner_length),
 		.view_offset = offsetof(struct cow_view_cfg, corner_length),
 		.lo = 0,
@@ -391,6 +430,7 @@ static const struct set_option set_options[] = {
 		.match = SET_MATCH_EXACT,
 		.scope = SET_SCOPE_MIXED,
 		.action = SET_ACTION_SCALAR_INT,
+		.id = COW_VIEW_CFG_ICON_SIZE,
 		.config_offset = offsetof(struct cow_config, icon_size),
 		.view_offset = offsetof(struct cow_view_cfg, icon_size),
 		.lo = 0,
@@ -461,6 +501,7 @@ static const struct set_option set_options[] = {
 		.match = SET_MATCH_EXACT,
 		.scope = SET_SCOPE_MIXED,
 		.action = SET_ACTION_BORDER_STYLE,
+		.id = COW_VIEW_CFG_BORDER_STYLE,
 	},
 	{
 		.name = "desktop-configuration",
@@ -491,12 +532,14 @@ static const struct set_option set_options[] = {
 		.match = SET_MATCH_EXACT,
 		.scope = SET_SCOPE_MIXED,
 		.action = SET_ACTION_FONT,
+		.id = COW_VIEW_CFG_FONT,
 	},
 	{
 		.name = "titlebar.enabled",
 		.match = SET_MATCH_EXACT,
 		.scope = SET_SCOPE_MIXED,
 		.action = SET_ACTION_SCALAR_BOOL,
+		.id = COW_VIEW_CFG_TITLEBAR_ENABLED,
 		.config_offset = offsetof(struct cow_config, titlebar.enabled),
 		.view_offset = offsetof(struct cow_view_cfg, titlebar.enabled),
 		.post = SET_POST_REFRESH_VISUALS,
@@ -506,6 +549,7 @@ static const struct set_option set_options[] = {
 		.match = SET_MATCH_EXACT,
 		.scope = SET_SCOPE_MIXED,
 		.action = SET_ACTION_SCALAR_BOOL,
+		.id = COW_VIEW_CFG_HANDLES,
 		.config_offset = offsetof(struct cow_config, handles),
 		.view_offset = offsetof(struct cow_view_cfg, handles),
 		.post = SET_POST_REFRESH_VISUALS,
@@ -515,24 +559,28 @@ static const struct set_option set_options[] = {
 		.match = SET_MATCH_EXACT,
 		.scope = SET_SCOPE_MIXED,
 		.action = SET_ACTION_TITLEBAR_HEIGHT,
+		.id = COW_VIEW_CFG_TITLEBAR_HEIGHT,
 	},
 	{
 		.name = "titlebar.squeeze",
 		.match = SET_MATCH_EXACT,
 		.scope = SET_SCOPE_MIXED,
 		.action = SET_ACTION_TITLEBAR_SQUEEZE,
+		.id = COW_VIEW_CFG_TITLEBAR_SQUEEZE,
 	},
 	{
 		.name = "titlebar.squeeze.justify",
 		.match = SET_MATCH_EXACT,
 		.scope = SET_SCOPE_MIXED,
 		.action = SET_ACTION_TITLEBAR_SQUEEZE_JUSTIFY,
+		.id = COW_VIEW_CFG_TITLEBAR_SQUEEZE_JUSTIFY,
 	},
 	{
 		.name = "titlebar.squeeze.width",
 		.match = SET_MATCH_EXACT,
 		.scope = SET_SCOPE_MIXED,
 		.action = SET_ACTION_TITLEBAR_SQUEEZE_INT,
+		.id = COW_VIEW_CFG_TITLEBAR_SQUEEZE_WIDTH,
 		.config_offset = offsetof(struct cow_titlebar_squeeze, width),
 		.lo = 0,
 		.hi = 32767,
@@ -542,6 +590,7 @@ static const struct set_option set_options[] = {
 		.match = SET_MATCH_EXACT,
 		.scope = SET_SCOPE_MIXED,
 		.action = SET_ACTION_TITLEBAR_SQUEEZE_INT,
+		.id = COW_VIEW_CFG_TITLEBAR_SQUEEZE_OFFSET,
 		.config_offset = offsetof(struct cow_titlebar_squeeze, offset),
 		.lo = -32768,
 		.hi = 32767,
@@ -551,6 +600,7 @@ static const struct set_option set_options[] = {
 		.match = SET_MATCH_EXACT,
 		.scope = SET_SCOPE_MIXED,
 		.action = SET_ACTION_TITLEBAR_SQUEEZE_INT,
+		.id = COW_VIEW_CFG_TITLEBAR_SQUEEZE_MIN_WIDTH,
 		.config_offset = offsetof(struct cow_titlebar_squeeze, min_width),
 		.lo = 0,
 		.hi = 32767,
@@ -560,6 +610,7 @@ static const struct set_option set_options[] = {
 		.match = SET_MATCH_EXACT,
 		.scope = SET_SCOPE_MIXED,
 		.action = SET_ACTION_SCALAR_BOOL,
+		.id = COW_VIEW_CFG_CONTAINER_TAB_SUNKEN,
 		.config_offset = offsetof(struct cow_config,
 		    container.tab_sunken_inactive),
 		.view_offset = offsetof(struct cow_view_cfg,
@@ -670,7 +721,7 @@ cfg_target(struct cmd_q *cmdq)
 }
 
 static void
-stamp_all_views_from_global(void)
+propagate_global_option(enum cow_view_cfg_option option)
 {
 	if (cow_ipc.startup_mode)
 		return;
@@ -678,15 +729,17 @@ stamp_all_views_from_global(void)
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
 		if (!view->closed)
-			cow_view_cfg_apply_global(&view->cfg);
+			cow_view_cfg_apply_global_option(&view->cfg, option);
 	}
 }
 
 static void
-finish_visual_update(struct cow_view_cfg *cfg)
+finish_visual_update(enum cow_view_cfg_option option, struct cow_view_cfg *cfg)
 {
-	if (cfg == NULL)
-		stamp_all_views_from_global();
+	if (cfg != NULL)
+		cow_view_cfg_set_override(cfg, option);
+	else
+		propagate_global_option(option);
 	refresh_visuals();
 }
 
@@ -769,11 +822,12 @@ set_scalar_bool(const struct set_option *opt, const char *val,
 	if (cfg != NULL && opt->view_offset != SET_NO_OFFSET) {
 		bool *ptr = (bool *)((char *)cfg + opt->view_offset);
 		*ptr = b;
+		cow_view_cfg_set_override(cfg, opt->id);
 	} else if (cow_config != NULL) {
 		bool *ptr = (bool *)((char *)cow_config + opt->config_offset);
 		*ptr = b;
 		if (opt->scope == SET_SCOPE_MIXED)
-			stamp_all_views_from_global();
+			propagate_global_option(opt->id);
 	}
 	set_option_post_update(opt);
 	return (CMD_RETURN_NORMAL);
@@ -800,13 +854,14 @@ set_scalar_int(const struct set_option *opt, const char *key, const char *val,
 		*ptr = (int)v;
 		if ((opt->post & SET_POST_ZERO_DISABLE_HANDLES) != 0 && v == 0)
 			cfg->handles = false;
+		cow_view_cfg_set_override(cfg, opt->id);
 	} else if (cow_config != NULL) {
 		int *ptr = (int *)((char *)cow_config + opt->config_offset);
 		*ptr = (int)v;
 		if ((opt->post & SET_POST_ZERO_DISABLE_HANDLES) != 0 && v == 0)
 			cow_config->handles = false;
 		if (opt->scope == SET_SCOPE_MIXED)
-			stamp_all_views_from_global();
+			propagate_global_option(opt->id);
 	}
 	set_option_post_update(opt);
 	return (CMD_RETURN_NORMAL);
@@ -966,7 +1021,7 @@ set_titlebar_height(const char *val, struct cmd_q *cmdq)
 	struct cow_view_cfg	    *cfg;
 	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
 	tb->height = (int)v;
-	finish_visual_update(cfg);
+	finish_visual_update(COW_VIEW_CFG_TITLEBAR_HEIGHT, cfg);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -1008,7 +1063,7 @@ set_titlebar_squeeze(const struct set_option *opt, const char *key,
 		*ptr = (int)v;
 	}
 
-	finish_visual_update(cfg);
+	finish_visual_update(opt->id, cfg);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -1116,7 +1171,7 @@ set_titlebar_colour(const char *key, const char *val, struct cmd_q *cmdq)
 			cmdq_error(cmdq, "set: invalid colour value");
 			return (true);
 		}
-		finish_visual_update(cfg);
+		finish_visual_update(opt->id, cfg);
 		return (true);
 	}
 	return (false);
@@ -1138,7 +1193,7 @@ set_container_tab_colour(const char *key, const char *val, struct cmd_q *cmdq)
 			return (true);
 		}
 		*has = true;
-		finish_visual_update(cfg);
+		finish_visual_update(opt->id, cfg);
 		return (true);
 	}
 	return (false);
@@ -1175,7 +1230,8 @@ set_border_colour(const char *key, const char *val, struct cmd_q *cmdq)
 		memcpy(bc->s, c, sizeof(float) * 4);
 		memcpy(bc->e, c, sizeof(float) * 4);
 		memcpy(bc->w, c, sizeof(float) * 4);
-		finish_visual_update(cfg);
+		finish_visual_update(is_active ? COW_VIEW_CFG_BORDER_ACTIVE :
+		    COW_VIEW_CFG_BORDER_INACTIVE, cfg);
 		return (true);
 	}
 
@@ -1202,7 +1258,8 @@ set_border_colour(const char *key, const char *val, struct cmd_q *cmdq)
 	}
 	if (bc->has_nw || bc->has_ne || bc->has_sw || bc->has_se)
 		bc->has_corners = true;
-	finish_visual_update(cfg);
+	finish_visual_update(is_active ? edge_opt->active_id :
+	    edge_opt->inactive_id, cfg);
 	return (true);
 }
 
@@ -1223,7 +1280,7 @@ set_border_style_option(const char *val, struct cmd_q *cmdq)
 		cfg->border_style = style;
 	else
 		cow_config->border_style = style;
-	finish_visual_update(cfg);
+	finish_visual_update(COW_VIEW_CFG_BORDER_STYLE, cfg);
 }
 
 static void
@@ -1344,7 +1401,7 @@ set_font_option(const char *val, struct cmd_q *cmdq)
 		xfree(cow_config->font_name);
 		cow_config->font_name = xstrdup(val);
 	}
-	finish_visual_update(cfg);
+	finish_visual_update(COW_VIEW_CFG_FONT, cfg);
 }
 
 static void
@@ -1360,12 +1417,11 @@ set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 		if (opt->part == SET_BUTTON_VECTOR) {
 			cow_parse_vector_button_string(
 			    &tb->buttons[opt->idx].vector, val);
-			finish_visual_update(cfg);
+			finish_visual_update(opt->id, cfg);
 			return;
 		}
 		tb->buttons[opt->idx].action = set_button_action(val);
-		if (cfg == NULL)
-			stamp_all_views_from_global();
+		finish_visual_update(opt->id, cfg);
 		return;
 	}
 }

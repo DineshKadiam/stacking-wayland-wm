@@ -83,6 +83,232 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 	dst->icon_size		= cow_config->icon_size;
 }
 
+static uint64_t
+view_cfg_option_bit(enum cow_view_cfg_option option)
+{
+	if (option >= COW_VIEW_CFG_OPTION_COUNT || option >= 64)
+		return 0;
+	return 1ULL << option;
+}
+
+static void
+border_colour_set_all(struct cow_border_colour *dst,
+    const struct cow_border_colour *src)
+{
+	*dst = *src;
+}
+
+static void
+border_colour_set_edge(struct cow_border_colour *dst,
+    const struct cow_border_colour *src, enum cow_view_cfg_option option)
+{
+	float *d = NULL;
+	const float *s = NULL;
+	bool *has = NULL;
+	bool has_value = false;
+
+	switch (option) {
+	case COW_VIEW_CFG_BORDER_ACTIVE_N:
+	case COW_VIEW_CFG_BORDER_INACTIVE_N:
+		d = dst->n; s = src->n; break;
+	case COW_VIEW_CFG_BORDER_ACTIVE_S:
+	case COW_VIEW_CFG_BORDER_INACTIVE_S:
+		d = dst->s; s = src->s; break;
+	case COW_VIEW_CFG_BORDER_ACTIVE_E:
+	case COW_VIEW_CFG_BORDER_INACTIVE_E:
+		d = dst->e; s = src->e; break;
+	case COW_VIEW_CFG_BORDER_ACTIVE_W:
+	case COW_VIEW_CFG_BORDER_INACTIVE_W:
+		d = dst->w; s = src->w; break;
+	case COW_VIEW_CFG_BORDER_ACTIVE_NW:
+	case COW_VIEW_CFG_BORDER_INACTIVE_NW:
+		d = dst->nw; s = src->nw; has = &dst->has_nw;
+		has_value = src->has_nw; break;
+	case COW_VIEW_CFG_BORDER_ACTIVE_NE:
+	case COW_VIEW_CFG_BORDER_INACTIVE_NE:
+		d = dst->ne; s = src->ne; has = &dst->has_ne;
+		has_value = src->has_ne; break;
+	case COW_VIEW_CFG_BORDER_ACTIVE_SW:
+	case COW_VIEW_CFG_BORDER_INACTIVE_SW:
+		d = dst->sw; s = src->sw; has = &dst->has_sw;
+		has_value = src->has_sw; break;
+	case COW_VIEW_CFG_BORDER_ACTIVE_SE:
+	case COW_VIEW_CFG_BORDER_INACTIVE_SE:
+		d = dst->se; s = src->se; has = &dst->has_se;
+		has_value = src->has_se; break;
+	default:
+		return;
+	}
+	memcpy(d, s, sizeof(float) * 4);
+	if (has != NULL) {
+		*has = has_value;
+		dst->has_corners = dst->has_nw || dst->has_ne ||
+		    dst->has_sw || dst->has_se;
+	}
+}
+
+void
+cow_view_cfg_set_override(struct cow_view_cfg *cfg,
+    enum cow_view_cfg_option option)
+{
+	uint64_t bit = view_cfg_option_bit(option);
+
+	if (bit != 0)
+		cfg->overrides |= bit;
+}
+
+void
+cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
+    enum cow_view_cfg_option option)
+{
+	uint64_t bit = view_cfg_option_bit(option);
+
+	if (cow_config == NULL || bit == 0 || (cfg->overrides & bit) != 0)
+		return;
+
+	switch (option) {
+	case COW_VIEW_CFG_BORDER:
+		cfg->border = cow_config->border;
+		break;
+	case COW_VIEW_CFG_CORNER_LENGTH:
+		cfg->corner_length = cow_config->corner_length;
+		break;
+	case COW_VIEW_CFG_HANDLES:
+		cfg->handles = cow_config->handles;
+		break;
+	case COW_VIEW_CFG_BORDER_STYLE:
+		cfg->border_style = cow_config->border_style;
+		break;
+	case COW_VIEW_CFG_BORDER_ACTIVE:
+		border_colour_set_all(&cfg->border_active,
+		    &cow_config->border_active);
+		break;
+	case COW_VIEW_CFG_BORDER_INACTIVE:
+		border_colour_set_all(&cfg->border_inactive,
+		    &cow_config->border_inactive);
+		break;
+	case COW_VIEW_CFG_BORDER_ACTIVE_N:
+	case COW_VIEW_CFG_BORDER_ACTIVE_S:
+	case COW_VIEW_CFG_BORDER_ACTIVE_E:
+	case COW_VIEW_CFG_BORDER_ACTIVE_W:
+	case COW_VIEW_CFG_BORDER_ACTIVE_NW:
+	case COW_VIEW_CFG_BORDER_ACTIVE_NE:
+	case COW_VIEW_CFG_BORDER_ACTIVE_SW:
+	case COW_VIEW_CFG_BORDER_ACTIVE_SE:
+		border_colour_set_edge(&cfg->border_active,
+		    &cow_config->border_active, option);
+		break;
+	case COW_VIEW_CFG_BORDER_INACTIVE_N:
+	case COW_VIEW_CFG_BORDER_INACTIVE_S:
+	case COW_VIEW_CFG_BORDER_INACTIVE_E:
+	case COW_VIEW_CFG_BORDER_INACTIVE_W:
+	case COW_VIEW_CFG_BORDER_INACTIVE_NW:
+	case COW_VIEW_CFG_BORDER_INACTIVE_NE:
+	case COW_VIEW_CFG_BORDER_INACTIVE_SW:
+	case COW_VIEW_CFG_BORDER_INACTIVE_SE:
+		border_colour_set_edge(&cfg->border_inactive,
+		    &cow_config->border_inactive, option);
+		break;
+	case COW_VIEW_CFG_TITLEBAR_ENABLED:
+		cfg->titlebar.enabled = cow_config->titlebar.enabled;
+		break;
+	case COW_VIEW_CFG_TITLEBAR_ACTIVE_COLOUR:
+		memcpy(cfg->titlebar.active_colour,
+		    cow_config->titlebar.active_colour, sizeof(float) * 4);
+		break;
+	case COW_VIEW_CFG_TITLEBAR_INACTIVE_COLOUR:
+		memcpy(cfg->titlebar.inactive_colour,
+		    cow_config->titlebar.inactive_colour, sizeof(float) * 4);
+		break;
+	case COW_VIEW_CFG_TITLEBAR_FG_ACTIVE:
+		memcpy(cfg->titlebar.fg_active, cow_config->titlebar.fg_active,
+		    sizeof(float) * 4);
+		break;
+	case COW_VIEW_CFG_TITLEBAR_FG_INACTIVE:
+		memcpy(cfg->titlebar.fg_inactive,
+		    cow_config->titlebar.fg_inactive, sizeof(float) * 4);
+		break;
+	case COW_VIEW_CFG_TITLEBAR_HEIGHT:
+		cfg->titlebar.height = cow_config->titlebar.height;
+		break;
+	case COW_VIEW_CFG_TITLEBAR_SQUEEZE:
+		cfg->titlebar.squeeze.mode = cow_config->titlebar.squeeze.mode;
+		break;
+	case COW_VIEW_CFG_TITLEBAR_SQUEEZE_JUSTIFY:
+		cfg->titlebar.squeeze.justify =
+		    cow_config->titlebar.squeeze.justify;
+		break;
+	case COW_VIEW_CFG_TITLEBAR_SQUEEZE_WIDTH:
+		cfg->titlebar.squeeze.width =
+		    cow_config->titlebar.squeeze.width;
+		break;
+	case COW_VIEW_CFG_TITLEBAR_SQUEEZE_OFFSET:
+		cfg->titlebar.squeeze.offset =
+		    cow_config->titlebar.squeeze.offset;
+		break;
+	case COW_VIEW_CFG_TITLEBAR_SQUEEZE_MIN_WIDTH:
+		cfg->titlebar.squeeze.min_width =
+		    cow_config->titlebar.squeeze.min_width;
+		break;
+	case COW_VIEW_CFG_TITLEBAR_BUTTON_LEFT_VECTOR:
+	case COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT_VECTOR:
+	case COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT2_VECTOR: {
+		int idx = option == COW_VIEW_CFG_TITLEBAR_BUTTON_LEFT_VECTOR ? 0 :
+		    option == COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT_VECTOR ? 1 : 2;
+		cfg->titlebar.buttons[idx].vector =
+		    cow_config->titlebar.buttons[idx].vector;
+		break;
+	}
+	case COW_VIEW_CFG_TITLEBAR_BUTTON_LEFT_ACTION:
+	case COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT_ACTION:
+	case COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT2_ACTION: {
+		int idx = option == COW_VIEW_CFG_TITLEBAR_BUTTON_LEFT_ACTION ? 0 :
+		    option == COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT_ACTION ? 1 : 2;
+		cfg->titlebar.buttons[idx].action =
+		    cow_config->titlebar.buttons[idx].action;
+		break;
+	}
+	case COW_VIEW_CFG_CONTAINER_TAB_ACTIVE_COLOUR:
+		memcpy(cfg->container.tab_active, cow_config->container.tab_active,
+		    sizeof(float) * 4);
+		cfg->container.has_tab_active =
+		    cow_config->container.has_tab_active;
+		break;
+	case COW_VIEW_CFG_CONTAINER_TAB_INACTIVE_COLOUR:
+		memcpy(cfg->container.tab_inactive,
+		    cow_config->container.tab_inactive, sizeof(float) * 4);
+		cfg->container.has_tab_inactive =
+		    cow_config->container.has_tab_inactive;
+		break;
+	case COW_VIEW_CFG_CONTAINER_TAB_FG_ACTIVE:
+		memcpy(cfg->container.tab_fg_active,
+		    cow_config->container.tab_fg_active, sizeof(float) * 4);
+		cfg->container.has_tab_fg_active =
+		    cow_config->container.has_tab_fg_active;
+		break;
+	case COW_VIEW_CFG_CONTAINER_TAB_FG_INACTIVE:
+		memcpy(cfg->container.tab_fg_inactive,
+		    cow_config->container.tab_fg_inactive, sizeof(float) * 4);
+		cfg->container.has_tab_fg_inactive =
+		    cow_config->container.has_tab_fg_inactive;
+		break;
+	case COW_VIEW_CFG_CONTAINER_TAB_SUNKEN:
+		cfg->container.tab_sunken_inactive =
+		    cow_config->container.tab_sunken_inactive;
+		break;
+	case COW_VIEW_CFG_FONT:
+		xfree(cfg->font_name);
+		cfg->font_name = cow_config->font_name != NULL ?
+		    xstrdup(cow_config->font_name) : NULL;
+		break;
+	case COW_VIEW_CFG_ICON_SIZE:
+		cfg->icon_size = cow_config->icon_size;
+		break;
+	default:
+		break;
+	}
+}
+
 void
 cow_view_cfg_init_from_global(struct cow_view_cfg *cfg)
 {
