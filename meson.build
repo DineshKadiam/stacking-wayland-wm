@@ -75,6 +75,7 @@ srcs = [
     'src/main.c',
     'src/memory.c',
     'src/output.c',
+    'src/options-table.c',
     'src/pan_frames.c',
     'src/pointer_op.c',
     'src/rule.c',
