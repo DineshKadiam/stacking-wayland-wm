@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,6 +25,7 @@
 #include <xkbcommon/xkbcommon.h>
 
 #include "cow/cmd.h"
+#include "cow/cmd_scan.h"
 #include "cow/compat.h"
 #include "cow/memory.h"
 #include "cow/output.h"
@@ -74,6 +76,8 @@ static struct pick_session *active_session;
 
 static void pick_session_destroy(struct pick_session *);
 static void pick_session_fire(struct pick_session *);
+static char *pick_command_string(struct args *);
+static void pick_session_seed_pointer(struct pick_session *);
 
 static struct cow_view *
 pick_view_at(int x, int y)
@@ -208,12 +212,17 @@ static const struct wl_keyboard_listener kb_listener = {
 };
 
 static struct cow_shm_buffer *
-make_transparent_buffer(int w, int h)
+make_pick_buffer(int w, int h)
 {
 	struct cow_shm_buffer *buf = cow_shm_buffer_create(w, h);
 	if (buf == NULL)
 		return NULL;
-	memset(buf->data, 0, (size_t)buf->stride * (size_t)buf->height);
+	for (int y = 0; y < h; y++) {
+		uint32_t *row = (uint32_t *)((char *)buf->data +
+		    (size_t)y * (size_t)buf->stride);
+		for (int x = 0; x < w; x++)
+			row[x] = 0x22000000;
+	}
 	return buf;
 }
 
@@ -236,7 +245,7 @@ overlay_init(struct pick_overlay *ov, struct cow_output *out)
 		return false;
 	}
 
-	ov->buffer = make_transparent_buffer(out->width, out->height);
+	ov->buffer = make_pick_buffer(out->width, out->height);
 	if (ov->buffer == NULL) {
 		zwlr_layer_surface_v1_destroy(ov->layer_surface);
 		wl_surface_destroy(ov->surface);
@@ -473,7 +482,7 @@ cmd_pick_window_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	struct pick_session *s = xcalloc(1, sizeof(*s));
-	s->cmd_str = cmd_argv_to_string(args->argc, args->argv, 0);
+	s->cmd_str = pick_command_string(args);
 	s->overlays = xcalloc((size_t)n_outs, sizeof(*s->overlays));
 	s->n_overlays = 0;
 
@@ -490,6 +499,7 @@ cmd_pick_window_exec(struct cmd *self, struct cmd_q *cmdq)
 		cmdq_error(cmdq, "pick-window: no usable output");
 		return (CMD_RETURN_ERROR);
 	}
+	pick_session_seed_pointer(s);
 
 	if (cow_wm.wl_cursor_shape_mgr != NULL &&
 	    cow_wm.wl_pointer_raw != NULL) {
@@ -506,4 +516,50 @@ cmd_pick_window_exec(struct cmd *self, struct cmd_q *cmdq)
 	active_session = s;
 	wl_display_flush(cow_wm.display);
 	return (CMD_RETURN_NORMAL);
+}
+
+static void
+pick_session_seed_pointer(struct pick_session *s)
+{
+	int gx, gy;
+
+	if (!cow_seat_get_pointer(&gx, &gy))
+		return;
+
+	for (int i = 0; i < s->n_overlays; i++) {
+		struct cow_output *out = s->overlays[i].output;
+		if (gx < out->x || gx >= out->x + out->width ||
+		    gy < out->y || gy >= out->y + out->height)
+			continue;
+
+		s->cur_output  = out;
+		s->cur_sx      = gx - out->x;
+		s->cur_sy      = gy - out->y;
+		s->have_cursor = true;
+		return;
+	}
+}
+
+static char *
+pick_command_string(struct args *args)
+{
+	char *cmd = cmd_argv_to_string(args->argc, args->argv, 0);
+
+	if (args->argc != 1 || cmd[0] != '{')
+		return cmd;
+
+	size_t end;
+	if (cow_cmd_find_matching_brace(cmd, strlen(cmd), &end) !=
+	    COW_CMD_SCAN_COMPLETE)
+		return cmd;
+
+	for (size_t i = end + 1; cmd[i] != '\0'; i++) {
+		if (!isspace((unsigned char)cmd[i]))
+			return cmd;
+	}
+
+	char *body = xstrdup(cmd + 1);
+	body[end - 1] = '\0';
+	xfree(cmd);
+	return body;
 }
