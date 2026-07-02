@@ -41,6 +41,24 @@ cow_titlebar_compute_thickness(struct cow_font *font)
 	return raw_height + COW_TITLEBAR_PADDING * 2;
 }
 
+static bool
+titlebar_button_visible(const struct cow_titlebar_config *tb, int idx)
+{
+	return tb != NULL && idx >= 0 && idx < COW_TITLEBAR_NUM_BUTTONS &&
+	    tb->buttons[idx].vector.num_points > 0;
+}
+
+static int
+titlebar_visible_button_count(const struct cow_titlebar_config *tb)
+{
+	int n = 0;
+	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++) {
+		if (titlebar_button_visible(tb, i))
+			n++;
+	}
+	return n;
+}
+
 void
 cow_titlebar_effective_squeeze(const struct cow_view *view,
     struct cow_titlebar_squeeze			     *out)
@@ -105,7 +123,8 @@ cow_titlebar_squeezed_rect(const struct cow_view *view)
 		 * each of width tt), plus internal padding that matches
 		 * the text_inset + right_pad used by cow_titlebar_render.
 		 */
-		int   btn_run	    = tt * COW_TITLEBAR_NUM_BUTTONS;
+		int btn_run = tt *
+		    titlebar_visible_button_count(&view->cfg.titlebar);
 		int   text	    = 0;
 		char *display_title = cow_decoration_display_title(view);
 		if (display_title != NULL && display_title[0] != '\0') {
@@ -339,10 +358,18 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 		cow_draw_gradient_rect(&strip_p, tb_x, tb_y, tb_w, tb_h,
 		    tb_gradient);
 
-	/* Button size = titlebar height */
-	int btn_s      = tb_h;
-	int left_btns  = COW_TITLEBAR_LEFT_BUTTONS;
-	int right_btns = COW_TITLEBAR_RIGHT_BUTTONS;
+	static const int left_order[] = { 1, 3, 5, 7, 9 };
+	static const int right_order[] = { 0, 2, 4, 6, 8 };
+	int btn_s = tb_h;
+	int left_btns = 0, right_btns = 0;
+	for (size_t i = 0; i < sizeof left_order / sizeof left_order[0]; i++) {
+		if (titlebar_button_visible(tb_cfg, left_order[i]))
+			left_btns++;
+	}
+	for (size_t i = 0; i < sizeof right_order / sizeof right_order[0]; i++) {
+		if (titlebar_button_visible(tb_cfg, right_order[i]))
+			right_btns++;
+	}
 
 	/* Vector button colour palette */
 	uint32_t colors[5];
@@ -352,37 +379,18 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 	colors[COW_VECTOR_FG]	     = px_fg;
 	colors[COW_VECTOR_INVISIBLE] = 0;
 
-	/* Get button vectors from config or use defaults */
-	const struct cow_vector_button	     *buttons[3];
-	static const struct cow_vector_button default_buttons[3] = {
-		{ .num_points = 5,
-		    .points   = { { 25, 25, 0, 0, -1 }, { 75, 75, 0, 0, 3 },
-			  { 75, 25, 0, 0, -1 }, { 25, 75, 0, 0, 3 },
-			  { 25, 25, 0, 0, -1 } } },
-		{ .num_points = 5,
-		    .points   = { { 25, 25, 0, 0, -1 }, { 25, 75, 0, 0, 3 },
-			  { 75, 75, 0, 0, 3 }, { 75, 25, 0, 0, 3 },
-			  { 25, 25, 0, 0, 3 } }	},
-		{ .num_points = 5,
-		    .points   = { { 25, 65, 0, 0, -1 }, { 75, 65, 0, 0, 3 },
-			  { 75, 75, 0, 0, 3 }, { 25, 75, 0, 0, 3 },
-			  { 25, 65, 0, 0, 3 } }	},
-	};
-	for (int i = 0; i < 3; i++) {
-		if (tb_cfg != NULL && tb_cfg->buttons[i].vector.num_points > 0)
-			buttons[i] = &tb_cfg->buttons[i].vector;
-		else
-			buttons[i] = &default_buttons[i];
-	}
-
-	/* Render left button(s) */
-	for (int i = 0; i < left_btns && i < 3; i++) {
-		int bx = tb_x + i * btn_s;
+	int pos = 0;
+	for (size_t i = 0; i < sizeof left_order / sizeof left_order[0]; i++) {
+		int btn_idx = left_order[i];
+		if (!titlebar_button_visible(tb_cfg, btn_idx))
+			continue;
+		int bx = tb_x + pos * btn_s;
 		int by = tb_y;
 		if (bx + btn_s > tb_x + tb_w)
 			break;
+		pos++;
 
-		bool btn_sunken = (pressed_button == i);
+		bool btn_sunken = (pressed_button == btn_idx);
 
 		if (tb_gradient == NULL ||
 		    tb_gradient->mode == COW_GRADIENT_NONE) {
@@ -400,9 +408,10 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 		for (int p = 0; p < btn_s * btn_s; p++)
 			btn_buf[p] = px_base;
 
-		bool icon_inverted = (icon_inverted_button == i) || btn_sunken;
-		cow_vector_button_draw(buttons[i], btn_buf, btn_s, btn_s, btn_s,
-		    btn_s, colors, icon_inverted);
+		bool icon_inverted =
+		    (icon_inverted_button == btn_idx) || btn_sunken;
+		cow_vector_button_draw(&tb_cfg->buttons[btn_idx].vector,
+		    btn_buf, btn_s, btn_s, btn_s, btn_s, colors, icon_inverted);
 
 		for (int py = 1; py < btn_s - 1; py++) {
 			for (int px = 1; px < btn_s - 1; px++) {
@@ -414,10 +423,12 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 		}
 	}
 
-	/* Render right button(s) */
-	for (int i = 0; i < right_btns && (left_btns + i) < 3; i++) {
-		int btn_idx    = left_btns + i;
-		int from_right = right_btns - 1 - i;
+	pos = 0;
+	for (size_t i = 0; i < sizeof right_order / sizeof right_order[0]; i++) {
+		int btn_idx = right_order[i];
+		if (!titlebar_button_visible(tb_cfg, btn_idx))
+			continue;
+		int from_right = pos++;
 		int bx	       = tb_x + tb_w - (from_right + 1) * btn_s;
 		int by	       = tb_y;
 		if (bx < tb_x)
@@ -441,8 +452,8 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 			btn_buf[p] = px_base;
 
 		bool icon_inv = (icon_inverted_button == btn_idx) || btn_sunken;
-		cow_vector_button_draw(buttons[btn_idx], btn_buf, btn_s, btn_s,
-		    btn_s, btn_s, colors, icon_inv);
+		cow_vector_button_draw(&tb_cfg->buttons[btn_idx].vector,
+		    btn_buf, btn_s, btn_s, btn_s, btn_s, colors, icon_inv);
 
 		for (int py = 1; py < btn_s - 1; py++) {
 			for (int px = 1; px < btn_s - 1; px++) {

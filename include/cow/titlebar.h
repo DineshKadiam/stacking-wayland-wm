@@ -29,9 +29,6 @@ struct cow_view;
  * Titlebar constants.
  */
 #define COW_TITLEBAR_PADDING 4
-#define COW_TITLEBAR_NUM_BUTTONS 3
-#define COW_TITLEBAR_LEFT_BUTTONS 1
-#define COW_TITLEBAR_RIGHT_BUTTONS 2
 
 /*
  * Compute titlebar thickness from a font.

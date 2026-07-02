@@ -22,9 +22,15 @@ if (@ARGV && $ARGV[0] eq "-i") {
 sub migrate_keys {
 	my ($s) = @_;
 
-	$s =~ s/\btitlebar\.button_right2\./titlebar.button.right2./g;
-	$s =~ s/\btitlebar\.button_right\./titlebar.button.right./g;
-	$s =~ s/\btitlebar\.button_left\./titlebar.button.left./g;
+	$s =~ s/\btitlebar\.button_right2\./titlebar.button.0./g;
+	$s =~ s/\btitlebar\.button_right\./titlebar.button.2./g;
+	$s =~ s/\btitlebar\.button_left\./titlebar.button.1./g;
+	$s =~ s/\btitlebar\.button\.right2\./titlebar.button.0./g;
+	$s =~ s/\btitlebar\.button\.right\./titlebar.button.2./g;
+	$s =~ s/\btitlebar\.button\.left\./titlebar.button.1./g;
+	$s =~ s/(\btitlebar\.button\.[0-9]\.action\s+)close\b/${1}'winops -c'/g;
+	$s =~ s/(\btitlebar\.button\.[0-9]\.action\s+)iconify\b/${1}'winops -i'/g;
+	$s =~ s/(\btitlebar\.button\.[0-9]\.action\s+)maximize\b/${1}'window-maximize -T'/g;
 	$s =~ s/\bcolour\.active\b/border.active/g;
 	$s =~ s/\bcolour\.inactive\b/border.inactive/g;
 	$s =~ s/(?<!border\.)\bborder_style\b/border.style/g;
@@ -38,12 +44,66 @@ sub migrate_keys {
 	return $s;
 }
 
+sub is_decor_key {
+	my ($key) = @_;
+
+	return 1 if $key =~ /^(?:border\.width|border\.style|border\.corner_length|border\.handles)$/;
+	return 1 if $key =~ /^(?:titlebar\.enabled|titlebar\.height|titlebar\.font)$/;
+	return 1 if $key =~ /^titlebar\.squeeze(?:\.(?:justify|width|offset|min_width))?$/;
+	return 1 if $key =~ /^titlebar\.(?:active_colour|inactive_colour|active_gradient|inactive_gradient|fg_active|fg_inactive)$/;
+	return 1 if $key =~ /^titlebar\.button\.[0-9]\.(?:vector|action)$/;
+	return 1 if $key =~ /^container\.tab\.(?:active_colour|inactive_colour|active_gradient|inactive_gradient|fg_active|fg_inactive|sunken)$/;
+	return 1 if $key =~ /^border\.(?:active|inactive)(?:\.(?:n|s|e|w|nw|ne|sw|se))?(?:\.gradient)?$/;
+	return 1 if $key eq "icon.size";
+	return 0;
+}
+
+sub rule_name {
+	my ($line) = @_;
+
+	return $1 if $line =~ /(?:^|\s)-n\s+(\S+)/;
+	return $1 if $line =~ /(?:^|\s)-n(\S+)/;
+	return undef;
+}
+
+sub migrate_rule {
+	my (@rule) = @_;
+	my $name = rule_name($rule[0]);
+	return if !defined $name;
+
+	my @profile;
+	for (my $i = 1; $i < @rule; $i++) {
+		my $line = migrate_keys($rule[$i]);
+		chomp $line;
+		$line =~ s/^\s+//;
+		$line =~ s/\s*\\\s*$//;
+		$line =~ s/\s*\\;\s*$//;
+		$line =~ s/\s+$//;
+		next if $line eq "";
+		return if $line !~ /^set\s+(\S+)\s+(.+)$/;
+		my ($key, $value) = ($1, $2);
+		return if !is_decor_key($key);
+		push @profile, "decor -d $name $key $value\n";
+	}
+	return if !@profile;
+
+	my $head = $rule[0];
+	chomp $head;
+	$head =~ s/\s*\\\s*$//;
+	$head =~ s/\s+$//;
+	push @profile, "$head decor -a $name\n";
+	return @profile;
+}
+
 sub migrate_lines {
 	my (@in) = @_;
 	my @out;
+	my $need_apply = 0;
+	my $has_apply = 0;
 
 	for (my $i = 0; $i < @in; $i++) {
 		my $line = $in[$i];
+		$has_apply = 1 if $line =~ /^\s*decor\s+-a\s+default(?:\s|$)/;
 		if ($line =~ /^(\s*)decor\s+-d\s+(\S+)\s*\{\s*(?:#.*)?$/) {
 			my ($indent, $name) = ($1, $2);
 			while (++$i < @in) {
@@ -62,8 +122,31 @@ sub migrate_lines {
 			}
 			next;
 		}
-		push @out, migrate_keys($line);
+		if ($line =~ /^\s*rule\b/ && $line =~ /\\\s*(?:#.*)?$/) {
+			my @rule = ($line);
+			while (++$i < @in) {
+				push @rule, $in[$i];
+				last if $in[$i] !~ /\\\s*(?:#.*)?$/;
+			}
+			my @migrated = migrate_rule(@rule);
+			if (@migrated) {
+				push @out, @migrated;
+				next;
+			}
+			push @out, map { migrate_keys($_) } @rule;
+			next;
+		}
+		$line = migrate_keys($line);
+		if ($line =~ /^(#?)set\s+(\S+)(\s+.*?)(\n?)$/ &&
+		    is_decor_key($2)) {
+			my ($comment, $key, $value, $nl) = ($1, $2, $3, $4);
+			my $cmd = $comment eq "#" ? "# decor" : "decor";
+			$line = "$cmd -d default $key$value$nl";
+			$need_apply = 1 if $comment ne "#";
+		}
+		push @out, $line;
 	}
+	push @out, "decor -a default\n" if $need_apply && !$has_apply;
 	return @out;
 }
 

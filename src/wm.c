@@ -409,6 +409,8 @@ manage_configure_views(void)
 static int
 titlebar_button_at(struct cow_view *view, int lx, int ly)
 {
+	static const int left_order[] = { 1, 3, 5, 7, 9 };
+	static const int right_order[] = { 0, 2, 4, 6, 8 };
 	int tt = view->dec.title_thickness;
 	int bw = view->dec.border_width;
 
@@ -418,35 +420,62 @@ titlebar_button_at(struct cow_view *view, int lx, int ly)
 	struct cow_box tbr = cow_titlebar_squeezed_rect(view);
 	int	       l   = tbr.x - bw;
 	int	       r   = l + tbr.width;
-	if (lx >= l && lx < l + tt)
-		return (0);
-	if (lx >= r - 2 * tt && lx < r - tt)
-		return (1);
-	if (lx >= r - tt && lx < r)
-		return (2);
+
+	int pos = 0;
+	for (size_t i = 0; i < sizeof left_order / sizeof left_order[0]; i++) {
+		int idx = left_order[i];
+		if (view->cfg.titlebar.buttons[idx].vector.num_points <= 0)
+			continue;
+		int x = l + pos++ * tt;
+		if (lx >= x && lx < x + tt)
+			return idx;
+	}
+
+	pos = 0;
+	for (size_t i = 0; i < sizeof right_order / sizeof right_order[0]; i++) {
+		int idx = right_order[i];
+		if (view->cfg.titlebar.buttons[idx].vector.num_points <= 0)
+			continue;
+		int x = r - (++pos * tt);
+		if (lx >= x && lx < x + tt)
+			return idx;
+	}
 	return (-1);
 }
 
 static void
 manage_titlebar_button_action(struct cow_view *view, int idx)
 {
-	if (idx < 0 || idx >= 3)
+	if (idx < 0 || idx >= COW_TITLEBAR_NUM_BUTTONS)
 		return;
 
-	enum cow_button_action act = view->cfg.titlebar.buttons[idx].action;
+	const char *action = view->cfg.titlebar.buttons[idx].action;
+	if (action == NULL || *action == '\0')
+		return;
+
 	cow_wm.focused_view = view;
 	if (view->output != NULL)
 		cow_wm.current_output = view->output;
-	if (act == COW_BUTTON_ACTION_CLOSE)
-		river_window_v1_close(view->river_window);
-	else if (act == COW_BUTTON_ACTION_MAXIMIZE) {
-		if (view->maximized)
-			cow_view_unmaximize(view);
-		else
-			cow_view_maximize(view);
-	} else if (act == COW_BUTTON_ACTION_ICONIFY) {
-		cow_view_iconify(view);
+
+	struct cmd_list *cmdlist = NULL;
+	char		*cause	 = NULL;
+	if (cmd_string_parse(action, &cmdlist, NULL, 0, &cause) != 0) {
+		if (cause != NULL) {
+			fprintf(stderr, "cow: titlebar button command error: %s\n",
+			    cause);
+			xfree(cause);
+		}
+		return;
 	}
+	if (cmdlist == NULL)
+		return;
+
+	struct cmd_q *cmdq = cmdq_new();
+	cmdq->client_fd	   = -1;
+	cmdq_set_default_target(cmdq, view, view->desk, view->output);
+	cmdq_run(cmdq, cmdlist);
+	cmd_list_free(cmdlist);
+	cmdq_free(cmdq);
 }
 
 static void

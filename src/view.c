@@ -46,6 +46,46 @@
 
 static int next_container_id;
 
+static int
+titlebar_button_vector_index(enum cow_view_cfg_option option)
+{
+	if (option < COW_VIEW_CFG_TITLEBAR_BUTTON_0_VECTOR ||
+	    option > COW_VIEW_CFG_TITLEBAR_BUTTON_9_VECTOR ||
+	    ((option - COW_VIEW_CFG_TITLEBAR_BUTTON_0_VECTOR) % 2) != 0)
+		return -1;
+	return (option - COW_VIEW_CFG_TITLEBAR_BUTTON_0_VECTOR) / 2;
+}
+
+static int
+titlebar_button_action_index(enum cow_view_cfg_option option)
+{
+	if (option < COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTION ||
+	    option > COW_VIEW_CFG_TITLEBAR_BUTTON_9_ACTION ||
+	    ((option - COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTION) % 2) != 0)
+		return -1;
+	return (option - COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTION) / 2;
+}
+
+static void
+titlebar_button_actions_free(struct cow_titlebar_config *tb)
+{
+	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++) {
+		xfree(tb->buttons[i].action);
+		tb->buttons[i].action = NULL;
+	}
+}
+
+static void
+titlebar_button_actions_dup(struct cow_titlebar_config *dst,
+    const struct cow_titlebar_config *src)
+{
+	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++) {
+		dst->buttons[i].action = src->buttons[i].action != NULL ?
+		    xstrdup(src->buttons[i].action) :
+		    NULL;
+	}
+}
+
 /*
  * Per-view config snapshot helpers.  See struct cow_view_cfg in
  * cow/view.h for the rationale.  These three functions own the
@@ -80,6 +120,7 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 	dst->titlebar.font_name = (cow_config->titlebar.font_name != NULL) ?
 	    xstrdup(cow_config->titlebar.font_name) :
 	    NULL;
+	titlebar_button_actions_dup(&dst->titlebar, &cow_config->titlebar);
 	dst->container		= cow_config->container;
 	dst->icon_size		= cow_config->icon_size;
 }
@@ -173,6 +214,22 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 	    !view_cfg_option_index(option, &word, &bit) ||
 	    (cfg->overrides[word] & bit) != 0)
 		return;
+
+	int idx = titlebar_button_vector_index(option);
+	if (idx != -1) {
+		cfg->titlebar.buttons[idx].vector =
+		    cow_config->titlebar.buttons[idx].vector;
+		return;
+	}
+	idx = titlebar_button_action_index(option);
+	if (idx != -1) {
+		xfree(cfg->titlebar.buttons[idx].action);
+		cfg->titlebar.buttons[idx].action =
+		    cow_config->titlebar.buttons[idx].action != NULL ?
+		    xstrdup(cow_config->titlebar.buttons[idx].action) :
+		    NULL;
+		return;
+	}
 
 	switch (option) {
 	case COW_VIEW_CFG_BORDER:
@@ -295,24 +352,6 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		cfg->titlebar.squeeze.min_width =
 		    cow_config->titlebar.squeeze.min_width;
 		break;
-	case COW_VIEW_CFG_TITLEBAR_BUTTON_LEFT_VECTOR:
-	case COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT_VECTOR:
-	case COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT2_VECTOR: {
-		int idx = option == COW_VIEW_CFG_TITLEBAR_BUTTON_LEFT_VECTOR ? 0 :
-		    option == COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT_VECTOR ? 1 : 2;
-		cfg->titlebar.buttons[idx].vector =
-		    cow_config->titlebar.buttons[idx].vector;
-		break;
-	}
-	case COW_VIEW_CFG_TITLEBAR_BUTTON_LEFT_ACTION:
-	case COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT_ACTION:
-	case COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT2_ACTION: {
-		int idx = option == COW_VIEW_CFG_TITLEBAR_BUTTON_LEFT_ACTION ? 0 :
-		    option == COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT_ACTION ? 1 : 2;
-		cfg->titlebar.buttons[idx].action =
-		    cow_config->titlebar.buttons[idx].action;
-		break;
-	}
 	case COW_VIEW_CFG_CONTAINER_TAB_ACTIVE_COLOUR:
 		memcpy(cfg->container.tab_active, cow_config->container.tab_active,
 		    sizeof(float) * 4);
@@ -376,6 +415,7 @@ cow_view_cfg_apply_global(struct cow_view_cfg *cfg)
 {
 	xfree(cfg->font_name);
 	xfree(cfg->titlebar.font_name);
+	titlebar_button_actions_free(&cfg->titlebar);
 	cfg->font_name		= NULL;
 	cfg->titlebar.font_name = NULL;
 	view_cfg_copy_from_global(cfg);
@@ -388,6 +428,7 @@ cow_view_cfg_fini(struct cow_view_cfg *cfg)
 {
 	xfree(cfg->font_name);
 	xfree(cfg->titlebar.font_name);
+	titlebar_button_actions_free(&cfg->titlebar);
 	cfg->font_name		= NULL;
 	cfg->titlebar.font_name = NULL;
 }
@@ -1455,8 +1496,10 @@ cow_view_maximize_button_index(const struct cow_view *view)
 	    (cow_config != NULL ? &cow_config->titlebar : NULL);
 	if (tb == NULL)
 		return -1;
-	for (int i = 0; i < 3; i++) {
-		if (tb->buttons[i].action == COW_BUTTON_ACTION_MAXIMIZE)
+	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++) {
+		const char *action = tb->buttons[i].action;
+		if (action != NULL &&
+		    strncmp(action, "window-maximize", 15) == 0)
 			return i;
 	}
 	return -1;

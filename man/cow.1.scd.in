@@ -1151,24 +1151,16 @@ feel of a window.  All of these can be used with *decor -d*.
 :  integer (pixels)
 :  Fix the titlebar height in pixels. When set to 0 (the default) the
    height is derived from the font size.
-|  *titlebar.button.left.vector*
+|  *titlebar.button.N.vector*
 :  vector string
-:  Geometry of the left titlebar button.
-|  *titlebar.button.left.action*
+:  Geometry of titlebar button _N_, where _N_ is 0 through 9. Odd
+   buttons are placed on the left; even buttons are placed on the right,
+   with button 0 nearest the right edge.
+|  *titlebar.button.N.action*
 :  command string
-:  Action for the left titlebar button.
-|  *titlebar.button.right.vector*
-:  vector string
-:  Geometry of the right titlebar button.
-|  *titlebar.button.right.action*
-:  command string
-:  Action for the right titlebar button.
-|  *titlebar.button.right2.vector*
-:  vector string
-:  Geometry of the second right titlebar button.
-|  *titlebar.button.right2.action*
-:  command string
-:  Action for the second right titlebar button.
+:  Command run when titlebar button _N_ is clicked. The clicked window is
+   the default command target. Quote commands that contain spaces, for
+   example _'window-maximize -T'_.
 |  *titlebar.squeeze*
 :  _none_ | _natural_ | _fixed_
 :  Shrink the titlebar down to a minimum size.

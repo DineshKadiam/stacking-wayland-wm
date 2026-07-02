@@ -199,28 +199,28 @@ cow_config_create(void)
 	 * can override any or all four values with decor profiles.
 	 */
 
-	/* Default button vectors: close (X), maximize (rect), iconify (bar) */
+	/* Default buttons: close on 1, iconify on 2, maximize on 0. */
 	{
 		struct cow_vector_button *v =
-		    &config->titlebar.buttons[0].vector;
+		    &config->titlebar.buttons[1].vector;
 		v->num_points = 5;
 		v->points[0]  = (struct cow_vector_point) { 25, 25, 0, 0, -1 };
 		v->points[1]  = (struct cow_vector_point) { 75, 75, 0, 0, 3 };
 		v->points[2]  = (struct cow_vector_point) { 75, 25, 0, 0, -1 };
 		v->points[3]  = (struct cow_vector_point) { 25, 75, 0, 0, 3 };
 		v->points[4]  = (struct cow_vector_point) { 25, 25, 0, 0, -1 };
-		config->titlebar.buttons[0].action = COW_BUTTON_ACTION_CLOSE;
+		config->titlebar.buttons[1].action = xstrdup("winops -c");
 	}
 	{
 		struct cow_vector_button *v =
-		    &config->titlebar.buttons[1].vector;
+		    &config->titlebar.buttons[0].vector;
 		v->num_points = 5;
 		v->points[0]  = (struct cow_vector_point) { 25, 25, 0, 0, -1 };
 		v->points[1]  = (struct cow_vector_point) { 25, 75, 0, 0, 3 };
 		v->points[2]  = (struct cow_vector_point) { 75, 75, 0, 0, 3 };
 		v->points[3]  = (struct cow_vector_point) { 75, 25, 0, 0, 3 };
 		v->points[4]  = (struct cow_vector_point) { 25, 25, 0, 0, 3 };
-		config->titlebar.buttons[1].action = COW_BUTTON_ACTION_MAXIMIZE;
+		config->titlebar.buttons[0].action = xstrdup("window-maximize -T");
 	}
 	{
 		struct cow_vector_button *v =
@@ -231,7 +231,7 @@ cow_config_create(void)
 		v->points[2]  = (struct cow_vector_point) { 75, 75, 0, 0, 3 };
 		v->points[3]  = (struct cow_vector_point) { 25, 75, 0, 0, 3 };
 		v->points[4]  = (struct cow_vector_point) { 25, 65, 0, 0, 3 };
-		config->titlebar.buttons[2].action = COW_BUTTON_ACTION_ICONIFY;
+		config->titlebar.buttons[2].action = xstrdup("winops -i");
 	}
 
 	wl_list_init(&config->keyboard_bindings);
@@ -249,6 +249,8 @@ cow_config_destroy(struct cow_config *config)
 
 	xfree(config->font_name);
 	xfree(config->titlebar.font_name);
+	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++)
+		xfree(config->titlebar.buttons[i].action);
 
 	struct cow_binding_entry *kb, *kb_tmp;
 	wl_list_for_each_safe(kb, kb_tmp, &config->keyboard_bindings, link)

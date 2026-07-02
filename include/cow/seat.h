@@ -81,7 +81,7 @@ struct cow_seat {
 		COW_TITLEBAR_PRESS_TITLE,
 		COW_TITLEBAR_PRESS_BUTTON,
 	} titlebar_press;
-	int		 pressed_button_idx; /* 0, 1, or 2 */
+	int		 pressed_button_idx;
 	struct cow_view *pressed_view;	     /* view with pressed decoration */
 
 	bool removed;

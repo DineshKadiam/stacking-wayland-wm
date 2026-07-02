@@ -84,23 +84,10 @@ static void set_geometry_window_option(const char *, struct cmd_q *);
 static void set_placement_option(const char *, struct cmd_q *);
 static void set_font_option(const char *, struct cmd_q *);
 static void set_button_option(const char *, const char *, struct cmd_q *);
-static enum cow_button_action set_button_action(const char *);
 static void refresh_visuals(void);
 static int  refreshed_title_thickness(struct cow_view *);
 static void refresh_view_visuals(struct cow_view *);
 static void refresh_output_visuals(struct cow_output *);
-
-enum set_button_part {
-	SET_BUTTON_VECTOR,
-	SET_BUTTON_ACTION,
-};
-
-struct set_button_option {
-	const char	     *key;
-	enum cow_view_cfg_option id;
-	enum set_button_part part;
-	int		      idx;
-};
 
 struct set_titlebar_colour_option {
 	const char *name;
@@ -130,46 +117,6 @@ struct set_enum_option {
 	int	    value;
 };
 
-static const struct set_button_option set_button_options[] = {
-	{
-		.key = "titlebar.button.left.vector",
-		.id = COW_VIEW_CFG_TITLEBAR_BUTTON_LEFT_VECTOR,
-		.part = SET_BUTTON_VECTOR,
-		.idx = 0,
-	},
-	{
-		.key = "titlebar.button.left.action",
-		.id = COW_VIEW_CFG_TITLEBAR_BUTTON_LEFT_ACTION,
-		.part = SET_BUTTON_ACTION,
-		.idx = 0,
-	},
-	{
-		.key = "titlebar.button.right.vector",
-		.id = COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT_VECTOR,
-		.part = SET_BUTTON_VECTOR,
-		.idx = 1,
-	},
-	{
-		.key = "titlebar.button.right.action",
-		.id = COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT_ACTION,
-		.part = SET_BUTTON_ACTION,
-		.idx = 1,
-	},
-	{
-		.key = "titlebar.button.right2.vector",
-		.id = COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT2_VECTOR,
-		.part = SET_BUTTON_VECTOR,
-		.idx = 2,
-	},
-	{
-		.key = "titlebar.button.right2.action",
-		.id = COW_VIEW_CFG_TITLEBAR_BUTTON_RIGHT2_ACTION,
-		.part = SET_BUTTON_ACTION,
-		.idx = 2,
-	},
-	{ .key = NULL },
-};
-
 static const struct set_enum_option set_border_style_options[] = {
 	{ "fvwm", COW_BORDER_STYLE_FVWM },
 	{ "mwm", COW_BORDER_STYLE_MWM },
@@ -195,13 +142,6 @@ static const struct set_enum_option set_placement_options[] = {
 	{ "centre", COW_PLACEMENT_CENTRE },
 	{ "center", COW_PLACEMENT_CENTRE },
 	{ NULL, -1 },
-};
-
-static const struct set_enum_option set_button_action_options[] = {
-	{ "close", COW_BUTTON_ACTION_CLOSE },
-	{ "maximize", COW_BUTTON_ACTION_MAXIMIZE },
-	{ "iconify", COW_BUTTON_ACTION_ICONIFY },
-	{ NULL, COW_BUTTON_ACTION_NONE },
 };
 
 static const struct set_titlebar_colour_option set_titlebar_colour_options[] = {
@@ -406,6 +346,44 @@ cmd_set_is_decor_key(const char *key)
 	return (opt != NULL && set_option_is_decor(opt, key));
 }
 
+static enum cow_view_cfg_option
+button_vector_option(int idx)
+{
+	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_VECTOR + idx * 2;
+}
+
+static enum cow_view_cfg_option
+button_action_option(int idx)
+{
+	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTION + idx * 2;
+}
+
+static bool
+parse_button_key(const char *key, int *idx, const char **field)
+{
+	static const char prefix[] = "titlebar.button.";
+	const char	 *p;
+	const char	 *errstr;
+	long long	  ll;
+	char		  nbuf[3];
+	size_t		  len;
+
+	if (strncmp(key, prefix, strlen(prefix)) != 0)
+		return false;
+	p = key + strlen(prefix);
+	len = strcspn(p, ".");
+	if (len == 0 || len >= sizeof nbuf || p[len] != '.')
+		return false;
+	memcpy(nbuf, p, len);
+	nbuf[len] = '\0';
+	ll = strtonum(nbuf, 0, COW_TITLEBAR_NUM_BUTTONS - 1, &errstr);
+	if (errstr != NULL)
+		return false;
+	*idx = (int)ll;
+	*field = p + len + 1;
+	return true;
+}
+
 static bool
 set_option_is_decor(const struct cow_option_entry *opt, const char *key)
 {
@@ -445,12 +423,11 @@ set_option_is_decor(const struct cow_option_entry *opt, const char *key)
 		return (false);
 	}
 	if (strncmp(key, "titlebar.button.", 16) == 0) {
-		for (const struct set_button_option *b = set_button_options;
-		    b->key != NULL; b++) {
-			if (strcmp(key, b->key) == 0)
-				return (true);
-		}
-		return (false);
+		int idx;
+		const char *field;
+		return parse_button_key(key, &idx, &field) &&
+		    (strcmp(field, "vector") == 0 ||
+			strcmp(field, "action") == 0);
 	}
 	if (strncmp(key, "container.tab.", 14) == 0) {
 		for (const struct set_container_colour_option *c =
@@ -1242,34 +1219,32 @@ set_font_option(const char *val, struct cmd_q *cmdq)
 static void
 set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 {
-	struct cow_view_cfg	    *cfg;
+	int			  idx;
+	const char		 *field;
+	struct cow_view_cfg	 *cfg;
 	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
 
-	for (const struct set_button_option *opt = set_button_options;
-	    opt->key != NULL; opt++) {
-		if (strcmp(key, opt->key) != 0)
-			continue;
-		if (opt->part == SET_BUTTON_VECTOR) {
-			cow_parse_vector_button_string(
-			    &tb->buttons[opt->idx].vector, val);
-			finish_visual_update(opt->id, cfg);
-			return;
-		}
-		tb->buttons[opt->idx].action = set_button_action(val);
-		finish_visual_update(opt->id, cfg);
+	if (!parse_button_key(key, &idx, &field)) {
+		cmdq_error(cmdq, "set: unknown key: %s", key);
 		return;
 	}
-}
 
-static enum cow_button_action
-set_button_action(const char *val)
-{
-	for (const struct set_enum_option *opt = set_button_action_options;
-	    opt->name != NULL; opt++) {
-		if (strcmp(val, opt->name) == 0)
-			return (opt->value);
+	if (strcmp(field, "vector") == 0) {
+		if (!cow_parse_vector_button_string(&tb->buttons[idx].vector,
+		    val)) {
+			cmdq_error(cmdq, "set: %s: bad vector", key);
+			return;
+		}
+		finish_visual_update(button_vector_option(idx), cfg);
+		return;
 	}
-	return (COW_BUTTON_ACTION_NONE);
+	if (strcmp(field, "action") == 0) {
+		xfree(tb->buttons[idx].action);
+		tb->buttons[idx].action = xstrdup(val);
+		finish_visual_update(button_action_option(idx), cfg);
+		return;
+	}
+	cmdq_error(cmdq, "set: unknown key: %s", key);
 }
 
 static void

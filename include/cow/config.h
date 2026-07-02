@@ -158,16 +158,6 @@ struct cow_dec_binding_entry {
 };
 
 /*
- * Button action enum.
- */
-enum cow_button_action {
-	COW_BUTTON_ACTION_CLOSE,
-	COW_BUTTON_ACTION_MAXIMIZE,
-	COW_BUTTON_ACTION_ICONIFY,
-	COW_BUTTON_ACTION_NONE,
-};
-
-/*
  * Squeezed titlebar (CTWM SqueezeTitle).  When enabled, the titlebar
  * is painted as a rectangle strictly narrower than the window frame;
  * the remainder of the titlebar strip is transparent and passes
@@ -217,10 +207,10 @@ bool cow_parse_squeeze_just(const char *, enum cow_squeeze_just *);
  */
 struct cow_titlebar_button_config {
 	struct cow_vector_button vector;
-	enum cow_button_action	 action;
+	char			*action;
 };
 
-#define COW_TITLEBAR_NUM_BUTTONS 3
+#define COW_TITLEBAR_NUM_BUTTONS 10
 
 /*
  * Container tab strip styling.
