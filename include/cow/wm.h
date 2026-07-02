@@ -175,6 +175,16 @@ struct cow_wm {
 	int drag_ghost_x;
 	int drag_ghost_y;
 
+	/* Geometry overlay shown during interactive move/resize. */
+	struct wl_surface	      *geometry_surface;
+	struct river_shell_surface_v1 *geometry_shell;
+	struct river_node_v1	      *geometry_node;
+	struct cow_shm_buffer	      *geometry_buffer;
+	char			       geometry_text[64];
+	int			       geometry_x;
+	int			       geometry_y;
+	bool			       geometry_dirty;
+
 	/* Bound wl_output objects (for matching to cow_outputs) */
 	struct wl_list wl_outputs; /* cow_wl_output_entry.link */
 };

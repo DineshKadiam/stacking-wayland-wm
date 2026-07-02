@@ -30,6 +30,7 @@
 #include "cow/command.h"
 #include "cow/config.h"
 #include "cow/event.h"
+#include "cow/geometry_window.h"
 #include "cow/ipc.h"
 #include "cow/keybinding.h"
 #include "cow/memory.h"
@@ -1012,6 +1013,7 @@ handle_wm_render_start(__unused void *data,
 	render_outputs();
 	render_views();
 	cow_stack_apply();
+	cow_geometry_window_render();
 	render_drag_ghost();
 
 	river_window_manager_v1_render_finish(manager);
@@ -1253,6 +1255,7 @@ void
 cow_wm_fini(void)
 {
 	cow_state_save();
+	cow_geometry_window_hide();
 	cow_status_fini();
 	cow_ipc_fini();
 	cow_event_fini();

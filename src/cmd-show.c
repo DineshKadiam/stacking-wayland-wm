@@ -286,6 +286,18 @@ do_show_config(const char *ckey, int fd, struct cmd_q *cmdq)
 		val = cJSON_CreateString(
 		    cow_config->focus_mode == COW_FOCUS_MODE_SLOPPY ? "sloppy" :
 								      "click");
+	else if (strcmp(ckey, "geometry_window") == 0) {
+		const char *mode = "none";
+		if (cow_config->geometry_window == COW_GEOMETRY_WINDOW_BOTH)
+			mode = "both";
+		else if (cow_config->geometry_window ==
+		    COW_GEOMETRY_WINDOW_MOVE)
+			mode = "move";
+		else if (cow_config->geometry_window ==
+		    COW_GEOMETRY_WINDOW_RESIZE)
+			mode = "resize";
+		val = cJSON_CreateString(mode);
+	}
 	else if (strcmp(ckey, "font") == 0)
 		val = cJSON_CreateString(
 		    cow_config->font_name ? cow_config->font_name : "");

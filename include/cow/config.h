@@ -89,6 +89,13 @@ enum cow_placement_mode {
 	COW_PLACEMENT_CENTRE,
 };
 
+enum cow_geometry_window_mode {
+	COW_GEOMETRY_WINDOW_NONE,
+	COW_GEOMETRY_WINDOW_MOVE,
+	COW_GEOMETRY_WINDOW_RESIZE,
+	COW_GEOMETRY_WINDOW_BOTH,
+};
+
 /*
  * Per-edge border colors.
  */
@@ -278,6 +285,7 @@ struct cow_config {
 	bool		      handles; /* true = draw handle marks on borders */
 	enum cow_border_style border_style;
 	enum cow_placement_mode placement;
+	enum cow_geometry_window_mode geometry_window;
 
 	/* Desktop configuration mode */
 	enum {

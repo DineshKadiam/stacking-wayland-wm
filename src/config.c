@@ -148,6 +148,7 @@ cow_config_create(void)
 	config->handles		     = true;
 	config->border_style	     = COW_BORDER_STYLE_NONE;
 	config->placement	     = COW_PLACEMENT_CASCADE;
+	config->geometry_window	     = COW_GEOMETRY_WINDOW_BOTH;
 	config->desktop_config	     = COW_DESKTOP_GLOBAL;
 	config->desk_count	     = COW_DEFAULT_DESK_COUNT;
 	config->page_cols	     = COW_CFG_DEFAULT_PAGE_COLS;

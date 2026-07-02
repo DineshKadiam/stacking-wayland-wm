@@ -20,6 +20,7 @@
 #include "cow/compat.h"
 #include "cow/config.h"
 #include "cow/desk_ops.h"
+#include "cow/geometry_window.h"
 #include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/pan_frames.h"
@@ -363,6 +364,7 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 	seat->container_drag	= false;
 	cow_wm.drag_drop_source = NULL;
 	cow_drag_ghost_destroy();
+	cow_geometry_window_hide();
 
 	/* After move/resize, update the view's output assignment based
 	 * on where the window ended up. */
@@ -458,6 +460,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 		river_seat_v1_op_end(seat->river_seat);
 		seat->op_in_progress = false;
 		seat->op.type	     = COW_POINTER_OP_NONE;
+		cow_geometry_window_hide();
 		return;
 	}
 
@@ -563,6 +566,20 @@ cow_pointer_op_process(struct cow_seat *seat)
 			}
 			cow_view_sync_vxy_from_global(view);
 			cow_view_sync_container_pos(view);
+			if (!seat->container_drag &&
+			    cow_config->geometry_window !=
+				COW_GEOMETRY_WINDOW_NONE &&
+			    cow_config->geometry_window !=
+				COW_GEOMETRY_WINDOW_RESIZE) {
+				struct cow_output *output = NULL;
+				if (seat->has_pointer_position)
+					output = cow_output_at(seat->pointer_x,
+					    seat->pointer_y);
+				if (output == NULL)
+					output = view->output;
+				cow_geometry_window_update_move(output, view->x,
+				    view->y);
+			}
 		}
 		break;
 	}
@@ -654,6 +671,20 @@ cow_pointer_op_process(struct cow_seat *seat)
 		cow_view_sync_vxy_from_global(view);
 		cow_view_sync_container_geometry(view, new_x, new_y, new_w,
 		    new_h);
+		{
+			struct cow_output *output = NULL;
+			if (seat->has_pointer_position)
+				output = cow_output_at(seat->pointer_x,
+				    seat->pointer_y);
+			if (output == NULL)
+				output = view->output;
+			if (cow_config->geometry_window !=
+				COW_GEOMETRY_WINDOW_NONE &&
+			    cow_config->geometry_window !=
+				COW_GEOMETRY_WINDOW_MOVE)
+				cow_geometry_window_update_resize(output, new_w,
+				    new_h);
+		}
 		break;
 	}
 

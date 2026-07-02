@@ -68,6 +68,7 @@ srcs = [
     'src/draw.c',
     'src/event.c',
     'src/font.c',
+    'src/geometry_window.c',
     'src/gradient.c',
     'src/ipc.c',
     'src/json_util.c',

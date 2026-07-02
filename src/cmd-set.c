@@ -78,6 +78,7 @@ static void set_desktop_config_global(void);
 static void set_desktop_config_shared(void);
 static bool desk_nr_used_except(struct cow_output *, uint8_t);
 static void set_focus_option(const char *);
+static void set_geometry_window_option(const char *, struct cmd_q *);
 static void set_placement_option(const char *, struct cmd_q *);
 static void set_font_option(const char *, struct cmd_q *);
 static void set_button_option(const char *, const char *, struct cmd_q *);
@@ -176,6 +177,14 @@ static const struct set_enum_option set_border_style_options[] = {
 static const struct set_enum_option set_focus_options[] = {
 	{ "sloppy", COW_FOCUS_MODE_SLOPPY },
 	{ NULL, COW_FOCUS_MODE_CLICK },
+};
+
+static const struct set_enum_option set_geometry_window_options[] = {
+	{ "both", COW_GEOMETRY_WINDOW_BOTH },
+	{ "move", COW_GEOMETRY_WINDOW_MOVE },
+	{ "resize", COW_GEOMETRY_WINDOW_RESIZE },
+	{ "none", COW_GEOMETRY_WINDOW_NONE },
+	{ NULL, -1 },
 };
 
 static const struct set_enum_option set_placement_options[] = {
@@ -482,6 +491,9 @@ set_option_exec(const struct cow_option_entry *opt, const char *key, const char 
 		return (CMD_RETURN_NORMAL);
 	case COW_OPTION_FOCUS:
 		set_focus_option(val);
+		return (CMD_RETURN_NORMAL);
+	case COW_OPTION_GEOMETRY_WINDOW:
+		set_geometry_window_option(val, cmdq);
 		return (CMD_RETURN_NORMAL);
 	case COW_OPTION_PLACEMENT:
 		set_placement_option(val, cmdq);
@@ -1096,6 +1108,19 @@ set_focus_option(const char *val)
 			return;
 		}
 	}
+}
+
+static void
+set_geometry_window_option(const char *val, struct cmd_q *cmdq)
+{
+	for (const struct set_enum_option *opt = set_geometry_window_options;
+	    opt->name != NULL; opt++) {
+		if (strcmp(val, opt->name) == 0) {
+			cow_config->geometry_window = opt->value;
+			return;
+		}
+	}
+	cmdq_error(cmdq, "set: geometry_window: unknown mode: %s", val);
 }
 
 static void

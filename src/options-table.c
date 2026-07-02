@@ -214,6 +214,12 @@ const struct cow_option_entry cow_options_table[] = {
 		.action = COW_OPTION_FOCUS,
 	},
 	{
+		.name = "geometry_window",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_GLOBAL,
+		.action = COW_OPTION_GEOMETRY_WINDOW,
+	},
+	{
 		.name = "placement",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_GLOBAL,

@@ -1114,6 +1114,10 @@ feel of a window.  All of these can be used with the *set* command.
 |  *focus*
 :  _sloppy_ | _click_
 :  Focus model. Default: _click_.
+|  *geometry\_window*
+:  _both_ | _move_ | _resize_ | _none_
+:  Show the geometry overlay while interactively moving or resizing windows.
+   Default: _both_.
 |  *placement*
 :  _cascade_ | _undermouse_ | _centre_ | _center_
 :  New window placement. Default: _cascade_.
