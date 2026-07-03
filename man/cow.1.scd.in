@@ -61,15 +61,15 @@ out2 (2)    out3 (3)    out4 (4)
 each side, and a small L-shaped section on each corner.  There is an additional
 top bar called the _titlebar_ which is used to display the name of the window.
 
-In addition, there are three titlebar buttons which can be defined and bound to
-actions, such as closing a window, maximizing, or iconifying a window.
+In addition, there are ten titlebar buttons which can be defined and bound to
+any *cow* command, such as close, maximize, or iconify.
 
 The diagram below shows an outline of a typical window in *cow*:
 
 ```
    NW                              N                             NE
    +++──────────────────────────────────────────────────────────+++
-   + [L]                        Titlebar                  [R][R2] +
+   + [1][3][5][7][9]          Titlebar            [2][4][6][8][0] +
    +──────────────────────────────────────────────────────────────+
    │                                                              │
    │                                                              │
@@ -91,7 +91,7 @@ A window is made up of sides -- and are referenced like that of a compass.
 All eight parts of the window border (including corners) can be styled via
 the *decor* command.
 
-The titlebar can also be styled or disabled completely via *decor*.
+The titlebar can also be styled or disabled completely via the *decor* command.
 
 # THE VIRTUAL DESKTOP
 
@@ -737,7 +737,7 @@ from the file *cow* was started with, instead of quitting.
 
 Keybindings and window decorations are updated immediately on reload.
 
-## include file
+## include _file_
 
 Read and execute commands from _file_.  Absolute paths are used as-is, *~/* is
 resolved relative to *$HOME*, and other relative paths are resolved relative to
