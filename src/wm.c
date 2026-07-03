@@ -407,6 +407,14 @@ manage_configure_views(void)
 }
 
 static int
+titlebar_button_visible(const struct cow_titlebar_config *tb, int idx)
+{
+	return tb != NULL && idx >= 0 && idx < COW_TITLEBAR_NUM_BUTTONS &&
+	    (tb->buttons[idx].vector.num_points > 0 ||
+		tb->buttons[idx].image != NULL);
+}
+
+static int
 titlebar_button_at(struct cow_view *view, int lx, int ly)
 {
 	static const int left_order[] = { 1, 3, 5, 7, 9 };
@@ -424,7 +432,7 @@ titlebar_button_at(struct cow_view *view, int lx, int ly)
 	int pos = 0;
 	for (size_t i = 0; i < sizeof left_order / sizeof left_order[0]; i++) {
 		int idx = left_order[i];
-		if (view->cfg.titlebar.buttons[idx].vector.num_points <= 0)
+		if (!titlebar_button_visible(&view->cfg.titlebar, idx))
 			continue;
 		int x = l + pos++ * tt;
 		if (lx >= x && lx < x + tt)
@@ -434,7 +442,7 @@ titlebar_button_at(struct cow_view *view, int lx, int ly)
 	pos = 0;
 	for (size_t i = 0; i < sizeof right_order / sizeof right_order[0]; i++) {
 		int idx = right_order[i];
-		if (view->cfg.titlebar.buttons[idx].vector.num_points <= 0)
+		if (!titlebar_button_visible(&view->cfg.titlebar, idx))
 			continue;
 		int x = r - (++pos * tt);
 		if (lx >= x && lx < x + tt)

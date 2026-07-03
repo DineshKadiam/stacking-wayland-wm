@@ -27,6 +27,7 @@
 #include "cow/decoration.h"
 #include "cow/draw.h"
 #include "cow/font.h"
+#include "cow/image.h"
 #include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/vector.h"
@@ -45,7 +46,8 @@ static bool
 titlebar_button_visible(const struct cow_titlebar_config *tb, int idx)
 {
 	return tb != NULL && idx >= 0 && idx < COW_TITLEBAR_NUM_BUTTONS &&
-	    tb->buttons[idx].vector.num_points > 0;
+	    (tb->buttons[idx].vector.num_points > 0 ||
+		tb->buttons[idx].image != NULL);
 }
 
 static int
@@ -354,9 +356,14 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 	if (style_colour == NULL && tb_cfg != NULL)
 		tb_gradient = active ? &tb_cfg->active_gradient :
 				       &tb_cfg->inactive_gradient;
+	const char *tb_image = NULL;
+	if (style_colour == NULL && tb_cfg != NULL)
+		tb_image = active ? tb_cfg->active_image :
+				    tb_cfg->inactive_image;
 	if (tb_gradient != NULL && tb_gradient->mode != COW_GRADIENT_NONE)
 		cow_draw_gradient_rect(&strip_p, tb_x, tb_y, tb_w, tb_h,
 		    tb_gradient);
+	cow_image_render_rect(tb_image, &strip_p, tb_x, tb_y, tb_w, tb_h);
 
 	static const int left_order[] = { 1, 3, 5, 7, 9 };
 	static const int right_order[] = { 0, 2, 4, 6, 8 };
@@ -392,8 +399,9 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 
 		bool btn_sunken = (pressed_button == btn_idx);
 
-		if (tb_gradient == NULL ||
-		    tb_gradient->mode == COW_GRADIENT_NONE) {
+		if ((tb_gradient == NULL ||
+		    tb_gradient->mode == COW_GRADIENT_NONE) &&
+		    tb_image == NULL) {
 			for (int py = by; py < by + btn_s; py++)
 				for (int px = bx; px < bx + btn_s; px++)
 					pixels[py * stride_px + px] = px_base;
@@ -402,6 +410,12 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 		/* FVWM relief on button: sunken if pressed */
 		draw_fvwm_relief(pixels, stride_px, bx, by, btn_s, btn_s, px_lt,
 		    px_dk, btn_sunken);
+
+		if (tb_cfg->buttons[btn_idx].image != NULL) {
+			cow_image_render_rect(tb_cfg->buttons[btn_idx].image,
+			    &strip_p, bx + 2, by + 2, btn_s - 4, btn_s - 4);
+			continue;
+		}
 
 		/* Draw vector into temp buffer then blit */
 		uint32_t btn_buf[btn_s * btn_s];
@@ -436,8 +450,9 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 
 		bool btn_sunken = (pressed_button == btn_idx);
 
-		if (tb_gradient == NULL ||
-		    tb_gradient->mode == COW_GRADIENT_NONE) {
+		if ((tb_gradient == NULL ||
+		    tb_gradient->mode == COW_GRADIENT_NONE) &&
+		    tb_image == NULL) {
 			for (int py = by; py < by + btn_s; py++)
 				for (int px = bx; px < bx + btn_s; px++)
 					pixels[py * stride_px + px] = px_base;
@@ -446,6 +461,12 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 		/* FVWM relief on button: sunken if pressed */
 		draw_fvwm_relief(pixels, stride_px, bx, by, btn_s, btn_s, px_lt,
 		    px_dk, btn_sunken);
+
+		if (tb_cfg->buttons[btn_idx].image != NULL) {
+			cow_image_render_rect(tb_cfg->buttons[btn_idx].image,
+			    &strip_p, bx + 2, by + 2, btn_s - 4, btn_s - 4);
+			continue;
+		}
 
 		uint32_t btn_buf[btn_s * btn_s];
 		for (int p = 0; p < btn_s * btn_s; p++)
@@ -472,8 +493,9 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 
 	/* Render title text with cairo/pango */
 	if (title != NULL && title_w > 4 && font != NULL) {
-		const float *label_bg = (tb_gradient != NULL &&
-		    tb_gradient->mode != COW_GRADIENT_NONE) ?
+		const float *label_bg = ((tb_gradient != NULL &&
+		    tb_gradient->mode != COW_GRADIENT_NONE) ||
+		    tb_image != NULL) ?
 		    transparent :
 		    base;
 		struct cow_pixbuf dst = {
@@ -623,6 +645,10 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 				tab_gradient = is_active ?
 				    &cc->tab_active_gradient :
 				    &cc->tab_inactive_gradient;
+			const char *tab_image = NULL;
+			if (active && cc != NULL)
+				tab_image = is_active ? cc->tab_active_image :
+				    cc->tab_inactive_image;
 			if (tab_gradient != NULL &&
 			    tab_gradient->mode != COW_GRADIENT_NONE) {
 				struct cow_pixbuf dst = {
@@ -634,6 +660,8 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 				cow_draw_gradient_rect(&dst, tx, tb_y, tw, tb_h,
 				    tab_gradient);
 			}
+			cow_image_render_rect(tab_image, &strip_p, tx, tb_y, tw,
+			    tb_h);
 
 			/* Tab bevel — active is always raised; inactive is
 			 * sunken only when container.tab.sunken is true
@@ -646,8 +674,9 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 			/* Tab label text */
 			const char *lbl = tab_titles[ti];
 			if (lbl != NULL && tw > 6 && font != NULL) {
-				const float *label_bg = (tab_gradient != NULL &&
-				    tab_gradient->mode != COW_GRADIENT_NONE) ?
+				const float *label_bg = ((tab_gradient != NULL &&
+				    tab_gradient->mode != COW_GRADIENT_NONE) ||
+				    tab_image != NULL) ?
 				    transparent :
 				    tab_bg_f;
 				struct cow_pixbuf dst = {

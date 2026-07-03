@@ -20,7 +20,9 @@
 
 #include "cow/cmd.h"
 #include "cow/compat.h"
+#include "cow/ipc.h"
 #include "cow/memory.h"
+#include "cow/view.h"
 
 struct decor_entry {
 	char	       *key;
@@ -36,6 +38,7 @@ struct decor_profile {
 
 static struct wl_list decor_profiles;
 static bool	      decor_profiles_init;
+static char	     *runtime_active_profile;
 
 static enum cmd_retval cmd_decor_exec(struct cmd *, struct cmd_q *);
 static enum cmd_retval decor_define(const char *, const char *, const char *,
@@ -98,6 +101,9 @@ decor_define(const char *name, const char *key, const char *value,
 		cmdq_error(cmdq, "decor: unknown key: %s", key);
 		return (CMD_RETURN_ERROR);
 	}
+	char *stored = cmd_set_normalize_decor_value(key, value, cmdq);
+	if (stored == NULL)
+		return (CMD_RETURN_ERROR);
 
 	struct decor_profile *profile = decor_profile_get(name);
 
@@ -106,14 +112,14 @@ decor_define(const char *name, const char *key, const char *value,
 	{
 		if (strcmp(entry->key, key) == 0) {
 			xfree(entry->value);
-			entry->value = xstrdup(value);
+			entry->value = stored;
 			return (CMD_RETURN_NORMAL);
 		}
 	}
 
 	entry = xcalloc(1, sizeof(*entry));
 	entry->key = xstrdup(key);
-	entry->value = xstrdup(value);
+	entry->value = stored;
 	wl_list_insert(profile->entries.prev, &entry->link);
 	return (CMD_RETURN_NORMAL);
 }
@@ -127,6 +133,8 @@ decor_apply(const char *name, struct cmd_q *cmdq)
 		return (CMD_RETURN_ERROR);
 	}
 
+	cmd_set_reset_decor_target(cmdq);
+
 	struct decor_entry *entry;
 	wl_list_for_each(entry, &profile->entries, link)
 	{
@@ -136,6 +144,23 @@ decor_apply(const char *name, struct cmd_q *cmdq)
 			return ret;
 	}
 	return (CMD_RETURN_NORMAL);
+}
+
+void
+cow_decor_apply_runtime_active(struct cow_view *view)
+{
+	if (runtime_active_profile == NULL || view == NULL || view->closed)
+		return;
+	if (decor_find(runtime_active_profile) == NULL)
+		return;
+
+	struct cmd_q *cmdq = cmdq_new();
+	cmdq->client_fd	   = -1;
+	cmdq->target.window = view;
+	cmdq->target.desk   = view->desk;
+	cmdq->target.output = view->output;
+	(void)decor_apply(runtime_active_profile, cmdq);
+	cmdq_free(cmdq);
 }
 
 static enum cmd_retval
@@ -164,5 +189,12 @@ cmd_decor_exec(struct cmd *self, struct cmd_q *cmdq)
 		cmdq_error(cmdq, "usage: decor -a name [-t target]");
 		return (CMD_RETURN_ERROR);
 	}
-	return (decor_apply(app, cmdq));
+	enum cmd_retval ret = decor_apply(app, cmdq);
+	if (ret == CMD_RETURN_NORMAL && cmdq != NULL &&
+	    !cow_ipc.startup_mode && !cmdq->in_rule &&
+	    cmdq->target.window == NULL) {
+		xfree(runtime_active_profile);
+		runtime_active_profile = xstrdup(app);
+	}
+	return (ret);
 }

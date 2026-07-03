@@ -78,6 +78,62 @@ border_colour_set_uniform(struct cow_border_colour *bc, uint32_t colour)
 	bc->has_nw = bc->has_ne = bc->has_sw = bc->has_se = false;
 }
 
+static void
+border_images_free(struct cow_border_colour *bc)
+{
+	xfree(bc->image);
+	xfree(bc->image_n);
+	xfree(bc->image_s);
+	xfree(bc->image_e);
+	xfree(bc->image_w);
+	xfree(bc->image_nw);
+	xfree(bc->image_ne);
+	xfree(bc->image_sw);
+	xfree(bc->image_se);
+}
+
+static void
+config_decor_free(struct cow_config *config)
+{
+	xfree(config->font_name);
+	xfree(config->titlebar.font_name);
+	xfree(config->titlebar.active_image);
+	xfree(config->titlebar.inactive_image);
+	xfree(config->container.tab_active_image);
+	xfree(config->container.tab_inactive_image);
+	border_images_free(&config->border_active);
+	border_images_free(&config->border_inactive);
+	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++) {
+		xfree(config->titlebar.buttons[i].action);
+		xfree(config->titlebar.buttons[i].image);
+	}
+}
+
+static void
+border_images_detach(struct cow_border_colour *bc)
+{
+	bc->image = bc->image_n = bc->image_s = bc->image_e = NULL;
+	bc->image_w = bc->image_nw = bc->image_ne = NULL;
+	bc->image_sw = bc->image_se = NULL;
+}
+
+static void
+config_decor_detach(struct cow_config *config)
+{
+	config->font_name = NULL;
+	config->titlebar.font_name = NULL;
+	config->titlebar.active_image = NULL;
+	config->titlebar.inactive_image = NULL;
+	config->container.tab_active_image = NULL;
+	config->container.tab_inactive_image = NULL;
+	border_images_detach(&config->border_active);
+	border_images_detach(&config->border_inactive);
+	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++) {
+		config->titlebar.buttons[i].action = NULL;
+		config->titlebar.buttons[i].image = NULL;
+	}
+}
+
 /*
  * Parse a vector button definition string.
  * Format: "N x1xy1@c1 x2xy2@c2 ..." where N is num_points,
@@ -93,6 +149,11 @@ cow_parse_vector_button_string(struct cow_vector_button *vb, const char *str)
 	/* Skip leading whitespace */
 	while (*p == ' ')
 		p++;
+
+	if (strcmp(p, "none") == 0) {
+		vb->num_points = 0;
+		return true;
+	}
 
 	/* Parse point count */
 	n = (int)strtol(p, (char **)&p, 10);
@@ -242,15 +303,38 @@ cow_config_create(void)
 }
 
 void
+cow_config_reset_decor(struct cow_config *config)
+{
+	struct cow_config *defaults;
+
+	if (config == NULL)
+		return;
+
+	defaults = cow_config_create();
+	config_decor_free(config);
+
+	config->border = defaults->border;
+	config->corner_length = defaults->corner_length;
+	config->handles = defaults->handles;
+	config->border_style = defaults->border_style;
+	config->border_active = defaults->border_active;
+	config->border_inactive = defaults->border_inactive;
+	config->font_name = defaults->font_name;
+	config->icon_size = defaults->icon_size;
+	config->titlebar = defaults->titlebar;
+	config->container = defaults->container;
+
+	config_decor_detach(defaults);
+	cow_config_destroy(defaults);
+}
+
+void
 cow_config_destroy(struct cow_config *config)
 {
 	if (config == NULL)
 		return;
 
-	xfree(config->font_name);
-	xfree(config->titlebar.font_name);
-	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++)
-		xfree(config->titlebar.buttons[i].action);
+	config_decor_free(config);
 
 	struct cow_binding_entry *kb, *kb_tmp;
 	wl_list_for_each_safe(kb, kb_tmp, &config->keyboard_bindings, link)

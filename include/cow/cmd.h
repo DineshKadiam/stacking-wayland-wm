@@ -229,6 +229,10 @@ extern struct cmd_entry cmd_container_entry;
 extern struct cmd_entry cmd_pick_window_entry;
 
 bool cmd_set_is_decor_key(const char *);
+char *cmd_set_normalize_decor_value(const char *, const char *,
+    struct cmd_q *);
+void cow_decor_apply_runtime_active(struct cow_view *);
+void cmd_set_reset_decor_target(struct cmd_q *);
 enum cmd_retval cmd_set_apply_decor(const char *, const char *,
     struct cmd_q *);
 

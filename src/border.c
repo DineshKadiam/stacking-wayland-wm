@@ -22,6 +22,7 @@
 #include "cow/colour.h"
 #include "cow/config.h"
 #include "cow/draw.h"
+#include "cow/image.h"
 
 /* Sentinel: transparent / skip drawing.  Aliased onto the project-wide
  * cow_pixbuf primitive so existing call sites need not change. */
@@ -317,6 +318,37 @@ fill_border_gradients(uint32_t *pixels, int stride, int fw_s, int fh_s,
 }
 
 static void
+paint_border_images(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
+    int cls, const struct cow_border_colour *colors)
+{
+	struct cow_pixbuf p = border_pixbuf(pixels, stride, fw_s, fh_s);
+	const char *n = colors->image_n != NULL ? colors->image_n :
+	    colors->image;
+	const char *s = colors->image_s != NULL ? colors->image_s :
+	    colors->image;
+	const char *w = colors->image_w != NULL ? colors->image_w :
+	    colors->image;
+	const char *e = colors->image_e != NULL ? colors->image_e :
+	    colors->image;
+
+	cow_image_render_rect(n, &p, 0, 0, fw_s, bws);
+	cow_image_render_rect(s, &p, 0, fh_s - bws, fw_s, bws);
+	cow_image_render_rect(w, &p, 0, 0, bws, fh_s);
+	cow_image_render_rect(e, &p, fw_s - bws, 0, bws, fh_s);
+
+	if (cls <= 0)
+		cls = bws;
+	cow_image_render_rect(colors->image_nw != NULL ? colors->image_nw :
+	    colors->image, &p, 0, 0, cls, cls);
+	cow_image_render_rect(colors->image_ne != NULL ? colors->image_ne :
+	    colors->image, &p, fw_s - cls, 0, cls, cls);
+	cow_image_render_rect(colors->image_sw != NULL ? colors->image_sw :
+	    colors->image, &p, 0, fh_s - cls, cls, cls);
+	cow_image_render_rect(colors->image_se != NULL ? colors->image_se :
+	    colors->image, &p, fw_s - cls, fh_s - cls, cls, cls);
+}
+
+static void
 draw_relief_rings(uint32_t *pixels, int stride, int fw_s, int fh_s,
     const int w[7], const struct edge_colours *ec)
 {
@@ -586,8 +618,11 @@ cow_border_style_render(uint32_t *pixels, int stride_px, int frame_w,
 	    corners_enabled ? cls : 0, colors);
 
 	/* NONE = flat fill only, no 3D relief */
-	if (style == COW_BORDER_STYLE_NONE)
+	if (style == COW_BORDER_STYLE_NONE) {
+		paint_border_images(pixels, stride_px, frame_w, frame_h, bws,
+		    corners_enabled ? cls : 0, colors);
 		return;
+	}
 
 	/* Compute layer widths for the selected style */
 	int w[7];
@@ -605,4 +640,6 @@ cow_border_style_render(uint32_t *pixels, int stride_px, int frame_w,
 		draw_handle_marks(pixels, stride_px, frame_w, frame_h, bws, cls,
 		    w, style, &ec, colors);
 	}
+	paint_border_images(pixels, stride_px, frame_w, frame_h, bws,
+	    corners_enabled ? cls : 0, colors);
 }

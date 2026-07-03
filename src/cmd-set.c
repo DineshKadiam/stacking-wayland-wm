@@ -20,6 +20,7 @@
  */
 
 #include <limits.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,6 +33,7 @@
 #include "cow/desk_ops.h"
 #include "cow/font.h"
 #include "cow/gradient.h"
+#include "cow/image.h"
 #include "cow/ipc.h"
 #include "cow/memory.h"
 #include "cow/options.h"
@@ -69,6 +71,8 @@ static struct cow_titlebar_config *target_titlebar(struct cmd_q *,
 static struct cow_container_config *target_container(struct cmd_q *,
     struct cow_view_cfg **);
 static void set_colour_option(const char *, const char *, struct cmd_q *);
+static enum cmd_retval set_image_option(const char *, const char *,
+    struct cmd_q *);
 static bool set_gradient_option(const char *, const char *, struct cmd_q *);
 static bool set_output_colour(const char *, const char *, struct cmd_q *);
 static bool set_border_colour(const char *, const char *, struct cmd_q *);
@@ -84,6 +88,8 @@ static void set_geometry_window_option(const char *, struct cmd_q *);
 static void set_placement_option(const char *, struct cmd_q *);
 static void set_font_option(const char *, struct cmd_q *);
 static void set_button_option(const char *, const char *, struct cmd_q *);
+static bool set_key_is_image(const char *);
+static char *set_image_resolve_path(const char *, struct cmd_q *);
 static void refresh_visuals(void);
 static int  refreshed_title_thickness(struct cow_view *);
 static void refresh_view_visuals(struct cow_view *);
@@ -108,7 +114,10 @@ struct set_border_edge {
 	enum cow_view_cfg_option inactive_id;
 	enum cow_view_cfg_option active_gradient_id;
 	enum cow_view_cfg_option inactive_gradient_id;
+	enum cow_view_cfg_option active_image_id;
+	enum cow_view_cfg_option inactive_image_id;
 	size_t	    colour_offset;
+	size_t	    image_offset;
 	size_t	    has_offset;
 };
 
@@ -210,49 +219,73 @@ static const struct set_border_edge set_border_edges[] = {
 	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_N,
 	    .active_gradient_id = COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_N,
 	    .inactive_gradient_id = COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_N,
+	    .active_image_id = COW_VIEW_CFG_BORDER_ACTIVE_IMAGE_N,
+	    .inactive_image_id = COW_VIEW_CFG_BORDER_INACTIVE_IMAGE_N,
 	    .colour_offset = offsetof(struct cow_border_colour, n),
+	    .image_offset = offsetof(struct cow_border_colour, image_n),
 	    .has_offset = COW_OPTION_NO_OFFSET },
 	{ .name = "s", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_S,
 	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_S,
 	    .active_gradient_id = COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_S,
 	    .inactive_gradient_id = COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_S,
+	    .active_image_id = COW_VIEW_CFG_BORDER_ACTIVE_IMAGE_S,
+	    .inactive_image_id = COW_VIEW_CFG_BORDER_INACTIVE_IMAGE_S,
 	    .colour_offset = offsetof(struct cow_border_colour, s),
+	    .image_offset = offsetof(struct cow_border_colour, image_s),
 	    .has_offset = COW_OPTION_NO_OFFSET },
 	{ .name = "e", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_E,
 	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_E,
 	    .active_gradient_id = COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_E,
 	    .inactive_gradient_id = COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_E,
+	    .active_image_id = COW_VIEW_CFG_BORDER_ACTIVE_IMAGE_E,
+	    .inactive_image_id = COW_VIEW_CFG_BORDER_INACTIVE_IMAGE_E,
 	    .colour_offset = offsetof(struct cow_border_colour, e),
+	    .image_offset = offsetof(struct cow_border_colour, image_e),
 	    .has_offset = COW_OPTION_NO_OFFSET },
 	{ .name = "w", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_W,
 	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_W,
 	    .active_gradient_id = COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_W,
 	    .inactive_gradient_id = COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_W,
+	    .active_image_id = COW_VIEW_CFG_BORDER_ACTIVE_IMAGE_W,
+	    .inactive_image_id = COW_VIEW_CFG_BORDER_INACTIVE_IMAGE_W,
 	    .colour_offset = offsetof(struct cow_border_colour, w),
+	    .image_offset = offsetof(struct cow_border_colour, image_w),
 	    .has_offset = COW_OPTION_NO_OFFSET },
 	{ .name = "nw", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_NW,
 	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_NW,
 	    .active_gradient_id = COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_NW,
 	    .inactive_gradient_id = COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_NW,
+	    .active_image_id = COW_VIEW_CFG_BORDER_ACTIVE_IMAGE_NW,
+	    .inactive_image_id = COW_VIEW_CFG_BORDER_INACTIVE_IMAGE_NW,
 	    .colour_offset = offsetof(struct cow_border_colour, nw),
+	    .image_offset = offsetof(struct cow_border_colour, image_nw),
 	    .has_offset = offsetof(struct cow_border_colour, has_nw) },
 	{ .name = "ne", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_NE,
 	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_NE,
 	    .active_gradient_id = COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_NE,
 	    .inactive_gradient_id = COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_NE,
+	    .active_image_id = COW_VIEW_CFG_BORDER_ACTIVE_IMAGE_NE,
+	    .inactive_image_id = COW_VIEW_CFG_BORDER_INACTIVE_IMAGE_NE,
 	    .colour_offset = offsetof(struct cow_border_colour, ne),
+	    .image_offset = offsetof(struct cow_border_colour, image_ne),
 	    .has_offset = offsetof(struct cow_border_colour, has_ne) },
 	{ .name = "sw", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_SW,
 	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_SW,
 	    .active_gradient_id = COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_SW,
 	    .inactive_gradient_id = COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_SW,
+	    .active_image_id = COW_VIEW_CFG_BORDER_ACTIVE_IMAGE_SW,
+	    .inactive_image_id = COW_VIEW_CFG_BORDER_INACTIVE_IMAGE_SW,
 	    .colour_offset = offsetof(struct cow_border_colour, sw),
+	    .image_offset = offsetof(struct cow_border_colour, image_sw),
 	    .has_offset = offsetof(struct cow_border_colour, has_sw) },
 	{ .name = "se", .active_id = COW_VIEW_CFG_BORDER_ACTIVE_SE,
 	    .inactive_id = COW_VIEW_CFG_BORDER_INACTIVE_SE,
 	    .active_gradient_id = COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT_SE,
 	    .inactive_gradient_id = COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT_SE,
+	    .active_image_id = COW_VIEW_CFG_BORDER_ACTIVE_IMAGE_SE,
+	    .inactive_image_id = COW_VIEW_CFG_BORDER_INACTIVE_IMAGE_SE,
 	    .colour_offset = offsetof(struct cow_border_colour, se),
+	    .image_offset = offsetof(struct cow_border_colour, image_se),
 	    .has_offset = offsetof(struct cow_border_colour, has_se) },
 	{ .name = NULL },
 };
@@ -346,16 +379,54 @@ cmd_set_is_decor_key(const char *key)
 	return (opt != NULL && set_option_is_decor(opt, key));
 }
 
+char *
+cmd_set_normalize_decor_value(const char *key, const char *value,
+    struct cmd_q *cmdq)
+{
+	if (!set_key_is_image(key))
+		return xstrdup(value);
+	return set_image_resolve_path(value, cmdq);
+}
+
+void
+cmd_set_reset_decor_target(struct cmd_q *cmdq)
+{
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+
+	if (cfg != NULL) {
+		cow_view_cfg_apply_global(cfg);
+		refresh_visuals();
+		return;
+	}
+
+	cow_config_reset_decor(cow_config);
+	if (!cow_ipc.startup_mode) {
+		struct cow_view *view;
+		wl_list_for_each(view, &cow_wm.views, wm_link)
+		{
+			if (!view->closed)
+				cow_view_cfg_apply_global(&view->cfg);
+		}
+		refresh_visuals();
+	}
+}
+
 static enum cow_view_cfg_option
 button_vector_option(int idx)
 {
-	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_VECTOR + idx * 2;
+	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_VECTOR + idx * 3;
 }
 
 static enum cow_view_cfg_option
 button_action_option(int idx)
 {
-	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTION + idx * 2;
+	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTION + idx * 3;
+}
+
+static enum cow_view_cfg_option
+button_image_option(int idx)
+{
+	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_IMAGE + idx * 3;
 }
 
 static bool
@@ -406,18 +477,31 @@ set_option_is_decor(const struct cow_option_entry *opt, const char *key)
 		return (true);
 	if (strcmp(key, "titlebar.active_colour") == 0 ||
 	    strcmp(key, "titlebar.inactive_colour") == 0 ||
+	    strcmp(key, "titlebar.active_gradient") == 0 ||
+	    strcmp(key, "titlebar.inactive_gradient") == 0 ||
 	    strcmp(key, "titlebar.fg_active") == 0 ||
-	    strcmp(key, "titlebar.fg_inactive") == 0)
+	    strcmp(key, "titlebar.fg_inactive") == 0 ||
+	    strcmp(key, "titlebar.active_image") == 0 ||
+	    strcmp(key, "titlebar.inactive_image") == 0)
 		return (true);
 	if (strcmp(key, "border.active") == 0 ||
-	    strcmp(key, "border.inactive") == 0)
+	    strcmp(key, "border.inactive") == 0 ||
+	    strcmp(key, "border.active.gradient") == 0 ||
+	    strcmp(key, "border.inactive.gradient") == 0 ||
+	    strcmp(key, "border.active.image") == 0 ||
+	    strcmp(key, "border.inactive.image") == 0)
 		return (true);
 	if (strncmp(key, "border.active.", 14) == 0 ||
 	    strncmp(key, "border.inactive.", 16) == 0) {
 		const char *edge = key + (key[7] == 'a' ? 14 : 16);
 		for (const struct set_border_edge *e = set_border_edges;
 		    e->name != NULL; e++) {
-			if (strcmp(edge, e->name) == 0)
+			size_t len = strlen(e->name);
+			if (strcmp(edge, e->name) == 0 ||
+			    (strncmp(edge, e->name, len) == 0 &&
+				strcmp(edge + len, ".gradient") == 0) ||
+			    (strncmp(edge, e->name, len) == 0 &&
+				strcmp(edge + len, ".image") == 0))
 				return (true);
 		}
 		return (false);
@@ -427,9 +511,15 @@ set_option_is_decor(const struct cow_option_entry *opt, const char *key)
 		const char *field;
 		return parse_button_key(key, &idx, &field) &&
 		    (strcmp(field, "vector") == 0 ||
-			strcmp(field, "action") == 0);
+			strcmp(field, "action") == 0 ||
+			strcmp(field, "image") == 0);
 	}
 	if (strncmp(key, "container.tab.", 14) == 0) {
+		if (strcmp(key, "container.tab.active_image") == 0 ||
+		    strcmp(key, "container.tab.inactive_image") == 0 ||
+		    strcmp(key, "container.tab.active_gradient") == 0 ||
+		    strcmp(key, "container.tab.inactive_gradient") == 0)
+			return (true);
 		for (const struct set_container_colour_option *c =
 		    set_container_colour_options; c->name != NULL; c++) {
 			if (strcmp(key, c->name) == 0)
@@ -519,6 +609,9 @@ static enum cmd_retval
 set_option_exec(const struct cow_option_entry *opt, const char *key, const char *val,
     struct args *args, struct cmd_q *cmdq)
 {
+	if (set_key_is_image(key))
+		return (set_image_option(key, val, cmdq));
+
 	switch (opt->action) {
 	case COW_OPTION_SCALAR_INT:
 		return (set_scalar_int(opt, key, val, cmdq));
@@ -527,6 +620,8 @@ set_option_exec(const struct cow_option_entry *opt, const char *key, const char 
 	case COW_OPTION_COLOUR:
 		set_colour_option(key, val, cmdq);
 		return (CMD_RETURN_NORMAL);
+	case COW_OPTION_IMAGE:
+		return (set_image_option(key, val, cmdq));
 	case COW_OPTION_BORDER_STYLE:
 		set_border_style_option(val, cmdq);
 		return (CMD_RETURN_NORMAL);
@@ -787,6 +882,168 @@ has_suffix(const char *s, const char *suffix)
 
 	return (slen >= suffix_len &&
 	    strcmp(s + slen - suffix_len, suffix) == 0);
+}
+
+static bool
+set_key_is_image(const char *key)
+{
+	return (has_suffix(key, "_image") || has_suffix(key, ".image"));
+}
+
+static char *
+set_image_resolve_path(const char *val, struct cmd_q *cmdq)
+{
+	char *path = NULL;
+
+	if (strcmp(val, "none") == 0)
+		return xstrdup(val);
+	if (val[0] == '/') {
+		path = xstrdup(val);
+	} else if (val[0] == '~' && val[1] == '/') {
+		const char *home = getenv("HOME");
+		if (home == NULL) {
+			cmdq_error(cmdq, "set: image: HOME is not set");
+			return NULL;
+		}
+		xasprintf(&path, "%s/%s", home, val + 2);
+	} else if (cmdq != NULL && cmdq->cmd != NULL &&
+	    cmdq->cmd->file != NULL) {
+		const char *file = cmdq->cmd->file;
+		const char *slash = strrchr(file, '/');
+		if (slash != NULL) {
+			size_t len = slash - file;
+			path = xmalloc(len + strlen(val) + 2);
+			memcpy(path, file, len);
+			path[len] = '/';
+			strcpy(path + len + 1, val);
+		} else
+			path = xstrdup(val);
+	} else
+		path = xstrdup(val);
+
+	char *cause = NULL;
+	if (!cow_image_validate(path, &cause)) {
+		cmdq_error(cmdq, "set: image: %s", cause);
+		xfree(cause);
+		xfree(path);
+		return NULL;
+	}
+	return path;
+}
+
+static enum cmd_retval
+set_image_value(char **slot, enum cow_view_cfg_option id, const char *val,
+    struct cow_view_cfg *cfg, struct cmd_q *cmdq)
+{
+	char *path = set_image_resolve_path(val, cmdq);
+
+	if (path == NULL)
+		return (CMD_RETURN_ERROR);
+	xfree(*slot);
+	if (strcmp(path, "none") == 0) {
+		xfree(path);
+		*slot = NULL;
+	} else
+		*slot = path;
+	finish_visual_update(id, cfg);
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+set_titlebar_image(const char *key, const char *val, struct cmd_q *cmdq)
+{
+	struct cow_view_cfg	    *cfg;
+	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
+
+	if (strcmp(key, "titlebar.active_image") == 0)
+		return (set_image_value(&tb->active_image,
+		    COW_VIEW_CFG_TITLEBAR_ACTIVE_IMAGE, val, cfg, cmdq));
+	if (strcmp(key, "titlebar.inactive_image") == 0)
+		return (set_image_value(&tb->inactive_image,
+		    COW_VIEW_CFG_TITLEBAR_INACTIVE_IMAGE, val, cfg, cmdq));
+	return (CMD_RETURN_ERROR);
+}
+
+static enum cmd_retval
+set_container_tab_image(const char *key, const char *val, struct cmd_q *cmdq)
+{
+	struct cow_view_cfg	     *cfg;
+	struct cow_container_config *cc = target_container(cmdq, &cfg);
+
+	if (strcmp(key, "container.tab.active_image") == 0)
+		return (set_image_value(&cc->tab_active_image,
+		    COW_VIEW_CFG_CONTAINER_TAB_ACTIVE_IMAGE, val, cfg, cmdq));
+	if (strcmp(key, "container.tab.inactive_image") == 0)
+		return (set_image_value(&cc->tab_inactive_image,
+		    COW_VIEW_CFG_CONTAINER_TAB_INACTIVE_IMAGE, val, cfg, cmdq));
+	return (CMD_RETURN_ERROR);
+}
+
+static enum cmd_retval
+set_button_image(const char *key, const char *val, struct cmd_q *cmdq)
+{
+	int			  idx;
+	const char		 *field;
+	struct cow_view_cfg	 *cfg;
+	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
+
+	if (!parse_button_key(key, &idx, &field) || strcmp(field, "image") != 0)
+		return (CMD_RETURN_ERROR);
+	return (set_image_value(&tb->buttons[idx].image,
+	    button_image_option(idx), val, cfg, cmdq));
+}
+
+static enum cmd_retval
+set_border_image(const char *key, const char *val, struct cmd_q *cmdq)
+{
+	bool is_active = (strcmp(key, "border.active.image") == 0 ||
+	    strncmp(key, "border.active.", 14) == 0);
+	bool is_inactive = (strcmp(key, "border.inactive.image") == 0 ||
+	    strncmp(key, "border.inactive.", 16) == 0);
+
+	if (!is_active && !is_inactive)
+		return (CMD_RETURN_ERROR);
+
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+	struct cow_border_colour *bc = cfg != NULL ?
+	    (is_active ? &cfg->border_active : &cfg->border_inactive) :
+	    (is_active ? &cow_config->border_active :
+			 &cow_config->border_inactive);
+
+	if (strcmp(key, "border.active.image") == 0 ||
+	    strcmp(key, "border.inactive.image") == 0)
+		return (set_image_value(&bc->image, is_active ?
+		    COW_VIEW_CFG_BORDER_ACTIVE_IMAGE :
+		    COW_VIEW_CFG_BORDER_INACTIVE_IMAGE, val, cfg, cmdq));
+
+	const char *edge = key + (is_active ? 14 : 16);
+	for (const struct set_border_edge *opt = set_border_edges;
+	    opt->name != NULL; opt++) {
+		size_t len = strlen(opt->name);
+		if (strncmp(edge, opt->name, len) != 0 ||
+		    strcmp(edge + len, ".image") != 0)
+			continue;
+		char **slot = (char **)((char *)bc + opt->image_offset);
+		return (set_image_value(slot, is_active ?
+		    opt->active_image_id : opt->inactive_image_id, val, cfg,
+		    cmdq));
+	}
+	return (CMD_RETURN_ERROR);
+}
+
+static enum cmd_retval
+set_image_option(const char *key, const char *val, struct cmd_q *cmdq)
+{
+	if (strncmp(key, "titlebar.button.", 16) == 0)
+		return (set_button_image(key, val, cmdq));
+	if (strncmp(key, "border.", 7) == 0)
+		return (set_border_image(key, val, cmdq));
+	if (strncmp(key, "container.tab.", 14) == 0)
+		return (set_container_tab_image(key, val, cmdq));
+	if (strncmp(key, "titlebar.", 9) == 0)
+		return (set_titlebar_image(key, val, cmdq));
+	cmdq_error(cmdq, "set: unknown key: %s", key);
+	return (CMD_RETURN_ERROR);
 }
 
 static bool

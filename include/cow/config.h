@@ -105,6 +105,8 @@ struct cow_border_colour {
 	struct cow_gradient gradient;
 	struct cow_gradient gradient_n, gradient_s, gradient_e, gradient_w;
 	struct cow_gradient gradient_nw, gradient_ne, gradient_sw, gradient_se;
+	char *image, *image_n, *image_s, *image_e, *image_w;
+	char *image_nw, *image_ne, *image_sw, *image_se;
 	bool  has_corners;
 	bool  has_nw, has_ne, has_sw, has_se;
 };
@@ -208,6 +210,7 @@ bool cow_parse_squeeze_just(const char *, enum cow_squeeze_just *);
 struct cow_titlebar_button_config {
 	struct cow_vector_button vector;
 	char			*action;
+	char			*image;
 };
 
 #define COW_TITLEBAR_NUM_BUTTONS 10
@@ -225,6 +228,8 @@ struct cow_container_config {
 	float tab_fg_inactive[4]; /* foreground (text) of inactive tabs   */
 	struct cow_gradient tab_active_gradient;
 	struct cow_gradient tab_inactive_gradient;
+	char *tab_active_image;
+	char *tab_inactive_image;
 
 	/* Set to true when the user explicitly configures the value.
 	 * When false, titlebar.c falls back to the titlebar's base/dk/fg. */
@@ -250,6 +255,8 @@ struct cow_titlebar_config {
 	float				  fg_inactive[4];
 	struct cow_gradient		  active_gradient;
 	struct cow_gradient		  inactive_gradient;
+	char				 *active_image;
+	char				 *inactive_image;
 	char				 *font_name;
 	/* Explicit height override; 0 means derive from font. */
 	int height;
@@ -388,6 +395,7 @@ bool cow_parse_vector_button_string(struct cow_vector_button *, const char *);
  * Allocate and initialize a config with defaults.
  */
 struct cow_config *cow_config_create(void);
+void cow_config_reset_decor(struct cow_config *);
 
 /*
  * Free a config and all its lists.

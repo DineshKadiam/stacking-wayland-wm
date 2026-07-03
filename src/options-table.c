@@ -171,6 +171,18 @@ const struct cow_option_entry cow_options_table[] = {
 		.action = COW_OPTION_COLOUR,
 	},
 	{
+		.name = "titlebar.active_image",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_MIXED,
+		.action = COW_OPTION_IMAGE,
+	},
+	{
+		.name = "titlebar.inactive_image",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_MIXED,
+		.action = COW_OPTION_IMAGE,
+	},
+	{
 		.name = "titlebar.fg_active",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_MIXED,
@@ -187,6 +199,18 @@ const struct cow_option_entry cow_options_table[] = {
 		.match = COW_OPTION_PREFIX,
 		.scope = COW_OPTION_MIXED,
 		.action = COW_OPTION_COLOUR,
+	},
+	{
+		.name = "container.tab.active_image",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_MIXED,
+		.action = COW_OPTION_IMAGE,
+	},
+	{
+		.name = "container.tab.inactive_image",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_MIXED,
+		.action = COW_OPTION_IMAGE,
 	},
 	{
 		.name = "border.style",

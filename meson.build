@@ -71,6 +71,7 @@ srcs = [
     'src/font.c',
     'src/geometry_window.c',
     'src/gradient.c',
+    'src/image.c',
     'src/ipc.c',
     'src/json_util.c',
     'src/keybinding.c',

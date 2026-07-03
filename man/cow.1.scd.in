@@ -766,6 +766,10 @@ include themes/fvwm
 decor -a fvwm
 ```
 
+Image values in a profile may name SVG or PNG files.  Relative image paths are
+resolved against the file containing the *decor -d* command, so a theme
+directory can keep its config and image assets together.
+
 ## decor -a name [-t target]
 
 Apply a named decoration profile.  With *-t*, the profile patches that window's
@@ -1073,11 +1077,16 @@ feel of a window.  All of these can be used with *decor -d*.
 |  *border.active.gradient*
 :  Border gradient.  Value is _HGradient colour colour_,
    _VGradient colour colour_, or _none_.
+|  *border.active.image*
+:  SVG or PNG image painted over the active border.  Use _none_ to clear.
 |  *border.active.n*
 :  Active border: north edge.
 |  *border.active.n.gradient*
 :  Active north edge gradient.  The same *.gradient* suffix is available for
    _s_, _e_, _w_, _nw_, _ne_, _sw_, and _se_.
+|  *border.active.n.image*
+:  Active north edge image.  The same *.image* suffix is available for _s_,
+   _e_, _w_, _nw_, _ne_, _sw_, and _se_.
 |  *border.active.s*
 :  Active border: south edge.
 |  *border.active.e*
@@ -1096,11 +1105,16 @@ feel of a window.  All of these can be used with *decor -d*.
 :  Inactive (unfocused) border colour.
 |  *border.inactive.gradient*
 :  Inactive border gradient.
+|  *border.inactive.image*
+:  SVG or PNG image painted over the inactive border.  Use _none_ to clear.
 |  *border.inactive.n*
 :  Inactive border: north edge.
 |  *border.inactive.n.gradient*
 :  Inactive north edge gradient.  The same *.gradient* suffix is available for
    _s_, _e_, _w_, _nw_, _ne_, _sw_, and _se_.
+|  *border.inactive.n.image*
+:  Inactive north edge image.  The same *.image* suffix is available for _s_,
+   _e_, _w_, _nw_, _ne_, _sw_, and _se_.
 |  *border.inactive.s*
 :  Inactive border: south edge.
 |  *border.inactive.e*
@@ -1117,10 +1131,14 @@ feel of a window.  All of these can be used with *decor -d*.
 |  *titlebar.active\_gradient*
 :  Titlebar gradient when focused.  Value is _HGradient colour colour_,
    _VGradient colour colour_, or _none_.
+|  *titlebar.active\_image*
+:  SVG or PNG image painted over the focused titlebar.  Use _none_ to clear.
 |  *titlebar.inactive\_colour*
 :  Titlebar background when unfocused.
 |  *titlebar.inactive\_gradient*
 :  Titlebar gradient when unfocused.
+|  *titlebar.inactive\_image*
+:  SVG or PNG image painted over the unfocused titlebar.  Use _none_ to clear.
 |  *titlebar.fg\_active*
 :  Titlebar foreground (text) when focused.
 |  *titlebar.fg\_inactive*
@@ -1155,12 +1173,16 @@ feel of a window.  All of these can be used with *decor -d*.
 :  vector string
 :  Geometry of titlebar button _N_, where _N_ is 0 through 9. Odd
    buttons are placed on the left; even buttons are placed on the right,
-   with button 0 nearest the right edge.
+   with button 0 nearest the right edge. Use _none_ to hide a button slot
+   unless it has an image configured.
 |  *titlebar.button.N.action*
 :  command string
 :  Command run when titlebar button _N_ is clicked. The clicked window is
    the default command target. Quote commands that contain spaces, for
    example _'window-maximize -T'_.
+|  *titlebar.button.N.image*
+:  SVG or PNG image
+:  Image drawn inside titlebar button _N_ instead of its vector glyph.
 |  *titlebar.squeeze*
 :  _none_ | _natural_ | _fixed_
 :  Shrink the titlebar down to a minimum size.
@@ -1258,12 +1280,18 @@ container tabs:
 |  *container.tab.active\_gradient*
 :  _HGradient colour colour_ | _VGradient colour colour_ | _none_
 :  Background gradient of the active tab label.
+|  *container.tab.active\_image*
+:  SVG or PNG image
+:  Image painted over the active tab label. Use _none_ to clear.
 |  *container.tab.inactive\_colour*
 :  hex colour (_0xRRGGBB_)
 :  Background colour of inactive tab labels. Default: _0x808080_.
 |  *container.tab.inactive\_gradient*
 :  _HGradient colour colour_ | _VGradient colour colour_ | _none_
 :  Background gradient of inactive tab labels.
+|  *container.tab.inactive\_image*
+:  SVG or PNG image
+:  Image painted over inactive tab labels. Use _none_ to clear.
 |  *container.tab.fg\_active*
 :  hex colour (_0xRRGGBB_)
 :  Foreground (text) colour of the active tab label. Default: _0x000000_.
