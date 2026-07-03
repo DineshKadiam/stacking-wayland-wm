@@ -117,6 +117,12 @@ etc.  The [river init file](config/river/init) can be customised as needed.
 Alternatively, a globally-installed `cow.desktop` file is installed allowing
 cow to be used with wayland login managers.
 
+## CoW Themes
+
+CoW has support for themes -- see [the themes directory](examples/themes) for
+more information about how to use these.  They're currently a feable and
+incomplete attempt at converting [fvwm-themes to cow](https://fvwm-themes.sourceforge.net/windowdecors/)
+
 ## Contact and Support
 
 You can email me at: thomas at xteddy dot org
