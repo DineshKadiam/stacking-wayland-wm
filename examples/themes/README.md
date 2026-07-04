@@ -9,6 +9,9 @@ Each directory is a self-contained theme pack:
 
 Image paths inside a theme are relative to that theme's theme.conf file.
 
+See [windowdecors.md](windowdecors.md) for xterm preview screenshots of each
+theme.
+
 Included examples:
 
 |Theme Name|Description|
