@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<g fill="none" stroke="#202020" stroke-width="8" stroke-linecap="square" stroke-linejoin="miter">
+<path d="M25 25 L75 75 M75 25 L25 75"/>
+</g>
+</svg>

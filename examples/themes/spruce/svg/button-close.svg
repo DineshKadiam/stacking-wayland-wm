@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<g fill="none" stroke-linecap="square" stroke-linejoin="miter" stroke-width="7">
+<polyline points="25,25 35,25 50,40 65,25 75,25 75,35 60,50 75,65 75,75 65,75 50,60 35,75 25,75 25,65 40,50 25,35 25,25" stroke="#eeeeee"/>
+</g>
+</svg>

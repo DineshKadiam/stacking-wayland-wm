@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<g fill="none" stroke-linecap="square" stroke-linejoin="miter" stroke-width="7">
+<polyline points="23,58 77,58 77,42" stroke="#202020"/>
+<polyline points="23,58 23,42 77,42" stroke="#eeeeee"/>
+</g>
+</svg>
