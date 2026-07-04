@@ -48,6 +48,8 @@
 
 static int next_container_id;
 
+static void cow_view_icon_destroy(struct cow_view *);
+
 static int
 titlebar_button_vector_index(enum cow_view_cfg_option option)
 {
@@ -1019,10 +1021,14 @@ view_detach_container_silent(struct cow_view *view)
 void
 cow_view_destroy(struct cow_view *view)
 {
+	struct cow_output *output = view->output;
+	bool		   was_iconified = cow_view_is_iconified(view);
+
 	cow_status_emit();
 	view_clear_wm_refs(view);
 	view_clear_seat_refs(view);
 	view_detach_container_silent(view);
+	cow_view_icon_destroy(view);
 
 	wl_list_remove(&view->wm_link);
 	wl_list_remove(&view->desk_views);
@@ -1042,6 +1048,9 @@ cow_view_destroy(struct cow_view *view)
 	cow_view_clear_orphan(view);
 	cow_view_cfg_fini(&view->cfg);
 	xfree(view);
+
+	if (was_iconified && output != NULL && !output->removed)
+		cow_view_layout_icons_on_output(output);
 }
 
 void
