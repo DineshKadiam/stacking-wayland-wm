@@ -1340,8 +1340,8 @@ decor to change aspects of how icons are controlled:
 |  *icon.size*
 :  Iconified window icon size in pixels (default: 64).
 |  *icon.image*
-:  SVG or PNG image drawn inside the iconified window icon box.  Use _none_
-   to clear it.
+:  SVG or PNG image drawn inside the iconified window icon box.  Defaults
+   to CoW's installed icon.  Use _none_ to clear it.
 |  *icon.background*
 :  Iconified window icon box background colour.
 |  *icon.foreground*

@@ -228,6 +228,7 @@ cow_config_create(void)
 	config->repeat_delay_ms	     = COW_CFG_DEFAULT_REPEAT_DELAY_MS;
 	config->repeat_interval_ms   = COW_CFG_DEFAULT_REPEAT_INTERVAL_MS;
 	config->icon_size	     = COW_CFG_DEFAULT_ICON_SIZE;
+	config->icon_image	     = xstrdup(COW_DATADIR "/icons/default.png");
 	config->snap_distance	     = COW_CFG_DEFAULT_SNAP_DISTANCE;
 
 	border_colour_set_uniform(&config->border_active, 0xFFFFFF);

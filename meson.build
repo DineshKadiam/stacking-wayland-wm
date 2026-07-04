@@ -98,6 +98,7 @@ srcs = [
 ]
 
 prefix     = get_option('prefix')
+datadir    = get_option('datadir')
 etc_prefix = get_option('etcprefix')
 if etc_prefix == ''
     etc_prefix = prefix
@@ -141,6 +142,7 @@ add_project_arguments(
         '-D_GNU_SOURCE',
         '-DCOW_VERSION="' + meson.project_version() + '"',
         '-DCOW_SYSCONFDIR="' + etc_prefix + '/etc/cow"',
+        '-DCOW_DATADIR="' + prefix / datadir / 'cow"',
     ],
     language: 'c',
 )
@@ -347,6 +349,11 @@ install_data(
 install_data(
     'config/cow/cow.conf',
     install_dir: etc_prefix + '/etc/cow',
+)
+
+install_data(
+    'share/cow/icons/default.png',
+    install_dir: datadir / 'cow/icons',
 )
 
 install_data(
