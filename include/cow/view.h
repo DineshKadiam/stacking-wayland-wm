@@ -193,6 +193,10 @@ enum cow_view_cfg_option {
 	COW_VIEW_CFG_CONTAINER_TAB_SUNKEN,
 	COW_VIEW_CFG_FONT,
 	COW_VIEW_CFG_ICON_SIZE,
+	COW_VIEW_CFG_ICON_IMAGE,
+	COW_VIEW_CFG_ICON_BACKGROUND,
+	COW_VIEW_CFG_ICON_FOREGROUND,
+	COW_VIEW_CFG_ICON_TITLE_RELIEF,
 	COW_VIEW_CFG_OPTION_COUNT,
 };
 
@@ -218,6 +222,10 @@ struct cow_view_cfg {
 	char *font_name;
 
 	int icon_size;
+	char *icon_image;
+	float icon_background[4];
+	float icon_foreground[4];
+	bool icon_title_relief;
 };
 
 /* Initialise/free/update a visual snapshot. */
@@ -356,6 +364,7 @@ struct cow_view {
 	struct cow_shm_buffer	      *icon_buffer;
 	int			       icon_x, icon_y;
 	int			       icon_width, icon_height;
+	bool			       icon_manual_position;
 
 	/* Container membership, if any. */
 	struct cow_container_member *container_member;

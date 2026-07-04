@@ -44,6 +44,9 @@ static enum cmd_retval cmd_decor_exec(struct cmd *, struct cmd_q *);
 static enum cmd_retval decor_define(const char *, const char *, const char *,
     struct cmd_q *);
 static enum cmd_retval decor_apply(const char *, struct cmd_q *);
+static bool	      decor_apply_resets(const char *, struct decor_profile *,
+    struct cmd_q *);
+static bool	      decor_profile_resets(struct decor_profile *);
 
 struct cmd_entry cmd_decor_entry = {
 	"decor",
@@ -133,7 +136,8 @@ decor_apply(const char *name, struct cmd_q *cmdq)
 		return (CMD_RETURN_ERROR);
 	}
 
-	cmd_set_reset_decor_target(cmdq);
+	if (decor_apply_resets(name, profile, cmdq))
+		cmd_set_reset_decor_target(cmdq);
 
 	struct decor_entry *entry;
 	wl_list_for_each(entry, &profile->entries, link)
@@ -144,6 +148,34 @@ decor_apply(const char *name, struct cmd_q *cmdq)
 			return ret;
 	}
 	return (CMD_RETURN_NORMAL);
+}
+
+static bool
+decor_apply_resets(const char *name, struct decor_profile *profile,
+    struct cmd_q *cmdq)
+{
+	if (!decor_profile_resets(profile))
+		return (false);
+	if (cmdq != NULL && cmdq->in_rule)
+		return (false);
+	if (cmdq != NULL && !cmdq->in_rule && cmdq->target.window == NULL &&
+	    runtime_active_profile != NULL &&
+	    strcmp(runtime_active_profile, name) == 0)
+		return (false);
+	return (true);
+}
+
+static bool
+decor_profile_resets(struct decor_profile *profile)
+{
+	struct decor_entry *entry;
+
+	wl_list_for_each(entry, &profile->entries, link)
+	{
+		if (strncmp(entry->key, "icon.", 5) != 0)
+			return (true);
+	}
+	return (false);
 }
 
 void
@@ -191,8 +223,7 @@ cmd_decor_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 	enum cmd_retval ret = decor_apply(app, cmdq);
 	if (ret == CMD_RETURN_NORMAL && cmdq != NULL &&
-	    !cow_ipc.startup_mode && !cmdq->in_rule &&
-	    cmdq->target.window == NULL) {
+	    !cmdq->in_rule && cmdq->target.window == NULL) {
 		xfree(runtime_active_profile);
 		runtime_active_profile = xstrdup(app);
 	}

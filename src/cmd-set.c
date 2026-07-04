@@ -76,6 +76,7 @@ static enum cmd_retval set_image_option(const char *, const char *,
 static bool set_gradient_option(const char *, const char *, struct cmd_q *);
 static bool set_output_colour(const char *, const char *, struct cmd_q *);
 static bool set_border_colour(const char *, const char *, struct cmd_q *);
+static bool set_icon_colour(const char *, const char *, struct cmd_q *);
 static bool set_titlebar_colour(const char *, const char *, struct cmd_q *);
 static bool set_container_tab_colour(const char *, const char *, struct cmd_q *);
 static void set_border_style_option(const char *, struct cmd_q *);
@@ -463,6 +464,10 @@ set_option_is_decor(const struct cow_option_entry *opt, const char *key)
 	if (strcmp(key, "border.corner_length") == 0 ||
 	    strcmp(key, "border.width") == 0 ||
 	    strcmp(key, "icon.size") == 0 ||
+	    strcmp(key, "icon.image") == 0 ||
+	    strcmp(key, "icon.background") == 0 ||
+	    strcmp(key, "icon.foreground") == 0 ||
+	    strcmp(key, "icon.title_relief") == 0 ||
 	    strcmp(key, "border.style") == 0 ||
 	    strcmp(key, "titlebar.font") == 0 ||
 	    strcmp(key, "titlebar.enabled") == 0 ||
@@ -950,6 +955,18 @@ set_image_value(char **slot, enum cow_view_cfg_option id, const char *val,
 }
 
 static enum cmd_retval
+set_icon_image(const char *key, const char *val, struct cmd_q *cmdq)
+{
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+	char		  **slot = cfg != NULL ? &cfg->icon_image :
+				       &cow_config->icon_image;
+
+	if (strcmp(key, "icon.image") != 0)
+		return (CMD_RETURN_ERROR);
+	return (set_image_value(slot, COW_VIEW_CFG_ICON_IMAGE, val, cfg, cmdq));
+}
+
+static enum cmd_retval
 set_titlebar_image(const char *key, const char *val, struct cmd_q *cmdq)
 {
 	struct cow_view_cfg	    *cfg;
@@ -1036,6 +1053,8 @@ set_image_option(const char *key, const char *val, struct cmd_q *cmdq)
 {
 	if (strncmp(key, "titlebar.button.", 16) == 0)
 		return (set_button_image(key, val, cmdq));
+	if (strcmp(key, "icon.image") == 0)
+		return (set_icon_image(key, val, cmdq));
 	if (strncmp(key, "border.", 7) == 0)
 		return (set_border_image(key, val, cmdq));
 	if (strncmp(key, "container.tab.", 14) == 0)
@@ -1168,6 +1187,8 @@ set_colour_option(const char *key, const char *val, struct cmd_q *cmdq)
 	}
 	if (set_output_colour(key, val, cmdq))
 		return;
+	if (set_icon_colour(key, val, cmdq))
+		return;
 	if (set_titlebar_colour(key, val, cmdq))
 		return;
 	if (set_container_tab_colour(key, val, cmdq))
@@ -1210,6 +1231,32 @@ set_output_colour(const char *key, const char *val, struct cmd_q *cmdq)
 	}
 	cow_config->has_output_bg_colour = true;
 	refresh_visuals();
+	return (true);
+}
+
+static bool
+set_icon_colour(const char *key, const char *val, struct cmd_q *cmdq)
+{
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+	float *slot;
+	enum cow_view_cfg_option id;
+
+	if (strcmp(key, "icon.background") == 0) {
+		slot = cfg != NULL ? cfg->icon_background :
+				     cow_config->icon_background;
+		id = COW_VIEW_CFG_ICON_BACKGROUND;
+	} else if (strcmp(key, "icon.foreground") == 0) {
+		slot = cfg != NULL ? cfg->icon_foreground :
+				     cow_config->icon_foreground;
+		id = COW_VIEW_CFG_ICON_FOREGROUND;
+	} else
+		return (false);
+
+	if (!cow_colour_parse(val, slot)) {
+		cmdq_error(cmdq, "set: invalid colour value");
+		return (true);
+	}
+	finish_visual_update(id, cfg);
 	return (true);
 }
 

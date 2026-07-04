@@ -96,6 +96,7 @@ static void
 config_decor_free(struct cow_config *config)
 {
 	xfree(config->font_name);
+	xfree(config->icon_image);
 	xfree(config->titlebar.font_name);
 	xfree(config->titlebar.active_image);
 	xfree(config->titlebar.inactive_image);
@@ -121,6 +122,7 @@ static void
 config_decor_detach(struct cow_config *config)
 {
 	config->font_name = NULL;
+	config->icon_image = NULL;
 	config->titlebar.font_name = NULL;
 	config->titlebar.active_image = NULL;
 	config->titlebar.inactive_image = NULL;
@@ -230,6 +232,8 @@ cow_config_create(void)
 
 	border_colour_set_uniform(&config->border_active, 0xFFFFFF);
 	border_colour_set_uniform(&config->border_inactive, 0x465457);
+	cow_colour_convert(config->icon_background, 0x465457);
+	cow_colour_convert(config->icon_foreground, 0xFFFFFF);
 
 	config->font_name	= xstrdup("monospace 10");
 	config->focus_mode	= COW_FOCUS_MODE_CLICK;
@@ -320,6 +324,7 @@ cow_config_reset_decor(struct cow_config *config)
 	config->border_active = defaults->border_active;
 	config->border_inactive = defaults->border_inactive;
 	config->font_name = defaults->font_name;
+	config->icon_image = defaults->icon_image;
 	config->icon_size = defaults->icon_size;
 	config->titlebar = defaults->titlebar;
 	config->container = defaults->container;

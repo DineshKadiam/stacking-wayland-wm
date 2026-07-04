@@ -31,6 +31,7 @@
 #include "cow/desk_ops.h"
 #include "cow/draw.h"
 #include "cow/gradient.h"
+#include "cow/image.h"
 #include "cow/keybinding.h"
 #include "cow/memory.h"
 #include "cow/output.h"
@@ -201,6 +202,9 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 		dst->corner_length = COW_CFG_DEFAULT_CORNER_LENGTH;
 		dst->icon_size	   = COW_CFG_DEFAULT_ICON_SIZE;
 		dst->border_style  = COW_BORDER_STYLE_FVWM;
+		cow_colour_convert(dst->icon_background, 0x465457);
+		cow_colour_convert(dst->icon_foreground, 0xFFFFFF);
+		dst->icon_title_relief = false;
 		return;
 	}
 	dst->border	     = cow_config->border;
@@ -230,6 +234,12 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 	dst->container.tab_inactive_image =
 	    xstrdup0(cow_config->container.tab_inactive_image);
 	dst->icon_size		= cow_config->icon_size;
+	dst->icon_image		= xstrdup0(cow_config->icon_image);
+	memcpy(dst->icon_background, cow_config->icon_background,
+	    sizeof(float) * 4);
+	memcpy(dst->icon_foreground, cow_config->icon_foreground,
+	    sizeof(float) * 4);
+	dst->icon_title_relief = cow_config->icon_title_relief;
 }
 
 static bool
@@ -584,6 +594,21 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 	case COW_VIEW_CFG_ICON_SIZE:
 		cfg->icon_size = cow_config->icon_size;
 		break;
+	case COW_VIEW_CFG_ICON_IMAGE:
+		xfree(cfg->icon_image);
+		cfg->icon_image = xstrdup0(cow_config->icon_image);
+		break;
+	case COW_VIEW_CFG_ICON_BACKGROUND:
+		memcpy(cfg->icon_background, cow_config->icon_background,
+		    sizeof(float) * 4);
+		break;
+	case COW_VIEW_CFG_ICON_FOREGROUND:
+		memcpy(cfg->icon_foreground, cow_config->icon_foreground,
+		    sizeof(float) * 4);
+		break;
+	case COW_VIEW_CFG_ICON_TITLE_RELIEF:
+		cfg->icon_title_relief = cow_config->icon_title_relief;
+		break;
 	default:
 		break;
 	}
@@ -612,6 +637,7 @@ void
 cow_view_cfg_fini(struct cow_view_cfg *cfg)
 {
 	xfree(cfg->font_name);
+	xfree(cfg->icon_image);
 	xfree(cfg->titlebar.font_name);
 	xfree(cfg->titlebar.active_image);
 	xfree(cfg->titlebar.inactive_image);
@@ -622,6 +648,7 @@ cow_view_cfg_fini(struct cow_view_cfg *cfg)
 	titlebar_button_actions_free(&cfg->titlebar);
 	titlebar_button_images_free(&cfg->titlebar);
 	cfg->font_name		= NULL;
+	cfg->icon_image		= NULL;
 	cfg->titlebar.font_name = NULL;
 }
 
@@ -700,9 +727,9 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 	 */
 	if (first_dims && !view->on_map_fired) {
 		view->on_map_fired = true;
+		cow_decor_apply_runtime_active(view);
 		cow_rule_fire(COW_RULE_ON_MAP, view, view->desk,
 		    view->output);
-		cow_decor_apply_runtime_active(view);
 		cow_rule_fire(COW_RULE_ON_DESK, view, view->desk,
 		    view->output);
 	}
@@ -1947,10 +1974,13 @@ cow_view_layout_icons_on_output(struct cow_output *output)
 		if (view->output != output)
 			continue;
 
+		view->icon_width = icon_w;
+		view->icon_height = icon_h;
+		if (view->icon_manual_position)
+			continue;
+
 		view->icon_x	  = x;
 		view->icon_y	  = y;
-		view->icon_width  = icon_w;
-		view->icon_height = icon_h;
 
 		x += icon_w + gap;
 		if (x + icon_w >
@@ -2034,20 +2064,54 @@ icon_draw_box(struct cow_pixbuf *p, int icon_sz, uint32_t px_base,
 	}
 }
 
+static void
+icon_draw_image(struct cow_pixbuf *p, int icon_sz, const char *path)
+{
+	if (path == NULL || icon_sz <= 0)
+		return;
+
+	int box_x = (p->width - icon_sz) / 2;
+	int pad = icon_sz >= 16 ? 4 : 1;
+	int size = icon_sz - 2 * pad;
+
+	if (size <= 0)
+		return;
+	cow_image_render_rect(path, p, box_x + pad, pad, size, size);
+}
+
 /* Render the icon's app_id label into the strip below the icon box. */
 static void
-icon_draw_label(uint32_t *pixels, int stride_px, int icon_w, int icon_h,
-    int icon_sz, const char *label)
+icon_draw_label(struct cow_pixbuf *p, int icon_sz, const char *label,
+    const float *fg, const struct cow_colour_triple *bc_t,
+    enum cow_border_style border_style, bool relief)
 {
 	int text_y	= icon_sz + 2;
-	int text_area_h = icon_h - text_y;
+	int text_area_h = p->height - text_y;
 	if (text_area_h <= 0)
 		return;
 
+	if (relief) {
+		cow_draw_fill_rect(p, 0, text_y, p->width, text_area_h,
+		    bc_t->base);
+		if (border_style != COW_BORDER_STYLE_NONE) {
+			int bw = 3;
+			for (int r = 0; r < bw && r < text_area_h / 2; r++) {
+				cow_draw_hline(p, r, p->width - 1 - r,
+				    text_y + r, bc_t->lt);
+				cow_draw_vline(p, r, text_y + r,
+				    text_y + text_area_h - 1 - r, bc_t->lt);
+				cow_draw_hline(p, r, p->width - 1 - r,
+				    text_y + text_area_h - 1 - r, bc_t->dk);
+				cow_draw_vline(p, p->width - 1 - r, text_y + r,
+				    text_y + text_area_h - 1 - r, bc_t->dk);
+			}
+		}
+	}
+
 	/* Create a cairo surface over just the text area. */
 	cairo_surface_t *cs = cairo_image_surface_create_for_data(
-	    (unsigned char *)(pixels + text_y * stride_px), CAIRO_FORMAT_ARGB32,
-	    icon_w, text_area_h, stride_px * 4);
+	    (unsigned char *)(p->pixels + text_y * p->stride_px),
+	    CAIRO_FORMAT_ARGB32, p->width, text_area_h, p->stride_px * 4);
 	cairo_t *cr = cairo_create(cs);
 
 	const char	     *fname  = cow_config && cow_config->font_name ?
@@ -2059,11 +2123,11 @@ icon_draw_label(uint32_t *pixels, int stride_px, int icon_w, int icon_h,
 	pango_font_description_set_size(fd, 8 * PANGO_SCALE);
 	pango_layout_set_font_description(layout, fd);
 	pango_layout_set_text(layout, label, -1);
-	pango_layout_set_width(layout, icon_w * PANGO_SCALE);
+	pango_layout_set_width(layout, p->width * PANGO_SCALE);
 	pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
 	pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
 
-	cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);
+	cairo_set_source_rgba(cr, fg[0], fg[1], fg[2], fg[3]);
 	pango_cairo_show_layout(cr, layout);
 
 	g_object_unref(layout);
@@ -2129,17 +2193,17 @@ cow_view_icon_render(struct cow_view *view)
 	/* Clear to transparent. */
 	cow_draw_clear_rect(&p, 0, 0, icon_w, icon_h);
 
-	/* Use inactive border colours from the view's snapshot for the
-	 * icon box. */
 	struct cow_colour_triple bc_t;
-	cow_colour_make_triple(&bc_t, view->cfg.border_inactive.n);
+	cow_colour_make_triple(&bc_t, view->cfg.icon_background);
 
 	int icon_sz = view->cfg.icon_size;
 
 	icon_draw_box(&p, icon_sz, bc_t.base, bc_t.lt, bc_t.dk,
 	    view->cfg.border_style);
-	icon_draw_label(p.pixels, p.stride_px, icon_w, icon_h, icon_sz,
-	    view->app_id ? view->app_id : "?");
+	icon_draw_image(&p, icon_sz, view->cfg.icon_image);
+	icon_draw_label(&p, icon_sz, view->app_id ? view->app_id : "?",
+	    view->cfg.icon_foreground, &bc_t, view->cfg.border_style,
+	    view->cfg.icon_title_relief);
 	if (view->flags & COW_VIEW_STICKY_FLAG)
 		icon_draw_sticky_stipple(&p, bc_t.base, bc_t.lt, bc_t.dk);
 	icon_commit(view, icon_w, icon_h);

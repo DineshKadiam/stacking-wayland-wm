@@ -356,6 +356,10 @@ struct cow_config {
 
 	/* Icon size for iconified (minimized) windows */
 	int icon_size;
+	char *icon_image;
+	float icon_background[4];
+	float icon_foreground[4];
+	bool icon_title_relief;
 
 	/* Titlebar */
 	struct cow_titlebar_config titlebar;

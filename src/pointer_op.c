@@ -206,6 +206,35 @@ cow_pointer_op_start_move(struct cow_seat *seat, struct cow_view *view)
 }
 
 void
+cow_pointer_op_start_icon_move(struct cow_seat *seat, struct cow_view *view)
+{
+	if (seat == NULL || view == NULL || view->closed ||
+	    seat->op_in_progress)
+		return;
+	if (!cow_view_is_iconified(view))
+		return;
+
+	seat->op.type	 = COW_POINTER_OP_ICON_MOVE;
+	seat->op.view	 = view;
+	seat->op.start_x = view->icon_x;
+	seat->op.start_y = view->icon_y;
+	if (seat->has_pointer_position) {
+		seat->op.move_offset_x = view->icon_x - seat->pointer_x;
+		seat->op.move_offset_y = view->icon_y - seat->pointer_y;
+	} else {
+		seat->op.move_offset_x = 0;
+		seat->op.move_offset_y = 0;
+	}
+	seat->op.icon_moved = false;
+	seat->op_in_progress = true;
+	seat->op_released    = false;
+	seat->op_dx	     = 0;
+	seat->op_dy	     = 0;
+
+	river_seat_v1_op_start_pointer(seat->river_seat);
+}
+
+void
 cow_pointer_op_start_scroll(struct cow_seat *seat, struct cow_output *output,
     bool reverse)
 {
@@ -306,6 +335,9 @@ clamp_drag_to_screen(const struct cow_view *view, int bw, int tt, int *new_x,
 static void
 op_finalize(struct cow_seat *seat, struct cow_view *view)
 {
+	enum cow_pointer_op_type finished_type = seat->op.type;
+	bool icon_moved = seat->op.icon_moved;
+
 	if (seat->op.type == COW_POINTER_OP_RESIZE)
 		river_window_v1_inform_resize_end(view->river_window);
 
@@ -366,9 +398,8 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 	cow_drag_ghost_destroy();
 	cow_geometry_window_hide();
 
-	/* After move/resize, update the view's output assignment based
-	 * on where the window ended up. */
-	cow_view_update_output(view);
+	if (finished_type != COW_POINTER_OP_ICON_MOVE)
+		cow_view_update_output(view);
 
 	/* Restore titlebar visuals if this was a title drag */
 	if (seat->titlebar_press == COW_TITLEBAR_PRESS_TITLE &&
@@ -379,12 +410,16 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 	seat->titlebar_press = COW_TITLEBAR_PRESS_NONE;
 	seat->pressed_view   = NULL;
 
-	enum cow_pointer_op_type finished_type = seat->op.type;
-
 	river_seat_v1_op_end(seat->river_seat);
 	seat->op_in_progress = false;
 	seat->op_released    = false;
+	seat->op.icon_moved  = false;
 	seat->op.type	     = COW_POINTER_OP_NONE;
+
+	if (finished_type == COW_POINTER_OP_ICON_MOVE && !icon_moved) {
+		cow_view_deiconify(view);
+		return;
+	}
 
 	/* Fire lifecycle rules for the completed op.  Skipped if the
 	 * view was destroyed during the op (caller has already returned
@@ -580,6 +615,28 @@ cow_pointer_op_process(struct cow_seat *seat)
 				cow_geometry_window_update_move(output, view->x,
 				    view->y);
 			}
+		}
+		break;
+	}
+
+	case COW_POINTER_OP_ICON_MOVE: {
+		int new_x, new_y;
+
+		if (seat->has_pointer_position) {
+			new_x = seat->pointer_x + seat->op.move_offset_x;
+			new_y = seat->pointer_y + seat->op.move_offset_y;
+		} else {
+			new_x = seat->op.start_x + dx;
+			new_y = seat->op.start_y + dy;
+		}
+		if (new_x != view->icon_x || new_y != view->icon_y) {
+			view->icon_x = new_x;
+			view->icon_y = new_y;
+			view->icon_manual_position = true;
+			seat->op.icon_moved = true;
+			if (view->icon_node != NULL)
+				river_node_v1_set_position(view->icon_node,
+				    view->icon_x, view->icon_y);
 		}
 		break;
 	}

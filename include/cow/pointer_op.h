@@ -29,6 +29,7 @@ struct cow_output;
 enum cow_pointer_op_type {
 	COW_POINTER_OP_NONE,
 	COW_POINTER_OP_MOVE,
+	COW_POINTER_OP_ICON_MOVE,
 	COW_POINTER_OP_RESIZE,
 	/*
 	 * Drag-the-viewport pan (the cow analogue of fvwm3's
@@ -68,6 +69,7 @@ struct cow_pointer_op {
 	 * the pre-press state.
 	 */
 	bool unmax_done;
+	bool icon_moved;
 
 	/* Initial dimensions when the op started */
 	int start_width, start_height;
@@ -99,6 +101,7 @@ struct cow_pointer_op {
  * Must be called during a manage sequence.
  */
 void cow_pointer_op_start_move(struct cow_seat *, struct cow_view *);
+void cow_pointer_op_start_icon_move(struct cow_seat *, struct cow_view *);
 
 /*
  * Begin an interactive resize of the given view.

@@ -50,11 +50,11 @@ sub is_decor_key {
 	return 1 if $key =~ /^(?:border\.width|border\.style|border\.corner_length|border\.handles)$/;
 	return 1 if $key =~ /^(?:titlebar\.enabled|titlebar\.height|titlebar\.font)$/;
 	return 1 if $key =~ /^titlebar\.squeeze(?:\.(?:justify|width|offset|min_width))?$/;
-	return 1 if $key =~ /^titlebar\.(?:active_colour|inactive_colour|active_gradient|inactive_gradient|fg_active|fg_inactive)$/;
-	return 1 if $key =~ /^titlebar\.button\.[0-9]\.(?:vector|action)$/;
-	return 1 if $key =~ /^container\.tab\.(?:active_colour|inactive_colour|active_gradient|inactive_gradient|fg_active|fg_inactive|sunken)$/;
-	return 1 if $key =~ /^border\.(?:active|inactive)(?:\.(?:n|s|e|w|nw|ne|sw|se))?(?:\.gradient)?$/;
-	return 1 if $key eq "icon.size";
+	return 1 if $key =~ /^titlebar\.(?:active_colour|inactive_colour|active_gradient|inactive_gradient|active_image|inactive_image|fg_active|fg_inactive)$/;
+	return 1 if $key =~ /^titlebar\.button\.[0-9]\.(?:vector|action|image)$/;
+	return 1 if $key =~ /^container\.tab\.(?:active_colour|inactive_colour|active_gradient|inactive_gradient|active_image|inactive_image|fg_active|fg_inactive|sunken)$/;
+	return 1 if $key =~ /^border\.(?:active|inactive)(?:\.(?:n|s|e|w|nw|ne|sw|se))?(?:\.gradient|\.image)?$/;
+	return 1 if $key =~ /^icon\.(?:size|image|background|foreground|title_relief)$/;
 	return 0;
 }
 

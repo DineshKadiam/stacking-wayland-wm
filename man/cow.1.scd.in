@@ -772,9 +772,16 @@ directory can keep its config and image assets together.
 
 ## decor -a name [-t target]
 
-Apply a named decoration profile.  With *-t*, the profile patches that window's
-decoration.  Without *-t*, it patches the global decoration defaults and stamps
-existing windows.  Rule bodies use the rule's default window target.
+Apply a named decoration profile.  Switching to a different global profile, or
+applying a profile to an explicit target, resets the target decoration to the
+base defaults before applying the profile entries.  Reapplying the active
+global profile patches the current decoration in place.  Profiles containing
+only *icon.\** keys also patch in place.  Profiles applied by rules are
+overlays, so layered rules can compose sparse profiles.
+
+With *-t*, the target is that window.  Without *-t*, the target is the global
+decoration defaults and existing windows.  Rule bodies use the rule's default
+window target.
 
 ## set [-v] key value
 
@@ -818,6 +825,8 @@ Operate on a window.
 
 *-i*
 	Toggle the window's iconified (minimised) state.
+	Click an iconified window to restore it; drag it to remember a manual
+	icon position for later iconify operations.
 
 *-L* _layer_
 	Set the window's layer (see *LAYERS*).  Accepted forms:
@@ -1060,8 +1069,6 @@ feel of a window.  All of these can be used with *decor -d*.
 :  Border thickness in pixels (default: 1).
 |  *border.corner\_length*
 :  Length of border corner handles in pixels (default: 20).
-|  *icon.size*
-:  Iconified window icon size in pixels (default: 64).
 |  *titlebar.font*
 :  Pango font string for titlebars.
 |  *border.handles*
@@ -1130,13 +1137,14 @@ feel of a window.  All of these can be used with *decor -d*.
 :  Titlebar background when focused.
 |  *titlebar.active\_gradient*
 :  Titlebar gradient when focused.  Value is _HGradient colour colour_,
-   _VGradient colour colour_, or _none_.
+   _VGradient colour colour_, or _none_.  Gradients are painted over the
+   titlebar colour.
 |  *titlebar.active\_image*
 :  SVG or PNG image painted over the focused titlebar.  Use _none_ to clear.
 |  *titlebar.inactive\_colour*
 :  Titlebar background when unfocused.
 |  *titlebar.inactive\_gradient*
-:  Titlebar gradient when unfocused.
+:  Titlebar gradient when unfocused.  Use _none_ for a solid colour.
 |  *titlebar.inactive\_image*
 :  SVG or PNG image painted over the unfocused titlebar.  Use _none_ to clear.
 |  *titlebar.fg\_active*
@@ -1301,6 +1309,45 @@ container tabs:
 |  *container.tab.sunken*
 :  _true_ | _1_ | _false_ | _0_
 :  Draw inactive tabs with a sunken (depressed) bevel. Default: _false_ (flat).
+
+# Icons
+
+Minimised windows are represented as icons on the root window.  These can have
+an image associated with them, or not.  If there's no image associaged with an
+icon, a blank recgtangle is drawn, and the window's title appears underneath
+it.
+
+Icons can be moved around the screen with the mouse.  In doing so, a window
+will continue to iconify to that dragged position.  Icons which are not
+moved manualky will be placed automatically along the bottom of the output.
+
+The following commands control icons:
+
+## icon-reset [-t target]
+
+Reset manual icon positions.  Without *-t*, all saved icon positions are
+cleared and iconified windows are returned to automatic placement.  With *-t*,
+the target may be a window, output, or desk; for example *-t #id*, *-t @1*, or
+*-t :2*.
+
+## ICON SETTINGS
+
+The following table shows which settings can be applied to a given (named)
+decor to change aspects of how icons are controlled:
+
+[[ *Key*
+:< *Description*
+|  *icon.size*
+:  Iconified window icon size in pixels (default: 64).
+|  *icon.image*
+:  SVG or PNG image drawn inside the iconified window icon box.  Use _none_
+   to clear it.
+|  *icon.background*
+:  Iconified window icon box background colour.
+|  *icon.foreground*
+:  Iconified window label colour.
+|  *icon.title\_relief*
+:  _true_ | _false_.  Draw a 3D-relief panel behind the icon label.
 
 # DESKTOP / OUTPUT COMMANDS
 

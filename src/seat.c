@@ -15,6 +15,7 @@
  */
 #include "cow/output.h"
 #include "cow/pan_frames.h"
+#include "cow/pointer_op.h"
 #include "cow/seat.h"
 
 #include <stdio.h>
@@ -107,18 +108,18 @@ seat_handle_window_interaction(void *data,
 }
 
 static void
-seat_handle_shell_surface_interaction(__unused void *data,
+seat_handle_shell_surface_interaction(void *data,
     __unused struct river_seat_v1		    *river_seat,
     struct river_shell_surface_v1		    *shell_surface)
 {
-	/* Check if the clicked shell surface is an icon for an
-	 * iconified view.  If so, deiconify it. */
+	struct cow_seat *seat = data;
+
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
 		if (view->icon_shell == shell_surface &&
 		    cow_view_is_iconified(view)) {
-			cow_view_deiconify(view);
+			cow_pointer_op_start_icon_move(seat, view);
 			return;
 		}
 	}
