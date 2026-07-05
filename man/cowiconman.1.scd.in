@@ -8,7 +8,9 @@ cowiconman - CoW Icon Manager
 
 *cowiconman* [*--output* _NAME_|*@N*|*current*|*self*]++
 [*--desk* _N_|*current*] [*--page* _X,Y_|*current*]++
-[*--sort* *none*|*title*|*app*|*id*] [*--format* _FMT_]++
+[*--sort* *none*|*title*|*app*|*id*]++
+[*--group-by* *none*|*app*|*title*|*output*|*desk*]++
+[*--format* _FMT_]++
 [*--rows* _N_] [*--cols* _N_] [*--anchor* *none*|*top*|*bottom*]++
 [*--button-width* _N_] [*--min-button-width* _N_]++
 [*--iconified-marker*] [*--show-self*]
@@ -40,6 +42,10 @@ area.
 *--sort* _MODE_
 	Sort rows by *title*, *app*, *id*, or leave them in cow's order with
 	*none*.  The default is *title*.
+
+*--group-by* _MODE_
+	Group matching windows into one row.  _MODE_ may be *none*, *app*,
+	*title*, *output*, or *desk*.  The default is *none*.
 
 *--format* _FMT_
 	Row label format.  Supported escapes are *%t* title, *%a* app_id,
@@ -77,6 +83,10 @@ area.
 
 Left-click a row to focus the window.  If the window is iconified, it is
 restored and focused.
+
+Left-click a grouped row to open a selector for the windows in that group.
+Selector rows include the short window id, output, and desk.  Selecting a
+window restores/focuses it.
 
 Middle-click a row to toggle the window's iconified state.
 
@@ -116,6 +126,12 @@ Use a two-column layout:
 
 ```
 cowiconman --cols 2 &
+```
+
+Group windows by application:
+
+```
+cowiconman --group-by app &
 ```
 
 Use a one-row top task list for the current output:
