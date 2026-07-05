@@ -356,6 +356,7 @@ struct cow_config {
 	char *title_format;
 
 	/* Icon size for iconified (minimized) windows */
+	bool icon_enabled;
 	int icon_size;
 	char *icon_image;
 	float icon_background[4];

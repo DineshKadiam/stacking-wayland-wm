@@ -463,6 +463,7 @@ set_option_is_decor(const struct cow_option_entry *opt, const char *key)
 		return (false);
 	if (strcmp(key, "border.corner_length") == 0 ||
 	    strcmp(key, "border.width") == 0 ||
+	    strcmp(key, "icon.enabled") == 0 ||
 	    strcmp(key, "icon.size") == 0 ||
 	    strcmp(key, "icon.image") == 0 ||
 	    strcmp(key, "icon.background") == 0 ||
@@ -1628,6 +1629,7 @@ refresh_view_visuals(struct cow_view *view)
 		cow_shm_buffer_destroy(view->dec.buffer);
 		view->dec.buffer = NULL;
 	}
+	cow_view_icon_refresh(view);
 }
 
 static void

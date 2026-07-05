@@ -229,6 +229,7 @@ cow_config_create(void)
 	config->max_layer	     = COW_CFG_MAX_LAYER;
 	config->repeat_delay_ms	     = COW_CFG_DEFAULT_REPEAT_DELAY_MS;
 	config->repeat_interval_ms   = COW_CFG_DEFAULT_REPEAT_INTERVAL_MS;
+	config->icon_enabled	     = true;
 	config->icon_size	     = COW_CFG_DEFAULT_ICON_SIZE;
 	config->icon_image	     = xstrdup(COW_DATADIR "/icons/default.png");
 	config->snap_distance	     = COW_CFG_DEFAULT_SNAP_DISTANCE;
@@ -329,8 +330,14 @@ cow_config_reset_decor(struct cow_config *config)
 	config->border_inactive = defaults->border_inactive;
 	config->font_name = defaults->font_name;
 	config->title_format = defaults->title_format;
+	config->icon_enabled = defaults->icon_enabled;
 	config->icon_image = defaults->icon_image;
 	config->icon_size = defaults->icon_size;
+	memcpy(config->icon_background, defaults->icon_background,
+	    sizeof(config->icon_background));
+	memcpy(config->icon_foreground, defaults->icon_foreground,
+	    sizeof(config->icon_foreground));
+	config->icon_title_relief = defaults->icon_title_relief;
 	config->titlebar = defaults->titlebar;
 	config->container = defaults->container;
 

@@ -193,6 +193,7 @@ enum cow_view_cfg_option {
 	COW_VIEW_CFG_CONTAINER_TAB_SUNKEN,
 	COW_VIEW_CFG_FONT,
 	COW_VIEW_CFG_TITLE_FORMAT,
+	COW_VIEW_CFG_ICON_ENABLED,
 	COW_VIEW_CFG_ICON_SIZE,
 	COW_VIEW_CFG_ICON_IMAGE,
 	COW_VIEW_CFG_ICON_BACKGROUND,
@@ -223,6 +224,7 @@ struct cow_view_cfg {
 	char *font_name;
 	char *title_format;
 
+	bool icon_enabled;
 	int icon_size;
 	char *icon_image;
 	float icon_background[4];
@@ -466,6 +468,7 @@ void cow_view_deiconify(struct cow_view *);
 
 /* Render an iconified view's icon surface. */
 void cow_view_icon_render(struct cow_view *);
+void cow_view_icon_refresh(struct cow_view *);
 
 /*
  * Recompute icon positions for all iconified views on an output.

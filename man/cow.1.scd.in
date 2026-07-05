@@ -1319,10 +1319,10 @@ container tabs:
 
 # Icons
 
-Minimised windows are represented as icons on the root window.  These can have
-an image associated with them, or not.  If there's no image associaged with an
-icon, a blank recgtangle is drawn, and the window's title appears underneath
-it.
+Minimised windows can be represented as icons on the root window.  These can
+have an image associated with them, or not.  If there's no image associated
+with an icon, a blank rectangle is drawn, and the window's title appears
+underneath it.
 
 Icons can be moved around the screen with the mouse.  In doing so, a window
 will continue to iconify to that dragged position.  Icons which are not
@@ -1344,6 +1344,9 @@ decor to change aspects of how icons are controlled:
 
 [[ *Key*
 :< *Description*
+|  *icon.enabled*
+:  _true_ | _false_.  Show desktop icons for iconified windows.  If disabled,
+   windows can still be iconified, but no desktop icon is created.
 |  *icon.size*
 :  Iconified window icon size in pixels (default: 64).
 |  *icon.image*

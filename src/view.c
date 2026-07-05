@@ -202,6 +202,7 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 		memset(dst, 0, sizeof(*dst));
 		dst->border	   = COW_CFG_DEFAULT_BORDER;
 		dst->corner_length = COW_CFG_DEFAULT_CORNER_LENGTH;
+		dst->icon_enabled = true;
 		dst->icon_size	   = COW_CFG_DEFAULT_ICON_SIZE;
 		dst->border_style  = COW_BORDER_STYLE_FVWM;
 		cow_colour_convert(dst->icon_background, 0x465457);
@@ -235,6 +236,7 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 	    xstrdup0(cow_config->container.tab_active_image);
 	dst->container.tab_inactive_image =
 	    xstrdup0(cow_config->container.tab_inactive_image);
+	dst->icon_enabled	= cow_config->icon_enabled;
 	dst->icon_size		= cow_config->icon_size;
 	dst->icon_image		= xstrdup0(cow_config->icon_image);
 	dst->title_format	= xstrdup0(cow_config->title_format);
@@ -597,6 +599,9 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 	case COW_VIEW_CFG_TITLE_FORMAT:
 		xfree(cfg->title_format);
 		cfg->title_format = xstrdup0(cow_config->title_format);
+		break;
+	case COW_VIEW_CFG_ICON_ENABLED:
+		cfg->icon_enabled = cow_config->icon_enabled;
 		break;
 	case COW_VIEW_CFG_ICON_SIZE:
 		cfg->icon_size = cow_config->icon_size;
@@ -1987,6 +1992,8 @@ cow_view_layout_icons_on_output(struct cow_output *output)
 	{
 		if (!cow_view_is_iconified(view) || view->closed)
 			continue;
+		if (!view->cfg.icon_enabled)
+			continue;
 		if (view->output != output)
 			continue;
 
@@ -2188,6 +2195,10 @@ cow_view_icon_render(struct cow_view *view)
 		return;
 	if (view->output == NULL)
 		return;
+	if (!view->cfg.icon_enabled) {
+		cow_view_icon_destroy(view);
+		return;
+	}
 
 	int icon_w = view->icon_width;
 	int icon_h = view->icon_height;
@@ -2223,6 +2234,16 @@ cow_view_icon_render(struct cow_view *view)
 	if (view->flags & COW_VIEW_STICKY_FLAG)
 		icon_draw_sticky_stipple(&p, bc_t.base, bc_t.lt, bc_t.dk);
 	icon_commit(view, icon_w, icon_h);
+}
+
+void
+cow_view_icon_refresh(struct cow_view *view)
+{
+	if (view == NULL || view->closed)
+		return;
+	cow_view_icon_destroy(view);
+	if (view->output != NULL)
+		cow_view_layout_icons_on_output(view->output);
 }
 
 static void
