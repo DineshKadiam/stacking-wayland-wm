@@ -1,0 +1,149 @@
+cowiconman(1) "@VERSION@" "cowiconman - cow window icon manager"
+
+# NAME
+
+cowiconman - CoW Icon Manager
+
+# SYNOPSIS
+
+*cowiconman* [*--output* _NAME_|*@N*|*current*|*self*]++
+[*--desk* _N_|*current*] [*--page* _X,Y_|*current*]++
+[*--sort* *none*|*title*|*app*|*id*] [*--format* _FMT_]++
+[*--rows* _N_] [*--cols* _N_] [*--anchor* *none*|*top*|*bottom*]++
+[*--button-width* _N_] [*--min-button-width* _N_]++
+[*--iconified-marker*] [*--show-self*]
+
+# DESCRIPTION
+
+*cowiconman* displays a clickable list of windows known to *cow*(1).  
+
+With no filters, all windows are shown.  Filters combine, so an output, desk,
+and page filter together show only windows matching all three.
+
+The window size follows the visible button grid, growing or shrinking as
+windows enter or leave the list.  It is capped to the selected output's usable
+area.
+
+# OPTIONS
+
+*--output* _VALUE_
+	Limit the list to an output.  _VALUE_ may be an output name, *@N* for
+	cow's output number, *current* for cow's current output, or *self* for
+	the output containing the cowiconman window.
+
+*--desk* _VALUE_
+	Limit the list to a desk.  _VALUE_ may be a desk number or *current*.
+
+*--page* _VALUE_
+	Limit the list to a page.  _VALUE_ may be _X,Y_ or *current*.
+
+*--sort* _MODE_
+	Sort rows by *title*, *app*, *id*, or leave them in cow's order with
+	*none*.  The default is *title*.
+
+*--format* _FMT_
+	Row label format.  Supported escapes are *%t* title, *%a* app_id,
+	*%i* short window id, *%o* output, *%d* desk, and *%%*.
+
+*--rows* _N_
+	Arrange buttons into at most _N_ rows before starting a new column.
+
+*--cols* _N_
+	Arrange buttons into _N_ columns.  The number of rows is computed from
+	the visible window count.
+
+*--anchor* _VALUE_
+	Move the cowiconman window to the selected output's *top* or *bottom*
+	usable edge.  The default is *none*.
+
+*--button-width* _N_
+	Preferred button width in pixels.  The default is 300.
+
+*--min-button-width* _N_
+	Minimum button width used when the preferred grid would exceed the
+	output's usable width.  The default is 80.
+
+*--iconified-marker*
+	Reserve space before each label and draw a small square there for
+	iconified windows.
+
+*--show-self*
+	Include cowiconman windows in the list.  They are hidden by default.
+
+*-h*, *--help*
+	Print usage and exit.
+
+# USE
+
+Left-click a row to focus the window.  If the window is iconified, it is
+restored and focused.
+
+Middle-click a row to toggle the window's iconified state.
+
+Use the pointer wheel to scroll when a fixed row layout has more entries than
+fit on screen.
+
+An anchored *--rows 1* layout behaves like a bar: it spans the selected
+output's usable width and divides that space evenly between entries.
+
+# EXAMPLES
+
+Show every window:
+
+```
+cowiconman &
+```
+
+Show only windows on the current desk and page:
+
+```
+cowiconman --desk current --page current &
+```
+
+Run a manager for a specific output:
+
+```
+cowiconman --output DP-1 &
+```
+
+Use cow's output number and preserve cow's window order:
+
+```
+cowiconman --output @2 --sort none &
+```
+
+Use a two-column layout:
+
+```
+cowiconman --cols 2 &
+```
+
+Use a one-row top task list for the current output:
+
+```
+cowiconman --output current --rows 1 --anchor top &
+```
+
+Show an iconified-window marker before labels:
+
+```
+cowiconman --iconified-marker &
+```
+
+Remove the border, handles, and titlebar from cowiconman while preserving
+the active decor theme:
+
+```
+decor -d cowiconman-chrome border.width 0
+decor -d cowiconman-chrome border.handles false
+decor -d cowiconman-chrome titlebar.enabled false
+rule -g -Ton-map -ncowiconman-chrome -s %cowiconman decor -a cowiconman-chrome
+```
+
+# SEE ALSO
+
+*cow*(1), *moocow*(1), *cowpager*(1)
+
+# AUTHORS
+
+Thomas Adam <thomas@xteddy.org>

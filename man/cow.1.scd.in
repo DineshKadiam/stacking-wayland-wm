@@ -1641,8 +1641,9 @@ _$XDG\_RUNTIME\_DIR/cow-status.sock_
 
 # SEE ALSO
 
-*moocow*(1), *cowbar*(1), *river*(1), *wev*(1), *xdg-desktop-portal*(1),
-*xdg-desktop-portal-wlr*(1), *pipewire*(1), *wl-clip-persist*(1)
+*moocow*(1), *cowbar*(1), *cowiconman*(1), *cowpager*(1), *river*(1),
+*wev*(1), *xdg-desktop-portal*(1), *xdg-desktop-portal-wlr*(1),
+*pipewire*(1), *wl-clip-persist*(1)
 
 # AUTHORS
 

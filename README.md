@@ -38,6 +38,7 @@ There's been an attempt at some documentation:
   etc.
 * `cowbar(1)` -- JSON structure of the state of `cow` -- primarily used to
   provide information to `waybar`, but can be used for any bar.
+* `cowiconman(1)` -- FvwmIconMan-style window list.
 
 More concretely though, have a look at:
 
