@@ -40,6 +40,7 @@
 #define MAX_OUTS 32
 #define MAX_ROWS 512
 #define MAX_NAME 128
+#define MAX_MATCHES 16
 #define DEFAULT_BUTTON_W 300
 #define DEFAULT_MIN_BUTTON_W 80
 #define ROW_H 24
@@ -76,6 +77,18 @@ enum group_mode {
 	GROUP_TITLE,
 	GROUP_OUTPUT,
 	GROUP_DESK,
+};
+
+enum match_field {
+	MATCH_TITLE,
+	MATCH_APP,
+	MATCH_ID,
+};
+
+struct match_rule {
+	enum match_field field;
+	int		 negate;
+	char		 value[MAX_NAME];
 };
 
 struct output {
@@ -189,6 +202,8 @@ static int		 button_w = DEFAULT_BUTTON_W;
 static int		 min_button_w = DEFAULT_MIN_BUTTON_W;
 static int		 iconified_marker;
 static char		 self_title[MAX_NAME];
+static struct match_rule matches[MAX_MATCHES];
+static int		 n_matches;
 
 static void do_render(const struct state *);
 static void ipc_send(const char *);
@@ -205,6 +220,7 @@ usage(void)
 	    "                  [--desk current|N] [--page current|X,Y]\n"
 	    "                  [--sort none|title|app|id]\n"
 	    "                  [--group-by none|app|title|output|desk]\n"
+	    "                  [--match title|app|id=TEXT]\n"
 	    "                  [--format FMT]\n"
 	    "                  [--rows N] [--cols N]\n"
 	    "                  [--anchor none|top|bottom]\n"
@@ -361,6 +377,47 @@ parse_group(const char *s)
 }
 
 static int
+parse_match(const char *s)
+{
+	char *eq;
+	const char *value;
+	char  field[16];
+	size_t len;
+
+	if (n_matches >= MAX_MATCHES)
+		return 0;
+	eq = strchr(s, '=');
+	if (eq == NULL || eq == s || eq[1] == '\0')
+		return 0;
+	len = (size_t)(eq - s);
+	if (len >= sizeof field)
+		return 0;
+	memcpy(field, s, len);
+	field[len] = '\0';
+
+	if (strcmp(field, "title") == 0)
+		matches[n_matches].field = MATCH_TITLE;
+	else if (strcmp(field, "app") == 0)
+		matches[n_matches].field = MATCH_APP;
+	else if (strcmp(field, "id") == 0)
+		matches[n_matches].field = MATCH_ID;
+	else
+		return 0;
+	value = eq + 1;
+	matches[n_matches].negate = 0;
+	if (*value == '!') {
+		value++;
+		if (*value == '\0')
+			return 0;
+		matches[n_matches].negate = 1;
+	}
+	strlcpy(matches[n_matches].value, value,
+	    sizeof(matches[n_matches].value));
+	n_matches++;
+	return 1;
+}
+
+static int
 parse_positive(const char *s, int *out)
 {
 	int n;
@@ -369,6 +426,22 @@ parse_positive(const char *s, int *out)
 		return 0;
 	*out = n;
 	return 1;
+}
+
+static int
+contains_fold(const char *haystack, const char *needle)
+{
+	size_t nlen;
+
+	if (haystack == NULL)
+		haystack = "";
+	if (needle == NULL || *needle == '\0')
+		return 1;
+	nlen = strlen(needle);
+	for (const char *p = haystack; *p != '\0'; p++)
+		if (strncasecmp(p, needle, nlen) == 0)
+			return 1;
+	return 0;
 }
 
 static struct tracked_output *
@@ -497,6 +570,31 @@ window_matches(const struct state *st, const struct win *w)
 			py = ref->page_vy / ref->output_h;
 		}
 		if (!window_on_page(w, ref, px, py))
+			return 0;
+	}
+
+	for (int i = 0; i < n_matches; i++) {
+		const char *value;
+		int	    matched;
+
+		switch (matches[i].field) {
+		case MATCH_TITLE:
+			value = w->title;
+			break;
+		case MATCH_APP:
+			value = w->app_id;
+			break;
+		case MATCH_ID:
+			value = w->id;
+			break;
+		default:
+			value = "";
+			break;
+		}
+		matched = contains_fold(value, matches[i].value);
+		if (matches[i].negate)
+			matched = !matched;
+		if (!matched)
 			return 0;
 	}
 
@@ -1809,6 +1907,7 @@ parse_args(int argc, char **argv)
 		{ "page",      required_argument, NULL, 'p' },
 		{ "sort",      required_argument, NULL, 's' },
 		{ "group-by",  required_argument, NULL, 'g' },
+		{ "match",     required_argument, NULL, 'M' },
 		{ "format",    required_argument, NULL, 'f' },
 		{ "rows",      required_argument, NULL, 'r' },
 		{ "cols",      required_argument, NULL, 'c' },
@@ -1841,6 +1940,10 @@ parse_args(int argc, char **argv)
 			break;
 		case 'g':
 			if (!parse_group(optarg))
+				return 0;
+			break;
+		case 'M':
+			if (!parse_match(optarg))
 				return 0;
 			break;
 		case 'f':

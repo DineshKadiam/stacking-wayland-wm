@@ -10,6 +10,7 @@ cowiconman - CoW Icon Manager
 [*--desk* _N_|*current*] [*--page* _X,Y_|*current*]++
 [*--sort* *none*|*title*|*app*|*id*]++
 [*--group-by* *none*|*app*|*title*|*output*|*desk*]++
+[*--match* _FIELD_=_TEXT_]++
 [*--format* _FMT_]++
 [*--rows* _N_] [*--cols* _N_] [*--anchor* *none*|*top*|*bottom*]++
 [*--button-width* _N_] [*--min-button-width* _N_]++
@@ -46,6 +47,11 @@ area.
 *--group-by* _MODE_
 	Group matching windows into one row.  _MODE_ may be *none*, *app*,
 	*title*, *output*, or *desk*.  The default is *none*.
+
+*--match* _FIELD_=_TEXT_
+	Only show windows whose _FIELD_ contains _TEXT_.  _FIELD_ may be
+	*title*, *app*, or *id*.  Matching is case-insensitive and the option
+	may be repeated.  Prefix _TEXT_ with *!* to exclude matching windows.
 
 *--format* _FMT_
 	Row label format.  Supported escapes are *%t* title, *%a* app_id,
@@ -132,6 +138,18 @@ Group windows by application:
 
 ```
 cowiconman --group-by app &
+```
+
+Show only xterm windows:
+
+```
+cowiconman --match app=xterm &
+```
+
+Hide xterm windows:
+
+```
+cowiconman --match app=!xterm &
 ```
 
 Use a one-row top task list for the current output:
