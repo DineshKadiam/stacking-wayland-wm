@@ -173,6 +173,32 @@ make_display_title(const struct cow_view *view)
 	return (out);
 }
 
+static void
+restore_shaded_side_borders(uint32_t *pixels, int stride_px, int frame_w,
+    int frame_h, const struct cow_border_colour *bc, int bw, int style)
+{
+	size_t	  nbytes = (size_t)stride_px * (size_t)frame_h * 4;
+	uint32_t *scratch = xmalloc(nbytes);
+
+	cow_border_style_render(scratch, stride_px, frame_w, frame_h, bc, bw, 0,
+	    style);
+
+	int right_x = frame_w - bw;
+	if (right_x < 0)
+		right_x = 0;
+	if (right_x + bw > frame_w)
+		right_x = frame_w - bw;
+
+	for (int y = bw; y < frame_h - bw; y++) {
+		memcpy(&pixels[y * stride_px], &scratch[y * stride_px],
+		    (size_t)bw * 4);
+		memcpy(&pixels[y * stride_px + right_x],
+		    &scratch[y * stride_px + frame_w - bw], (size_t)bw * 4);
+	}
+
+	xfree(scratch);
+}
+
 struct cow_font *
 cow_decoration_titlebar_font(void)
 {
@@ -719,6 +745,11 @@ cow_decoration_update(struct cow_view *view, bool active)
 			cow_titlebar_render(&tbctx);
 			xfree(display_title);
 			xfree(tab_titles);
+
+			if (shaded && ch == 0 && bw > 0)
+				restore_shaded_side_borders(dec->buffer->data,
+				    stride_px, frame_w, frame_h, bc, bw,
+				    view->cfg.border_style);
 		}
 
 		/*
