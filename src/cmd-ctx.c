@@ -279,15 +279,9 @@ resolve_window(const char *spec, struct cow_output *output,
 			id_start = spec;
 	}
 	if (id_start != NULL) {
-		struct cow_view *v;
-		wl_list_for_each(v, &cow_wm.views, wm_link)
-		{
-			if (!cow_view_focusable(v))
-				continue;
-			if (v->identifier != NULL &&
-			    strcmp(v->identifier, id_start) == 0)
-				return v;
-		}
+		struct cow_view *v = cow_view_find_by_identifier(id_start);
+		if (v != NULL)
+			return v;
 		xasprintf(cause, "no window with id: %s", id_start);
 		return NULL;
 	}

@@ -348,15 +348,11 @@ do_title(const char *pattern, struct cmd_q *cmdq)
 static void
 do_id(const char *id, struct cmd_q *cmdq)
 {
-	struct cow_view *v;
+	struct cow_view *v = cow_view_find_by_identifier(id);
 
-	wl_list_for_each(v, &cow_wm.views, wm_link)
-	{
-		if (cow_view_focusable(v) && v->identifier != NULL &&
-		    strcmp(v->identifier, id) == 0) {
-			defer_focus(v);
-			return;
-		}
+	if (v != NULL) {
+		defer_focus(v);
+		return;
 	}
 	cmdq_error(cmdq, "focus: no window with id: %s", id);
 }

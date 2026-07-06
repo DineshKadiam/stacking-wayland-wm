@@ -135,8 +135,12 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 		}
 	}
 
-	if (args_has(args, 'i'))
-		cow_view_iconify(view);
+	if (args_has(args, 'i')) {
+		if (cow_view_is_iconified(view))
+			cow_view_deiconify(view);
+		else
+			cow_view_iconify(view);
+	}
 
 	if (args_has(args, 'L')) {
 		const char     *lval = args_get(args, 'L');
