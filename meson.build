@@ -337,10 +337,10 @@ executable('moocow',
 )
 
 subdir('cowbar')
-subdir('cowident')
-subdir('cowiconman')
-subdir('cowpager')
-subdir('cowrearrange')
+subdir('modules/cowident')
+subdir('modules/cowiconman')
+subdir('modules/cowpager')
+subdir('modules/cowrearrange')
 
 install_data(
     'share/wayland-sessions/cow.desktop',

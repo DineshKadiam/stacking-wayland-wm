@@ -9,7 +9,7 @@ ident_generated = wl_mod.scan_xml(
     wl_proto_dir / 'staging/cursor-shape/cursor-shape-v1.xml',
     wl_proto_dir / 'unstable/tablet/tablet-unstable-v2.xml',
     wl_proto_dir / 'unstable/xdg-output/xdg-output-unstable-v1.xml',
-    '../protocol/wlr-layer-shell-unstable-v1.xml',
+    '../../protocol/wlr-layer-shell-unstable-v1.xml',
 )
 
 ident_deps = [
@@ -22,12 +22,12 @@ ident_deps = [
 
 executable('cowident',
     ['src/cowident.c'] + ident_generated,
-    '../src/module.c',
-    '../vendor/cJSON.c',
+    '../../src/module.c',
+    '../../vendor/cJSON.c',
     include_directories: [
-        include_directories('..'),
-        include_directories('../include'),
-        include_directories('../vendor'),
+        include_directories('../..'),
+        include_directories('../../include'),
+        include_directories('../../vendor'),
     ],
     dependencies: ident_deps,
     install: true,

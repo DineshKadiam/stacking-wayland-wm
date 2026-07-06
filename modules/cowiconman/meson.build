@@ -13,12 +13,12 @@ iconman_deps = [
 
 executable('cowiconman',
     ['src/cowiconman.c'] + iconman_generated,
-    '../src/module.c',
-    '../vendor/cJSON.c',
+    '../../src/module.c',
+    '../../vendor/cJSON.c',
     include_directories: [
-        include_directories('..'),
-        include_directories('../vendor'),
-        include_directories('../include'),
+        include_directories('../..'),
+        include_directories('../../vendor'),
+        include_directories('../../include'),
     ],
     dependencies: iconman_deps,
     install: true,

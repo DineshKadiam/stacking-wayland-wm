@@ -14,12 +14,12 @@ pager_deps = [
 
 executable('cowpager',
     ['src/cowpager.c'] + pager_generated,
-    '../src/module.c',
-    '../vendor/cJSON.c',
+    '../../src/module.c',
+    '../../vendor/cJSON.c',
     include_directories: [
-        include_directories('..'),
-        include_directories('../vendor'),
-        include_directories('../include'),
+        include_directories('../..'),
+        include_directories('../../vendor'),
+        include_directories('../../include'),
     ],
     dependencies: pager_deps,
     install: true,
