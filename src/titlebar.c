@@ -256,6 +256,32 @@ draw_fvwm_relief(uint32_t *pixels, int stride, int rx, int ry, int rw, int rh,
 	}
 }
 
+static void
+draw_titlebar_relief(uint32_t *pixels, int stride, int rx, int ry, int rw,
+    int rh, uint32_t px_lt, uint32_t px_dk, bool sunken,
+    enum cow_border_style style)
+{
+	if (style == COW_BORDER_STYLE_NONE)
+		return;
+	if (style == COW_BORDER_STYLE_MWM) {
+		struct cow_pixbuf p = {
+			.pixels	   = pixels,
+			.stride_px = stride,
+			.width	   = INT_MAX,
+			.height	   = INT_MAX,
+		};
+		uint32_t ul = sunken ? px_dk : px_lt;
+		uint32_t br = sunken ? px_lt : px_dk;
+		cow_draw_hline(&p, rx + 1, rx + rw - 1, ry, ul);
+		cow_draw_vline(&p, rx, ry + 1, ry + rh - 1, ul);
+		cow_draw_hline(&p, rx, rx + rw - 2, ry + rh - 1, br);
+		cow_draw_vline(&p, rx + rw - 1, ry + 1, ry + rh - 1, br);
+		return;
+	}
+	draw_fvwm_relief(pixels, stride, rx, ry, rw, rh, px_lt, px_dk,
+	    sunken);
+}
+
 void
 cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 {
@@ -263,6 +289,7 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 	int			       stride_px = ctx->stride_px;
 	int			       frame_w = ctx->frame_w;
 	int			       border_width = ctx->border_width;
+	enum cow_border_style	       border_style = ctx->border_style;
 	struct cow_box		       tb_rect = ctx->tb_rect;
 	const char		      *title = ctx->title;
 	bool			       active = ctx->active;
@@ -407,9 +434,8 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 					pixels[py * stride_px + px] = px_base;
 		}
 
-		/* FVWM relief on button: sunken if pressed */
-		draw_fvwm_relief(pixels, stride_px, bx, by, btn_s, btn_s, px_lt,
-		    px_dk, btn_sunken);
+		draw_titlebar_relief(pixels, stride_px, bx, by, btn_s, btn_s,
+		    px_lt, px_dk, btn_sunken, border_style);
 
 		if (tb_cfg->buttons[btn_idx].image != NULL) {
 			cow_image_render_rect(tb_cfg->buttons[btn_idx].image,
@@ -458,9 +484,8 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 					pixels[py * stride_px + px] = px_base;
 		}
 
-		/* FVWM relief on button: sunken if pressed */
-		draw_fvwm_relief(pixels, stride_px, bx, by, btn_s, btn_s, px_lt,
-		    px_dk, btn_sunken);
+		draw_titlebar_relief(pixels, stride_px, bx, by, btn_s, btn_s,
+		    px_lt, px_dk, btn_sunken, border_style);
 
 		if (tb_cfg->buttons[btn_idx].image != NULL) {
 			cow_image_render_rect(tb_cfg->buttons[btn_idx].image,
@@ -668,8 +693,9 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 			 * (default: flat). */
 			bool sunken = !is_active && cc != NULL &&
 			    cc->tab_sunken_inactive;
-			draw_fvwm_relief(pixels, stride_px, tx, tb_y, tw, tb_h,
-			    tab_bv_lt, tab_bv_dk, sunken);
+			draw_titlebar_relief(pixels, stride_px, tx, tb_y, tw,
+			    tb_h, tab_bv_lt, tab_bv_dk, sunken,
+			    border_style);
 
 			/* Tab label text */
 			const char *lbl = tab_titles[ti];
@@ -694,8 +720,9 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 		/* Draw relief on title text area LAST so it isn't overwritten.
 		 * Sunken when title is being dragged, raised otherwise. */
 		if (title_w > 2) {
-			draw_fvwm_relief(pixels, stride_px, title_x, tb_y,
-			    title_w, tb_h, px_lt, px_dk, title_pressed);
+			draw_titlebar_relief(pixels, stride_px, title_x, tb_y,
+			    title_w, tb_h, px_lt, px_dk, title_pressed,
+			    border_style);
 		}
 	}
 

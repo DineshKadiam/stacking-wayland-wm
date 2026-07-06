@@ -73,6 +73,7 @@ struct cow_titlebar_render_ctx {
 	int		stride_px;
 	int		frame_w;
 	int		border_width;
+	enum cow_border_style border_style;
 	struct cow_box tb_rect;
 
 	const char     *title;

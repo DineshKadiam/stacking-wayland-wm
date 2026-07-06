@@ -724,6 +724,7 @@ cow_decoration_update(struct cow_view *view, bool active)
 				.stride_px = stride_px,
 				.frame_w = frame_w,
 				.border_width = bw,
+				.border_style = view->cfg.border_style,
 				.tb_rect = tb_rect,
 				.title = display_title,
 				.active = active,
