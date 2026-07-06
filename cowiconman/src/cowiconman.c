@@ -184,6 +184,7 @@ static int	  popup_w, popup_h;
 static double	  popup_ptr_x, popup_ptr_y;
 static struct win popup_wins[MAX_WINS];
 static int	  popup_count;
+static int	  popup_ignore_release;
 
 static enum filter_value output_filter = FILTER_ANY;
 static enum filter_value desk_filter = FILTER_ANY;
@@ -202,6 +203,7 @@ static int		 button_w = DEFAULT_BUTTON_W;
 static int		 min_button_w = DEFAULT_MIN_BUTTON_W;
 static int		 iconified_marker;
 static char		 self_title[MAX_NAME];
+static char		 self_id[MAX_NAME];
 static struct match_rule matches[MAX_MATCHES];
 static int		 n_matches;
 
@@ -1368,7 +1370,23 @@ ipc_query(const char *cmd)
 }
 
 static void
-activate_win(const struct win *w, uint32_t button)
+raise_self(void)
+{
+	char cmd[256];
+	char id[MAX_NAME];
+
+	pthread_mutex_lock(&lock);
+	strlcpy(id, self_id, sizeof(id));
+	pthread_mutex_unlock(&lock);
+
+	if (id[0] == '\0')
+		return;
+	snprintf(cmd, sizeof(cmd), "winops -t '#%s' -r", id);
+	ipc_send(cmd);
+}
+
+static void
+activate_win(const struct win *w, uint32_t button, int keep_self_raised)
 {
 	char cmd[256];
 
@@ -1382,6 +1400,8 @@ activate_win(const struct win *w, uint32_t button)
 		ipc_send(cmd);
 		snprintf(cmd, sizeof(cmd), "winops -t '#%s' -r", w->id);
 		ipc_send(cmd);
+		if (keep_self_raised)
+			raise_self();
 	} else if (button == BTN_MIDDLE) {
 		snprintf(cmd, sizeof(cmd), "winops -t '#%s' -i",
 		    w->id);
@@ -1403,7 +1423,7 @@ activate_row(int idx, uint32_t button, uint32_t serial)
 			popup_open(idx, serial);
 		return;
 	}
-	activate_win(&r->win, button);
+	activate_win(&r->win, button, 0);
 }
 
 static void
@@ -1464,6 +1484,7 @@ fetch_windows(void)
 	char	     *resp = ipc_query("show windows");
 	cJSON	     *root, *data, *w;
 	struct win    wins[MAX_WINS];
+	char	     new_self_id[MAX_NAME] = "";
 	int	      n = 0;
 
 	if (resp == NULL)
@@ -1483,6 +1504,9 @@ fetch_windows(void)
 		copy_jstr(wins[n].app_id, sizeof(wins[n].app_id), w, "app_id");
 		copy_jstr(wins[n].title, sizeof(wins[n].title), w, "title");
 		copy_jstr(wins[n].output, sizeof(wins[n].output), w, "output");
+		if (strcmp(wins[n].app_id, PROG) == 0 &&
+		    strcmp(wins[n].title, self_title) == 0)
+			strlcpy(new_self_id, wins[n].id, sizeof(new_self_id));
 		wins[n].desk	   = get_jnum(w, "desk");
 		wins[n].x	   = get_jnum(w, "x");
 		wins[n].y	   = get_jnum(w, "y");
@@ -1497,6 +1521,7 @@ fetch_windows(void)
 	cJSON_Delete(root);
 
 	pthread_mutex_lock(&lock);
+	strlcpy(self_id, new_self_id, sizeof(self_id));
 	global_state.n_wins = n;
 	memcpy(global_state.wins, wins, sizeof(wins[0]) * (size_t)n);
 	dirty = 1;
@@ -1624,7 +1649,7 @@ popup_select(uint32_t button)
 	idx = (int)((popup_ptr_y - PAD) / ROW_H);
 	if (idx < 0 || idx >= popup_count)
 		return;
-	activate_win(&popup_wins[idx], button);
+	activate_win(&popup_wins[idx], button, 1);
 	popup_close();
 }
 
@@ -1682,10 +1707,21 @@ ptr_button(__unused void *d, __unused struct wl_pointer *p,
 {
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
 		last_button_press_serial = serial;
+		if (pointer_surface == popup_surface && popup_surface != NULL &&
+		    popup_row >= 0 &&
+		    popup_ptr_x >= 0 && popup_ptr_x < popup_w &&
+		    popup_ptr_y >= 0 && popup_ptr_y < popup_h) {
+			popup_select(button);
+			popup_ignore_release = 1;
+		}
 		return;
 	}
 	if (state != WL_POINTER_BUTTON_STATE_RELEASED)
 		return;
+	if (popup_ignore_release) {
+		popup_ignore_release = 0;
+		return;
+	}
 	if (pointer_surface == popup_surface && popup_surface != NULL &&
 	    popup_row >= 0 &&
 	    popup_ptr_x >= 0 && popup_ptr_x < popup_w &&
