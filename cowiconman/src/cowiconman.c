@@ -1374,7 +1374,7 @@ activate_win(const struct win *w, uint32_t button)
 
 	if (button == BTN_LEFT) {
 		if (w->iconified) {
-			snprintf(cmd, sizeof(cmd), "window-iconify -t '#%s'",
+			snprintf(cmd, sizeof(cmd), "winops -t '#%s' -i",
 			    w->id);
 			ipc_send(cmd);
 		}
@@ -1383,10 +1383,11 @@ activate_win(const struct win *w, uint32_t button)
 		snprintf(cmd, sizeof(cmd), "winops -t '#%s' -r", w->id);
 		ipc_send(cmd);
 	} else if (button == BTN_MIDDLE) {
-		snprintf(cmd, sizeof(cmd), "window-iconify -t '#%s'",
+		snprintf(cmd, sizeof(cmd), "winops -t '#%s' -i",
 		    w->id);
 		ipc_send(cmd);
 	}
+	fprintf(stderr, "SENT: %s\n", cmd);
 }
 
 static void
