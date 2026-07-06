@@ -257,54 +257,15 @@ waybar_title(const cJSON *state, const char *output_name)
 		}
 	}
 
-	cJSON	   *id_j    = cJSON_GetObjectItem(focused, "id");
-	cJSON	   *title_j = cJSON_GetObjectItem(focused, "title");
-	cJSON	   *app_j   = cJSON_GetObjectItem(focused, "app_id");
-	const char *id	    = cJSON_IsString(id_j) ? id_j->valuestring : "";
+	cJSON *title_j = cJSON_GetObjectItem(focused, "display_title");
+	cJSON *app_j	= cJSON_GetObjectItem(focused, "app_id");
 	const char *title = cJSON_IsString(title_j) ? title_j->valuestring : "";
-	const char *app	  = cJSON_IsString(app_j) ? app_j->valuestring : "";
+	char	   *text = NULL;
+	size_t	    cap = 0, len = 0;
 
-	/* Compute shortest id prefix (>= 8 chars) that's unique among all
-	 * known window IDs. */
-	cJSON	   *ids_arr  = cJSON_GetObjectItem(state, "window_ids");
-	const char *short_id = id;
-	char	    short_buf[64];
-	if (cJSON_IsArray(ids_arr) && id[0] != '\0') {
-		size_t id_len = strlen(id);
-		for (size_t plen = 8; plen <= id_len; plen++) {
-			bool   unique = true;
-			cJSON *o;
-			cJSON_ArrayForEach(o, ids_arr)
-			{
-				if (!cJSON_IsString(o))
-					continue;
-				const char *cand = o->valuestring;
-				if (strcmp(cand, id) == 0)
-					continue;
-				if (strlen(cand) >= plen &&
-				    strncmp(cand, id, plen) == 0) {
-					unique = false;
-					break;
-				}
-			}
-			if (unique) {
-				if (plen >= sizeof(short_buf))
-					plen = sizeof(short_buf) - 1;
-				memcpy(short_buf, id, plen);
-				short_buf[plen] = '\0';
-				short_id	= short_buf;
-				break;
-			}
-		}
-	}
-
-	char  *text = NULL;
-	size_t cap = 0, len = 0;
-
-	/* FIXME: needs to be configurable. */
-	buf_appendf(&text, &cap, &len, "        [%s] %s        ", short_id,
-	    title);
-	emit_waybar(text != NULL ? text : "", app);
+	buf_appendf(&text, &cap, &len, "        %s        ", title);
+	emit_waybar(text != NULL ? text : "",
+	    cJSON_IsString(app_j) ? app_j->valuestring : "");
 	free(text);
 }
 

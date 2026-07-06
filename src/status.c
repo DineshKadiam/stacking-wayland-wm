@@ -276,15 +276,10 @@ cow_status_emit(void)
 
 	int		 total = 0;
 	struct cow_view *v;
-	cJSON *window_ids = cJSON_AddArrayToObject(root, "window_ids");
 	wl_list_for_each(v, &cow_wm.views, wm_link)
 	{
-		if (!v->closed) {
+		if (!v->closed)
 			total++;
-			if (v->identifier != NULL)
-				cJSON_AddItemToArray(window_ids,
-				    cJSON_CreateString(v->identifier));
-		}
 	}
 	cJSON_AddNumberToObject(root, "total_windows", total);
 	cJSON_AddStringToObject(root, "desktop_configuration",

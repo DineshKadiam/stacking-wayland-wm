@@ -297,6 +297,16 @@ const struct cow_option_entry cow_options_table[] = {
 		.id = COW_VIEW_CFG_FONT,
 	},
 	{
+		.name = "title_format",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_MIXED,
+		.action = COW_OPTION_SCALAR_STRING,
+		.id = COW_VIEW_CFG_TITLE_FORMAT,
+		.config_offset = offsetof(struct cow_config, title_format),
+		.view_offset = offsetof(struct cow_view_cfg, title_format),
+		.post = COW_OPTION_POST_REFRESH_VISUALS,
+	},
+	{
 		.name = "titlebar.enabled",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_MIXED,

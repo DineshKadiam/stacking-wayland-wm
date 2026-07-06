@@ -469,6 +469,7 @@ set_option_is_decor(const struct cow_option_entry *opt, const char *key)
 	    strcmp(key, "icon.foreground") == 0 ||
 	    strcmp(key, "icon.title_relief") == 0 ||
 	    strcmp(key, "border.style") == 0 ||
+	    strcmp(key, "title_format") == 0 ||
 	    strcmp(key, "titlebar.font") == 0 ||
 	    strcmp(key, "titlebar.enabled") == 0 ||
 	    strcmp(key, "border.handles") == 0 ||
@@ -611,6 +612,31 @@ set_scalar_int(const struct cow_option_entry *opt, const char *key, const char *
 }
 
 static enum cmd_retval
+set_scalar_string(const struct cow_option_entry *opt, const char *val,
+    struct cmd_q *cmdq)
+{
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+
+	if (cfg != NULL && opt->view_offset != COW_OPTION_NO_OFFSET) {
+		char **ptr = (char **)((char *)cfg + opt->view_offset);
+
+		xfree(*ptr);
+		*ptr = xstrdup(val);
+		cow_view_cfg_set_override(cfg, opt->id);
+	} else if (cow_config != NULL) {
+		char **ptr = (char **)((char *)cow_config + opt->config_offset);
+
+		xfree(*ptr);
+		*ptr = xstrdup(val);
+		if (opt->scope == COW_OPTION_MIXED)
+			propagate_global_option(opt->id);
+	}
+	set_option_post_update(opt);
+	cow_status_emit();
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
 set_option_exec(const struct cow_option_entry *opt, const char *key, const char *val,
     struct args *args, struct cmd_q *cmdq)
 {
@@ -622,6 +648,8 @@ set_option_exec(const struct cow_option_entry *opt, const char *key, const char 
 		return (set_scalar_int(opt, key, val, cmdq));
 	case COW_OPTION_SCALAR_BOOL:
 		return (set_scalar_bool(opt, val, cmdq));
+	case COW_OPTION_SCALAR_STRING:
+		return (set_scalar_string(opt, val, cmdq));
 	case COW_OPTION_COLOUR:
 		set_colour_option(key, val, cmdq);
 		return (CMD_RETURN_NORMAL);

@@ -59,22 +59,39 @@ get_titlebar_font(void)
 	return &titlebar_font;
 }
 
-/*
- * Build a display title of the form "[<short-id>] <title>".
- * The ID prefix is the shortest prefix of view->identifier (minimum
- * COW_MIN_ID_PREFIX characters) that is not a prefix of any other
- * live view's identifier.  Returns a heap-allocated string; caller
- * must free it.  Falls back to view->title if no identifier is set.
- */
-static char *
-make_display_title(const struct cow_view *view)
+static void
+append_str(char **buf, size_t *cap, size_t *len, const char *s)
 {
-	const char *id	  = view->identifier;
-	const char *title = view->title ? view->title : "";
+	size_t slen = strlen(s);
 
-	if (id == NULL || id[0] == '\0') {
-		return xstrdup(title);
+	if (*cap < *len + slen + 1) {
+		size_t ncap = *cap == 0 ? 64 : *cap;
+
+		while (ncap < *len + slen + 1)
+			ncap *= 2;
+		*buf = xrealloc(*buf, ncap, 1);
+		*cap = ncap;
 	}
+	memcpy(*buf + *len, s, slen);
+	*len += slen;
+	(*buf)[*len] = '\0';
+}
+
+static void
+append_char(char **buf, size_t *cap, size_t *len, char ch)
+{
+	char s[2] = { ch, '\0' };
+
+	append_str(buf, cap, len, s);
+}
+
+static char *
+short_identifier(const struct cow_view *view)
+{
+	const char *id = view->identifier;
+
+	if (id == NULL || id[0] == '\0')
+		return xstrdup("");
 
 	size_t id_len	  = strlen(id);
 	size_t prefix_len = COW_MIN_ID_PREFIX;
@@ -101,9 +118,59 @@ make_display_title(const struct cow_view *view)
 		prefix_len++;
 	}
 
-	char *out = NULL;
-	xasprintf(&out, "[%.*s] %s", (int)prefix_len, id, title);
-	return out;
+	char *out;
+	xasprintf(&out, "%.*s", (int)prefix_len, id);
+	return (out);
+}
+
+static char *
+make_display_title(const struct cow_view *view)
+{
+	const char *fmt = view->cfg.title_format != NULL ?
+	    view->cfg.title_format : "%n";
+	const char *title = view->title != NULL ? view->title : "";
+	const char *id = view->identifier != NULL ? view->identifier : "";
+	const char *app_id = view->app_id != NULL ? view->app_id : "";
+	char	   *sid = short_identifier(view);
+	char	   *out = NULL;
+	size_t	    cap = 0, len = 0;
+
+	for (const char *p = fmt; *p != '\0'; p++) {
+		if (*p != '%') {
+			append_char(&out, &cap, &len, *p);
+			continue;
+		}
+		p++;
+		switch (*p) {
+		case '\0':
+			append_char(&out, &cap, &len, '%');
+			p--;
+			break;
+		case '%':
+			append_char(&out, &cap, &len, '%');
+			break;
+		case 'n':
+			append_str(&out, &cap, &len, title);
+			break;
+		case 't':
+			append_str(&out, &cap, &len, sid);
+			break;
+		case 'I':
+			append_str(&out, &cap, &len, id);
+			break;
+		case 'c':
+			append_str(&out, &cap, &len, app_id);
+			break;
+		default:
+			append_char(&out, &cap, &len, '%');
+			append_char(&out, &cap, &len, *p);
+			break;
+		}
+	}
+	if (out == NULL)
+		out = xstrdup("");
+	xfree(sid);
+	return (out);
 }
 
 struct cow_font *

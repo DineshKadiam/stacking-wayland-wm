@@ -192,6 +192,7 @@ enum cow_view_cfg_option {
 	COW_VIEW_CFG_CONTAINER_TAB_FG_INACTIVE,
 	COW_VIEW_CFG_CONTAINER_TAB_SUNKEN,
 	COW_VIEW_CFG_FONT,
+	COW_VIEW_CFG_TITLE_FORMAT,
 	COW_VIEW_CFG_ICON_SIZE,
 	COW_VIEW_CFG_ICON_IMAGE,
 	COW_VIEW_CFG_ICON_BACKGROUND,
@@ -220,6 +221,7 @@ struct cow_view_cfg {
 	struct cow_container_config container;
 
 	char *font_name;
+	char *title_format;
 
 	int icon_size;
 	char *icon_image;

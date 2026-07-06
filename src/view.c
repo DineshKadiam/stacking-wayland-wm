@@ -237,6 +237,7 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 	    xstrdup0(cow_config->container.tab_inactive_image);
 	dst->icon_size		= cow_config->icon_size;
 	dst->icon_image		= xstrdup0(cow_config->icon_image);
+	dst->title_format	= xstrdup0(cow_config->title_format);
 	memcpy(dst->icon_background, cow_config->icon_background,
 	    sizeof(float) * 4);
 	memcpy(dst->icon_foreground, cow_config->icon_foreground,
@@ -593,6 +594,10 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		xfree(cfg->font_name);
 		cfg->font_name = xstrdup0(cow_config->font_name);
 		break;
+	case COW_VIEW_CFG_TITLE_FORMAT:
+		xfree(cfg->title_format);
+		cfg->title_format = xstrdup0(cow_config->title_format);
+		break;
 	case COW_VIEW_CFG_ICON_SIZE:
 		cfg->icon_size = cow_config->icon_size;
 		break;
@@ -639,6 +644,7 @@ void
 cow_view_cfg_fini(struct cow_view_cfg *cfg)
 {
 	xfree(cfg->font_name);
+	xfree(cfg->title_format);
 	xfree(cfg->icon_image);
 	xfree(cfg->titlebar.font_name);
 	xfree(cfg->titlebar.active_image);
@@ -650,6 +656,7 @@ cow_view_cfg_fini(struct cow_view_cfg *cfg)
 	titlebar_button_actions_free(&cfg->titlebar);
 	titlebar_button_images_free(&cfg->titlebar);
 	cfg->font_name		= NULL;
+	cfg->title_format	= NULL;
 	cfg->icon_image		= NULL;
 	cfg->titlebar.font_name = NULL;
 }
@@ -2770,6 +2777,10 @@ cow_view_json_add_identity(struct cJSON *obj, const struct cow_view *view)
 	cJSON_AddStringToObject(obj, "app_id",
 	    view->app_id ? view->app_id : "");
 	cJSON_AddStringToObject(obj, "title", view->title ? view->title : "");
+	char *display_title = cow_decoration_display_title(view);
+	cJSON_AddStringToObject(obj, "display_title",
+	    display_title != NULL ? display_title : "");
+	xfree(display_title);
 }
 
 void

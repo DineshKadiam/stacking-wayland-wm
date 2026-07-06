@@ -301,6 +301,9 @@ do_show_config(const char *ckey, int fd, struct cmd_q *cmdq)
 	else if (strcmp(ckey, "font") == 0)
 		val = cJSON_CreateString(
 		    cow_config->font_name ? cow_config->font_name : "");
+	else if (strcmp(ckey, "title_format") == 0)
+		val = cJSON_CreateString(
+		    cow_config->title_format ? cow_config->title_format : "");
 	else if (strcmp(ckey, "preserve_desk_on_output_loss") == 0)
 		val = cJSON_CreateBool(cow_config->preserve_desk_on_output_loss);
 	else if (strcmp(ckey, "desks.count") == 0) {

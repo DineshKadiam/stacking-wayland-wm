@@ -1216,6 +1216,13 @@ feel of a window.  All of these can be used with *decor -d*.
 :  integer (pixels)
 :  Minimum width for _natural_ mode (floor applied after
    measurement).  Default: _80_.
+|  *title\_format*
+:  string
+:  Controls the display title used in the titlebar.
+   Default is: '[%t] %n'
+   Supported escapes are *%n* for the raw window title, *%t* for *cow*'s
+   unique short window id, *%I* for the full window id, *%c* for app_id,
+   and *%%* for a literal percent.  The default is *[%t] %n*.
 
 *Button vector format:* _N_ _x1_*X*_y1_*@*_c1_ _x2_*X*_y2_*@*_c2_ *...* where _N_ is
 the number of points, coordinates are 0-100 (percentages of the button area),

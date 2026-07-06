@@ -39,7 +39,9 @@ without requiring ordering guarantees.
 		_current\_desk_, and _output_ keys.
 
 	*focused*
-		Emit the focused window object on each update.
+		Emit the focused window object on each update. The object
+		includes _display\_title_, which is already formatted by
+		*cow*(1)'s _title\_format_ setting.
 
 	*outputs*
 		Emit the full outputs array on each update.
@@ -70,6 +72,7 @@ Each line of output is a self-contained JSON object, suitable for parsing with
   "focused": {
     "app_id": "foot",
     "title": "fish",
+    "display_title": "[0123abcd] fish",
     "desk": 1
   }
 }
@@ -84,7 +87,7 @@ Each line of output is a self-contained JSON object, suitable for parsing with
 *-f focused* output:
 
 ```
-{"app_id": "foot", "title": "fish", "desk": 1}
+{"app_id": "foot", "title": "fish", "display_title": "[0123abcd] fish", "desk": 1}
 ```
 
 *-f outputs* output:
