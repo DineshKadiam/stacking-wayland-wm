@@ -186,13 +186,8 @@ cow_decor_apply_runtime_active(struct cow_view *view)
 	if (decor_find(runtime_active_profile) == NULL)
 		return;
 
-	struct cmd_q *cmdq = cmdq_new();
-	cmdq->client_fd	   = -1;
-	cmdq->target.window = view;
-	cmdq->target.desk   = view->desk;
-	cmdq->target.output = view->output;
-	(void)decor_apply(runtime_active_profile, cmdq);
-	cmdq_free(cmdq);
+	cow_view_cfg_apply_global(&view->cfg);
+	view->dec.dirty = true;
 }
 
 static enum cmd_retval
