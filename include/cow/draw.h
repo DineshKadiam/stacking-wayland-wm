@@ -36,8 +36,8 @@ struct cow_pixbuf {
 	int	  height;
 };
 
-/* Sentinel: a "skip this layer" colour for relieve_rect_per_edge. */
-#define COW_DRAW_TRANSPARENT_PX 0xFFFFFFFFu
+/* Sentinel: a "skip this layer" colour for relief edges. */
+#define COW_DRAW_TRANSPARENT_PX 0x00FFFFFFu
 
 /* Horizontal line of 'colour' at row y, columns [x1, x2] inclusive. */
 void cow_draw_hline(struct cow_pixbuf *, int, int, int, uint32_t);
