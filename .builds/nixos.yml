@@ -1,0 +1,11 @@
+image: nixos/unstable
+environment:
+  NIX_CONFIG: "experimental-features = nix-command flakes"
+repositories:
+  nixpkgs: https://nixos.org/channels/nixpkgs-unstable
+sources:
+  - https://codeberg.org/thomasadam/cow.git
+tasks:
+  - build: |
+      cd cow
+      nix develop --command bash -c "meson setup build && meson compile -C build"
