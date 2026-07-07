@@ -265,6 +265,14 @@ cow_pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
 {
 	if (view == NULL || view->closed || seat->op_in_progress)
 		return;
+	bool wants_w = (edges & (COW_EDGE_LEFT | COW_EDGE_RIGHT)) != 0;
+	bool wants_h = (edges & (COW_EDGE_TOP | COW_EDGE_BOTTOM)) != 0;
+	bool fixed_w = view->min_width > 0 && view->max_width > 0 &&
+	    view->min_width == view->max_width;
+	bool fixed_h = view->min_height > 0 && view->max_height > 0 &&
+	    view->min_height == view->max_height;
+	if ((!wants_w || fixed_w) && (!wants_h || fixed_h))
+		return;
 
 	seat->op.type	      = COW_POINTER_OP_RESIZE;
 	seat->op.view	      = view;
