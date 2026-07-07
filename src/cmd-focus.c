@@ -388,18 +388,16 @@ do_directional(enum cow_direction dir, int target_layer, struct cmd_q *cmdq)
 		int vx, vy;
 		cow_view_centre(v, &vx, &vy);
 
-		int f_top = focused->y - focused->dec.title_thickness -
-		    focused->dec.border_width;
-		int f_bot = focused->y + focused->content_height +
-		    focused->dec.border_width;
-		int f_left  = focused->x - focused->dec.border_width;
-		int f_right = focused->x + focused->content_width +
-		    focused->dec.border_width;
-
-		int v_top = v->y - v->dec.title_thickness - v->dec.border_width;
-		int v_bot = v->y + v->content_height + v->dec.border_width;
-		int v_left  = v->x - v->dec.border_width;
-		int v_right = v->x + v->content_width + v->dec.border_width;
+		struct cow_box fbox = cow_view_frame_box(focused);
+		struct cow_box vbox = cow_view_frame_box(v);
+		int f_top	    = fbox.y;
+		int f_bot	    = fbox.y + fbox.height;
+		int f_left	    = fbox.x;
+		int f_right	    = fbox.x + fbox.width;
+		int v_top	    = vbox.y;
+		int v_bot	    = vbox.y + vbox.height;
+		int v_left	    = vbox.x;
+		int v_right	    = vbox.x + vbox.width;
 
 		int  primary_dist;
 		bool in_direction, overlaps;

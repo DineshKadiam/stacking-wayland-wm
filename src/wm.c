@@ -109,7 +109,8 @@ static struct cow_view *manage_container_drag_target(struct cow_seat *);
 static struct dec_frame_hit decoration_frame_hit(struct cow_view *, int, int,
     int, int);
 static bool decoration_in_border(const struct dec_frame_hit *);
-static enum cow_dec_region decoration_outer_region(int, int, int, int, int);
+static enum cow_dec_region decoration_outer_region(struct cow_view *, int, int,
+    int, int);
 
 static void handle_wm_session_locked(void *, struct river_window_manager_v1 *);
 static void handle_wm_session_unlocked(void *,
@@ -420,14 +421,22 @@ titlebar_button_at(struct cow_view *view, int lx, int ly)
 	static const int left_order[] = { 1, 3, 5, 7, 9 };
 	static const int right_order[] = { 0, 2, 4, 6, 8 };
 	int tt = view->dec.title_thickness;
-	int bw = view->dec.border_width;
 
 	if (!cow_titlebar_hit(view, lx, ly))
 		return (-1);
 
 	struct cow_box tbr = cow_titlebar_squeezed_rect(view);
-	int	       l   = tbr.x - bw;
-	int	       r   = l + tbr.width;
+	int frame_w, frame_h, content_x, content_y;
+	cow_titlebar_frame_geometry(view, view->content_width,
+	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
+	int pos_coord = cow_titlebar_is_vertical(view->cfg.titlebar.position) ?
+	    ly + content_y :
+	    lx + content_x;
+	int l = cow_titlebar_is_vertical(view->cfg.titlebar.position) ? tbr.y :
+								     tbr.x;
+	int r = l + (cow_titlebar_is_vertical(view->cfg.titlebar.position) ?
+			tbr.height :
+			tbr.width);
 
 	int pos = 0;
 	for (size_t i = 0; i < sizeof left_order / sizeof left_order[0]; i++) {
@@ -435,7 +444,7 @@ titlebar_button_at(struct cow_view *view, int lx, int ly)
 		if (!titlebar_button_visible(&view->cfg.titlebar, idx))
 			continue;
 		int x = l + pos++ * tt;
-		if (lx >= x && lx < x + tt)
+		if (pos_coord >= x && pos_coord < x + tt)
 			return idx;
 	}
 
@@ -445,7 +454,7 @@ titlebar_button_at(struct cow_view *view, int lx, int ly)
 		if (!titlebar_button_visible(&view->cfg.titlebar, idx))
 			continue;
 		int x = r - (++pos * tt);
-		if (lx >= x && lx < x + tt)
+		if (pos_coord >= x && pos_coord < x + tt)
 			return idx;
 	}
 	return (-1);
@@ -580,10 +589,11 @@ decoration_frame_hit(struct cow_view *view, int lx, int ly, int cw, int ch)
 	if (hit.cl < hit.bw)
 		hit.cl = hit.bw;
 
-	hit.frame_w = cw + 2 * hit.bw;
-	hit.frame_h = ch + hit.tt + 2 * hit.bw;
-	hit.fx	    = lx + hit.bw;
-	hit.fy	    = ly + hit.bw + hit.tt;
+	int content_x, content_y;
+	cow_titlebar_frame_geometry(view, cw, ch, &hit.frame_w,
+	    &hit.frame_h, &content_x, &content_y);
+	hit.fx	    = lx + content_x;
+	hit.fy	    = ly + content_y;
 	return (hit);
 }
 
@@ -605,7 +615,7 @@ decoration_corner_edges(struct cow_view *view, int lx, int ly, int cw, int ch)
 	if (!decoration_in_border(&hit))
 		return (0);
 
-	if (hit.tt > 0 && ly >= -hit.tt && ly < 0)
+	if (cow_titlebar_hit_for(view, cw, ch, lx, ly))
 		return (0);
 
 	bool near_top	= (hit.fy < hit.cl);
@@ -706,17 +716,19 @@ manage_titlebar_button_press(struct cow_seat *seat, struct cow_view *view,
 }
 
 static enum cow_dec_region
-decoration_outer_region(int lx, int ly, int tt, int cw, int ch)
+decoration_outer_region(struct cow_view *view, int lx, int ly, int cw, int ch)
 {
-	if (ly >= -tt && ly < ch && lx >= 0 && lx < cw)
+	struct dec_frame_hit hit = decoration_frame_hit(view, lx, ly, cw, ch);
+
+	if (!decoration_in_border(&hit))
 		return (COW_DEC_REGION_NONE);
-	if (ly < -tt)
+	if (hit.fy < hit.bw)
 		return (COW_DEC_REGION_N);
-	if (ly >= ch)
+	if (hit.fy >= hit.frame_h - hit.bw)
 		return (COW_DEC_REGION_S);
-	if (lx < 0)
+	if (hit.fx < hit.bw)
 		return (COW_DEC_REGION_W);
-	if (lx >= cw)
+	if (hit.fx >= hit.frame_w - hit.bw)
 		return (COW_DEC_REGION_E);
 	return (COW_DEC_REGION_NONE);
 }
@@ -724,13 +736,12 @@ decoration_outer_region(int lx, int ly, int tt, int cw, int ch)
 static void
 manage_decoration_click(struct cow_seat *seat, struct cow_view *view)
 {
-	int tt = view->dec.title_thickness;
 	int lx = seat->pointer_x - view->x;
 	int ly = seat->pointer_y - view->y;
-	int cw = view->sd != COW_SHADE_NONE ? view->shade_saved_width :
-					      view->content_width;
-	int ch = view->sd != COW_SHADE_NONE ? view->shade_saved_height :
-					      view->content_height;
+	int cw = view->content_width;
+	int ch = view->content_height;
+	if (view->sd != COW_SHADE_NONE)
+		cow_view_shaded_content_size(view, view->sd, &cw, &ch);
 
 	struct timespec now;
 	int		clicks = manage_click_count(seat, view, &now);
@@ -739,10 +750,12 @@ manage_decoration_click(struct cow_seat *seat, struct cow_view *view)
 	if (edges != 0) {
 		cow_dec_binding_dispatch(seat, view,
 		    corner_region_from_edges(edges), clicks);
-	} else if (cow_titlebar_hit(view, lx, ly)) {
+	} else if (cow_titlebar_hit_for(view, cw, ch, lx, ly)) {
 		if (manage_titlebar_button_press(seat, view, lx, ly)) {
 			/* handled */
-		} else if (!manage_container_tab_click(seat, view, lx, cw)) {
+		} else if (cow_titlebar_is_vertical(
+			       view->cfg.titlebar.position) ||
+		    !manage_container_tab_click(seat, view, lx, cw)) {
 			cow_dec_binding_dispatch(seat, view,
 			    COW_DEC_REGION_TITLEBAR, clicks);
 		} else {
@@ -750,7 +763,7 @@ manage_decoration_click(struct cow_seat *seat, struct cow_view *view)
 		}
 	} else {
 		enum cow_dec_region er =
-		    decoration_outer_region(lx, ly, tt, cw, ch);
+		    decoration_outer_region(view, lx, ly, cw, ch);
 		if (er != COW_DEC_REGION_NONE)
 			cow_dec_binding_dispatch(seat, view, er, clicks);
 	}

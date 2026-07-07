@@ -61,6 +61,63 @@ titlebar_visible_button_count(const struct cow_titlebar_config *tb)
 	return n;
 }
 
+bool
+cow_titlebar_is_vertical(enum cow_titlebar_position position)
+{
+	return (position == COW_TITLEBAR_LEFT ||
+	    position == COW_TITLEBAR_RIGHT);
+}
+
+const char *
+cow_titlebar_position_name(enum cow_titlebar_position position)
+{
+	switch (position) {
+	case COW_TITLEBAR_BOTTOM:
+		return "bottom";
+	case COW_TITLEBAR_LEFT:
+		return "left";
+	case COW_TITLEBAR_RIGHT:
+		return "right";
+	case COW_TITLEBAR_TOP:
+	default:
+		return "top";
+	}
+}
+
+void
+cow_titlebar_frame_geometry(const struct cow_view *view, int cw, int ch,
+    int *frame_w, int *frame_h, int *content_x, int *content_y)
+{
+	int bw = view->dec.border_width;
+	int tt = view->dec.title_thickness;
+	enum cow_titlebar_position pos = view->cfg.titlebar.position;
+
+	if (cow_titlebar_is_vertical(pos)) {
+		*frame_w = cw + 2 * bw + tt;
+		*frame_h = ch + 2 * bw;
+	} else {
+		*frame_w = cw + 2 * bw;
+		*frame_h = ch + 2 * bw + tt;
+	}
+
+	switch (pos) {
+	case COW_TITLEBAR_BOTTOM:
+	case COW_TITLEBAR_RIGHT:
+		*content_x = bw;
+		*content_y = bw;
+		break;
+	case COW_TITLEBAR_LEFT:
+		*content_x = bw + tt;
+		*content_y = bw;
+		break;
+	case COW_TITLEBAR_TOP:
+	default:
+		*content_x = bw;
+		*content_y = bw + tt;
+		break;
+	}
+}
+
 void
 cow_titlebar_effective_squeeze(const struct cow_view *view,
     struct cow_titlebar_squeeze			     *out)
@@ -85,24 +142,53 @@ cow_titlebar_effective_squeeze(const struct cow_view *view,
 	*out = view->cfg.titlebar.squeeze;
 }
 
-/*
- * The drawn titlebar rectangle inside the decoration buffer.
- * Coordinates match the (tb_x, tb_y, tb_w, tb_h) used by
- * cow_titlebar_render: tb_x = border_width, tb_y = border_width,
- * tb_w spans the frame inside the left/right borders.
- */
 struct cow_box
 cow_titlebar_squeezed_rect(const struct cow_view *view)
 {
-	int bw	    = view->dec.border_width;
-	int tt	    = view->dec.title_thickness;
-	int frame_w = view->content_width + 2 * bw;
-	int strip_x = bw;
-	int strip_y = bw;
-	int strip_w = frame_w - 2 * bw;
+	return cow_titlebar_squeezed_rect_for(view, view->content_width,
+	    view->content_height);
+}
+
+struct cow_box
+cow_titlebar_squeezed_rect_for(const struct cow_view *view, int cw, int ch)
+{
+	int  bw = view->dec.border_width;
+	int  tt = view->dec.title_thickness;
+	bool vertical = cow_titlebar_is_vertical(view->cfg.titlebar.position);
+	int  strip_x, strip_y, strip_w, strip_h;
 
 	struct cow_box empty = { 0, 0, 0, 0 };
-	if (tt <= 0 || strip_w <= 0)
+
+	switch (view->cfg.titlebar.position) {
+	case COW_TITLEBAR_BOTTOM:
+		strip_x = bw;
+		strip_y = bw + ch;
+		strip_w = cw;
+		strip_h = tt;
+		break;
+	case COW_TITLEBAR_LEFT:
+		strip_x = bw;
+		strip_y = bw;
+		strip_w = tt;
+		strip_h = ch;
+		break;
+	case COW_TITLEBAR_RIGHT:
+		strip_x = bw + cw;
+		strip_y = bw;
+		strip_w = tt;
+		strip_h = ch;
+		break;
+	case COW_TITLEBAR_TOP:
+	default:
+		strip_x = bw;
+		strip_y = bw;
+		strip_w = cw;
+		strip_h = tt;
+		break;
+	}
+
+	int strip_len = vertical ? strip_h : strip_w;
+	if (tt <= 0 || strip_len <= 0)
 		return empty;
 
 	struct cow_titlebar_squeeze sq;
@@ -114,7 +200,7 @@ cow_titlebar_squeezed_rect(const struct cow_view *view)
 			.x	= strip_x,
 			.y	= strip_y,
 			.width	= strip_w,
-			.height = tt,
+			.height = strip_h,
 		};
 	} else if (sq.mode == COW_SQUEEZE_FIXED) {
 		want = sq.width > 0 ? sq.width : 1;
@@ -147,68 +233,75 @@ cow_titlebar_squeezed_rect(const struct cow_view *view)
 			want = sq.min_width;
 	}
 
-	if (want > strip_w)
-		want = strip_w;
+	if (want > strip_len)
+		want = strip_len;
 	if (want < 1)
 		want = 1;
 
-	int x;
+	int start;
 	switch (sq.justify) {
 	case COW_JUST_CENTRE:
-		x = strip_x + (strip_w - want) / 2;
+		start = (strip_len - want) / 2;
 		break;
 	case COW_JUST_RIGHT:
-		x = strip_x + strip_w - want;
+		start = strip_len - want;
 		break;
 	case COW_JUST_LEFT:
 	default:
-		x = strip_x;
+		start = 0;
 		break;
 	}
-	x += sq.offset;
+	start += sq.offset;
 
-	/* Clamp so the squeezed rect stays inside the strip. */
-	if (x < strip_x)
-		x = strip_x;
-	if (x + want > strip_x + strip_w)
-		x = strip_x + strip_w - want;
+	if (start < 0)
+		start = 0;
+	if (start + want > strip_len)
+		start = strip_len - want;
 
+	if (vertical) {
+		return (struct cow_box) {
+			.x	= strip_x,
+			.y	= strip_y + start,
+			.width	= strip_w,
+			.height = want,
+		};
+	}
 	return (struct cow_box) {
-		.x	= x,
+		.x	= strip_x + start,
 		.y	= strip_y,
 		.width	= want,
-		.height = tt,
+		.height = strip_h,
 	};
 }
 
 bool
 cow_titlebar_hit(const struct cow_view *view, int lx, int ly)
 {
-	int bw = view->dec.border_width;
+	return cow_titlebar_hit_for(view, view->content_width,
+	    view->content_height, lx, ly);
+}
+
+bool
+cow_titlebar_hit_for(const struct cow_view *view, int cw, int ch, int lx,
+    int ly)
+{
 	int tt = view->dec.title_thickness;
 
 	if (tt <= 0)
 		return false;
 
-	struct cow_box r = cow_titlebar_squeezed_rect(view);
+	struct cow_box r = cow_titlebar_squeezed_rect_for(view, cw, ch);
 	if (r.width <= 0 || r.height <= 0)
 		return false;
 
-	/*
-	 * lx, ly are view-relative: (0, 0) is the content's top-left.
-	 * The decoration buffer origin is (-bw, -bw - tt) in that
-	 * space, so a dec-coord (dx, dy) corresponds to
-	 *   lx = dx - bw
-	 *   ly = dy - bw - tt.
-	 * The titlebar rect's y is always bw (top border), so the
-	 * vertical test in view-relative space is ly ∈ [-tt, 0).
-	 */
-	if (ly < -tt || ly >= 0)
-		return false;
+	int frame_w, frame_h, content_x, content_y;
+	cow_titlebar_frame_geometry(view, cw, ch, &frame_w, &frame_h,
+	    &content_x, &content_y);
 
-	int left  = r.x - bw;
-	int right = left + r.width;
-	return lx >= left && lx < right;
+	int dx = lx + content_x;
+	int dy = ly + content_y;
+	return (dx >= r.x && dx < r.x + r.width &&
+	    dy >= r.y && dy < r.y + r.height);
 }
 
 /*
@@ -282,8 +375,8 @@ draw_titlebar_relief(uint32_t *pixels, int stride, int rx, int ry, int rw,
 	    sunken);
 }
 
-void
-cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
+static void
+cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 {
 	uint32_t			      *pixels = ctx->pixels;
 	int			       stride_px = ctx->stride_px;
@@ -363,7 +456,7 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 	int tb_h = tb_rect.height;
 
 	int strip_x = border_width;
-	int strip_y = border_width;
+	int strip_y = tb_y;
 	int strip_w = frame_w - 2 * border_width;
 
 	if (tb_w <= 0 || strip_w <= 0)
@@ -743,4 +836,72 @@ cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
 		cow_draw_relieve_rect(&p, tb_x, tb_y, tb_w, tb_h, 2, px_hi,
 		    px_hi, px_hi, px_hi);
 	}
+}
+
+static void
+cow_titlebar_rotate_into(const struct cow_titlebar_render_ctx *ctx,
+    const uint32_t *tmp, int tmp_w, int tmp_h)
+{
+	uint32_t *dst = ctx->pixels;
+	int	 stride = ctx->stride_px;
+	struct cow_box r = ctx->tb_rect;
+	bool left = ctx->tb_cfg != NULL &&
+	    ctx->tb_cfg->position == COW_TITLEBAR_LEFT;
+
+	for (int sy = 0; sy < tmp_h; sy++) {
+		for (int sx = 0; sx < tmp_w; sx++) {
+			int dx, dy;
+
+			if (left) {
+				dx = r.x + sy;
+				dy = r.y + (tmp_w - 1 - sx);
+			} else {
+				dx = r.x + (tmp_h - 1 - sy);
+				dy = r.y + sx;
+			}
+			dst[dy * stride + dx] = tmp[sy * tmp_w + sx];
+		}
+	}
+}
+
+void
+cow_titlebar_render(const struct cow_titlebar_render_ctx *ctx)
+{
+	if (ctx->tb_cfg == NULL ||
+	    !cow_titlebar_is_vertical(ctx->tb_cfg->position)) {
+		cow_titlebar_render_horizontal(ctx);
+		return;
+	}
+
+	struct cow_box r = ctx->tb_rect;
+	int	       tmp_w = r.height;
+	int	       tmp_h = r.width;
+	if (tmp_w <= 0 || tmp_h <= 0)
+		return;
+
+	uint32_t *tmp = xcalloc((size_t)tmp_w * (size_t)tmp_h,
+	    sizeof(uint32_t));
+	struct cow_titlebar_render_ctx hctx = *ctx;
+	hctx.pixels = tmp;
+	hctx.stride_px = tmp_w;
+	hctx.frame_w = tmp_w;
+	hctx.frame_h = tmp_h;
+	hctx.border_width = 0;
+	hctx.tb_rect = (struct cow_box) {
+		.x = 0,
+		.y = 0,
+		.width = tmp_w,
+		.height = tmp_h,
+	};
+	cow_titlebar_render_horizontal(&hctx);
+	struct cow_pixbuf dst = {
+		.pixels	   = ctx->pixels,
+		.stride_px = ctx->stride_px,
+		.width	   = INT_MAX,
+		.height	   = INT_MAX,
+	};
+	cow_draw_clear_rect(&dst, r.x, ctx->border_width, r.width,
+	    ctx->frame_h - 2 * ctx->border_width);
+	cow_titlebar_rotate_into(ctx, tmp, tmp_w, tmp_h);
+	xfree(tmp);
 }

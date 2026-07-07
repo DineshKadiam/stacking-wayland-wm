@@ -26,6 +26,7 @@
 #include "cow/output.h"
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
+#include "cow/titlebar.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
@@ -206,38 +207,39 @@ do_transfer_to_output(struct cow_view *view, struct cow_output *target,
     const char *dir)
 {
 	struct cow_box *ua = &target->usable_area;
-	int		bw = view->dec.border_width;
-	int		tt = view->dec.title_thickness;
+	int frame_w, frame_h, content_x, content_y;
+	cow_titlebar_frame_geometry(view, view->content_width,
+	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
 
 	/* Place at entry edge; clamp perpendicular coord. */
 	if (strcmp(dir, "right") == 0) {
-		view->x	 = ua->x + bw;
-		int miny = ua->y + bw + tt;
-		int maxy = ua->y + ua->height - view->content_height - bw;
+		view->x	 = ua->x + content_x;
+		int miny = ua->y + content_y;
+		int maxy = ua->y + ua->height - frame_h + content_y;
 		if (view->y < miny)
 			view->y = miny;
 		else if (view->y > maxy)
 			view->y = maxy;
 	} else if (strcmp(dir, "left") == 0) {
-		view->x	 = ua->x + ua->width - view->content_width - bw;
-		int miny = ua->y + bw + tt;
-		int maxy = ua->y + ua->height - view->content_height - bw;
+		view->x	 = ua->x + ua->width - frame_w + content_x;
+		int miny = ua->y + content_y;
+		int maxy = ua->y + ua->height - frame_h + content_y;
 		if (view->y < miny)
 			view->y = miny;
 		else if (view->y > maxy)
 			view->y = maxy;
 	} else if (strcmp(dir, "down") == 0) {
-		view->y	 = ua->y + bw + tt;
-		int minx = ua->x + bw;
-		int maxx = ua->x + ua->width - view->content_width - bw;
+		view->y	 = ua->y + content_y;
+		int minx = ua->x + content_x;
+		int maxx = ua->x + ua->width - frame_w + content_x;
 		if (view->x < minx)
 			view->x = minx;
 		else if (view->x > maxx)
 			view->x = maxx;
 	} else { /* up */
-		view->y	 = ua->y + ua->height - view->content_height - bw;
-		int minx = ua->x + bw;
-		int maxx = ua->x + ua->width - view->content_width - bw;
+		view->y	 = ua->y + ua->height - frame_h + content_y;
+		int minx = ua->x + content_x;
+		int maxx = ua->x + ua->width - frame_w + content_x;
 		if (view->x < minx)
 			view->x = minx;
 		else if (view->x > maxx)
@@ -325,14 +327,13 @@ static void
 do_centre(struct cow_view *view)
 {
 	struct cow_box *ua = &view->output->usable_area;
-	int		bw = view->dec.border_width;
-	int		tt = view->dec.title_thickness;
-	int		fw = view->content_width + 2 * bw;
-	int		fh = view->content_height + bw + tt + bw;
+	int frame_w, frame_h, content_x, content_y;
+	cow_titlebar_frame_geometry(view, view->content_width,
+	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
 
 	unmax_if_needed(view);
-	view->x = ua->x + (ua->width - fw) / 2 + bw;
-	view->y = ua->y + (ua->height - fh) / 2 + bw + tt;
+	view->x = ua->x + (ua->width - frame_w) / 2 + content_x;
+	view->y = ua->y + (ua->height - frame_h) / 2 + content_y;
 	apply_move(view);
 }
 
@@ -385,10 +386,12 @@ do_screen(struct cow_view *view, const char *name, struct cmd_q *cmdq)
 		 * NOT subsequently snap the view onto the output under
 		 * the pointer.
 		 */
-		int bw = view->dec.border_width;
-		int tt = view->dec.title_thickness;
-		view->x = dst_ua->x + bw;
-		view->y = dst_ua->y + bw + tt;
+		int frame_w, frame_h, content_x, content_y;
+		cow_titlebar_frame_geometry(view, view->content_width,
+		    view->content_height, &frame_w, &frame_h, &content_x,
+		    &content_y);
+		view->x = dst_ua->x + content_x;
+		view->y = dst_ua->y + content_y;
 	}
 
 	cow_view_reassign_output(view, target);
@@ -449,46 +452,50 @@ do_step(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
 {
 	int step = cow_config ? cow_config->step : COW_CFG_DEFAULT_STEP;
 	struct cow_box *ua = &view->output->usable_area;
-	int		bw = view->dec.border_width;
-	int		tt = view->dec.title_thickness;
+	int frame_w, frame_h, content_x, content_y;
+	cow_titlebar_frame_geometry(view, view->content_width,
+	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
 
 	unmax_if_needed(view);
 
-	/* Compute the edge positions of the frame before the step. */
 	int at_right  = ua->x + ua->width;
 	int at_left   = ua->x;
 	int at_bottom = ua->y + ua->height;
 	int at_top    = ua->y;
+	struct cow_box fb = cow_view_frame_box(view);
 
 	bool at_edge = false;
 	if (strcmp(dir, "right") == 0) {
-		at_edge = (view->x + view->content_width + bw >= at_right);
+		at_edge = (fb.x + fb.width >= at_right);
 		if (!at_edge) {
-			view->x += step;
-			/* Clamp to edge rather than overshooting. */
-			if (view->x + view->content_width + bw > at_right)
-				view->x = at_right - view->content_width - bw;
+			fb.x += step;
+			if (fb.x + fb.width > at_right)
+				fb.x = at_right - fb.width;
+			view->x = fb.x + content_x;
 		}
 	} else if (strcmp(dir, "left") == 0) {
-		at_edge = (view->x - bw <= at_left);
+		at_edge = (fb.x <= at_left);
 		if (!at_edge) {
-			view->x -= step;
-			if (view->x - bw < at_left)
-				view->x = at_left + bw;
+			fb.x -= step;
+			if (fb.x < at_left)
+				fb.x = at_left;
+			view->x = fb.x + content_x;
 		}
 	} else if (strcmp(dir, "down") == 0) {
-		at_edge = (view->y + view->content_height + bw >= at_bottom);
+		at_edge = (fb.y + fb.height >= at_bottom);
 		if (!at_edge) {
-			view->y += step;
-			if (view->y + view->content_height + bw > at_bottom)
-				view->y = at_bottom - view->content_height - bw;
+			fb.y += step;
+			if (fb.y + fb.height > at_bottom)
+				fb.y = at_bottom - fb.height;
+			view->y = fb.y + content_y;
 		}
 	} else if (strcmp(dir, "up") == 0) {
-		at_edge = (view->y - bw - tt <= at_top);
+		at_edge = (fb.y <= at_top);
 		if (!at_edge) {
-			view->y -= step;
-			if (view->y - bw - tt < at_top)
-				view->y = at_top + bw + tt;
+			fb.y -= step;
+			if (fb.y < at_top)
+				fb.y = at_top;
+			view->y = fb.y + content_y;
 		}
 	} else {
 		cmdq_error(cmdq, "move: unknown direction: %s", dir);
@@ -515,8 +522,9 @@ do_snap(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
 	}
 
 	struct cow_box *ua	     = &view->output->usable_area;
-	int		bw	     = view->dec.border_width;
-	int		tt	     = view->dec.title_thickness;
+	int frame_w, frame_h, content_x, content_y;
+	cow_titlebar_frame_geometry(view, view->content_width,
+	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
 	struct cow_box	fb	     = cow_view_frame_box(view);
 	int		frame_left   = fb.x;
 	int		frame_top    = fb.y;
@@ -555,11 +563,12 @@ do_snap(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
 		{
 			if (cow_view_skip_for_expand(v, view))
 				continue;
-			int vb = v->y + v->content_height + v->dec.border_width;
-			if (vb < frame_top && vb > target)
-				target = vb;
+			struct cow_box vb = cow_view_frame_box(v);
+			int	       edge = vb.y + vb.height;
+			if (edge < frame_top && edge > target)
+				target = edge;
 		}
-		view->y = target + bw + tt;
+		view->y = target + content_y;
 	} else if (strcmp(dir, "down") == 0) {
 		int		 target = ua->y + ua->height;
 		struct cow_view *v;
@@ -567,12 +576,11 @@ do_snap(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
 		{
 			if (cow_view_skip_for_expand(v, view))
 				continue;
-			int vt = v->y - v->dec.border_width -
-			    v->dec.title_thickness;
-			if (vt > frame_bottom && vt < target)
-				target = vt;
+			struct cow_box vb = cow_view_frame_box(v);
+			if (vb.y > frame_bottom && vb.y < target)
+				target = vb.y;
 		}
-		view->y = target - view->content_height - bw;
+		view->y = target - frame_h + content_y;
 	} else if (strcmp(dir, "left") == 0) {
 		int		 target = ua->x;
 		struct cow_view *v;
@@ -580,11 +588,12 @@ do_snap(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
 		{
 			if (cow_view_skip_for_expand(v, view))
 				continue;
-			int vr = v->x + v->content_width + v->dec.border_width;
-			if (vr < frame_left && vr > target)
-				target = vr;
+			struct cow_box vb = cow_view_frame_box(v);
+			int	       edge = vb.x + vb.width;
+			if (edge < frame_left && edge > target)
+				target = edge;
 		}
-		view->x = target + bw;
+		view->x = target + content_x;
 	} else if (strcmp(dir, "right") == 0) {
 		int		 target = ua->x + ua->width;
 		struct cow_view *v;
@@ -592,11 +601,11 @@ do_snap(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
 		{
 			if (cow_view_skip_for_expand(v, view))
 				continue;
-			int vl = v->x - v->dec.border_width;
-			if (vl > frame_right && vl < target)
-				target = vl;
+			struct cow_box vb = cow_view_frame_box(v);
+			if (vb.x > frame_right && vb.x < target)
+				target = vb.x;
 		}
-		view->x = target - view->content_width - bw;
+		view->x = target - frame_w + content_x;
 	} else {
 		cmdq_error(cmdq, "snap: unknown direction: %s", dir);
 		return;

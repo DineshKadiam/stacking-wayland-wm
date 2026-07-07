@@ -122,6 +122,8 @@ dsl_snapshot_view(const struct cow_view *view)
 
 	rec_set_bool(r, "use_ssd", view->use_ssd);
 	rec_set_number(r, "title_thickness", view->dec.title_thickness);
+	rec_set_string(r, "titlebar_position",
+	    cow_titlebar_position_name(view->cfg.titlebar.position));
 	rec_set_number(r, "border_width", view->dec.border_width);
 
 	struct cow_titlebar_squeeze sq;

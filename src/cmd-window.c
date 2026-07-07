@@ -26,6 +26,7 @@
 #include "cow/ipc.h"
 #include "cow/keybinding.h"
 #include "cow/output.h"
+#include "cow/titlebar.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
@@ -68,7 +69,8 @@ static void		    do_maximize(struct cow_view *, enum maximize_type,
 		    enum maximize_axis);
 static void		    do_shade(struct cow_view *, const char *);
 static enum expand_dir	    resolve_direction(const char *);
-static enum shade_direction resolve_shade_direction(const char *);
+static enum shade_direction resolve_shade_direction(struct cow_view *,
+    const char *);
 
 struct cmd_entry cmd_winops_entry = {
 	"winops",
@@ -424,8 +426,11 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 	}
 
 	struct cow_box *ua = &view->output->usable_area;
-	int		bw = view->dec.border_width;
-	int		tt = view->dec.title_thickness;
+	int frame_w, frame_h, content_x, content_y;
+	cow_titlebar_frame_geometry(view, view->content_width,
+	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
+	int frame_extra_w = frame_w - view->content_width;
+	int frame_extra_h = frame_h - view->content_height;
 
 	/* Save only axes that do not already have pre-maximize geometry. */
 	if ((axis == MAX_AXIS_BOTH || axis == MAX_AXIS_H) &&
@@ -445,12 +450,12 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 		int new_w = view->content_width;
 		int new_h = view->content_height;
 		if (axis == MAX_AXIS_BOTH || axis == MAX_AXIS_H) {
-			new_x = ua->x + bw;
-			new_w = ua->width - 2 * bw;
+			new_x = ua->x + content_x;
+			new_w = ua->width - frame_extra_w;
 		}
 		if (axis == MAX_AXIS_BOTH || axis == MAX_AXIS_V) {
-			new_y = ua->y + bw + tt;
-			new_h = ua->height - 2 * bw - tt;
+			new_y = ua->y + content_y;
+			new_h = ua->height - frame_extra_h;
 		}
 		cow_clamp_dimensions(&new_w, &new_h);
 		cow_view_set_pending_geometry(view, new_x, new_y, new_w, new_h);
@@ -493,14 +498,30 @@ resolve_direction(const char *dir_str)
 }
 
 static enum shade_direction
-resolve_shade_direction(const char *dir_str)
+resolve_shade_direction(struct cow_view *view, const char *dir_str)
 {
 	int dir = COW_SHADE_NORTH;
 
 	if (dir_str == NULL)
 		return (dir);
 
-	if (strcmp(dir_str, "north") == 0)
+	if (strcmp(dir_str, "titlebar") == 0) {
+		switch (view->cfg.titlebar.position) {
+		case COW_TITLEBAR_BOTTOM:
+			dir = COW_SHADE_SOUTH;
+			break;
+		case COW_TITLEBAR_LEFT:
+			dir = COW_SHADE_WEST;
+			break;
+		case COW_TITLEBAR_RIGHT:
+			dir = COW_SHADE_EAST;
+			break;
+		case COW_TITLEBAR_TOP:
+		default:
+			dir = COW_SHADE_NORTH;
+			break;
+		}
+	} else if (strcmp(dir_str, "north") == 0)
 		dir = COW_SHADE_NORTH;
 	else if (strcmp(dir_str, "south") == 0)
 		dir = COW_SHADE_SOUTH;
@@ -538,8 +559,11 @@ do_expand(struct cow_view *view, enum expand_dir dir, bool toggle)
 	}
 
 	struct cow_box *ua = &view->output->usable_area;
-	int		bw = view->dec.border_width;
-	int		tt = view->dec.title_thickness;
+	int frame_w, frame_h, content_x, content_y;
+	cow_titlebar_frame_geometry(view, view->content_width,
+	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
+	int frame_extra_w = frame_w - view->content_width;
+	int frame_extra_h = frame_h - view->content_height;
 
 	if (!view->maximized)
 		cow_view_save_geometry(view);
@@ -597,10 +621,10 @@ do_expand(struct cow_view *view, enum expand_dir dir, bool toggle)
 		}
 	}
 
-	int new_x = grow_left + bw;
-	int new_y = grow_top + bw + tt;
-	int new_w = (grow_right - grow_left) - 2 * bw;
-	int new_h = (grow_bottom - grow_top) - 2 * bw - tt;
+	int new_x = grow_left + content_x;
+	int new_y = grow_top + content_y;
+	int new_w = (grow_right - grow_left) - frame_extra_w;
+	int new_h = (grow_bottom - grow_top) - frame_extra_h;
 
 	if (new_w < 50)
 		new_w = 50;
@@ -624,7 +648,7 @@ do_expand(struct cow_view *view, enum expand_dir dir, bool toggle)
 static void
 do_shade(struct cow_view *view, const char *dir_str)
 {
-	enum shade_direction sd = resolve_shade_direction(dir_str);
+	enum shade_direction sd = resolve_shade_direction(view, dir_str);
 
 	cow_view_shade(view, sd);
 	cow_wm_request_manage_dirty();
@@ -661,6 +685,8 @@ do_identify(struct cow_view *view, struct cmd_q *cmdq)
 	cJSON_AddNumberToObject(dec, "border_width", view->dec.border_width);
 	cJSON_AddNumberToObject(dec, "title_thickness",
 	    view->dec.title_thickness);
+	cJSON_AddStringToObject(dec, "titlebar_position",
+	    cow_titlebar_position_name(view->cfg.titlebar.position));
 	cJSON_AddBoolToObject(dec, "ssd", view->use_ssd);
 	cJSON_AddItemToObject(info, "decoration", dec);
 

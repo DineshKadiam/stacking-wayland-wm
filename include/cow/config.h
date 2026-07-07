@@ -96,6 +96,13 @@ enum cow_geometry_window_mode {
 	COW_GEOMETRY_WINDOW_BOTH,
 };
 
+enum cow_titlebar_position {
+	COW_TITLEBAR_TOP,
+	COW_TITLEBAR_BOTTOM,
+	COW_TITLEBAR_LEFT,
+	COW_TITLEBAR_RIGHT,
+};
+
 /*
  * Per-edge border colors.
  */
@@ -260,6 +267,7 @@ struct cow_titlebar_config {
 	char				 *font_name;
 	/* Explicit height override; 0 means derive from font. */
 	int height;
+	enum cow_titlebar_position position;
 
 	/* Squeezed titlebar (CTWM SqueezeTitle). */
 	struct cow_titlebar_squeeze squeeze;

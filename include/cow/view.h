@@ -147,6 +147,7 @@ enum cow_view_cfg_option {
 	COW_VIEW_CFG_TITLEBAR_FG_ACTIVE,
 	COW_VIEW_CFG_TITLEBAR_FG_INACTIVE,
 	COW_VIEW_CFG_TITLEBAR_HEIGHT,
+	COW_VIEW_CFG_TITLEBAR_POSITION,
 	COW_VIEW_CFG_TITLEBAR_SQUEEZE,
 	COW_VIEW_CFG_TITLEBAR_SQUEEZE_JUSTIFY,
 	COW_VIEW_CFG_TITLEBAR_SQUEEZE_WIDTH,
@@ -453,6 +454,7 @@ void cow_view_unmaximize(struct cow_view *);
 /*
  * Shade/unshade a view.
  */
+void cow_view_shaded_content_size(const struct cow_view *, int, int *, int *);
 void cow_view_shade(struct cow_view *, int);
 void cow_view_unshade(struct cow_view *);
 

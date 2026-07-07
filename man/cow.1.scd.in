@@ -595,7 +595,7 @@ The defaults bindings are:
 :  window-move (interactive title-drag move)
 |  titlebar
 :  double
-:  window-shade -d north (shade / unshade)
+:  window-shade -d titlebar (shade / unshade toward the titlebar)
 
 Double-clicks on edges and corners have no defaults.
 
@@ -610,7 +610,7 @@ Examples:
 bind-decoration titlebar window-maximize -m
 
 # Re-express the default double-click-shade explicitly.
-bind-decoration -2 titlebar window-shade -d north
+bind-decoration -2 titlebar window-shade -d titlebar
 
 # Maximise on a click on the north edge.
 bind-decoration N window-maximize -m
@@ -1177,6 +1177,9 @@ feel of a window.  All of these can be used with *decor -d*.
 :  integer (pixels)
 :  Fix the titlebar height in pixels. When set to 0 (the default) the
    height is derived from the font size.
+|  *titlebar.position*
+:  _top_ | _bottom_ | _left_ | _right_
+:  Set where the titlebar is drawn. Default: _top_.
 |  *titlebar.button.N.vector*
 :  vector string
 :  Geometry of titlebar button _N_, where _N_ is 0 through 9. Odd

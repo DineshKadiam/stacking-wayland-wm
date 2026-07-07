@@ -149,6 +149,8 @@ do_show_windows(int fd)
 		cJSON_AddBoolToObject(w, "use_ssd", view->use_ssd);
 		cJSON_AddNumberToObject(w, "title_thickness",
 		    view->dec.title_thickness);
+		cJSON_AddStringToObject(w, "titlebar_position",
+		    cow_titlebar_position_name(view->cfg.titlebar.position));
 		cJSON_AddNumberToObject(w, "border_width",
 		    view->dec.border_width);
 		struct cow_titlebar_squeeze sq;

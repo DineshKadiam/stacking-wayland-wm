@@ -137,7 +137,8 @@ cow_decoration_register_default_bindings(void)
 	register_default(COW_DEC_REGION_SE, 1, "window-resize -e se");
 	register_default(COW_DEC_REGION_SW, 1, "window-resize -e sw");
 	register_default(COW_DEC_REGION_TITLEBAR, 1, "window-move");
-	register_default(COW_DEC_REGION_TITLEBAR, 2, "window-shade -d north");
+	register_default(COW_DEC_REGION_TITLEBAR, 2,
+	    "window-shade -d titlebar");
 }
 
 static bool
@@ -223,5 +224,4 @@ cow_dec_binding_dispatch(struct cow_seat *seat, struct cow_view *view,
 		return false;
 	return run_cmd_string(view, cmd_str);
 }
-
 

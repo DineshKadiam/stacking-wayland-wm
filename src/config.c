@@ -250,6 +250,7 @@ cow_config_create(void)
 	/* Default titlebar config */
 	config->titlebar.enabled   = false;
 	config->titlebar.font_name = NULL;
+	config->titlebar.position  = COW_TITLEBAR_TOP;
 	cow_colour_convert(config->titlebar.active_colour, 0xC0C0C0);
 	cow_colour_convert(config->titlebar.inactive_colour, 0xA0A0A0);
 	cow_colour_convert(config->titlebar.fg_active, 0x000000);

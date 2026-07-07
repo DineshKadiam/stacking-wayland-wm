@@ -58,6 +58,13 @@ void cow_titlebar_effective_squeeze(const struct cow_view *,
  */
 struct cow_box cow_titlebar_squeezed_rect(const struct cow_view *);
 
+struct cow_box cow_titlebar_squeezed_rect_for(const struct cow_view *, int,
+    int);
+void cow_titlebar_frame_geometry(const struct cow_view *, int, int, int *, int *,
+    int *, int *);
+bool cow_titlebar_is_vertical(enum cow_titlebar_position);
+const char *cow_titlebar_position_name(enum cow_titlebar_position);
+
 /*
  * True if the point (lx, ly), in view-relative coordinates (i.e.
  * lx = pointer_x - view->x, ly = pointer_y - view->y), lies inside
@@ -67,11 +74,13 @@ struct cow_box cow_titlebar_squeezed_rect(const struct cow_view *);
  * user expects.
  */
 bool cow_titlebar_hit(const struct cow_view *, int, int);
+bool cow_titlebar_hit_for(const struct cow_view *, int, int, int, int);
 
 struct cow_titlebar_render_ctx {
 	uint32_t       *pixels;
 	int		stride_px;
 	int		frame_w;
+	int		frame_h;
 	int		border_width;
 	enum cow_border_style border_style;
 	struct cow_box tb_rect;

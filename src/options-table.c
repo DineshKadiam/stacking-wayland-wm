@@ -344,6 +344,13 @@ const struct cow_option_entry cow_options_table[] = {
 		.id = COW_VIEW_CFG_TITLEBAR_HEIGHT,
 	},
 	{
+		.name = "titlebar.position",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_MIXED,
+		.action = COW_OPTION_TITLEBAR_POSITION,
+		.id = COW_VIEW_CFG_TITLEBAR_POSITION,
+	},
+	{
 		.name = "titlebar.squeeze",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_MIXED,

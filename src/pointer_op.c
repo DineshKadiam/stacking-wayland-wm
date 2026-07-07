@@ -27,6 +27,7 @@
 #include "cow/rule.h"
 #include "cow/seat.h"
 #include "cow/status.h"
+#include "cow/titlebar.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
@@ -295,8 +296,7 @@ cow_pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
  * the screen edge when no further page exists in the direction of travel.
  */
 static void
-clamp_drag_to_screen(const struct cow_view *view, int bw, int tt, int *new_x,
-    int *new_y)
+clamp_drag_to_screen(const struct cow_view *view, int *new_x, int *new_y)
 {
 	if (view->output == NULL || cow_config == NULL)
 		return;
@@ -309,6 +309,9 @@ clamp_drag_to_screen(const struct cow_view *view, int bw, int tt, int *new_x,
 	int oy	    = view->output->y;
 	int ow	    = view->output->width;
 	int oh	    = view->output->height;
+	int frame_w, frame_h, content_x, content_y;
+	cow_titlebar_frame_geometry(view, view->content_width,
+	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
 
 	struct cow_box nfb = cow_view_frame_box_at(view, *new_x, *new_y);
 	struct cow_box cfb = cow_view_frame_box(view);
@@ -320,15 +323,15 @@ clamp_drag_to_screen(const struct cow_view *view, int bw, int tt, int *new_x,
 	bool	 can_bottom = (mask & COW_PAN_EDGE_BIT(COW_PAN_BOTTOM)) != 0;
 
 	if (!can_left && nfb.x < cfb.x && nfb.x < ox)
-		*new_x = ox + bw;
+		*new_x = ox + content_x;
 	if (!can_right && (nfb.x + nfb.width) > (cfb.x + cfb.width) &&
 	    (nfb.x + nfb.width) > ox + ow)
-		*new_x = ox + ow - view->content_width - bw;
+		*new_x = ox + ow - frame_w + content_x;
 	if (!can_top && nfb.y < cfb.y && nfb.y < oy)
-		*new_y = oy + bw + tt;
+		*new_y = oy + content_y;
 	if (!can_bottom && (nfb.y + nfb.height) > (cfb.y + cfb.height) &&
 	    (nfb.y + nfb.height) > oy + oh)
-		*new_y = oy + oh - view->content_height - bw;
+		*new_y = oy + oh - frame_h + content_y;
 }
 
 /*
@@ -366,20 +369,19 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 			cow_wm.drag_drop_target->dec.dirty = true;
 			cow_wm.drag_drop_target		   = NULL;
 		}
-		int bw = view->dec.border_width;
-		int tt = view->dec.title_thickness;
 		/* cow_container_remove_view restores pre-container
 		 * dimensions */
 		cow_container_remove_view(view);
 		/* Use restored (proposed) size for centring on pointer */
-		int fw = (view->proposed_width > 0 ? view->proposed_width :
-						     view->content_width) +
-		    2 * bw;
-		int fh = (view->proposed_height > 0 ? view->proposed_height :
-						      view->content_height) +
-		    bw + tt + bw;
-		view->x		= seat->pointer_x - fw / 2 + bw;
-		view->y		= seat->pointer_y - fh / 2 + bw + tt;
+		int rw = view->proposed_width > 0 ? view->proposed_width :
+						     view->content_width;
+		int rh = view->proposed_height > 0 ? view->proposed_height :
+						      view->content_height;
+		int frame_w, frame_h, content_x, content_y;
+		cow_titlebar_frame_geometry(view, rw, rh, &frame_w, &frame_h,
+		    &content_x, &content_y);
+		view->x		= seat->pointer_x - frame_w / 2 + content_x;
+		view->y		= seat->pointer_y - frame_h / 2 + content_y;
 		view->dec.dirty = true;
 		cow_wm_request_manage_dirty();
 	} else if (seat->container_drag &&
@@ -548,8 +550,10 @@ cow_pointer_op_process(struct cow_seat *seat)
 				    seat->pointer_y;
 			}
 		}
-		int bw = view->dec.border_width;
-		int tt = view->dec.title_thickness;
+		int frame_w, frame_h, content_x, content_y;
+		cow_titlebar_frame_geometry(view, view->content_width,
+		    view->content_height, &frame_w, &frame_h, &content_x,
+		    &content_y);
 
 		/*
 		 * Compute the view's new top-left from the cursor position
@@ -565,10 +569,10 @@ cow_pointer_op_process(struct cow_seat *seat)
 			cx = seat->op.start_x + dx;
 			cy = seat->op.start_y + dy;
 		}
-		int fl = cx - bw;
-		int ft = cy - bw - tt;
-		int fr = cx + view->content_width + bw;
-		int fb = cy + view->content_height + bw;
+		int fl = cx - content_x;
+		int ft = cy - content_y;
+		int fr = fl + frame_w;
+		int fb = ft + frame_h;
 		snap_edges(view, &fl, &ft, &fr, &fb, false);
 
 		if (seat->container_drag) {
@@ -578,10 +582,10 @@ cow_pointer_op_process(struct cow_seat *seat)
 			cow_wm.drag_ghost_y = seat->pointer_y;
 		} else {
 			/* Normal move */
-			int new_x = fl + bw;
-			int new_y = ft + bw + tt;
+			int new_x = fl + content_x;
+			int new_y = ft + content_y;
 
-			clamp_drag_to_screen(view, bw, tt, &new_x, &new_y);
+			clamp_drag_to_screen(view, &new_x, &new_y);
 
 			view->x = new_x;
 			view->y = new_y;
@@ -693,25 +697,28 @@ cow_pointer_op_process(struct cow_seat *seat)
 
 		/* Snap frame edges during resize */
 		{
-			int rbw = view->dec.border_width;
-			int rtt = view->dec.title_thickness;
-			int fl	= new_x - rbw;
-			int ft	= new_y - rbw - rtt;
-			int fr	= new_x + new_w + rbw;
-			int fb	= new_y + new_h + rbw;
+			int frame_w, frame_h, content_x, content_y;
+			cow_titlebar_frame_geometry(view, new_w, new_h,
+			    &frame_w, &frame_h, &content_x, &content_y);
+			int frame_extra_w = frame_w - new_w;
+			int frame_extra_h = frame_h - new_h;
+			int fl		  = new_x - content_x;
+			int ft		  = new_y - content_y;
+			int fr		  = fl + frame_w;
+			int fb		  = ft + frame_h;
 			snap_edges(view, &fl, &ft, &fr, &fb, true);
 			if (edges & COW_EDGE_LEFT) {
-				new_x = fl + rbw;
-				new_w = fr - fl - 2 * rbw;
+				new_x = fl + content_x;
+				new_w = fr - fl - frame_extra_w;
 			}
 			if (edges & COW_EDGE_RIGHT)
-				new_w = fr - fl - 2 * rbw;
+				new_w = fr - fl - frame_extra_w;
 			if (edges & COW_EDGE_TOP) {
-				new_y = ft + rbw + rtt;
-				new_h = fb - ft - rbw - rtt - rbw;
+				new_y = ft + content_y;
+				new_h = fb - ft - frame_extra_h;
 			}
 			if (edges & COW_EDGE_BOTTOM)
-				new_h = fb - ft - rbw - rtt - rbw;
+				new_h = fb - ft - frame_extra_h;
 			if (new_w < 50)
 				new_w = 50;
 			if (new_h < 50)

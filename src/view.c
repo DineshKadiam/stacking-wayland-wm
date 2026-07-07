@@ -41,6 +41,7 @@
 #include "cow/shm.h"
 #include "cow/stack.h"
 #include "cow/status.h"
+#include "cow/titlebar.h"
 #include "cow/util.h"
 #include "cow/wm.h"
 
@@ -526,6 +527,9 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		break;
 	case COW_VIEW_CFG_TITLEBAR_HEIGHT:
 		cfg->titlebar.height = cow_config->titlebar.height;
+		break;
+	case COW_VIEW_CFG_TITLEBAR_POSITION:
+		cfg->titlebar.position = cow_config->titlebar.position;
 		break;
 	case COW_VIEW_CFG_TITLEBAR_SQUEEZE:
 		cfg->titlebar.squeeze.mode = cow_config->titlebar.squeeze.mode;
@@ -1152,30 +1156,27 @@ view_cleanup_stale_decoration(struct cow_view *view)
  * the window.
  */
 static void
-view_place_undermouse(struct cow_view *view, int dec_left, int dec_top)
+view_place_undermouse(struct cow_view *view, int frame_w, int frame_h,
+    int content_x, int content_y)
 {
 	struct cow_box *ua = &view->output->usable_area;
 	int		px = ua->x + ua->width / 2;
 	int		py = ua->y + ua->height / 2;
 	cow_seat_get_pointer(&px, &py);
-	int cw	= view->content_width > 0 ? view->content_width : 640;
-	int ch	= view->content_height > 0 ? view->content_height : 400;
-	int fw	= cw + 2 * view->dec.border_width;
-	int fh	= ch + dec_top + view->dec.border_width;
-	view->x = px - fw / 2 + dec_left;
-	view->y = py - fh / 2 + dec_top;
+	view->x = px - frame_w / 2 + content_x;
+	view->y = py - frame_h / 2 + content_y;
 
 	if (ua->width > 0) {
-		int max_x = ua->x + ua->width - fw + dec_left;
-		int min_x = ua->x + dec_left;
+		int max_x = ua->x + ua->width - frame_w + content_x;
+		int min_x = ua->x + content_x;
 		if (view->x > max_x)
 			view->x = max_x;
 		if (view->x < min_x)
 			view->x = min_x;
 	}
 	if (ua->height > 0) {
-		int max_y = ua->y + ua->height - fh + dec_top;
-		int min_y = ua->y + dec_top;
+		int max_y = ua->y + ua->height - frame_h + content_y;
+		int min_y = ua->y + content_y;
 		if (view->y > max_y)
 			view->y = max_y;
 		if (view->y < min_y)
@@ -1184,22 +1185,21 @@ view_place_undermouse(struct cow_view *view, int dec_left, int dec_top)
 }
 
 static void
-view_place_centre(struct cow_view *view, int dec_left, int dec_top)
+view_place_centre(struct cow_view *view, int frame_w, int frame_h,
+    int content_x, int content_y)
 {
 	struct cow_box *ua = &view->output->usable_area;
-	int		fw = view->content_width + 2 * view->dec.border_width;
-	int fh	= view->content_height + dec_top + view->dec.border_width;
-	view->x = ua->x + (ua->width - fw) / 2 + dec_left;
-	view->y = ua->y + (ua->height - fh) / 2 + dec_top;
+	view->x = ua->x + (ua->width - frame_w) / 2 + content_x;
+	view->y = ua->y + (ua->height - frame_h) / 2 + content_y;
 }
 
 static void
-view_place_cascade(struct cow_view *view, int dec_left, int dec_top, int gap)
+view_place_cascade(struct cow_view *view, int content_x, int content_y, int gap)
 {
 	static int	cascade_offset = 0;
 	struct cow_box *ua	       = &view->output->usable_area;
-	view->x	       = ua->x + dec_left + gap + cascade_offset;
-	view->y	       = ua->y + dec_top + gap + cascade_offset;
+	view->x	       = ua->x + content_x + gap + cascade_offset;
+	view->y	       = ua->y + content_y + gap + cascade_offset;
 	cascade_offset = (cascade_offset + 30) % 150;
 }
 
@@ -1257,21 +1257,26 @@ view_compute_initial_placement(struct cow_view *view)
 	}
 
 	int gap	     = cow_config ? cow_config->gap : COW_CFG_DEFAULT_GAP;
-	int dec_top  = view->dec.border_width + view->dec.title_thickness;
-	int dec_left = view->dec.border_width;
+	int place_w = view->content_width > 0 ? view->content_width : 640;
+	int place_h = view->content_height > 0 ? view->content_height : 400;
+	int frame_w, frame_h, content_x, content_y;
+	cow_titlebar_frame_geometry(view, place_w, place_h, &frame_w,
+	    &frame_h, &content_x, &content_y);
 	enum cow_placement_mode mode = cow_config ? cow_config->placement :
 						    COW_PLACEMENT_CASCADE;
 
 	switch (mode) {
 	case COW_PLACEMENT_UNDERMOUSE:
-		view_place_undermouse(view, dec_left, dec_top);
+		view_place_undermouse(view, frame_w, frame_h, content_x,
+		    content_y);
 		break;
 	case COW_PLACEMENT_CENTRE:
-		view_place_centre(view, dec_left, dec_top);
+		view_place_centre(view, frame_w, frame_h, content_x,
+		    content_y);
 		break;
 	case COW_PLACEMENT_CASCADE:
 	default:
-		view_place_cascade(view, dec_left, dec_top, gap);
+		view_place_cascade(view, content_x, content_y, gap);
 		break;
 	}
 	view_clamp_to_current_page(view);
@@ -1477,11 +1482,9 @@ cow_view_update_output(struct cow_view *view)
 	if (view->output == NULL)
 		return;
 
-	/* Use the centre of the view's frame to determine which
-	 * output it belongs to. */
-	int tt = view->dec.title_thickness;
-	int cx = view->x + view->content_width / 2;
-	int cy = view->y - tt / 2 + view->content_height / 2;
+	struct cow_box fb = cow_view_frame_box(view);
+	int	       cx = fb.x + fb.width / 2;
+	int	       cy = fb.y + fb.height / 2;
 
 	struct cow_output *target = cow_output_at(cx, cy);
 	if (target != NULL && target != view->output) {
@@ -1715,13 +1718,15 @@ cow_view_frame_box(const struct cow_view *v)
 struct cow_box
 cow_view_frame_box_at(const struct cow_view *v, int x, int y)
 {
-	int bw = v->dec.border_width;
-	int tt = v->dec.title_thickness;
+	int frame_w, frame_h, content_x, content_y;
+
+	cow_titlebar_frame_geometry(v, v->content_width, v->content_height,
+	    &frame_w, &frame_h, &content_x, &content_y);
 	return (struct cow_box) {
-		.x	= x - bw,
-		.y	= y - bw - tt,
-		.width	= v->content_width + 2 * bw,
-		.height = v->content_height + bw + tt + bw,
+		.x	= x - content_x,
+		.y	= y - content_y,
+		.width	= frame_w,
+		.height = frame_h,
 	};
 }
 
@@ -1771,14 +1776,17 @@ cow_view_maximize(struct cow_view *view)
 	view->saved_height = view->content_height;
 
 	struct cow_box *ua = &view->output->usable_area;
-	int		bw = view->dec.border_width;
-	int		tt = view->dec.title_thickness;
+	int frame_w, frame_h, content_x, content_y;
+	cow_titlebar_frame_geometry(view, view->content_width,
+	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
+	int frame_extra_w = frame_w - view->content_width;
+	int frame_extra_h = frame_h - view->content_height;
 
-	view->x = ua->x + bw;
-	view->y = ua->y + bw + tt;
+	view->x = ua->x + content_x;
+	view->y = ua->y + content_y;
 	cow_view_sync_vxy_from_global(view);
-	int w = ua->width - 2 * bw;
-	int h = ua->height - 2 * bw - tt;
+	int w = ua->width - frame_extra_w;
+	int h = ua->height - frame_extra_h;
 	cow_clamp_dimensions(&w, &h);
 	river_window_v1_propose_dimensions(view->river_window, w, h);
 	river_window_v1_inform_maximized(view->river_window);
@@ -1841,6 +1849,90 @@ cow_view_unmaximize(struct cow_view *view)
 }
 
 void
+cow_view_shaded_content_size(const struct cow_view *view, int direction,
+    int *cw, int *ch)
+{
+	int sw = view->shade_saved_width;
+	int sh = view->shade_saved_height;
+
+	switch (direction) {
+	case COW_SHADE_EAST:
+	case COW_SHADE_WEST:
+		*cw = 0;
+		*ch = sh;
+		break;
+	case COW_SHADE_NW:
+	case COW_SHADE_NE:
+	case COW_SHADE_SW:
+	case COW_SHADE_SE:
+		*cw = 0;
+		*ch = 0;
+		break;
+	case COW_SHADE_NORTH:
+	case COW_SHADE_SOUTH:
+	default:
+		*cw = sw;
+		*ch = 0;
+		break;
+	}
+}
+
+static struct cow_box
+view_frame_box_for_size(const struct cow_view *view, int x, int y, int cw,
+    int ch)
+{
+	int frame_w, frame_h, content_x, content_y;
+
+	cow_titlebar_frame_geometry(view, cw, ch, &frame_w, &frame_h,
+	    &content_x, &content_y);
+	return (struct cow_box) {
+		.x	= x - content_x,
+		.y	= y - content_y,
+		.width	= frame_w,
+		.height = frame_h,
+	};
+}
+
+static void
+view_place_for_shade_edge(struct cow_view *view, int direction,
+    const struct cow_box *old_fb, int new_cw, int new_ch)
+{
+	int frame_w, frame_h, content_x, content_y;
+
+	cow_titlebar_frame_geometry(view, new_cw, new_ch, &frame_w, &frame_h,
+	    &content_x, &content_y);
+
+	switch (direction) {
+	case COW_SHADE_SOUTH:
+	case COW_SHADE_SE:
+	case COW_SHADE_SW:
+		view->y = old_fb->y + old_fb->height - frame_h + content_y;
+		break;
+	case COW_SHADE_NORTH:
+	case COW_SHADE_NE:
+	case COW_SHADE_NW:
+	default:
+		view->y = old_fb->y + content_y;
+		break;
+	}
+
+	switch (direction) {
+	case COW_SHADE_EAST:
+	case COW_SHADE_NE:
+	case COW_SHADE_SE:
+		view->x = old_fb->x + old_fb->width - frame_w + content_x;
+		break;
+	case COW_SHADE_WEST:
+	case COW_SHADE_NW:
+	case COW_SHADE_SW:
+	default:
+		view->x = old_fb->x + content_x;
+		break;
+	}
+	cow_view_sync_vxy_from_global(view);
+}
+
+void
 cow_view_shade(struct cow_view *view, int direction)
 {
 	if (view->sd != COW_SHADE_NONE) {
@@ -1851,9 +1943,17 @@ cow_view_shade(struct cow_view *view, int direction)
 	if (direction == 0)
 		direction = COW_SHADE_NORTH;
 
+	bool had_focus = (cow_wm.focused_view == view);
+	struct cow_box old_fb = cow_view_frame_box(view);
+
 	view->shade_saved_width	 = view->content_width;
 	view->shade_saved_height = view->content_height;
 	view->sd		 = direction;
+
+	int shaded_cw, shaded_ch;
+	cow_view_shaded_content_size(view, direction, &shaded_cw, &shaded_ch);
+	view_place_for_shade_edge(view, direction, &old_fb, shaded_cw,
+	    shaded_ch);
 
 	/* Clip the window content to 1x1 pixel so it's effectively
 	 * invisible.  0x0 disables clipping per the protocol.
@@ -1866,6 +1966,8 @@ cow_view_shade(struct cow_view *view, int direction)
 	cow_wm_request_manage_dirty();
 
 	view->dec.dirty = true;
+	if (had_focus)
+		view->needs_focus = true;
 
 	cow_rule_fire(COW_RULE_ON_SHADE, view, view->desk, view->output);
 }
@@ -1876,13 +1978,20 @@ cow_view_unshade(struct cow_view *view)
 	if (view->sd == COW_SHADE_NONE)
 		return;
 
+	bool had_focus = (cow_wm.focused_view == view);
 	int sw = view->shade_saved_width;
 	int sh = view->shade_saved_height;
+	int direction = view->sd;
+	int shaded_cw, shaded_ch;
+	cow_view_shaded_content_size(view, direction, &shaded_cw, &shaded_ch);
+	struct cow_box old_fb = view_frame_box_for_size(view, view->x,
+	    view->y, shaded_cw, shaded_ch);
 
 	view->sd = COW_SHADE_NONE;
 
 	view->content_width  = sw;
 	view->content_height = sh;
+	view_place_for_shade_edge(view, direction, &old_fb, sw, sh);
 
 	/* Disable clipping (0 width/height = disabled per protocol). */
 	view->pending_clip = true;
@@ -1894,6 +2003,8 @@ cow_view_unshade(struct cow_view *view)
 	view->dec.dirty		      = true;
 	view->dec.last_content_width  = -1;
 	view->dec.last_content_height = -1;
+	if (had_focus)
+		view->needs_focus = true;
 	if (view->dec.buffer != NULL) {
 		cow_shm_buffer_destroy(view->dec.buffer);
 		view->dec.buffer = NULL;
@@ -2757,8 +2868,10 @@ cow_view_warp_to_focused(void)
 void
 cow_view_centre(const struct cow_view *v, int *cx, int *cy)
 {
-	*cx = v->x + v->content_width / 2;
-	*cy = v->y - v->dec.title_thickness / 2 + v->content_height / 2;
+	struct cow_box fb = cow_view_frame_box(v);
+
+	*cx = fb.x + fb.width / 2;
+	*cy = fb.y + fb.height / 2;
 }
 
 void

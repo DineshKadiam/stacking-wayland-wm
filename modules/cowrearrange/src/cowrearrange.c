@@ -31,6 +31,13 @@ enum mode {
 	MODE_CASCADE,
 };
 
+enum title_pos {
+	TITLE_TOP,
+	TITLE_BOTTOM,
+	TITLE_LEFT,
+	TITLE_RIGHT,
+};
+
 struct opts {
 	enum mode   mode;
 	const char *output_name;     /* NULL = current */
@@ -59,6 +66,7 @@ struct win {
 	char *id;
 	int   border_width;
 	int   title_thickness;
+	enum title_pos title_position;
 	int   content_w;
 	int   content_h;
 	int   raise_seq; /* tie-breaker for stable order */
@@ -262,6 +270,56 @@ js_bool(cJSON *obj, const char *key, bool dflt)
 	if (cJSON_IsBool(v))
 		return cJSON_IsTrue(v);
 	return dflt;
+}
+
+static enum title_pos
+parse_title_position(const char *s)
+{
+	if (s == NULL)
+		return TITLE_TOP;
+	if (strcmp(s, "bottom") == 0)
+		return TITLE_BOTTOM;
+	if (strcmp(s, "left") == 0)
+		return TITLE_LEFT;
+	if (strcmp(s, "right") == 0)
+		return TITLE_RIGHT;
+	return TITLE_TOP;
+}
+
+static bool
+title_vertical(enum title_pos pos)
+{
+	return pos == TITLE_LEFT || pos == TITLE_RIGHT;
+}
+
+static int
+frame_extra_w(const struct win *w)
+{
+	return 2 * w->border_width +
+	    (title_vertical(w->title_position) ? w->title_thickness : 0);
+}
+
+static int
+frame_extra_h(const struct win *w)
+{
+	return 2 * w->border_width +
+	    (title_vertical(w->title_position) ? 0 : w->title_thickness);
+}
+
+static int
+content_offset_x(const struct win *w)
+{
+	if (w->title_position == TITLE_LEFT)
+		return w->border_width + w->title_thickness;
+	return w->border_width;
+}
+
+static int
+content_offset_y(const struct win *w)
+{
+	if (w->title_position == TITLE_TOP)
+		return w->border_width + w->title_thickness;
+	return w->border_width;
 }
 
 struct workarea {
@@ -486,6 +544,8 @@ collect_candidates(cJSON *windows, const struct opts *opts, int target_desk,
 		arr[n].id	       = strdup(id);
 		arr[n].border_width    = js_int(w, "border_width", 0);
 		arr[n].title_thickness = js_int(w, "title_thickness", 0);
+		arr[n].title_position =
+		    parse_title_position(js_string(w, "titlebar_position"));
 		arr[n].content_w       = js_int(w, "width", MIN_WIN_W);
 		arr[n].content_h       = js_int(w, "height", MIN_WIN_H);
 		arr[n].raise_seq       = js_int(w, "raise_seq", 0);
@@ -556,21 +616,19 @@ layout_tile(struct win *wins, int n, const struct workarea *wa,
 		int cell_w	   = wa->w / cells_this_row;
 		int frame_x	   = wa->x + c * cell_w;
 		int frame_y	   = wa->y + r * cell_h;
-		int bw		   = wins[i].border_width;
-		int tt		   = wins[i].title_thickness;
 		int cw		   = wins[i].content_w;
 		int ch		   = wins[i].content_h;
 		if (opts->resize) {
-			cw = cell_w - 2 * bw;
-			ch = cell_h - 2 * bw - tt;
+			cw = cell_w - frame_extra_w(&wins[i]);
+			ch = cell_h - frame_extra_h(&wins[i]);
 			if (cw < MIN_WIN_W)
 				cw = MIN_WIN_W;
 			if (ch < MIN_WIN_H)
 				ch = MIN_WIN_H;
 		}
 		out[i].id	 = wins[i].id;
-		out[i].content_x = frame_x + bw;
-		out[i].content_y = frame_y + bw + tt;
+		out[i].content_x = frame_x + content_offset_x(&wins[i]);
+		out[i].content_y = frame_y + content_offset_y(&wins[i]);
 		out[i].content_w = cw;
 		out[i].content_h = ch;
 	}
@@ -599,10 +657,8 @@ layout_cascade(struct win *wins, int n, const struct workarea *wa,
 		/* Size so the last cascaded window's bottom-right edge
 		 * lines up with the workarea bottom-right.  All windows
 		 * get the same size in resize mode. */
-		int bw	 = wins[0].border_width;
-		int tt	 = wins[0].title_thickness;
-		target_w = wa->w - (n - 1) * dx - 2 * bw;
-		target_h = wa->h - (n - 1) * dy - 2 * bw - tt;
+		target_w = wa->w - (n - 1) * dx - frame_extra_w(&wins[0]);
+		target_h = wa->h - (n - 1) * dy - frame_extra_h(&wins[0]);
 		if (target_w < MIN_WIN_W)
 			target_w = MIN_WIN_W;
 		if (target_h < MIN_WIN_H)
@@ -610,15 +666,13 @@ layout_cascade(struct win *wins, int n, const struct workarea *wa,
 	}
 
 	for (int i = 0; i < n; i++) {
-		int bw		 = wins[i].border_width;
-		int tt		 = wins[i].title_thickness;
 		int frame_x	 = wa->x + i * dx;
 		int frame_y	 = wa->y + i * dy;
 		int cw		 = opts->resize ? target_w : wins[i].content_w;
 		int ch		 = opts->resize ? target_h : wins[i].content_h;
 		out[i].id	 = wins[i].id;
-		out[i].content_x = frame_x + bw;
-		out[i].content_y = frame_y + bw + tt;
+		out[i].content_x = frame_x + content_offset_x(&wins[i]);
+		out[i].content_y = frame_y + content_offset_y(&wins[i]);
 		out[i].content_w = cw;
 		out[i].content_h = ch;
 	}

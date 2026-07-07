@@ -61,6 +61,7 @@ static enum cmd_retval set_scalar_int(const struct cow_option_entry *, const cha
 static enum cmd_retval set_desks_count(const char *, struct cmd_q *);
 static enum cmd_retval set_desktop_size(struct args *, struct cmd_q *);
 static enum cmd_retval set_titlebar_height(const char *, struct cmd_q *);
+static enum cmd_retval set_titlebar_position(const char *, struct cmd_q *);
 static enum cmd_retval set_titlebar_squeeze(const struct cow_option_entry *,
     const char *, const char *, struct cmd_q *);
 static enum cmd_retval set_layer(const char *, const char *, struct cmd_q *);
@@ -143,6 +144,14 @@ static const struct set_enum_option set_geometry_window_options[] = {
 	{ "move", COW_GEOMETRY_WINDOW_MOVE },
 	{ "resize", COW_GEOMETRY_WINDOW_RESIZE },
 	{ "none", COW_GEOMETRY_WINDOW_NONE },
+	{ NULL, -1 },
+};
+
+static const struct set_enum_option set_titlebar_position_options[] = {
+	{ "top", COW_TITLEBAR_TOP },
+	{ "bottom", COW_TITLEBAR_BOTTOM },
+	{ "left", COW_TITLEBAR_LEFT },
+	{ "right", COW_TITLEBAR_RIGHT },
 	{ NULL, -1 },
 };
 
@@ -475,6 +484,7 @@ set_option_is_decor(const struct cow_option_entry *opt, const char *key)
 	    strcmp(key, "titlebar.enabled") == 0 ||
 	    strcmp(key, "border.handles") == 0 ||
 	    strcmp(key, "titlebar.height") == 0 ||
+	    strcmp(key, "titlebar.position") == 0 ||
 	    strcmp(key, "titlebar.squeeze") == 0 ||
 	    strcmp(key, "titlebar.squeeze.justify") == 0 ||
 	    strcmp(key, "titlebar.squeeze.width") == 0 ||
@@ -683,6 +693,8 @@ set_option_exec(const struct cow_option_entry *opt, const char *key, const char 
 		return (set_desktop_size(args, cmdq));
 	case COW_OPTION_TITLEBAR_HEIGHT:
 		return (set_titlebar_height(val, cmdq));
+	case COW_OPTION_TITLEBAR_POSITION:
+		return (set_titlebar_position(val, cmdq));
 	case COW_OPTION_TITLEBAR_SQUEEZE:
 	case COW_OPTION_TITLEBAR_SQUEEZE_JUSTIFY:
 	case COW_OPTION_TITLEBAR_SQUEEZE_INT:
@@ -825,6 +837,27 @@ set_titlebar_height(const char *val, struct cmd_q *cmdq)
 	tb->height = (int)v;
 	finish_visual_update(COW_VIEW_CFG_TITLEBAR_HEIGHT, cfg);
 	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+set_titlebar_position(const char *val, struct cmd_q *cmdq)
+{
+	for (const struct set_enum_option *opt = set_titlebar_position_options;
+	    opt->name != NULL; opt++) {
+		if (strcmp(val, opt->name) == 0) {
+			struct cow_view_cfg *cfg;
+			struct cow_titlebar_config *tb = target_titlebar(cmdq,
+			    &cfg);
+
+			tb->position = opt->value;
+			finish_visual_update(COW_VIEW_CFG_TITLEBAR_POSITION,
+			    cfg);
+			return (CMD_RETURN_NORMAL);
+		}
+	}
+
+	cmdq_error(cmdq, "set: titlebar.position: bad value: %s", val);
+	return (CMD_RETURN_ERROR);
 }
 
 static enum cmd_retval

@@ -23,6 +23,7 @@
 #include "cow/rule.h"
 #include "cow/seat.h"
 #include "cow/status.h"
+#include "cow/titlebar.h"
 #include "cow/util.h"
 #include "cow/view.h"
 #include "cow/wm.h"
@@ -56,11 +57,13 @@ view_visible_in_page(const struct cow_view *view,
 		return !(view->vx < vpx || view->vx >= vpx + w ||
 		    view->vy < vpy || view->vy >= vpy + h);
 	}
-	int vw = view->content_width + 2 * view->dec.border_width;
-	int vh = view->content_height + 2 * view->dec.border_width +
-	    view->dec.title_thickness;
-	return !(view->vx + vw <= vpx || view->vx >= vpx + w ||
-	    view->vy + vh <= vpy || view->vy >= vpy + h);
+	int frame_w, frame_h, content_x, content_y;
+	cow_titlebar_frame_geometry(view, view->content_width,
+	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
+	int fx = view->vx - content_x;
+	int fy = view->vy - content_y;
+	return !(fx + frame_w <= vpx || fx >= vpx + w ||
+	    fy + frame_h <= vpy || fy >= vpy + h);
 }
 
 bool
