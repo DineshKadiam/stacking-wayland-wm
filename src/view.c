@@ -2285,6 +2285,14 @@ cow_view_iconify(struct cow_view *view)
 	struct cow_view *next = cow_view_walk(view, true, cow_view_focusable);
 	if (next != NULL && next != view) {
 		cow_wm.pending_focus = next;
+	} else {
+		struct cow_seat *seat;
+
+		cow_wm.pending_focus = NULL;
+		if (cow_wm.focused_view == view)
+			cow_wm.focused_view = NULL;
+		wl_list_for_each(seat, &cow_wm.seats, wm_link)
+			cow_seat_forget_view(seat, view);
 	}
 
 	cow_wm_request_manage_dirty();
