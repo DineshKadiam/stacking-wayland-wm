@@ -158,6 +158,8 @@ decor_apply_resets(const char *name, struct decor_profile *profile,
 		return (false);
 	if (cmdq != NULL && cmdq->in_rule)
 		return (false);
+	if (cmdq != NULL && cmdq->target.window != NULL)
+		return (false);
 	if (cmdq != NULL && !cmdq->in_rule && cmdq->target.window == NULL &&
 	    runtime_active_profile != NULL &&
 	    strcmp(runtime_active_profile, name) == 0)

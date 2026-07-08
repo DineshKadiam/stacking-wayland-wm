@@ -16,10 +16,42 @@
 #include "cow/font.h"
 
 #include <cairo/cairo.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "cow/draw.h"
+
+static uint32_t
+font_blend_over(uint32_t dst, uint32_t src)
+{
+	uint32_t a = (src >> 24) & 0xff;
+
+	if (a == 0)
+		return (dst);
+	if (a == 0xff)
+		return (src);
+
+	uint32_t inv = 0xff - a;
+	uint32_t sr = (src >> 16) & 0xff;
+	uint32_t sg = (src >> 8) & 0xff;
+	uint32_t sb = src & 0xff;
+	uint32_t dr = (dst >> 16) & 0xff;
+	uint32_t dg = (dst >> 8) & 0xff;
+	uint32_t db = dst & 0xff;
+
+	uint32_t r = sr + (dr * inv + 127) / 255;
+	uint32_t g = sg + (dg * inv + 127) / 255;
+	uint32_t b = sb + (db * inv + 127) / 255;
+
+	if (r > 0xff)
+		r = 0xff;
+	if (g > 0xff)
+		g = 0xff;
+	if (b > 0xff)
+		b = 0xff;
+	return (0xffu << 24) | (r << 16) | (g << 8) | b;
+}
 
 static void
 font_metrics(struct cow_font *font, const char *text, int *width, int *height)
@@ -95,8 +127,11 @@ cow_font_render_label(struct cow_pixbuf *dst, int dx, int dy, int w, int h,
 	    cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
 	cairo_t *cr = cairo_create(surface);
 
-	cairo_set_source_rgba(cr, bg[0], bg[1], bg[2], bg[3]);
-	cairo_paint(cr);
+	bool transparent_bg = bg[3] == 0.0f;
+	if (!transparent_bg) {
+		cairo_set_source_rgba(cr, bg[0], bg[1], bg[2], bg[3]);
+		cairo_paint(cr);
+	}
 
 	int text_inset = 2 + reserve_px;
 	if (text_inset < 0)
@@ -142,7 +177,9 @@ cow_font_render_label(struct cow_pixbuf *dst, int dx, int dy, int w, int h,
 			if (x < 0 || x >= dst->width)
 				continue;
 			uint32_t c = ((uint32_t *)sdata)[py * sstride + px];
-			if ((c & 0xFF000000) != 0)
+			if (transparent_bg)
+				drow[x] = font_blend_over(drow[x], c);
+			else
 				drow[x] = c;
 		}
 	}
