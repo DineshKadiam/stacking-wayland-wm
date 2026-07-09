@@ -52,9 +52,10 @@ ignored.  Labels and commands containing whitespace must be quoted.
 	Load one or more named panel definitions from the configuration file.
 	Settings outside panel blocks can be used as shared defaults.
 
-*panel* _name_ *{*
+*panel* _name_ [*shown*|*hidden* _direction_] *{*
 	Start a named panel definition.  A panel is loaded when it is named by
-	*show panel*.
+	*show panel*.  A panel with a direction can be shown or hidden by a
+	*panel-toggle* cell.  Directions are *left*, *right*, *up*, and *down*.
 
 *row* [*height* _N_] *{*
 	Start a new visual row.  Cells inside the block are appended
@@ -116,6 +117,11 @@ ignored.  Labels and commands containing whitespace must be quoted.
 	*bg_pressed*, *fg*, *fg_pressed*, *image*, *image_pressed*,
 	*image_size*, *image_position*, and *justify*.
 
+*panel-toggle* _name_ [_property_ _value_ ...]
+	Create a vector arrow button which shows or hides panel _name_.
+	Supported properties are the same as *button*, except no label or
+	command is specified.
+
 *status* _type_ [_property_ _value_ ...]
 	Create a live status cell.  Supported types are:
 	*focused-title*, *focused-app*, *current-output*, *current-desk*, and
@@ -147,7 +153,11 @@ panel launcher {
 	}
 }
 
-panel telephone {
+row height 22 {
+	panel-toggle telephone width 22 bg 0x343840 fg 0xffffff
+}
+
+panel telephone hidden down {
 	cell 42 28
 	grid 5 3
 

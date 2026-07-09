@@ -18,6 +18,7 @@ executable('cowbuttons',
     '../../src/image.c',
     '../../src/memory.c',
     '../../src/module.c',
+    '../../src/vector.c',
     '../../vendor/cJSON.c',
     include_directories: [
         include_directories('../..'),
