@@ -48,6 +48,14 @@ ignored.  Labels and commands containing whitespace must be quoted.
 *col* _col_ *width* _N_
 	Set one column's width in pixels.
 
+*show panel* _name_ [...]
+	Load one or more named panel definitions from the configuration file.
+	Settings outside panel blocks can be used as shared defaults.
+
+*panel* _name_ *{*
+	Start a named panel definition.  A panel is loaded when it is named by
+	*show panel*.
+
 *row* [*height* _N_] *{*
 	Start a new visual row.  Cells inside the block are appended
 	left-to-right.
@@ -119,26 +127,33 @@ ignored.  Labels and commands containing whitespace must be quoted.
 # EXAMPLES
 
 ```
-cell 84 18
-grid 2 4
+show panel launcher
+
 resizable true
 
-style button.bg 0x5f626a
-style button.bg_pressed 0x3e4148
+style button.bg 0x39414a
+style button.bg_pressed 0x242a30
 style button.fg 0xf4f4f6
 style button.fg_pressed 0xffffff
 
-row height 18 {
-	button "Root" "menu root" width 38 bg 0x5b3f58
-	button "Modules" "menu modules" width 58 bg 0x3f5b51
-	button "Window" "menu window" width 54 bg 0x5b523f
-	if command xterm {
-		button "xterm" "exec xterm" width 170 bg 0x3f4f6d
+panel launcher {
+	cell 84 18
+	grid 2 4
+
+	row height 18 {
+		button "Root" "menu root" width 38 bg 0x5b3f58
+		button "Modules" "menu modules" width 58 bg 0x3f5b51
+		button "Window" "menu window" width 54 bg 0x5b523f
 	}
 }
 
-row height 22 {
-	status focused-title span fill bg 0x4a3f5b
+panel telephone {
+	cell 42 28
+	grid 5 3
+
+	row height 22 {
+		button "Telephone" "nop" span fill bg 0x343840
+	}
 }
 ```
 

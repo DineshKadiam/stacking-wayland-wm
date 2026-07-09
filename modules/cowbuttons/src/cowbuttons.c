@@ -52,6 +52,7 @@
 #define WL_SEAT_VERSION 4
 #define DEFAULT_IMAGE_SIZE 16
 #define MAX_BLOCKS 32
+#define MAX_SELECTED_PANELS 32
 
 enum cell_type {
 	CELL_EMPTY,
@@ -84,11 +85,17 @@ enum text_justify {
 enum block_type {
 	BLOCK_ROW,
 	BLOCK_IF,
+	BLOCK_PANEL,
 };
 
 struct block {
 	enum block_type type;
 	bool		active;
+};
+
+struct panel_selection {
+	char *name;
+	bool  seen;
 };
 
 struct config {
@@ -203,6 +210,8 @@ static pthread_mutex_t state_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct state    current_state;
 static int	       dirty = 1;
 static char	      *config_dir;
+static struct panel_selection selected_panels[MAX_SELECTED_PANELS];
+static int	       n_selected_panels;
 
 static void render(void);
 static int  cell_colspan(const struct cell *);
@@ -496,6 +505,39 @@ blocks_active(void)
 	return true;
 }
 
+static int
+panel_selection_find(const char *name)
+{
+	for (int i = 0; i < n_selected_panels; i++)
+		if (strcmp(selected_panels[i].name, name) == 0)
+			return i;
+	return -1;
+}
+
+static bool
+panel_selection_add(const char *name)
+{
+	if (panel_selection_find(name) != -1)
+		return true;
+	if (n_selected_panels >= MAX_SELECTED_PANELS)
+		return false;
+	selected_panels[n_selected_panels].name = strdup(name);
+	if (selected_panels[n_selected_panels].name == NULL)
+		return false;
+	selected_panels[n_selected_panels].seen = false;
+	n_selected_panels++;
+	return true;
+}
+
+static bool
+inside_active_panel(void)
+{
+	for (int i = 0; i < n_blocks; i++)
+		if (blocks[i].type == BLOCK_PANEL && blocks[i].active)
+			return true;
+	return false;
+}
+
 static bool
 block_push(enum block_type type, bool active, const char **why)
 {
@@ -568,6 +610,42 @@ load_if(char **fields, int n, const char **why)
 	if (negated)
 		ok = !ok;
 	return block_push(BLOCK_IF, parent_active && ok, why);
+}
+
+static bool
+load_panel(char **fields, int n, const char **why)
+{
+	if (n != 3 || strcmp(fields[2], "{") != 0) {
+		*why = "bad panel";
+		return false;
+	}
+	if (n_blocks != 0) {
+		*why = "nested panel";
+		return false;
+	}
+	int idx = panel_selection_find(fields[1]);
+	bool active = idx != -1 && blocks_active();
+	if (idx != -1)
+		selected_panels[idx].seen = true;
+	return block_push(BLOCK_PANEL, active, why);
+}
+
+static bool
+load_show(char **fields, int n, const char **why, bool collect)
+{
+	if (n < 3 || strcmp(fields[1], "panel") != 0) {
+		*why = "bad show";
+		return false;
+	}
+	if (!collect)
+		return true;
+	for (int i = 2; i < n; i++) {
+		if (!panel_selection_add(fields[i])) {
+			*why = "too many panels";
+			return false;
+		}
+	}
+	return true;
 }
 
 static struct cell *
@@ -854,6 +932,8 @@ load_row(char **fields, int n, const char **why)
 	int v;
 	bool parent_active = blocks_active();
 
+	if (n_selected_panels != 0 && !inside_active_panel())
+		parent_active = false;
 	if (n != 2 && n != 4) {
 		*why = "bad row";
 		return false;
@@ -884,6 +964,61 @@ load_row(char **fields, int n, const char **why)
 }
 
 static int
+scan_selected_panels(const char *path)
+{
+	FILE *f;
+	char *line = NULL;
+	size_t cap = 0;
+	unsigned int lineno = 0;
+	int depth = 0;
+
+	f = fopen(path, "r");
+	if (f == NULL) {
+		fprintf(stderr, "%s: %s: %s\n", PROG, path, strerror(errno));
+		return 0;
+	}
+	while (getline(&line, &cap, f) != -1) {
+		char *fields[MAX_FIELDS] = { 0 };
+		char err[128] = "";
+		const char *why = NULL;
+		int n;
+
+		lineno++;
+		n = parse_fields(line, fields, MAX_FIELDS, err, sizeof(err));
+		if (n < 0) {
+			fprintf(stderr, "%s: %s:%u: %s\n", PROG, path, lineno,
+			    err);
+			free(line);
+			fclose(f);
+			return 0;
+		}
+		if (n == 0) {
+			free_fields(fields, n);
+			continue;
+		}
+		if (depth == 0 && strcmp(fields[0], "show") == 0) {
+			if (!load_show(fields, n, &why, true)) {
+				fprintf(stderr, "%s: %s:%u: %s\n", PROG, path,
+				    lineno, why);
+				free_fields(fields, n);
+				free(line);
+				fclose(f);
+				return 0;
+			}
+		}
+		if (strcmp(fields[0], "}") == 0 && n == 1) {
+			if (depth > 0)
+				depth--;
+		} else if (strcmp(fields[n - 1], "{") == 0)
+			depth++;
+		free_fields(fields, n);
+	}
+	free(line);
+	fclose(f);
+	return 1;
+}
+
+static int
 load_config(const char *path)
 {
 	FILE *f;
@@ -902,6 +1037,10 @@ load_config(const char *path)
 	current_col = 0;
 	in_row = false;
 	n_blocks = 0;
+	if (!scan_selected_panels(path)) {
+		fclose(f);
+		return 0;
+	}
 
 	while (getline(&line, &cap, f) != -1) {
 		char *fields[MAX_FIELDS] = { 0 };
@@ -924,6 +1063,12 @@ load_config(const char *path)
 				goto line_error;
 		} else if (strcmp(fields[0], "if") == 0) {
 			if (!load_if(fields, n, &why))
+				goto line_error;
+		} else if (strcmp(fields[0], "panel") == 0) {
+			if (!load_panel(fields, n, &why))
+				goto line_error;
+		} else if (strcmp(fields[0], "show") == 0) {
+			if (!load_show(fields, n, &why, false))
 				goto line_error;
 		} else if (strcmp(fields[0], "row") == 0) {
 			if (!load_row(fields, n, &why))
@@ -1042,6 +1187,13 @@ line_error:
 		fprintf(stderr, "%s: %s:%u: unclosed block\n", PROG, path,
 		    lineno);
 		return 0;
+	}
+	for (int i = 0; i < n_selected_panels; i++) {
+		if (!selected_panels[i].seen) {
+			fprintf(stderr, "%s: %s: panel not found: %s\n", PROG,
+			    path, selected_panels[i].name);
+			return 0;
+		}
 	}
 	if (cfg.cols < 1)
 		cfg.cols = 1;
