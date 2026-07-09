@@ -19,6 +19,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
+#include <libgen.h>
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -31,13 +32,17 @@
 #include <wayland-client.h>
 
 #include "cow/compat.h"
+#include "cow/colour.h"
+#include "cow/draw.h"
+#include "cow/image.h"
 #include "cow/module.h"
 #include "xdg-shell-client-protocol.h"
 
 #define PROG "cowbuttons"
 
 #define MAX_CELLS 256
-#define MAX_FIELDS 8
+#define MAX_FIELDS 32
+#define MAX_GRID 256
 #define DEFAULT_CELL_W 96
 #define DEFAULT_CELL_H 32
 #define MIN_CELL_W 16
@@ -45,6 +50,8 @@
 #define TEXT_PAD 6
 #define BTN_LEFT 0x110
 #define WL_SEAT_VERSION 4
+#define DEFAULT_IMAGE_SIZE 16
+#define MAX_BLOCKS 32
 
 enum cell_type {
 	CELL_EMPTY,
@@ -61,13 +68,27 @@ enum status_type {
 	STATUS_DESK_LIST,
 };
 
-struct cell {
-	enum cell_type	  type;
-	enum status_type  status;
-	int		  row;
-	int		  col;
-	char		  label[128];
-	char		  command[512];
+enum image_position {
+	IMAGE_LEFT,
+	IMAGE_CENTER,
+	IMAGE_RIGHT,
+	IMAGE_FILL,
+};
+
+enum text_justify {
+	JUSTIFY_LEFT,
+	JUSTIFY_CENTER,
+	JUSTIFY_RIGHT,
+};
+
+enum block_type {
+	BLOCK_ROW,
+	BLOCK_IF,
+};
+
+struct block {
+	enum block_type type;
+	bool		active;
 };
 
 struct config {
@@ -75,7 +96,55 @@ struct config {
 	int  cell_h;
 	int  rows;
 	int  cols;
+	int  col_w[MAX_GRID];
+	int  row_h[MAX_GRID];
+	bool resizable;
 	char font[128];
+};
+
+struct style {
+	float bg[4];
+	float bg_pressed[4];
+	float fg[4];
+	float fg_pressed[4];
+	char *image;
+	char *image_pressed;
+	int   image_size;
+	enum image_position image_pos;
+	enum text_justify   justify;
+};
+
+struct cell_style {
+	bool  bg_set;
+	bool  bg_pressed_set;
+	bool  fg_set;
+	bool  fg_pressed_set;
+	bool  image_size_set;
+	bool  image_pos_set;
+	bool  justify_set;
+	bool  colspan_set;
+	bool  rowspan_set;
+	float bg[4];
+	float bg_pressed[4];
+	float fg[4];
+	float fg_pressed[4];
+	char *image;
+	char *image_pressed;
+	int   image_size;
+	enum image_position image_pos;
+	enum text_justify   justify;
+	int   colspan;
+	int   rowspan;
+};
+
+struct cell {
+	enum cell_type	  type;
+	enum status_type  status;
+	int		  row;
+	int		  col;
+	char		  label[128];
+	char		  command[512];
+	struct cell_style style;
 };
 
 struct state {
@@ -84,6 +153,15 @@ struct state {
 	char current_output[128];
 	char current_desk[64];
 	char desk_list[512];
+};
+
+struct shm_buffer {
+	struct wl_buffer *buffer;
+	void		 *data;
+	size_t		  size;
+	int		  w;
+	int		  h;
+	bool		  busy;
 };
 
 static struct wl_display    *display;
@@ -103,6 +181,7 @@ static struct config cfg = {
 	.cols = 0,
 	.font = "Sans 10",
 };
+static struct style style;
 static struct cell cells[MAX_CELLS];
 static int	   n_cells;
 static int	   configured;
@@ -113,17 +192,42 @@ static int	   pressed_cell = -1;
 static double	   ptr_x;
 static double	   ptr_y;
 static int	   wake_pipe[2];
+static struct shm_buffer buffers[2];
+static int	   current_row = -1;
+static int	   current_col;
+static bool	   in_row;
+static struct block blocks[MAX_BLOCKS];
+static int	   n_blocks;
 
 static pthread_mutex_t state_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct state    current_state;
 static int	       dirty = 1;
+static char	      *config_dir;
 
 static void render(void);
+static int  cell_colspan(const struct cell *);
+static int  cell_rowspan(const struct cell *);
+static int  col_width(int);
+static int  row_height(int);
+static int  natural_width(void);
+static int  natural_height(void);
 
 static void
 usage(void)
 {
 	fprintf(stderr, "usage: cowbuttons [-c path] [-h]\n");
+}
+
+static void
+style_init(void)
+{
+	cow_colour_convert(style.bg, 0x6b6b73);
+	cow_colour_convert(style.bg_pressed, 0x4a4a51);
+	cow_colour_convert(style.fg, 0xf0f0f5);
+	cow_colour_convert(style.fg_pressed, 0xffffff);
+	style.image_size = DEFAULT_IMAGE_SIZE;
+	style.image_pos = IMAGE_LEFT;
+	style.justify = JUSTIFY_LEFT;
 }
 
 static int
@@ -140,6 +244,59 @@ parse_int(const char *s, int *out)
 		return 0;
 	*out = (int)n;
 	return 1;
+}
+
+static int
+parse_bool(const char *s, bool *out)
+{
+	if (strcmp(s, "true") == 0 || strcmp(s, "yes") == 0 ||
+	    strcmp(s, "on") == 0 || strcmp(s, "1") == 0) {
+		*out = true;
+		return 1;
+	}
+	if (strcmp(s, "false") == 0 || strcmp(s, "no") == 0 ||
+	    strcmp(s, "off") == 0 || strcmp(s, "0") == 0) {
+		*out = false;
+		return 1;
+	}
+	return 0;
+}
+
+static char *
+path_dirname(const char *path)
+{
+	char *copy = strdup(path);
+	char *dir, *out;
+
+	if (copy == NULL)
+		return NULL;
+	dir = dirname(copy);
+	out = strdup(dir);
+	free(copy);
+	return out;
+}
+
+static char *
+resolve_path(const char *path)
+{
+	const char *home;
+	char *out;
+
+	if (path[0] == '/')
+		return strdup(path);
+	if (path[0] == '~' && path[1] == '/') {
+		home = getenv("HOME");
+		if (home == NULL || *home == '\0')
+			return NULL;
+		if (asprintf(&out, "%s/%s", home, path + 2) < 0)
+			return NULL;
+		return out;
+	}
+	if (config_dir == NULL)
+		return strdup(path);
+	if (asprintf(&out, "%s/%s", config_dir, path) < 0)
+		return NULL;
+	return out;
 }
 
 static void
@@ -229,12 +386,209 @@ status_type_parse(const char *s, enum status_type *out)
 	return 1;
 }
 
-static struct cell *
-cell_add(int row, int col)
+static int
+image_position_parse(const char *s, enum image_position *out)
 {
+	if (strcmp(s, "left") == 0)
+		*out = IMAGE_LEFT;
+	else if (strcmp(s, "center") == 0)
+		*out = IMAGE_CENTER;
+	else if (strcmp(s, "right") == 0)
+		*out = IMAGE_RIGHT;
+	else if (strcmp(s, "fill") == 0)
+		*out = IMAGE_FILL;
+	else
+		return 0;
+	return 1;
+}
+
+static bool
+justify_parse(const char *s, enum text_justify *out)
+{
+	if (strcmp(s, "left") == 0)
+		*out = JUSTIFY_LEFT;
+	else if (strcmp(s, "center") == 0)
+		*out = JUSTIFY_CENTER;
+	else if (strcmp(s, "right") == 0)
+		*out = JUSTIFY_RIGHT;
+	else
+		return false;
+	return true;
+}
+
+static bool
+set_style_image(char **dst, const char *path)
+{
+	char *resolved = resolve_path(path);
+	char *cause = NULL;
+
+	if (resolved == NULL)
+		return false;
+	if (!cow_image_validate(resolved, &cause)) {
+		fprintf(stderr, "%s: %s\n", PROG, cause);
+		free(cause);
+		free(resolved);
+		return false;
+	}
+	free(*dst);
+	*dst = resolved;
+	return true;
+}
+
+static bool
+command_exists(const char *name)
+{
+	const char *path = getenv("PATH");
+	char *copy, *dir, *save = NULL;
+	bool found = false;
+
+	if (name == NULL || *name == '\0' || strchr(name, '/') != NULL)
+		return false;
+	if (path == NULL || *path == '\0')
+		return false;
+	copy = strdup(path);
+	if (copy == NULL)
+		return false;
+	for (dir = strtok_r(copy, ":", &save); dir != NULL;
+	    dir = strtok_r(NULL, ":", &save)) {
+		char *candidate;
+		if (*dir == '\0')
+			dir = ".";
+		if (asprintf(&candidate, "%s/%s", dir, name) < 0)
+			continue;
+		if (access(candidate, X_OK) == 0)
+			found = true;
+		free(candidate);
+		if (found)
+			break;
+	}
+	free(copy);
+	return found;
+}
+
+static bool
+file_exists(const char *path)
+{
+	char *resolved = resolve_path(path);
+	bool exists;
+
+	if (resolved == NULL)
+		return false;
+	exists = access(resolved, F_OK) == 0;
+	free(resolved);
+	return exists;
+}
+
+static bool
+env_exists(const char *name)
+{
+	const char *value = getenv(name);
+
+	return value != NULL && *value != '\0';
+}
+
+static bool
+blocks_active(void)
+{
+	for (int i = 0; i < n_blocks; i++)
+		if (!blocks[i].active)
+			return false;
+	return true;
+}
+
+static bool
+block_push(enum block_type type, bool active, const char **why)
+{
+	if (n_blocks >= MAX_BLOCKS) {
+		*why = "too many nested blocks";
+		return false;
+	}
+	blocks[n_blocks++] = (struct block) {
+		.type = type,
+		.active = active,
+	};
+	return true;
+}
+
+static bool
+block_pop(const char **why)
+{
+	if (n_blocks == 0) {
+		*why = "bad block close";
+		return false;
+	}
+	struct block b = blocks[--n_blocks];
+	if (b.type == BLOCK_ROW && b.active) {
+		in_row = false;
+		current_col = 0;
+	}
+	return true;
+}
+
+static bool
+load_if(char **fields, int n, const char **why)
+{
+	bool negated = false;
+	int type_idx = 1;
+
+	if (n != 4 && n != 5) {
+		*why = "bad if";
+		return false;
+	}
+	if (strcmp(fields[n - 1], "{") != 0) {
+		*why = "bad if";
+		return false;
+	}
+	if (strcmp(fields[1], "not") == 0) {
+		negated = true;
+		type_idx = 2;
+		if (n != 5) {
+			*why = "bad if";
+			return false;
+		}
+	} else if (n != 4) {
+		*why = "bad if";
+		return false;
+	}
+
+	bool parent_active = blocks_active();
+	bool ok = false;
+	if (!parent_active)
+		ok = false;
+	else if (strcmp(fields[type_idx], "command") == 0)
+		ok = command_exists(fields[type_idx + 1]);
+	else if (strcmp(fields[type_idx], "file") == 0)
+		ok = file_exists(fields[type_idx + 1]);
+	else if (strcmp(fields[type_idx], "env") == 0)
+		ok = env_exists(fields[type_idx + 1]);
+	else {
+		*why = "bad if";
+		return false;
+	}
+	if (negated)
+		ok = !ok;
+	return block_push(BLOCK_IF, parent_active && ok, why);
+}
+
+static struct cell *
+cell_find(int row, int col)
+{
+	for (int i = 0; i < n_cells; i++)
+		if (cells[i].row == row && cells[i].col == col)
+			return &cells[i];
+	return NULL;
+}
+
+static struct cell *
+cell_get(int row, int col)
+{
+	struct cell *c = cell_find(row, col);
+
+	if (c != NULL)
+		return c;
 	if (n_cells >= MAX_CELLS)
 		return NULL;
-	struct cell *c = &cells[n_cells++];
+	c = &cells[n_cells++];
 	memset(c, 0, sizeof(*c));
 	c->row = row;
 	c->col = col;
@@ -245,19 +599,288 @@ cell_add(int row, int col)
 	return c;
 }
 
-static int
-parse_cell_pos(char **fields, int n, int *row, int *col, const char **why)
+static bool
+parse_cell_style_prop(struct cell_style *st, const char *prop, const char *val,
+    const char **why)
 {
+	int v;
+
+	if (strcmp(prop, "bg") == 0) {
+		if (!cow_colour_parse(val, st->bg)) {
+			*why = "bad bg";
+			return false;
+		}
+		st->bg_set = true;
+	} else if (strcmp(prop, "bg_pressed") == 0) {
+		if (!cow_colour_parse(val, st->bg_pressed)) {
+			*why = "bad bg_pressed";
+			return false;
+		}
+		st->bg_pressed_set = true;
+	} else if (strcmp(prop, "fg") == 0) {
+		if (!cow_colour_parse(val, st->fg)) {
+			*why = "bad fg";
+			return false;
+		}
+		st->fg_set = true;
+	} else if (strcmp(prop, "fg_pressed") == 0) {
+		if (!cow_colour_parse(val, st->fg_pressed)) {
+			*why = "bad fg_pressed";
+			return false;
+		}
+		st->fg_pressed_set = true;
+	} else if (strcmp(prop, "image") == 0) {
+		if (!set_style_image(&st->image, val)) {
+			*why = "bad image";
+			return false;
+		}
+	} else if (strcmp(prop, "image_pressed") == 0) {
+		if (!set_style_image(&st->image_pressed, val)) {
+			*why = "bad image_pressed";
+			return false;
+		}
+	} else if (strcmp(prop, "image_size") == 0) {
+		if (!parse_int(val, &v) || v < 1) {
+			*why = "bad image_size";
+			return false;
+		}
+		st->image_size = v;
+		st->image_size_set = true;
+	} else if (strcmp(prop, "image_position") == 0) {
+		if (!image_position_parse(val, &st->image_pos)) {
+			*why = "bad image_position";
+			return false;
+		}
+		st->image_pos_set = true;
+	} else if (strcmp(prop, "justify") == 0) {
+		if (!justify_parse(val, &st->justify)) {
+			*why = "bad justify";
+			return false;
+		}
+		st->justify_set = true;
+	} else if (strcmp(prop, "colspan") == 0) {
+		if (!parse_int(val, &v) || v < 1) {
+			*why = "bad colspan";
+			return false;
+		}
+		st->colspan = v;
+		st->colspan_set = true;
+	} else if (strcmp(prop, "rowspan") == 0) {
+		if (!parse_int(val, &v) || v < 1) {
+			*why = "bad rowspan";
+			return false;
+		}
+		st->rowspan = v;
+		st->rowspan_set = true;
+	} else {
+		*why = "unknown cell style";
+		return false;
+	}
+	return true;
+}
+
+static bool
+load_style(char **fields, int n, const char **why)
+{
+	int v;
+
 	if (n < 3) {
-		*why = "missing row/column";
-		return 0;
+		*why = "bad style";
+		return false;
 	}
-	if (!parse_int(fields[1], row) || !parse_int(fields[2], col) ||
-	    *row < 0 || *col < 0) {
-		*why = "bad row/column";
-		return 0;
+	if (strcmp(fields[1], "button.bg") == 0) {
+		if (n != 3 || !cow_colour_parse(fields[2], style.bg)) {
+			*why = "bad button.bg";
+			return false;
+		}
+	} else if (strcmp(fields[1], "button.bg_pressed") == 0) {
+		if (n != 3 || !cow_colour_parse(fields[2], style.bg_pressed)) {
+			*why = "bad button.bg_pressed";
+			return false;
+		}
+	} else if (strcmp(fields[1], "button.fg") == 0) {
+		if (n != 3 || !cow_colour_parse(fields[2], style.fg)) {
+			*why = "bad button.fg";
+			return false;
+		}
+	} else if (strcmp(fields[1], "button.fg_pressed") == 0) {
+		if (n != 3 || !cow_colour_parse(fields[2], style.fg_pressed)) {
+			*why = "bad button.fg_pressed";
+			return false;
+		}
+	} else if (strcmp(fields[1], "button.image") == 0) {
+		if (n != 3 || !set_style_image(&style.image, fields[2])) {
+			*why = "bad button.image";
+			return false;
+		}
+	} else if (strcmp(fields[1], "button.image_pressed") == 0) {
+		if (n != 3 ||
+		    !set_style_image(&style.image_pressed, fields[2])) {
+			*why = "bad button.image_pressed";
+			return false;
+		}
+	} else if (strcmp(fields[1], "button.image_size") == 0) {
+		if (n != 3 || !parse_int(fields[2], &v) || v < 1) {
+			*why = "bad button.image_size";
+			return false;
+		}
+		style.image_size = v;
+	} else if (strcmp(fields[1], "button.image_position") == 0) {
+		if (n != 3 || !image_position_parse(fields[2],
+		    &style.image_pos)) {
+			*why = "bad button.image_position";
+			return false;
+		}
+	} else if (strcmp(fields[1], "button.justify") == 0) {
+		if (n != 3 || !justify_parse(fields[2], &style.justify)) {
+			*why = "bad button.justify";
+			return false;
+		}
+	} else {
+		*why = "unknown style";
+		return false;
 	}
-	return 1;
+	return true;
+}
+
+static bool
+grid_cell_taken(int row, int col)
+{
+	for (int i = 0; i < n_cells; i++) {
+		struct cell *c = &cells[i];
+		if (row >= c->row && row < c->row + cell_rowspan(c) &&
+		    col >= c->col && col < c->col + cell_colspan(c))
+			return true;
+	}
+	return false;
+}
+
+static void
+row_begin(void)
+{
+	current_row++;
+	current_col = 0;
+	in_row = true;
+	if (current_row + 1 > cfg.rows)
+		cfg.rows = current_row + 1;
+}
+
+static struct cell *
+cell_append(void)
+{
+	if (!in_row)
+		return NULL;
+	while (current_col < MAX_GRID &&
+	    grid_cell_taken(current_row, current_col))
+		current_col++;
+	if (current_col >= MAX_GRID)
+		return NULL;
+	return cell_get(current_row, current_col);
+}
+
+static bool
+parse_span(struct cell *c, const char *val, const char **why)
+{
+	char *x;
+	int col_span, row_span;
+
+	if (strcmp(val, "fill") == 0) {
+		int span = cfg.cols > c->col ? cfg.cols - c->col : 1;
+		c->style.colspan = span;
+		c->style.colspan_set = true;
+		return true;
+	}
+	x = strchr(val, 'x');
+	if (x == NULL)
+		return parse_cell_style_prop(&c->style, "colspan", val, why);
+
+	*x = '\0';
+	if (!parse_int(val, &col_span) || !parse_int(x + 1, &row_span) ||
+	    col_span < 1 || row_span < 1) {
+		*why = "bad span";
+		*x = 'x';
+		return false;
+	}
+	*x = 'x';
+	c->style.colspan = col_span;
+	c->style.rowspan = row_span;
+	c->style.colspan_set = true;
+	c->style.rowspan_set = true;
+	return true;
+}
+
+static bool
+load_cell_props(struct cell *c, char **fields, int start, int n,
+    const char **why)
+{
+	int v;
+
+	if (((n - start) % 2) != 0) {
+		*why = "bad cell property";
+		return false;
+	}
+	for (int i = start; i < n; i += 2) {
+		const char *prop = fields[i];
+		const char *val = fields[i + 1];
+
+		if (strcmp(prop, "width") == 0) {
+			if (!parse_int(val, &v) || v < MIN_CELL_W) {
+				*why = "bad width";
+				return false;
+			}
+			cfg.col_w[c->col] = v;
+		} else if (strcmp(prop, "height") == 0) {
+			if (!parse_int(val, &v) || v < MIN_CELL_H) {
+				*why = "bad height";
+				return false;
+			}
+			cfg.row_h[c->row] = v;
+		} else if (strcmp(prop, "span") == 0) {
+			if (!parse_span(c, fields[i + 1], why))
+				return false;
+		} else if (!parse_cell_style_prop(&c->style, prop, val, why))
+			return false;
+	}
+	if (c->row + cell_rowspan(c) > cfg.rows)
+		cfg.rows = c->row + cell_rowspan(c);
+	if (c->col + cell_colspan(c) > cfg.cols)
+		cfg.cols = c->col + cell_colspan(c);
+	return true;
+}
+
+static bool
+load_row(char **fields, int n, const char **why)
+{
+	int v;
+	bool parent_active = blocks_active();
+
+	if (n != 2 && n != 4) {
+		*why = "bad row";
+		return false;
+	}
+	if (strcmp(fields[n - 1], "{") != 0) {
+		*why = "bad row";
+		return false;
+	}
+	if (parent_active && in_row) {
+		*why = "nested row";
+		return false;
+	}
+	if (n == 4) {
+		if (strcmp(fields[1], "height") != 0 ||
+		    !parse_int(fields[2], &v) || v < MIN_CELL_H) {
+			*why = "bad row height";
+			return false;
+		}
+	}
+	if (!block_push(BLOCK_ROW, parent_active, why))
+		return false;
+	if (!parent_active)
+		return true;
+	row_begin();
+	if (n == 4)
+		cfg.row_h[current_row] = v;
+	return true;
 }
 
 static int
@@ -273,12 +896,18 @@ load_config(const char *path)
 		fprintf(stderr, "%s: %s: %s\n", PROG, path, strerror(errno));
 		return 0;
 	}
+	free(config_dir);
+	config_dir = path_dirname(path);
+	current_row = -1;
+	current_col = 0;
+	in_row = false;
+	n_blocks = 0;
 
 	while (getline(&line, &cap, f) != -1) {
 		char *fields[MAX_FIELDS] = { 0 };
 		char err[128] = "";
 		const char *why = NULL;
-		int n, v, row, col;
+		int n, v;
 
 		lineno++;
 		n = parse_fields(line, fields, MAX_FIELDS, err, sizeof(err));
@@ -290,76 +919,111 @@ load_config(const char *path)
 		if (n == 0)
 			continue;
 
-		if (strcmp(fields[0], "cell_width") == 0) {
-			if (n != 2 || !parse_int(fields[1], &v) ||
-			    v < MIN_CELL_W) {
-				why = "bad cell_width";
+		if (strcmp(fields[0], "}") == 0) {
+			if (n != 1 || !block_pop(&why))
+				goto line_error;
+		} else if (strcmp(fields[0], "if") == 0) {
+			if (!load_if(fields, n, &why))
+				goto line_error;
+		} else if (strcmp(fields[0], "row") == 0) {
+			if (!load_row(fields, n, &why))
+				goto line_error;
+		} else if (!blocks_active()) {
+		} else if (strcmp(fields[0], "cell") == 0) {
+			int h;
+
+			if (n != 3 || !parse_int(fields[1], &v) ||
+			    !parse_int(fields[2], &h) || v < MIN_CELL_W ||
+			    h < MIN_CELL_H) {
+				why = "bad cell";
 				goto line_error;
 			}
 			cfg.cell_w = v;
-		} else if (strcmp(fields[0], "cell_height") == 0) {
-			if (n != 2 || !parse_int(fields[1], &v) ||
-			    v < MIN_CELL_H) {
-				why = "bad cell_height";
+			cfg.cell_h = h;
+		} else if (strcmp(fields[0], "col") == 0) {
+			int idx;
+
+			if (n != 4 || !parse_int(fields[1], &idx) ||
+			    strcmp(fields[2], "width") != 0 ||
+			    !parse_int(fields[3], &v) || idx < 0 ||
+			    idx >= MAX_GRID || v < MIN_CELL_W) {
+				why = "bad col";
 				goto line_error;
 			}
-			cfg.cell_h = v;
-		} else if (strcmp(fields[0], "rows") == 0) {
-			if (n != 2 || !parse_int(fields[1], &v) || v < 1) {
-				why = "bad rows";
+			cfg.col_w[idx] = v;
+			if (idx + 1 > cfg.cols)
+				cfg.cols = idx + 1;
+		} else if (strcmp(fields[0], "grid") == 0) {
+			int cols;
+
+			if (n != 3 || !parse_int(fields[1], &v) ||
+			    !parse_int(fields[2], &cols) || v < 1 ||
+			    cols < 1 || v > MAX_GRID || cols > MAX_GRID) {
+				why = "bad grid";
 				goto line_error;
 			}
 			cfg.rows = v;
-		} else if (strcmp(fields[0], "cols") == 0) {
-			if (n != 2 || !parse_int(fields[1], &v) || v < 1) {
-				why = "bad cols";
-				goto line_error;
-			}
-			cfg.cols = v;
+			cfg.cols = cols;
 		} else if (strcmp(fields[0], "font") == 0) {
 			if (n != 2) {
 				why = "bad font";
 				goto line_error;
 			}
 			strlcpy(cfg.font, fields[1], sizeof(cfg.font));
-		} else if (strcmp(fields[0], "button") == 0) {
-			if (n != 5 || !parse_cell_pos(fields, n, &row, &col,
-			    &why))
+		} else if (strcmp(fields[0], "resizable") == 0) {
+			if (n != 2 || !parse_bool(fields[1], &cfg.resizable)) {
+				why = "bad resizable";
 				goto line_error;
-			struct cell *c = cell_add(row, col);
+			}
+		} else if (strcmp(fields[0], "style") == 0) {
+			if (!load_style(fields, n, &why))
+				goto line_error;
+		} else if (strcmp(fields[0], "button") == 0) {
+			if (n < 3) {
+				why = "bad button";
+				goto line_error;
+			}
+			struct cell *c = cell_append();
 			if (c == NULL) {
-				why = "too many cells";
+				why = in_row ? "too many cells" : "button outside row";
 				goto line_error;
 			}
 			c->type = CELL_BUTTON;
-			strlcpy(c->label, fields[3], sizeof(c->label));
-			strlcpy(c->command, fields[4], sizeof(c->command));
-		} else if (strcmp(fields[0], "status") == 0) {
-			if (n != 4 || !parse_cell_pos(fields, n, &row, &col,
-			    &why))
+			strlcpy(c->label, fields[1], sizeof(c->label));
+			strlcpy(c->command, fields[2], sizeof(c->command));
+			if (!load_cell_props(c, fields, 3, n, &why))
 				goto line_error;
+			current_col = c->col + cell_colspan(c);
+		} else if (strcmp(fields[0], "status") == 0) {
+			if (n < 2) {
+				why = "bad status";
+				goto line_error;
+			}
 			enum status_type type;
-			if (!status_type_parse(fields[3], &type)) {
+			if (!status_type_parse(fields[1], &type)) {
 				why = "bad status type";
 				goto line_error;
 			}
-			struct cell *c = cell_add(row, col);
+			struct cell *c = cell_append();
 			if (c == NULL) {
-				why = "too many cells";
+				why = in_row ? "too many cells" : "status outside row";
 				goto line_error;
 			}
 			c->type = CELL_STATUS;
 			c->status = type;
-		} else if (strcmp(fields[0], "spacer") == 0) {
-			if (n != 3 || !parse_cell_pos(fields, n, &row, &col,
-			    &why))
+			if (!load_cell_props(c, fields, 2, n, &why))
 				goto line_error;
-			struct cell *c = cell_add(row, col);
+			current_col = c->col + cell_colspan(c);
+		} else if (strcmp(fields[0], "spacer") == 0) {
+			struct cell *c = cell_append();
 			if (c == NULL) {
-				why = "too many cells";
+				why = in_row ? "too many cells" : "spacer outside row";
 				goto line_error;
 			}
 			c->type = CELL_SPACER;
+			if (!load_cell_props(c, fields, 1, n, &why))
+				goto line_error;
+			current_col = c->col + cell_colspan(c);
 		} else {
 			why = "unknown command";
 			goto line_error;
@@ -374,6 +1038,11 @@ line_error:
 
 	free(line);
 	fclose(f);
+	if (n_blocks != 0) {
+		fprintf(stderr, "%s: %s:%u: unclosed block\n", PROG, path,
+		    lineno);
+		return 0;
+	}
 	if (cfg.cols < 1)
 		cfg.cols = 1;
 	if (cfg.rows < 1)
@@ -411,15 +1080,188 @@ cell_at_grid(int row, int col)
 }
 
 static int
+cell_colspan(const struct cell *c)
+{
+	return c->style.colspan_set ? c->style.colspan : 1;
+}
+
+static int
+cell_rowspan(const struct cell *c)
+{
+	return c->style.rowspan_set ? c->style.rowspan : 1;
+}
+
+static int
+base_col_width(int col)
+{
+	if (col >= 0 && col < MAX_GRID && cfg.col_w[col] > 0)
+		return cfg.col_w[col];
+	return cfg.cell_w;
+}
+
+static int
+base_row_height(int row)
+{
+	if (row >= 0 && row < MAX_GRID && cfg.row_h[row] > 0)
+		return cfg.row_h[row];
+	return cfg.cell_h;
+}
+
+static int
+base_cols_width(int col, int span)
+{
+	int w = 0;
+
+	for (int i = 0; i < span; i++)
+		w += base_col_width(col + i);
+	return w;
+}
+
+static int
+base_rows_height(int row, int span)
+{
+	int h = 0;
+
+	for (int i = 0; i < span; i++)
+		h += base_row_height(row + i);
+	return h;
+}
+
+static int
+natural_width(void)
+{
+	return base_cols_width(0, cfg.cols);
+}
+
+static int
+natural_height(void)
+{
+	return base_rows_height(0, cfg.rows);
+}
+
+static int
+target_width(void)
+{
+	int w = natural_width();
+
+	if (cfg.resizable && win_w > w)
+		return win_w;
+	return w;
+}
+
+static int
+target_height(void)
+{
+	int h = natural_height();
+
+	if (cfg.resizable && win_h > h)
+		return win_h;
+	return h;
+}
+
+static int
+scale_offset(int pos, int base_total, int target_total)
+{
+	if (base_total <= 0 || target_total <= base_total)
+		return pos;
+	return (int)((long long)pos * target_total / base_total);
+}
+
+static int
+col_offset(int col)
+{
+	return scale_offset(base_cols_width(0, col), natural_width(),
+	    target_width());
+}
+
+static int
+row_offset(int row)
+{
+	return scale_offset(base_rows_height(0, row), natural_height(),
+	    target_height());
+}
+
+static int
+cols_width(int col, int span)
+{
+	return col_offset(col + span) - col_offset(col);
+}
+
+static int
+rows_height(int row, int span)
+{
+	return row_offset(row + span) - row_offset(row);
+}
+
+static int
+col_width(int col)
+{
+	return cols_width(col, 1);
+}
+
+static int
+row_height(int row)
+{
+	return rows_height(row, 1);
+}
+
+static int
+col_at(double x)
+{
+	int pos = 0;
+
+	for (int col = 0; col < cfg.cols; col++) {
+		pos += col_width(col);
+		if (x < pos)
+			return col;
+	}
+	return -1;
+}
+
+static int
+row_at(double y)
+{
+	int pos = 0;
+
+	for (int row = 0; row < cfg.rows; row++) {
+		pos += row_height(row);
+		if (y < pos)
+			return row;
+	}
+	return -1;
+}
+
+static bool
+cell_covered_by_span(const struct cell *c, int row, int col)
+{
+	return row >= c->row && row < c->row + cell_rowspan(c) &&
+	    col >= c->col && col < c->col + cell_colspan(c);
+}
+
+static bool
+grid_covered_by_span(int row, int col)
+{
+	for (int i = 0; i < n_cells; i++) {
+		const struct cell *c = &cells[i];
+
+		if (c->row == row && c->col == col)
+			continue;
+		if (cell_covered_by_span(c, row, col))
+			return true;
+	}
+	return false;
+}
+
+static int
 cell_at_point(double x, double y)
 {
-	int col = (int)(x / cfg.cell_w);
-	int row = (int)(y / cfg.cell_h);
+	int col = col_at(x);
+	int row = row_at(y);
 
 	if (row < 0 || col < 0 || row >= cfg.rows || col >= cfg.cols)
 		return -1;
 	for (int i = 0; i < n_cells; i++)
-		if (cells[i].row == row && cells[i].col == col)
+		if (cell_covered_by_span(&cells[i], row, col))
 			return i;
 	return -1;
 }
@@ -443,32 +1285,39 @@ status_text(const struct cell *c, const struct state *st)
 }
 
 static void
-draw_text(cairo_t *cr, double x, double y, double max_w, const char *text)
+draw_text(cairo_t *cr, double x, double y, double max_w, const char *text,
+    enum text_justify justify)
 {
 	cairo_text_extents_t te;
+	char buf[256];
+	const char *out = text;
+	double dx;
 
 	if (text == NULL || max_w <= 0)
 		return;
 	cairo_text_extents(cr, text, &te);
-	if (te.width <= max_w) {
-		cairo_move_to(cr, x, y);
-		cairo_show_text(cr, text);
-		return;
+	if (te.width > max_w) {
+		strlcpy(buf, text, sizeof(buf));
+		size_t len = strlen(buf);
+		while (len > 1) {
+			buf[--len] = '\0';
+			cairo_text_extents(cr, buf, &te);
+			if (te.width + 12 <= max_w)
+				break;
+		}
+		if (len > 1)
+			strlcat(buf, "...", sizeof(buf));
+		out = buf;
+		cairo_text_extents(cr, out, &te);
 	}
 
-	char buf[256];
-	strlcpy(buf, text, sizeof(buf));
-	size_t len = strlen(buf);
-	while (len > 1) {
-		buf[--len] = '\0';
-		cairo_text_extents(cr, buf, &te);
-		if (te.width + 12 <= max_w)
-			break;
-	}
-	if (len > 1)
-		strlcat(buf, "...", sizeof(buf));
-	cairo_move_to(cr, x, y);
-	cairo_show_text(cr, buf);
+	dx = 0;
+	if (justify == JUSTIFY_CENTER && te.width < max_w)
+		dx = (max_w - te.width) / 2.0;
+	else if (justify == JUSTIFY_RIGHT && te.width < max_w)
+		dx = max_w - te.width;
+	cairo_move_to(cr, x + dx, y);
+	cairo_show_text(cr, out);
 }
 
 static void
@@ -493,10 +1342,32 @@ draw_relief(cairo_t *cr, double x, double y, double w, double h, int sunken)
 	cairo_stroke(cr);
 }
 
-static struct wl_buffer *
-shm_buf(int w, int h, void **px)
+static void
+buffer_release(void *data, __unused struct wl_buffer *buffer)
 {
-	int size = w * 4 * h;
+	struct shm_buffer *buf = data;
+
+	buf->busy = false;
+}
+
+static const struct wl_buffer_listener buffer_listener = {
+	.release = buffer_release,
+};
+
+static void
+shm_buffer_destroy(struct shm_buffer *buf)
+{
+	if (buf->buffer != NULL)
+		wl_buffer_destroy(buf->buffer);
+	if (buf->data != NULL && buf->data != MAP_FAILED)
+		munmap(buf->data, buf->size);
+	memset(buf, 0, sizeof(*buf));
+}
+
+static bool
+shm_buffer_create(struct shm_buffer *buf, int w, int h)
+{
+	size_t size = (size_t)w * 4 * (size_t)h;
 #if HAVE_MEMFD_CREATE
 	int fd = memfd_create("cowbuttons", MFD_CLOEXEC);
 #else
@@ -508,30 +1379,163 @@ shm_buf(int w, int h, void **px)
 #endif
 
 	if (fd < 0)
-		return NULL;
+		return false;
 	if (ftruncate(fd, size) < 0) {
 		close(fd);
-		return NULL;
+		return false;
 	}
-	*px = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-	if (*px == MAP_FAILED) {
+	buf->data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	if (buf->data == MAP_FAILED) {
 		close(fd);
-		return NULL;
+		return false;
 	}
 
 	struct wl_shm_pool *pool = wl_shm_create_pool(wl_shm, fd, size);
-	struct wl_buffer *buf = wl_shm_pool_create_buffer(pool, 0, w, h,
+	buf->buffer = wl_shm_pool_create_buffer(pool, 0, w, h,
 	    w * 4, WL_SHM_FORMAT_ARGB8888);
 	wl_shm_pool_destroy(pool);
 	close(fd);
-	return buf;
+	if (buf->buffer == NULL) {
+		munmap(buf->data, size);
+		memset(buf, 0, sizeof(*buf));
+		return false;
+	}
+	wl_buffer_add_listener(buf->buffer, &buffer_listener, buf);
+	buf->size = size;
+	buf->w = w;
+	buf->h = h;
+	buf->busy = false;
+	return true;
+}
+
+static struct shm_buffer *
+next_buffer(int w, int h)
+{
+	for (size_t i = 0; i < sizeof(buffers) / sizeof(buffers[0]); i++) {
+		struct shm_buffer *buf = &buffers[i];
+
+		if (buf->busy)
+			continue;
+		if (buf->buffer != NULL && (buf->w != w || buf->h != h))
+			shm_buffer_destroy(buf);
+		if (buf->buffer == NULL && !shm_buffer_create(buf, w, h))
+			return NULL;
+		return buf;
+	}
+	return NULL;
+}
+
+static void
+set_source_colour(cairo_t *cr, const float *colour)
+{
+	cairo_set_source_rgba(cr, colour[0], colour[1], colour[2], colour[3]);
+}
+
+static void
+button_image_rect(const struct cell *c, double x, double y, double w,
+    double h, int *ix, int *iy, int *iw, int *ih)
+{
+	enum image_position pos = c->style.image_pos_set ? c->style.image_pos :
+	    style.image_pos;
+	int size = c->style.image_size_set ? c->style.image_size :
+	    style.image_size;
+
+	if (pos == IMAGE_FILL) {
+		*ix = (int)x;
+		*iy = (int)y;
+		*iw = (int)w;
+		*ih = (int)h;
+		return;
+	}
+
+	if (size > (int)h - TEXT_PAD * 2)
+		size = (int)h - TEXT_PAD * 2;
+	if (size < 1)
+		size = 1;
+
+	*iy = (int)(y + (h - size) / 2.0);
+	*iw = size;
+	*ih = size;
+	switch (pos) {
+	case IMAGE_CENTER:
+		*ix = (int)(x + (w - size) / 2.0);
+		break;
+	case IMAGE_RIGHT:
+		*ix = (int)(x + w - size - TEXT_PAD);
+		break;
+	case IMAGE_LEFT:
+	case IMAGE_FILL:
+		*ix = (int)(x + TEXT_PAD);
+		break;
+	}
+}
+
+static void
+draw_button_image(const struct cell *c, const char *path,
+    struct cow_pixbuf *pixbuf, double x, double y, double w, double h)
+{
+	int ix, iy, iw, ih;
+
+	if (path == NULL)
+		return;
+	button_image_rect(c, x, y, w, h, &ix, &iy, &iw, &ih);
+	cow_image_render_rect(path, pixbuf, ix, iy, iw, ih);
+}
+
+static const float *
+cell_bg_colour(const struct cell *c, int sunken)
+{
+	if (sunken && c->style.bg_pressed_set)
+		return c->style.bg_pressed;
+	if (!sunken && c->style.bg_set)
+		return c->style.bg;
+	return sunken ? style.bg_pressed : style.bg;
+}
+
+static const float *
+cell_fg_colour(const struct cell *c, int sunken)
+{
+	if (sunken && c->style.fg_pressed_set)
+		return c->style.fg_pressed;
+	if (!sunken && c->style.fg_set)
+		return c->style.fg;
+	return sunken ? style.fg_pressed : style.fg;
+}
+
+static const char *
+cell_image_path(const struct cell *c, int sunken)
+{
+	if (sunken && c->style.image_pressed != NULL)
+		return c->style.image_pressed;
+	if (!sunken && c->style.image != NULL)
+		return c->style.image;
+	return sunken && style.image_pressed != NULL ? style.image_pressed :
+	    style.image;
+}
+
+static int
+cell_image_size(const struct cell *c)
+{
+	return c->style.image_size_set ? c->style.image_size : style.image_size;
+}
+
+static enum image_position
+cell_image_position(const struct cell *c)
+{
+	return c->style.image_pos_set ? c->style.image_pos : style.image_pos;
+}
+
+static enum text_justify
+cell_justify(const struct cell *c)
+{
+	return c->style.justify_set ? c->style.justify : style.justify;
 }
 
 static void
 render(void)
 {
-	void *px;
-	struct wl_buffer *buf;
+	struct shm_buffer *buf;
+	struct cow_pixbuf pixbuf;
 	cairo_surface_t *cs;
 	cairo_t *cr;
 	struct state st;
@@ -539,9 +1543,9 @@ render(void)
 	if (!configured)
 		return;
 
-	win_w = cfg.cols * cfg.cell_w;
-	win_h = cfg.rows * cfg.cell_h;
-	buf = shm_buf(win_w, win_h, &px);
+	win_w = target_width();
+	win_h = target_height();
+	buf = next_buffer(win_w, win_h);
 	if (buf == NULL)
 		return;
 
@@ -550,8 +1554,14 @@ render(void)
 	dirty = 0;
 	pthread_mutex_unlock(&state_lock);
 
-	cs = cairo_image_surface_create_for_data(px, CAIRO_FORMAT_ARGB32,
+	cs = cairo_image_surface_create_for_data(buf->data, CAIRO_FORMAT_ARGB32,
 	    win_w, win_h, win_w * 4);
+	pixbuf = (struct cow_pixbuf){
+		.pixels = buf->data,
+		.width = win_w,
+		.height = win_h,
+		.stride_px = win_w,
+	};
 	cr = cairo_create(cs);
 	cairo_select_font_face(cr, cfg.font, CAIRO_FONT_SLANT_NORMAL,
 	    CAIRO_FONT_WEIGHT_NORMAL);
@@ -563,10 +1573,23 @@ render(void)
 	for (int row = 0; row < cfg.rows; row++) {
 		for (int col = 0; col < cfg.cols; col++) {
 			const struct cell *c = cell_at_grid(row, col);
-			double x = col * cfg.cell_w;
-			double y = row * cfg.cell_h;
+			double x = col_offset(col);
+			double y = row_offset(row);
+			double cell_w = col_width(col);
+			double cell_h = row_height(row);
+			double tx = x + TEXT_PAD;
+			double tw;
 			const char *label = "";
+			const char *image = NULL;
 			int sunken = 0;
+
+			if (c == NULL && grid_covered_by_span(row, col))
+				continue;
+			if (c != NULL) {
+				cell_w = cols_width(col, cell_colspan(c));
+				cell_h = rows_height(row, cell_rowspan(c));
+			}
+			tw = cell_w - 2 * TEXT_PAD;
 
 			if (c != NULL && c->type == CELL_SPACER)
 				continue;
@@ -574,18 +1597,32 @@ render(void)
 				label = c->label;
 				sunken = pressed_cell >= 0 &&
 				    &cells[pressed_cell] == c;
+				image = cell_image_path(c, sunken);
 			} else if (c != NULL && c->type == CELL_STATUS)
 				label = status_text(c, &st);
 
-			cairo_set_source_rgb(cr, 0.42, 0.42, 0.45);
-			cairo_rectangle(cr, x, y, cfg.cell_w, cfg.cell_h);
+			set_source_colour(cr, c == NULL ? style.bg :
+			    cell_bg_colour(c, sunken));
+			cairo_rectangle(cr, x, y, cell_w, cell_h);
 			cairo_fill(cr);
-			draw_relief(cr, x, y, cfg.cell_w, cfg.cell_h, sunken);
+			if (c != NULL)
+				draw_button_image(c, image, &pixbuf, x, y, cell_w,
+				    cell_h);
+			draw_relief(cr, x, y, cell_w, cell_h, sunken);
 
-			cairo_set_source_rgb(cr, 0.94, 0.94, 0.96);
-			draw_text(cr, x + TEXT_PAD,
-			    y + cfg.cell_h / 2.0 + 4.0,
-			    cfg.cell_w - 2 * TEXT_PAD, label);
+			if (c != NULL && image != NULL &&
+			    cell_image_position(c) == IMAGE_LEFT) {
+				tx += cell_image_size(c) + TEXT_PAD;
+				tw -= cell_image_size(c) + TEXT_PAD;
+			} else if (c != NULL && image != NULL &&
+			    cell_image_position(c) ==
+			    IMAGE_RIGHT) {
+				tw -= cell_image_size(c) + TEXT_PAD;
+			}
+			set_source_colour(cr, c == NULL ? style.fg :
+			    cell_fg_colour(c, sunken));
+			draw_text(cr, tx, y + cell_h / 2.0 + 4.0, tw,
+			    label, c == NULL ? style.justify : cell_justify(c));
 		}
 	}
 
@@ -593,11 +1630,10 @@ render(void)
 	cairo_surface_flush(cs);
 	cairo_surface_destroy(cs);
 
-	wl_surface_attach(surface, buf, 0, 0);
+	buf->busy = true;
+	wl_surface_attach(surface, buf->buffer, 0, 0);
 	wl_surface_damage_buffer(surface, 0, 0, win_w, win_h);
 	wl_surface_commit(surface);
-	wl_buffer_destroy(buf);
-	munmap(px, (size_t)win_w * 4 * (size_t)win_h);
 }
 
 static void
@@ -797,9 +1833,20 @@ static const struct xdg_surface_listener xdg_surface_listener = {
 
 static void
 xdg_toplevel_configure(__unused void *data,
-    __unused struct xdg_toplevel *toplevel, __unused int32_t w,
-    __unused int32_t h, __unused struct wl_array *states)
+    __unused struct xdg_toplevel *toplevel, int32_t w,
+    int32_t h, __unused struct wl_array *states)
 {
+	if (cfg.resizable && w > 0 && h > 0) {
+		if (w < natural_width())
+			w = natural_width();
+		if (h < natural_height())
+			h = natural_height();
+		if (w != win_w || h != win_h) {
+			win_w = w;
+			win_h = h;
+			dirty = 1;
+		}
+	}
 }
 
 static void
@@ -963,6 +2010,7 @@ main(int argc, char **argv)
 	struct event_base *base;
 	struct event *wl_ev = NULL, *wake_ev = NULL;
 
+	style_init();
 	if (!parse_args(argc, argv, &config_path)) {
 		usage();
 		return 1;
@@ -1010,10 +2058,13 @@ main(int argc, char **argv)
 	xdg_toplevel_add_listener(xdg_toplevel, &xdg_toplevel_listener, NULL);
 	xdg_toplevel_set_title(xdg_toplevel, PROG);
 	xdg_toplevel_set_app_id(xdg_toplevel, PROG);
-	xdg_toplevel_set_min_size(xdg_toplevel, cfg.cols * cfg.cell_w,
-	    cfg.rows * cfg.cell_h);
-	xdg_toplevel_set_max_size(xdg_toplevel, cfg.cols * cfg.cell_w,
-	    cfg.rows * cfg.cell_h);
+	xdg_toplevel_set_min_size(xdg_toplevel, natural_width(),
+	    natural_height());
+	if (cfg.resizable)
+		xdg_toplevel_set_max_size(xdg_toplevel, 0, 0);
+	else
+		xdg_toplevel_set_max_size(xdg_toplevel, natural_width(),
+		    natural_height());
 	wl_surface_commit(surface);
 
 	state_clear(&current_state);
@@ -1058,6 +2109,15 @@ main(int argc, char **argv)
 		xdg_surface_destroy(xdg_surface);
 	if (surface != NULL)
 		wl_surface_destroy(surface);
+	for (size_t i = 0; i < sizeof(buffers) / sizeof(buffers[0]); i++)
+		shm_buffer_destroy(&buffers[i]);
+	for (int i = 0; i < n_cells; i++) {
+		free(cells[i].style.image);
+		free(cells[i].style.image_pressed);
+	}
+	free(style.image);
+	free(style.image_pressed);
+	free(config_dir);
 	wl_display_disconnect(display);
 	return 0;
 }

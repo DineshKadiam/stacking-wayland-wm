@@ -9,10 +9,14 @@ buttons_deps = [
     dependency('cairo'),
     dependency('threads'),
     dependency('libevent'),
+    m_dep,
 ]
 
 executable('cowbuttons',
     ['src/cowbuttons.c'] + buttons_generated,
+    '../../src/colour.c',
+    '../../src/image.c',
+    '../../src/memory.c',
     '../../src/module.c',
     '../../vendor/cJSON.c',
     include_directories: [

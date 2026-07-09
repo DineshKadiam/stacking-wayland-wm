@@ -39,51 +39,107 @@ or, when *XDG_CONFIG_HOME* is unset:
 The format is line-oriented.  Blank lines and lines starting with *#* are
 ignored.  Labels and commands containing whitespace must be quoted.
 
-*cell_width* _N_
-	Set the cell width in pixels.  The default is 96.
+*cell* _W_ _H_
+	Set the default cell size in pixels.  The default is 96 by 32.
 
-*cell_height* _N_
-	Set the cell height in pixels.  The default is 32.
+*grid* _rows_ _cols_
+	Set the grid size.
 
-*rows* _N_
-	Set the grid row count.  The default is 1.
+*col* _col_ *width* _N_
+	Set one column's width in pixels.
 
-*cols* _N_
-	Set the grid column count.  When omitted, the largest configured column is
-	used.
+*row* [*height* _N_] *{*
+	Start a new visual row.  Cells inside the block are appended
+	left-to-right.
+
+*}*
+	End the current row.
+
+*if* [*not*] *command* _name_ *{*
+	Process the block only when _name_ exists in *PATH* and is executable.
+
+*if* [*not*] *file* _path_ *{*
+	Process the block only when _path_ exists.  Relative paths are resolved
+	against the configuration file's directory.
+
+*if* [*not*] *env* _name_ *{*
+	Process the block only when the environment variable _name_ is set and
+	non-empty.
 
 *font* _name_
 	Set the cairo toy-font face used for labels.
 
-*button* _row_ _col_ _label_ _command_
-	Create a clickable button.  _command_ is sent to cow through the command
-	socket.
+*resizable* _true_|_false_
+	Allow the window to be resized.  The configured grid remains the minimum
+	size; extra width and height are distributed across columns and rows.  The
+	default is _false_.
 
-*status* _row_ _col_ _type_
+*style button.bg* _colour_
+	Set the normal button background colour.
+
+*style button.bg_pressed* _colour_
+	Set the pressed button background colour.
+
+*style button.fg* _colour_
+	Set the normal button text colour.
+
+*style button.fg_pressed* _colour_
+	Set the pressed button text colour.
+
+*style button.image* _path_
+	Draw a PNG or SVG image in command buttons.  Relative paths are resolved
+	against the configuration file's directory.
+
+*style button.image_pressed* _path_
+	Draw a PNG or SVG image while a command button is pressed.
+
+*style button.image_size* _N_
+	Set the image size in pixels.  The default is 16.
+
+*style button.image_position* _left_|_center_|_right_|_fill_
+	Set where button images are drawn.  The default is _left_.
+
+*style button.justify* _left_|_center_|_right_
+	Set the default button text justification.  The default is _left_.
+
+*button* _label_ _command_ [_property_ _value_ ...]
+	Create a clickable button.  _command_ is sent to cow through the command
+	socket.  Supported properties are *width*, *height*, *span*, *bg*,
+	*bg_pressed*, *fg*, *fg_pressed*, *image*, *image_pressed*,
+	*image_size*, *image_position*, and *justify*.
+
+*status* _type_ [_property_ _value_ ...]
 	Create a live status cell.  Supported types are:
 	*focused-title*, *focused-app*, *current-output*, *current-desk*, and
 	*desk-list*.
 
-*spacer* _row_ _col_
+*spacer* [_property_ _value_ ...]
 	Create an empty cell.
 
 # EXAMPLES
 
 ```
-cell_width 120
-cell_height 32
-rows 2
-cols 4
+cell 84 18
+grid 2 4
+resizable true
 
-button 0 0 "xterm" "exec xterm"
-button 0 1 "next" "focus -n"
-button 0 2 "prev" "focus -p"
-button 0 3 "pager" "exec cowpager"
+style button.bg 0x5f626a
+style button.bg_pressed 0x3e4148
+style button.fg 0xf4f4f6
+style button.fg_pressed 0xffffff
 
-status 1 0 focused-title
-status 1 1 focused-app
-status 1 2 current-output
-status 1 3 current-desk
+row height 18 {
+	button "Root" "menu root" width 38 bg 0x5b3f58
+	button "Modules" "menu modules" width 58 bg 0x3f5b51
+	button "Window" "menu window" width 54 bg 0x5b523f
+	if command xterm {
+		button "xterm" "exec xterm" width 170 bg 0x3f4f6d
+	}
+}
+
+row height 22 {
+	status focused-title span fill bg 0x4a3f5b
+}
 ```
 
 Remove cowbuttons' own window chrome using a cow rule:
