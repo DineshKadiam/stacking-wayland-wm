@@ -1,0 +1,110 @@
+cowbuttons(1) "@VERSION@" "cowbuttons - button panel for cow"
+
+# NAME
+
+cowbuttons - FvwmButtons-style button panel for the cow window manager
+
+# SYNOPSIS
+
+*cowbuttons* [*-c* _path_] [*-h*]
+
+# DESCRIPTION
+
+*cowbuttons* displays a small configurable grid of cells.  Cells can run
+*cow*(1) commands, show selected state from cow's status socket, or act as
+empty spacers.
+
+Wayland does not provide X11-style arbitrary window reparenting, so
+*cowbuttons* does not swallow clients.  Use command buttons to launch or focus
+applications, and use cow rules to style or place companion windows.
+
+# OPTIONS
+
+*-c* _path_
+	Load _path_ instead of the default configuration file.
+
+*-h*
+	Show usage.
+
+# CONFIGURATION
+
+The default configuration file is:
+
+	_$XDG\_CONFIG\_HOME/cow/cowbuttons.conf_
+
+or, when *XDG_CONFIG_HOME* is unset:
+
+	_~/.config/cow/cowbuttons.conf_
+
+The format is line-oriented.  Blank lines and lines starting with *#* are
+ignored.  Labels and commands containing whitespace must be quoted.
+
+*cell_width* _N_
+	Set the cell width in pixels.  The default is 96.
+
+*cell_height* _N_
+	Set the cell height in pixels.  The default is 32.
+
+*rows* _N_
+	Set the grid row count.  The default is 1.
+
+*cols* _N_
+	Set the grid column count.  When omitted, the largest configured column is
+	used.
+
+*font* _name_
+	Set the cairo toy-font face used for labels.
+
+*button* _row_ _col_ _label_ _command_
+	Create a clickable button.  _command_ is sent to cow through the command
+	socket.
+
+*status* _row_ _col_ _type_
+	Create a live status cell.  Supported types are:
+	*focused-title*, *focused-app*, *current-output*, *current-desk*, and
+	*desk-list*.
+
+*spacer* _row_ _col_
+	Create an empty cell.
+
+# EXAMPLES
+
+```
+cell_width 120
+cell_height 32
+rows 2
+cols 4
+
+button 0 0 "xterm" "exec xterm"
+button 0 1 "next" "focus -n"
+button 0 2 "prev" "focus -p"
+button 0 3 "pager" "exec cowpager"
+
+status 1 0 focused-title
+status 1 1 focused-app
+status 1 2 current-output
+status 1 3 current-desk
+```
+
+Remove cowbuttons' own window chrome using a cow rule:
+
+```
+decor -d cowbuttons-chrome border.width 0
+decor -d cowbuttons-chrome border.handles false
+decor -d cowbuttons-chrome titlebar.enabled false
+rule -g -Ton-map -ncowbuttons-chrome -s %cowbuttons decor -a cowbuttons-chrome
+```
+
+# FILES
+
+_$XDG\_CONFIG\_HOME/cow/cowbuttons.conf_
+
+_~/.config/cow/cowbuttons.conf_
+
+# SEE ALSO
+
+*cow*(1), *moocow*(1), *cowbar*(1), *cowiconman*(1), *cowpager*(1)
+
+# AUTHORS
+
+Thomas Adam <thomas@xteddy.org>
