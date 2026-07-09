@@ -6,7 +6,7 @@ cowbuttons - FvwmButtons-style button panel for the cow window manager
 
 # SYNOPSIS
 
-*cowbuttons* [*-c* _path_] [*-h*]
+*cowbuttons* [*-c* _path_] [*-p* _panel_] [*-h*]
 
 # DESCRIPTION
 
@@ -22,6 +22,10 @@ applications, and use cow rules to style or place companion windows.
 
 *-c* _path_
 	Load _path_ instead of the default configuration file.
+
+*-p* _panel_
+	Load only named _panel_.  This is mainly used by *panel-button* to
+	start companion cowbuttons windows from the same configuration file.
 
 *-h*
 	Show usage.
@@ -122,6 +126,12 @@ ignored.  Labels and commands containing whitespace must be quoted.
 	Supported properties are the same as *button*, except no label or
 	command is specified.
 
+*panel-button* _label_ _panel_ _direction_ [_property_ _value_ ...]
+	Create a button that toggles a companion *cowbuttons* process showing
+	named _panel_.  _direction_ is *left*, *right*, *up*, or *down* and is
+	drawn as a vector indicator.  The optional *command* property can be
+	used to run a custom panel command.
+
 *status* _type_ [_property_ _value_ ...]
 	Create a live status cell.  Supported types are:
 	*focused-title*, *focused-app*, *current-output*, *current-desk*, and
@@ -149,7 +159,7 @@ panel launcher {
 	row height 18 {
 		button "Root" "menu root" width 38 bg 0x5b3f58
 		button "Modules" "menu modules" width 58 bg 0x3f5b51
-		button "Window" "menu window" width 54 bg 0x5b523f
+		panel-button "Window" telephone down width 72 bg 0x5b523f
 	}
 }
 

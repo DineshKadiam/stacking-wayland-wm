@@ -21,12 +21,14 @@
 #include <getopt.h>
 #include <libgen.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <sys/mman.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <event2/event.h>
 #include <wayland-client.h>
@@ -59,6 +61,7 @@ enum cell_type {
 	CELL_EMPTY,
 	CELL_BUTTON,
 	CELL_PANEL_TOGGLE,
+	CELL_PANEL_BUTTON,
 	CELL_STATUS,
 	CELL_SPACER,
 };
@@ -167,6 +170,9 @@ struct cell {
 	int		  col;
 	char		  label[128];
 	char		  command[512];
+	char		  panel[128];
+	enum panel_direction panel_dir;
+	pid_t		  panel_pid;
 	struct cell_style style;
 	int		  panel;
 	int		  target_panel;
@@ -229,6 +235,9 @@ static pthread_mutex_t state_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct state    current_state;
 static int	       dirty = 1;
 static char	      *config_dir;
+static char	      *config_path_global;
+static char	      *argv0_global;
+static char	      *override_panel;
 static struct panel_selection selected_panels[MAX_SELECTED_PANELS];
 static int	       n_selected_panels;
 
@@ -246,7 +255,7 @@ static bool cell_hidden(const struct cell *);
 static void
 usage(void)
 {
-	fprintf(stderr, "usage: cowbuttons [-c path] [-h]\n");
+	fprintf(stderr, "usage: cowbuttons [-c path] [-p panel] [-h]\n");
 }
 
 static void
@@ -1007,6 +1016,47 @@ load_cell_props(struct cell *c, char **fields, int start, int n,
 }
 
 static bool
+load_panel_button_props(struct cell *c, char **fields, int start, int n,
+    const char **why)
+{
+	int v;
+
+	if (((n - start) % 2) != 0) {
+		*why = "bad panel-button property";
+		return false;
+	}
+	for (int i = start; i < n; i += 2) {
+		const char *prop = fields[i];
+		const char *val = fields[i + 1];
+
+		if (strcmp(prop, "command") == 0) {
+			strlcpy(c->command, fields[i + 1], sizeof(c->command));
+		} else if (strcmp(prop, "width") == 0) {
+			if (!parse_int(val, &v) || v < MIN_CELL_W) {
+				*why = "bad width";
+				return false;
+			}
+			cfg.col_w[c->col] = v;
+		} else if (strcmp(prop, "height") == 0) {
+			if (!parse_int(val, &v) || v < MIN_CELL_H) {
+				*why = "bad height";
+				return false;
+			}
+			cfg.row_h[c->row] = v;
+		} else if (strcmp(prop, "span") == 0) {
+			if (!parse_span(c, fields[i + 1], why))
+				return false;
+		} else if (!parse_cell_style_prop(&c->style, prop, val, why))
+			return false;
+	}
+	if (c->row + cell_rowspan(c) > cfg.rows)
+		cfg.rows = c->row + cell_rowspan(c);
+	if (c->col + cell_colspan(c) > cfg.cols)
+		cfg.cols = c->col + cell_colspan(c);
+	return true;
+}
+
+static bool
 load_row(char **fields, int n, const char **why)
 {
 	int v;
@@ -1115,7 +1165,12 @@ load_config(const char *path)
 	current_col = 0;
 	in_row = false;
 	n_blocks = 0;
-	if (!scan_selected_panels(path)) {
+	if (override_panel != NULL) {
+		if (!panel_selection_add(override_panel)) {
+			fclose(f);
+			return 0;
+		}
+	} else if (!scan_selected_panels(path)) {
 		fclose(f);
 		return 0;
 	}
@@ -1236,6 +1291,27 @@ load_config(const char *path)
 			c->type = CELL_PANEL_TOGGLE;
 			c->target_panel = target;
 			if (!load_cell_props(c, fields, 2, n, &why))
+				goto line_error;
+			current_col = c->col + cell_colspan(c);
+		} else if (strcmp(fields[0], "panel-button") == 0) {
+			if (n < 4) {
+				why = "bad panel-button";
+				goto line_error;
+			}
+			struct cell *c = cell_append();
+			if (c == NULL) {
+				why = in_row ? "too many cells" :
+				    "panel-button outside row";
+				goto line_error;
+			}
+			c->type = CELL_PANEL_BUTTON;
+			strlcpy(c->label, fields[1], sizeof(c->label));
+			strlcpy(c->panel, fields[2], sizeof(c->panel));
+			if (!panel_direction_parse(fields[3], &c->panel_dir)) {
+				why = "bad panel direction";
+				goto line_error;
+			}
+			if (!load_panel_button_props(c, fields, 4, n, &why))
 				goto line_error;
 			current_col = c->col + cell_colspan(c);
 		} else if (strcmp(fields[0], "status") == 0) {
@@ -1935,6 +2011,99 @@ cell_justify(const struct cell *c)
 	return c->style.justify_set ? c->style.justify : style.justify;
 }
 
+static struct cow_vector_button
+panel_indicator_vector(enum panel_direction direction)
+{
+	struct cow_vector_button v = { 0 };
+
+	v.num_points = 4;
+	switch (direction) {
+	case PANEL_LEFT:
+		v.points[0] = (struct cow_vector_point) { 65, 25, 0, 0, -1 };
+		v.points[1] = (struct cow_vector_point) { 35, 50, 0, 0,
+		    COW_VECTOR_FG };
+		v.points[2] = (struct cow_vector_point) { 65, 75, 0, 0,
+		    COW_VECTOR_FG };
+		v.points[3] = (struct cow_vector_point) { 65, 25, 0, 0,
+		    COW_VECTOR_FG };
+		break;
+	case PANEL_RIGHT:
+		v.points[0] = (struct cow_vector_point) { 35, 25, 0, 0, -1 };
+		v.points[1] = (struct cow_vector_point) { 65, 50, 0, 0,
+		    COW_VECTOR_FG };
+		v.points[2] = (struct cow_vector_point) { 35, 75, 0, 0,
+		    COW_VECTOR_FG };
+		v.points[3] = (struct cow_vector_point) { 35, 25, 0, 0,
+		    COW_VECTOR_FG };
+		break;
+	case PANEL_UP:
+		v.points[0] = (struct cow_vector_point) { 25, 65, 0, 0, -1 };
+		v.points[1] = (struct cow_vector_point) { 50, 35, 0, 0,
+		    COW_VECTOR_FG };
+		v.points[2] = (struct cow_vector_point) { 75, 65, 0, 0,
+		    COW_VECTOR_FG };
+		v.points[3] = (struct cow_vector_point) { 25, 65, 0, 0,
+		    COW_VECTOR_FG };
+		break;
+	case PANEL_DOWN:
+		v.points[0] = (struct cow_vector_point) { 25, 35, 0, 0, -1 };
+		v.points[1] = (struct cow_vector_point) { 50, 65, 0, 0,
+		    COW_VECTOR_FG };
+		v.points[2] = (struct cow_vector_point) { 75, 35, 0, 0,
+		    COW_VECTOR_FG };
+		v.points[3] = (struct cow_vector_point) { 25, 35, 0, 0,
+		    COW_VECTOR_FG };
+		break;
+	}
+	return v;
+}
+
+static void
+draw_panel_indicator(struct cow_pixbuf *pixbuf, const struct cell *c, int x,
+    int y, int w, int h, bool sunken)
+{
+	struct cow_vector_button vector = panel_indicator_vector(c->panel_dir);
+	int btn_s = h - TEXT_PAD * 2;
+
+	if (btn_s < 6)
+		btn_s = h < w ? h : w;
+	if (btn_s < 1)
+		return;
+	if (btn_s > 64)
+		btn_s = 64;
+
+	int bx = x + w - btn_s - TEXT_PAD;
+	int by = y + (h - btn_s) / 2;
+	uint32_t px_bg = cow_colour_to_pixel(cell_bg_colour(c, sunken));
+	uint32_t colors[5] = {
+		[COW_VECTOR_SHADOW] = cow_colour_to_pixel(style.bg_pressed),
+		[COW_VECTOR_HIGHLIGHT] = cow_colour_to_pixel(style.fg_pressed),
+		[COW_VECTOR_BG] = px_bg,
+		[COW_VECTOR_FG] = cow_colour_to_pixel(cell_fg_colour(c, sunken)),
+		[COW_VECTOR_INVISIBLE] = 0,
+	};
+	uint32_t btn_buf[btn_s * btn_s];
+
+	for (int i = 0; i < btn_s * btn_s; i++)
+		btn_buf[i] = px_bg;
+	cow_vector_button_draw(&vector, btn_buf, btn_s, btn_s, btn_s, btn_s,
+	    colors, sunken);
+	for (int py = 0; py < btn_s; py++) {
+		int dy = by + py;
+
+		if (dy < 0 || dy >= pixbuf->height)
+			continue;
+		for (int px = 0; px < btn_s; px++) {
+			int dx = bx + px;
+			uint32_t colour = btn_buf[py * btn_s + px];
+
+			if (dx < 0 || dx >= pixbuf->width || colour == px_bg)
+				continue;
+			pixbuf->pixels[dy * pixbuf->stride_px + dx] = colour;
+		}
+	}
+}
+
 static void
 draw_panel_toggle(struct cow_pixbuf *pixbuf, const struct cell *c, int x, int y,
     int w, int h, bool sunken)
@@ -2053,7 +2222,8 @@ render(void)
 			if (c != NULL && c->type == CELL_SPACER)
 				continue;
 			if (c != NULL && (c->type == CELL_BUTTON ||
-			    c->type == CELL_PANEL_TOGGLE)) {
+			    c->type == CELL_PANEL_TOGGLE ||
+			    c->type == CELL_PANEL_BUTTON)) {
 				label = c->label;
 				sunken = pressed_cell >= 0 &&
 				    &cells[pressed_cell] == c;
@@ -2090,7 +2260,7 @@ render(void)
 	for (int i = 0; i < n_cells; i++) {
 		const struct cell *c = &cells[i];
 
-		if (c->type != CELL_PANEL_TOGGLE || cell_hidden(c))
+		if (cell_hidden(c))
 			continue;
 		int x = col_offset(c->col);
 		int y = row_offset(c->row);
@@ -2100,7 +2270,10 @@ render(void)
 
 		if (w <= 0 || h <= 0)
 			continue;
-		draw_panel_toggle(&pixbuf, c, x, y, w, h, sunken);
+		if (c->type == CELL_PANEL_TOGGLE)
+			draw_panel_toggle(&pixbuf, c, x, y, w, h, sunken);
+		else if (c->type == CELL_PANEL_BUTTON)
+			draw_panel_indicator(&pixbuf, c, x, y, w, h, sunken);
 	}
 	cairo_surface_mark_dirty(cs);
 	cairo_destroy(cr);
@@ -2124,6 +2297,61 @@ ipc_send(const char *cmd)
 		read(fd, b, sizeof(b));
 	}
 	close(fd);
+}
+
+static bool
+panel_child_running(struct cell *c)
+{
+	if (c->panel_pid <= 0)
+		return false;
+	if (waitpid(c->panel_pid, NULL, WNOHANG) == c->panel_pid) {
+		c->panel_pid = 0;
+		return false;
+	}
+	if (kill(c->panel_pid, 0) == 0)
+		return true;
+	if (errno == ESRCH)
+		c->panel_pid = 0;
+	return false;
+}
+
+static void
+panel_child_stop(struct cell *c)
+{
+	if (!panel_child_running(c))
+		return;
+	kill(c->panel_pid, SIGTERM);
+	waitpid(c->panel_pid, NULL, WNOHANG);
+	c->panel_pid = 0;
+}
+
+static void
+panel_child_start(struct cell *c)
+{
+	pid_t pid;
+
+	pid = fork();
+	if (pid < 0)
+		return;
+	if (pid == 0) {
+		if (c->command[0] != '\0')
+			execl("/bin/sh", "sh", "-c", c->command, (char *)NULL);
+		else
+			execlp(argv0_global, argv0_global, "-c",
+			    config_path_global, "-p", c->panel, (char *)NULL);
+		_exit(127);
+	}
+	c->panel_pid = pid;
+}
+
+static void
+panel_button_toggle(struct cell *c)
+{
+	if (panel_child_running(c))
+		panel_child_stop(c);
+	else
+		panel_child_start(c);
+	render();
 }
 
 static void
@@ -2386,7 +2614,8 @@ pointer_button(__unused void *data, __unused struct wl_pointer *p,
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
 		int idx = cell_at_point(ptr_x, ptr_y);
 		if (idx >= 0 && (cells[idx].type == CELL_BUTTON ||
-		    cells[idx].type == CELL_PANEL_TOGGLE)) {
+		    cells[idx].type == CELL_PANEL_TOGGLE ||
+		    cells[idx].type == CELL_PANEL_BUTTON)) {
 			pressed_cell = idx;
 			render();
 		}
@@ -2403,6 +2632,8 @@ pointer_button(__unused void *data, __unused struct wl_pointer *p,
 		ipc_send(cells[pressed].command);
 	else if (cells[pressed].type == CELL_PANEL_TOGGLE)
 		panel_toggle(&cells[pressed]);
+	else if (cells[pressed].type == CELL_PANEL_BUTTON)
+		panel_button_toggle(&cells[pressed]);
 }
 
 static void
@@ -2479,11 +2710,17 @@ parse_args(int argc, char **argv, char **config_path)
 {
 	int ch;
 
-	while ((ch = getopt(argc, argv, "c:h")) != -1) {
+	while ((ch = getopt(argc, argv, "c:p:h")) != -1) {
 		switch (ch) {
 		case 'c':
 			*config_path = strdup(optarg);
 			if (*config_path == NULL)
+				return 0;
+			break;
+		case 'p':
+			free(override_panel);
+			override_panel = strdup(optarg);
+			if (override_panel == NULL)
 				return 0;
 			break;
 		case 'h':
@@ -2505,6 +2742,7 @@ main(int argc, char **argv)
 	struct event_base *base;
 	struct event *wl_ev = NULL, *wake_ev = NULL;
 
+	argv0_global = argv[0];
 	style_init();
 	if (!parse_args(argc, argv, &config_path)) {
 		usage();
@@ -2517,6 +2755,11 @@ main(int argc, char **argv)
 			    PROG);
 			return 1;
 		}
+	}
+	config_path_global = strdup(config_path);
+	if (config_path_global == NULL) {
+		free(config_path);
+		return 1;
 	}
 	if (!load_config(config_path)) {
 		free(config_path);
@@ -2551,9 +2794,23 @@ main(int argc, char **argv)
 	xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, NULL);
 	xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
 	xdg_toplevel_add_listener(xdg_toplevel, &xdg_toplevel_listener, NULL);
-	xdg_toplevel_set_title(xdg_toplevel, PROG);
-	xdg_toplevel_set_app_id(xdg_toplevel, PROG);
-	update_toplevel_size();
+	if (override_panel != NULL) {
+		char title[256];
+
+		snprintf(title, sizeof(title), "%s:%s", PROG, override_panel);
+		xdg_toplevel_set_title(xdg_toplevel, title);
+		xdg_toplevel_set_app_id(xdg_toplevel, title);
+	} else {
+		xdg_toplevel_set_title(xdg_toplevel, PROG);
+		xdg_toplevel_set_app_id(xdg_toplevel, PROG);
+	}
+	xdg_toplevel_set_min_size(xdg_toplevel, natural_width(),
+	    natural_height());
+	if (cfg.resizable)
+		xdg_toplevel_set_max_size(xdg_toplevel, 0, 0);
+	else
+		xdg_toplevel_set_max_size(xdg_toplevel, natural_width(),
+		    natural_height());
 	wl_surface_commit(surface);
 
 	state_clear(&current_state);
@@ -2598,6 +2855,9 @@ main(int argc, char **argv)
 		xdg_surface_destroy(xdg_surface);
 	if (surface != NULL)
 		wl_surface_destroy(surface);
+	for (int i = 0; i < n_cells; i++)
+		if (cells[i].type == CELL_PANEL_BUTTON)
+			panel_child_stop(&cells[i]);
 	for (size_t i = 0; i < sizeof(buffers) / sizeof(buffers[0]); i++)
 		shm_buffer_destroy(&buffers[i]);
 	for (int i = 0; i < n_cells; i++) {
@@ -2607,6 +2867,8 @@ main(int argc, char **argv)
 	free(style.image);
 	free(style.image_pressed);
 	free(config_dir);
+	free(config_path_global);
+	free(override_panel);
 	wl_display_disconnect(display);
 	return 0;
 }
