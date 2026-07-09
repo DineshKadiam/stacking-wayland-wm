@@ -38,6 +38,7 @@ struct cmd_entry *cmd_table[] = {
 	&cmd_include_entry,
 	&cmd_list_commands_entry,
 	&cmd_mouse_entry,
+	&cmd_nop_entry,
 	&cmd_move_entry,
 	&cmd_pick_window_entry,
 	&cmd_quit_entry,

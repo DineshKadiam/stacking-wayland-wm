@@ -748,6 +748,10 @@ resolved relative to *$HOME*, and other relative paths are resolved relative to
 Return a JSON array of all registered commands, each with _name_ and _usage_
 fields.
 
+## nop
+
+Do nothing.
+
 ## decor -d name key value
 
 Define or replace one key in a named, sparse decoration profile.  The key is a

@@ -43,6 +43,7 @@ srcs = [
     'src/cmd-list.c',
     'src/cmd-mouse.c',
     'src/cmd-move.c',
+    'src/cmd-nop.c',
     'src/cmd-pick-window.c',
     'src/cmd-queue.c',
     'src/cmd-quit.c',
