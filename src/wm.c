@@ -531,6 +531,7 @@ manage_update_container_drag(struct cow_seat *seat)
 {
 	if (!seat->container_drag || !seat->op_in_progress ||
 	    seat->op.type != COW_POINTER_OP_MOVE || !seat->has_pointer_position ||
+	    seat->op.view == NULL || seat->op.view->closed ||
 	    seat->op.view->container_member != NULL)
 		return;
 

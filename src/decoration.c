@@ -928,6 +928,7 @@ cow_decoration_update(struct cow_view *view, bool active)
 		bool is_drop_target = cow_view_is_drop_target(view);
 		struct cow_border_colour drop_bc;
 		if (is_drop_target) {
+			memset(&drop_bc, 0, sizeof(drop_bc));
 			memcpy(drop_bc.n, COW_COLOUR_DROP_ORANGE,
 			    sizeof(float) * 4);
 			memcpy(drop_bc.s, COW_COLOUR_DROP_ORANGE,

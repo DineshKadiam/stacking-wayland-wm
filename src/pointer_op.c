@@ -501,9 +501,17 @@ cow_pointer_op_process(struct cow_seat *seat)
 
 	struct cow_view *view = seat->op.view;
 	if (view == NULL || view->closed) {
-		/* View was destroyed during the op, end it */
+		if (cow_wm.drag_drop_target != NULL &&
+		    !cow_wm.drag_drop_target->closed)
+			cow_wm.drag_drop_target->dec.dirty = true;
+		cow_wm.drag_drop_target = NULL;
+		cow_wm.drag_drop_source = NULL;
+		seat->container_drag = false;
+		cow_drag_ghost_destroy();
+
 		river_seat_v1_op_end(seat->river_seat);
 		seat->op_in_progress = false;
+		seat->op_released    = false;
 		seat->op.type	     = COW_POINTER_OP_NONE;
 		cow_geometry_window_hide();
 		return;
