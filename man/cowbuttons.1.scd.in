@@ -24,8 +24,7 @@ applications, and use cow rules to style or place companion windows.
 	Load _path_ instead of the default configuration file.
 
 *-p* _panel_
-	Load only named _panel_.  This is mainly used by *panel-button* to
-	start companion cowbuttons windows from the same configuration file.
+	Load only named _panel_.
 
 *-h*
 	Show usage.
@@ -56,10 +55,12 @@ ignored.  Labels and commands containing whitespace must be quoted.
 	Load one or more named panel definitions from the configuration file.
 	Settings outside panel blocks can be used as shared defaults.
 
-*panel* _name_ [*shown*|*hidden* _direction_] *{*
+*panel* _name_ [_direction_ [_property_ _value_ ...]] *{*
 	Start a named panel definition.  A panel is loaded when it is named by
-	*show panel*.  A panel with a direction can be shown or hidden by a
-	*panel-toggle* cell.  Directions are *left*, *right*, *up*, and *down*.
+	*show panel*.  When _direction_ is *left*, *right*, *up*, or *down*,
+	cowbuttons adds an attached handle on that edge.  Pressing the handle
+	collapses or expands the panel.  Handle properties use the same styling
+	keys as *button*.
 
 *row* [*height* _N_] *{*
 	Start a new visual row.  Cells inside the block are appended
@@ -121,17 +122,6 @@ ignored.  Labels and commands containing whitespace must be quoted.
 	*bg_pressed*, *fg*, *fg_pressed*, *image*, *image_pressed*,
 	*image_size*, *image_position*, and *justify*.
 
-*panel-toggle* _name_ [_property_ _value_ ...]
-	Create a vector arrow button which shows or hides panel _name_.
-	Supported properties are the same as *button*, except no label or
-	command is specified.
-
-*panel-button* _label_ _panel_ _direction_ [_property_ _value_ ...]
-	Create a button that toggles a companion *cowbuttons* process showing
-	named _panel_.  _direction_ is *left*, *right*, *up*, or *down* and is
-	drawn as a vector indicator.  The optional *command* property can be
-	used to run a custom panel command.
-
 *status* _type_ [_property_ _value_ ...]
 	Create a live status cell.  Supported types are:
 	*focused-title*, *focused-app*, *current-output*, *current-desk*, and
@@ -159,15 +149,11 @@ panel launcher {
 	row height 18 {
 		button "Root" "menu root" width 38 bg 0x5b3f58
 		button "Modules" "menu modules" width 58 bg 0x3f5b51
-		panel-button "Window" telephone down width 72 bg 0x5b523f
+		button "Dial" "exec cowbuttons -p telephone" width 58 bg 0x5b523f
 	}
 }
 
-row height 22 {
-	panel-toggle telephone width 22 bg 0x343840 fg 0xffffff
-}
-
-panel telephone hidden down {
+panel telephone left bg 0x5b523f {
 	cell 42 28
 	grid 5 3
 
