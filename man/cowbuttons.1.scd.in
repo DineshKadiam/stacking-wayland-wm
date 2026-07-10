@@ -122,6 +122,15 @@ ignored.  Labels and commands containing whitespace must be quoted.
 	*bg_pressed*, *fg*, *fg_pressed*, *image*, *image_pressed*,
 	*image_size*, *image_position*, and *justify*.
 
+*external* _command_ [_property_ _value_ ...]
+	Create a panel slot managed by an external command.  The command is
+	started when the panel is opened and terminated when it is collapsed.
+	External panels start collapsed.
+	This is a lifecycle hook for cow modules; generic Wayland clients are
+	still separate toplevels.  Supported properties are *width*, *height*,
+	*span*, *bg*, *bg_pressed*, *fg*, *fg_pressed*, *image*,
+	*image_pressed*, *image_size*, *image_position*, and *justify*.
+
 *status* _type_ [_property_ _value_ ...]
 	Create a live status cell.  Supported types are:
 	*focused-title*, *focused-app*, *current-output*, *current-desk*, and
@@ -160,6 +169,10 @@ panel telephone left bg 0x5b523f {
 	row height 22 {
 		button "Telephone" "nop" span fill bg 0x343840
 	}
+}
+
+panel pager right bg 0x3f5b51 {
+	external "cowpager" width 420 height 120 bg 0x242a30
 }
 ```
 

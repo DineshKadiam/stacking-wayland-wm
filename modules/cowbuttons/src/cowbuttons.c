@@ -21,12 +21,14 @@
 #include <getopt.h>
 #include <libgen.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <sys/mman.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <event2/event.h>
 #include <wayland-client.h>
@@ -35,6 +37,7 @@
 #include "cow/colour.h"
 #include "cow/draw.h"
 #include "cow/image.h"
+#include "cow/memory.h"
 #include "cow/module.h"
 #include "cow/vector.h"
 #include "xdg-shell-client-protocol.h"
@@ -55,11 +58,17 @@
 #define MAX_BLOCKS 32
 #define MAX_SELECTED_PANELS 32
 #define PANEL_HANDLE_SIZE 22
+#define DEFAULT_EXTERNAL_W 420
+#define DEFAULT_EXTERNAL_H 120
+#define EXTERNAL_PLACE_TRIES 20
+#define EXTERNAL_PLACE_DELAY_US 50000
+#define EXTERNAL_MOVE_TRIES 6
 
 enum cell_type {
 	CELL_EMPTY,
 	CELL_BUTTON,
 	CELL_PANEL_HANDLE,
+	CELL_EXTERNAL,
 	CELL_STATUS,
 	CELL_SPACER,
 };
@@ -157,6 +166,29 @@ struct panel_selection {
 	bool		      directed;
 	enum panel_direction  direction;
 	struct cell_style     handle_style;
+	char		     *external_command;
+	char		     *external_app_id;
+	int		      external_w;
+	int		      external_h;
+	char		      external_id[128];
+	char		      external_rule[128];
+	unsigned int	      external_rule_serial;
+	pid_t		      external_pid;
+};
+
+struct win_info {
+	char id[128];
+	char app_id[128];
+	char title[256];
+	char display_title[256];
+	int  x;
+	int  y;
+	int  width;
+	int  height;
+	int  border_width;
+	int  title_thickness;
+	char titlebar_position[32];
+	double raise_seq;
 };
 
 struct cell {
@@ -243,6 +275,7 @@ static int  natural_height(void);
 static bool panel_any_closed(void);
 static bool panel_finish(int, const char **);
 static bool cell_hidden(const struct cell *);
+static bool load_cell_props(struct cell *, char **, int, int, const char **);
 static bool parse_cell_style_prop(struct cell_style *, const char *,
     const char *, const char **);
 
@@ -330,6 +363,37 @@ resolve_path(const char *path)
 		return strdup(path);
 	if (asprintf(&out, "%s/%s", config_dir, path) < 0)
 		return NULL;
+	return out;
+}
+
+static char *
+command_app_id(const char *cmd)
+{
+	const char *start = cmd;
+	const char *end;
+	const char *base;
+	char *out;
+	char quote = '\0';
+
+	while (*start == ' ' || *start == '\t')
+		start++;
+	if (*start == '\'' || *start == '"')
+		quote = *start++;
+	end = start;
+	while (*end != '\0') {
+		if (quote != '\0') {
+			if (*end == quote)
+				break;
+		} else if (*end == ' ' || *end == '\t')
+			break;
+		end++;
+	}
+	base = end;
+	while (base > start && base[-1] != '/')
+		base--;
+	if (end == base)
+		return NULL;
+	xasprintf(&out, "%.*s", (int)(end - base), base);
 	return out;
 }
 
@@ -569,6 +633,7 @@ panel_selection_add(const char *name)
 	selected_panels[n_selected_panels].open = true;
 	selected_panels[n_selected_panels].directed = false;
 	selected_panels[n_selected_panels].direction = PANEL_RIGHT;
+	selected_panels[n_selected_panels].external_pid = -1;
 	n_selected_panels++;
 	return true;
 }
@@ -930,6 +995,21 @@ cell_append(void)
 	return cell_get(current_row, current_col);
 }
 
+static struct cell *
+cell_append_block(void)
+{
+	struct cell *c;
+
+	current_row++;
+	current_col = 0;
+	if (current_row + 1 > cfg.rows)
+		cfg.rows = current_row + 1;
+	c = cell_get(current_row, 0);
+	if (c != NULL)
+		current_col = c->col + cell_colspan(c);
+	return c;
+}
+
 static bool
 parse_span(struct cell *c, const char *val, const char **why)
 {
@@ -958,6 +1038,48 @@ parse_span(struct cell *c, const char *val, const char **why)
 	c->style.rowspan = row_span;
 	c->style.colspan_set = true;
 	c->style.rowspan_set = true;
+	return true;
+}
+
+static bool
+load_external(char **fields, int n, const char **why)
+{
+	struct cell *c;
+
+	if (current_panel < 0) {
+		*why = "external outside panel";
+		return false;
+	}
+	if (n < 2) {
+		*why = "bad external";
+		return false;
+	}
+	if (selected_panels[current_panel].external_command != NULL) {
+		*why = "duplicate external";
+		return false;
+	}
+	c = cell_append_block();
+	if (c == NULL) {
+		*why = "too many cells";
+		return false;
+	}
+	c->type = CELL_EXTERNAL;
+	strlcpy(c->label, fields[1], sizeof(c->label));
+	c->style.colspan = 1;
+	c->style.colspan_set = true;
+	c->style.rowspan = 1;
+	c->style.rowspan_set = true;
+	cfg.col_w[c->col] = DEFAULT_EXTERNAL_W;
+	cfg.row_h[c->row] = DEFAULT_EXTERNAL_H;
+	if (!load_cell_props(c, fields, 2, n, why))
+		return false;
+	selected_panels[current_panel].external_command = xstrdup(fields[1]);
+	selected_panels[current_panel].external_app_id = command_app_id(fields[1]);
+	if (selected_panels[current_panel].external_app_id == NULL)
+		selected_panels[current_panel].external_app_id = xstrdup(fields[1]);
+	selected_panels[current_panel].external_w = cfg.col_w[c->col];
+	selected_panels[current_panel].external_h = cfg.row_h[c->row];
+	selected_panels[current_panel].open = false;
 	return true;
 }
 
@@ -1333,6 +1455,9 @@ load_config(const char *path)
 		} else if (strcmp(fields[0], "style") == 0) {
 			if (!load_style(fields, n, &why))
 				goto line_error;
+		} else if (strcmp(fields[0], "external") == 0) {
+			if (!load_external(fields, n, &why))
+				goto line_error;
 		} else if (strcmp(fields[0], "button") == 0) {
 			if (n < 3) {
 				why = "bad button";
@@ -1457,6 +1582,8 @@ cell_rowspan(const struct cell *c)
 static bool
 cell_hidden(const struct cell *c)
 {
+	if (c->type == CELL_EXTERNAL)
+		return true;
 	return c->panel >= 0 && c->type != CELL_PANEL_HANDLE &&
 	    !selected_panels[c->panel].open;
 }
@@ -2184,6 +2311,8 @@ render(void)
 				sunken = pressed_cell >= 0 &&
 				    &cells[pressed_cell] == c;
 				image = cell_image_path(c, sunken);
+			} else if (c != NULL && c->type == CELL_EXTERNAL) {
+				label = c->label;
 			} else if (c != NULL && c->type == CELL_STATUS)
 				label = status_text(c, &st);
 
@@ -2252,6 +2381,379 @@ ipc_send(const char *cmd)
 	close(fd);
 }
 
+static char *
+ipc_query(const char *cmd)
+{
+	return cow_module_cmd_request(PROG, cmd, true);
+}
+
+static void
+win_from_json(struct win_info *wi, cJSON *w)
+{
+	cJSON *v;
+
+	memset(wi, 0, sizeof(*wi));
+#define GS(k, f, z)                    \
+	v = cJSON_GetObjectItem(w, k); \
+	if (cJSON_IsString(v))         \
+		strlcpy(wi->f, v->valuestring, z)
+#define GN(k, f)                       \
+	v = cJSON_GetObjectItem(w, k); \
+	if (cJSON_IsNumber(v))         \
+		wi->f = (int)v->valuedouble
+	GS("id", id, sizeof(wi->id));
+	GS("app_id", app_id, sizeof(wi->app_id));
+	GS("title", title, sizeof(wi->title));
+	GS("display_title", display_title, sizeof(wi->display_title));
+	GS("titlebar_position", titlebar_position, sizeof(wi->titlebar_position));
+	GN("x", x);
+	GN("y", y);
+	GN("width", width);
+	GN("height", height);
+	GN("border_width", border_width);
+	GN("title_thickness", title_thickness);
+	v = cJSON_GetObjectItem(w, "raise_seq");
+	if (cJSON_IsNumber(v))
+		wi->raise_seq = v->valuedouble;
+#undef GN
+#undef GS
+}
+
+static void
+win_frame_edges(const struct win_info *w, int *left, int *top, int *right,
+    int *bottom)
+{
+	int title_l = 0, title_t = 0, title_r = 0, title_b = 0;
+
+	if (strcmp(w->titlebar_position, "left") == 0)
+		title_l = w->title_thickness;
+	else if (strcmp(w->titlebar_position, "right") == 0)
+		title_r = w->title_thickness;
+	else if (strcmp(w->titlebar_position, "bottom") == 0)
+		title_b = w->title_thickness;
+	else
+		title_t = w->title_thickness;
+
+	*left = w->x - w->border_width - title_l;
+	*top = w->y - w->border_width - title_t;
+	*right = w->x + w->width + w->border_width + title_r;
+	*bottom = w->y + w->height + w->border_width + title_b;
+}
+
+static void
+win_content_inset(const struct win_info *w, int *x, int *y)
+{
+	*x = w->border_width;
+	*y = w->border_width;
+	if (strcmp(w->titlebar_position, "left") == 0)
+		*x += w->title_thickness;
+	else if (strcmp(w->titlebar_position, "top") == 0 ||
+	    w->titlebar_position[0] == '\0')
+		*y += w->title_thickness;
+}
+
+static bool
+windows_find_for_panel(struct panel_selection *p, struct win_info *panel,
+    struct win_info *external)
+{
+	char *resp, *panel_app;
+	bool found_panel = false, found_external = false;
+	double best_raise = -1.0;
+
+	xasprintf(&panel_app, "%s:%s", PROG, p->name);
+	resp = ipc_query("show windows");
+	if (resp == NULL) {
+		free(panel_app);
+		return false;
+	}
+	cJSON *root = cJSON_Parse(resp);
+	free(resp);
+	if (root == NULL) {
+		free(panel_app);
+		return false;
+	}
+	cJSON *data = cJSON_GetObjectItem(root, "data");
+	if (!cJSON_IsArray(data)) {
+		cJSON_Delete(root);
+		free(panel_app);
+		return false;
+	}
+	cJSON *w;
+	cJSON_ArrayForEach(w, data) {
+		struct win_info wi;
+
+		if (!cJSON_IsObject(w))
+			continue;
+		win_from_json(&wi, w);
+		if (strcmp(wi.app_id, panel_app) == 0 ||
+		    strcmp(wi.title, panel_app) == 0 ||
+		    strcmp(wi.display_title, panel_app) == 0) {
+			*panel = wi;
+			found_panel = true;
+			continue;
+		}
+		if (external != NULL && p->external_app_id != NULL &&
+		    strcmp(wi.app_id, p->external_app_id) == 0 &&
+		    wi.raise_seq >= best_raise) {
+			*external = wi;
+			best_raise = wi.raise_seq;
+			found_external = true;
+		}
+	}
+	cJSON_Delete(root);
+	free(panel_app);
+	return found_panel && (external == NULL || found_external);
+}
+
+static bool
+windows_find_panel(struct panel_selection *p, struct win_info *panel)
+{
+	return windows_find_for_panel(p, panel, NULL);
+}
+
+static void
+external_rule_remove(struct panel_selection *p)
+{
+	char *cmd;
+
+	if (p->external_rule[0] == '\0')
+		return;
+	xasprintf(&cmd, "rule -d -n %s", p->external_rule);
+	ipc_send(cmd);
+	free(cmd);
+	p->external_rule[0] = '\0';
+}
+
+static bool
+external_preplace(int panel)
+{
+	struct panel_selection *p;
+	struct win_info pw;
+	int pl, pt, pr, pb, ix, iy, x, y;
+	int ew, eh, etitle_l = 0, etitle_t = 0, etitle_r = 0, etitle_b = 0;
+	char *cmd;
+
+	if (panel < 0 || panel >= n_selected_panels)
+		return false;
+	p = &selected_panels[panel];
+	if (p->external_app_id == NULL || p->external_w <= 0 ||
+	    p->external_h <= 0)
+		return false;
+	if (!windows_find_panel(p, &pw))
+		return false;
+
+	win_frame_edges(&pw, &pl, &pt, &pr, &pb);
+	ix = pw.border_width;
+	iy = pw.border_width;
+	if (strcmp(pw.titlebar_position, "left") == 0) {
+		ix += pw.title_thickness;
+		etitle_l = pw.title_thickness;
+	} else if (strcmp(pw.titlebar_position, "right") == 0)
+		etitle_r = pw.title_thickness;
+	else if (strcmp(pw.titlebar_position, "bottom") == 0)
+		etitle_b = pw.title_thickness;
+	else {
+		iy += pw.title_thickness;
+		etitle_t = pw.title_thickness;
+	}
+	ew = p->external_w + pw.border_width * 2 + etitle_l + etitle_r;
+	eh = p->external_h + pw.border_width * 2 + etitle_t + etitle_b;
+	x = pw.x;
+	y = pw.y;
+	switch (p->direction) {
+	case PANEL_LEFT:
+		x = pl - ew + ix;
+		y = pt + iy;
+		break;
+	case PANEL_RIGHT:
+		x = pr + ix;
+		y = pt + iy;
+		break;
+	case PANEL_UP:
+		x = pl + ix;
+		y = pt - eh + iy;
+		break;
+	case PANEL_DOWN:
+		x = pl + ix;
+		y = pb + iy;
+		break;
+	}
+
+	external_rule_remove(p);
+	snprintf(p->external_rule, sizeof(p->external_rule),
+	    "cowbuttons-panel-%ld-%u", (long)getpid(),
+	    ++p->external_rule_serial);
+	xasprintf(&cmd, "rule -g -n %s -T on-map -s %%%s "
+	    "window-move -x %d -y %d",
+	    p->external_rule, p->external_app_id, x, y);
+	ipc_send(cmd);
+	free(cmd);
+	return true;
+}
+
+static void
+external_place(int panel)
+{
+	struct panel_selection *p;
+	struct win_info pw, ew;
+	int pl, pt, pr, pb, el, et, er, eb, ix, iy, x, y;
+	char *cmd;
+	bool found = false;
+
+	if (panel < 0 || panel >= n_selected_panels)
+		return;
+	p = &selected_panels[panel];
+	for (int i = 0; i < EXTERNAL_PLACE_TRIES; i++) {
+		if (windows_find_for_panel(p, &pw, &ew)) {
+			found = true;
+			break;
+		}
+		usleep(EXTERNAL_PLACE_DELAY_US);
+	}
+	if (!found)
+		return;
+
+	win_frame_edges(&pw, &pl, &pt, &pr, &pb);
+	win_frame_edges(&ew, &el, &et, &er, &eb);
+	win_content_inset(&ew, &ix, &iy);
+	x = ew.x;
+	y = ew.y;
+	switch (p->direction) {
+	case PANEL_LEFT:
+		x = pl - (er - el) + ix;
+		y = pt + iy;
+		break;
+	case PANEL_RIGHT:
+		x = pr + ix;
+		y = pt + iy;
+		break;
+	case PANEL_UP:
+		x = pl + ix;
+		y = pt - (eb - et) + iy;
+		break;
+	case PANEL_DOWN:
+		x = pl + ix;
+		y = pb + iy;
+		break;
+	}
+	strlcpy(p->external_id, ew.id, sizeof(p->external_id));
+	external_rule_remove(p);
+	xasprintf(&cmd, "window-move -t '#%s' -x %d -y %d", ew.id, x, y);
+	for (int i = 0; i < EXTERNAL_MOVE_TRIES; i++) {
+		ipc_send(cmd);
+		usleep(EXTERNAL_PLACE_DELAY_US);
+	}
+	free(cmd);
+}
+
+static void
+external_reap(struct panel_selection *p)
+{
+	int status;
+
+	if (p->external_pid <= 0)
+		return;
+	if (waitpid(p->external_pid, &status, WNOHANG) == p->external_pid)
+		p->external_pid = -1;
+	else if (errno == ECHILD)
+		p->external_pid = -1;
+}
+
+static const char *
+panel_direction_name(enum panel_direction direction)
+{
+	switch (direction) {
+	case PANEL_LEFT:
+		return "left";
+	case PANEL_RIGHT:
+		return "right";
+	case PANEL_UP:
+		return "up";
+	case PANEL_DOWN:
+		return "down";
+	}
+	return "right";
+}
+
+static void
+external_start(int panel)
+{
+	struct panel_selection *p;
+	pid_t pid;
+	struct win_info panel_win, external_win;
+
+	if (panel < 0 || panel >= n_selected_panels)
+		return;
+	p = &selected_panels[panel];
+	if (p->external_command == NULL || !p->open)
+		return;
+	external_reap(p);
+	if (windows_find_for_panel(p, &panel_win, &external_win)) {
+		external_place(panel);
+		return;
+	}
+	if (p->external_pid > 0) {
+		external_place(panel);
+		return;
+	}
+	external_preplace(panel);
+	pid = fork();
+	if (pid < 0)
+		return;
+	if (pid == 0) {
+		setenv("COWBUTTONS_PANEL", p->name, 1);
+		setenv("COWBUTTONS_PANEL_DIRECTION",
+		    panel_direction_name(p->direction), 1);
+		setenv("COWBUTTONS_PANEL_MODE", "toplevel", 1);
+		execl("/bin/sh", "sh", "-c", p->external_command,
+		    (char *)NULL);
+		_exit(127);
+	}
+	p->external_pid = pid;
+	external_place(panel);
+}
+
+static void
+external_stop(int panel)
+{
+	struct panel_selection *p;
+	char *cmd;
+
+	if (panel < 0 || panel >= n_selected_panels)
+		return;
+	p = &selected_panels[panel];
+	external_rule_remove(p);
+	external_reap(p);
+	if (p->external_id[0] != '\0') {
+		xasprintf(&cmd, "winops -t '#%s' -c", p->external_id);
+		ipc_send(cmd);
+		free(cmd);
+		p->external_id[0] = '\0';
+	}
+	if (p->external_pid <= 0)
+		return;
+	kill(p->external_pid, SIGTERM);
+	external_reap(p);
+}
+
+static void
+externals_sync(void)
+{
+	for (int i = 0; i < n_selected_panels; i++) {
+		if (selected_panels[i].open)
+			external_start(i);
+		else
+			external_stop(i);
+	}
+}
+
+static void
+externals_stop_all(void)
+{
+	for (int i = 0; i < n_selected_panels; i++)
+		external_stop(i);
+}
+
 static void
 update_toplevel_size(void)
 {
@@ -2272,6 +2774,7 @@ panel_toggle(int panel)
 	if (panel < 0 || panel >= n_selected_panels)
 		return;
 	selected_panels[panel].open = !selected_panels[panel].open;
+	externals_sync();
 	update_toplevel_size();
 	render();
 }
@@ -2713,6 +3216,7 @@ main(int argc, char **argv)
 		xdg_toplevel_set_max_size(xdg_toplevel, natural_width(),
 		    natural_height());
 	wl_surface_commit(surface);
+	externals_sync();
 
 	state_clear(&current_state);
 	pthread_create(&tid, NULL, status_thread, NULL);
@@ -2745,6 +3249,7 @@ main(int argc, char **argv)
 	if (wake_ev != NULL)
 		event_free(wake_ev);
 	event_base_free(base);
+	externals_stop_all();
 
 	if (pointer != NULL)
 		wl_pointer_destroy(pointer);
@@ -2761,6 +3266,13 @@ main(int argc, char **argv)
 	for (int i = 0; i < n_cells; i++) {
 		free(cells[i].style.image);
 		free(cells[i].style.image_pressed);
+	}
+	for (int i = 0; i < n_selected_panels; i++) {
+		free(selected_panels[i].name);
+		free(selected_panels[i].external_command);
+		free(selected_panels[i].external_app_id);
+		free(selected_panels[i].handle_style.image);
+		free(selected_panels[i].handle_style.image_pressed);
 	}
 	free(style.image);
 	free(style.image_pressed);
