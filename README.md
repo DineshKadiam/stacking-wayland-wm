@@ -26,7 +26,7 @@ The commands are inspired by tmux(1).
 ## Architecture / Design
 
 See [this document](./architecture.md) which explains how CoW and River work
-togethe, and hence the overall technical design considerations.
+together, and hence the overall technical design considerations.
 
 ## Where to Start?
 
