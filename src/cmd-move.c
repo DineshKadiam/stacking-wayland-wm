@@ -191,6 +191,7 @@ static void
 apply_move(struct cow_view *view)
 {
 	cow_view_update_output(view);
+	view->placed = true;
 	/* Keep virtual position in sync with global position */
 	cow_view_sync_vxy_from_global(view);
 	cow_view_sync_container_pos(view);
