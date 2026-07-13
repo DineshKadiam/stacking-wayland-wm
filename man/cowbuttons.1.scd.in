@@ -150,26 +150,33 @@ resizable true
 
 style button.bg 0x39414a
 style button.bg_pressed 0x242a30
-style button.fg 0xf4f4f6
+style button.fg 0x1f2933
 style button.fg_pressed 0xffffff
+style button.image_size 18
 
 panel launcher {
-	cell 84 18
+	cell 118 30
 	grid 2 4
 
-	row height 18 {
-		button "Root" "menu root" width 38 bg 0x5b3f58
-		button "Modules" "menu modules" width 58 bg 0x3f5b51
-		button "Dial" "focus /cowbuttons:telephone/" width 58 bg 0x5b523f
+	row height 30 {
+		button "Terminal" "exec xterm" bg 0xcde7d8 image cowbuttons/svg/terminal.svg
+		button "Firefox" "exec firefox" bg 0xffddc8 image cowbuttons/svg/browser.svg
+		button "Files" "exec thunar" bg 0xffe4ad image cowbuttons/svg/files.svg
+		button "Editor" "exec emacs" bg 0xded7f5 image cowbuttons/svg/editor.svg
+	}
+
+	row height 30 {
+		button "Next" "focus -n" bg 0xf6e2a6
+		button "Prev" "focus -p" bg 0xcfe8db
 	}
 }
 
-panel telephone left bg 0x5b523f {
+panel telephone left bg 0xf2d6a6 {
 	cell 42 28
 	grid 5 3
 
 	row height 22 {
-		button "Telephone" "nop" span fill bg 0x343840
+		button "Telephone" "nop" span fill bg 0xe8d9f2
 	}
 }
 
