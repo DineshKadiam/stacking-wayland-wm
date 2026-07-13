@@ -1368,7 +1368,7 @@ This section details commands which affect desktops/pages often per-output.
 
 ## scroll [-t output] [-w] [-p] _H_ _V_
 
-## scroll [-t output] -a _col_,_row_
+## scroll [-t output] [-a] _col_,_row_
 
 ## scroll [-t output] -d _left_|_right_|_up_|_down_
 
@@ -1404,8 +1404,13 @@ Options are:
 	Treat _H_ and _V_ as pixels rather than percent of a page.
 
 *-a* _col_,_row_
-	Absolute jump: land the viewport at the page _col_,_row_ (0-indexed).
-	The pair are a single comma-separated token.
+	Page jump: land the viewport at page _col_,_row_.  The pair are a
+	single comma-separated token.  Each axis accepts an absolute page
+	index (0-indexed), a negative absolute index from the end (_-1_ is
+	the last page in that axis), or a signed relative page offset with
+	a _p_ suffix (_+0p_ means the current page in that axis).  The
+	*-a* flag may be omitted when the command has a single
+	comma-separated argument.
 
 *-d* _dir_
 	Jump one page in direction _dir_: _left_, _right_, _up_, or _down_,
@@ -1449,6 +1454,9 @@ scroll -w 100 0
 
 # Jump straight to page (col=2, row=0).
 scroll -a 2,0
+
+# Jump to the last column in the current row.
+scroll -a -1,+0p
 
 # One page right, wrapping; convenient for keybindings.
 scroll -d right

@@ -17,16 +17,17 @@
  * Command: scroll -- pan the virtual desk's viewport.
  *
  * usage: scroll [-t output] [-w] [-p] horizontal vertical
- *        scroll [-t output] -a col,row
+ *        scroll [-t output] [-a] col,row
  *        scroll [-t output] -d left|right|up|down
  *        scroll [-t output] [-R] -r
  *
  *   -t output    target output by name (default: current output)
  *   -w           wrap at desk edges (default: clamp)
  *   -p           horizontal/vertical are pixels (default: percent of page)
- *   -a col,row   jump to the absolute page position col,row (a single
- *                token with a comma separator, not two positional
- *                args).  Equivalent to the retired `page -c COL ROW`.
+ *   -a col,row   jump to the page position col,row.  Each axis accepts
+ *                an absolute page index (negative counts from the end)
+ *                or a signed relative page offset with a `p' suffix.
+ *                Equivalent to the retired `page -c COL ROW`.
  *   -d DIR       jump one page in DIR (left|right|up|down) with
  *                wrap.  Equivalent to the retired `page -d DIR` and
  *                shorthand for `scroll -w +/-100 0` etc.  -n / -p
@@ -62,6 +63,7 @@
  *                          # (the fvwm 'multiply by 1000' wrap idiom);
  *                          # equivalent to: scroll -w 100 0
  *   scroll -a 2,0          # jump to page (col=2, row=0)
+ *   scroll -a -1,+0p       # jump to last column in the current row
  *   scroll -d right        # one page right, wrapping
  *   scroll -n              # next page (right with wrap)
  *   scroll -P              # previous page (left with wrap)
@@ -83,13 +85,15 @@
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_scroll_exec(struct cmd *, struct cmd_q *);
+static bool parse_page_axis(struct cmd_q *, const char *, const char *, int,
+    int, long long *);
 
 struct cmd_entry cmd_scroll_entry = {
 	"scroll",
 	"t:wpa:d:nPrR",
 	0,
 	2,
-	"[-t output] [-w] [-p] H V | -a col,row | -d DIR | -n | -P | "
+	"[-t output] [-w] [-p] H V | [-a] col,row | -d DIR | -n | -P | "
 	"[-R] -r",
 	cmd_scroll_exec,
 	0,
@@ -188,23 +192,24 @@ cmd_scroll_exec(struct cmd *self, struct cmd_q *cmdq)
 	int rows = cow_config->page_rows;
 
 	/*
-	 * Absolute jump: -a col,row.  Lands the viewport at (col*w,
-	 * row*h).  The col,row pair is a single comma-separated token
-	 * rather than two positional args so the surrounding argv
-	 * handling stays uniform (no flag-takes-two-positionals
-	 * special case).  Out-of-range indices error out cleanly.
+	 * Page jump: -a col,row, or bare col,row as shorthand.  Each
+	 * axis can be absolute ("0", "-1") or relative to the current
+	 * page with a p suffix ("+0p", "-1p").
 	 */
-	if (args_has(args, 'a')) {
-		if (args->argc != 0) {
+	bool page_jump = args_has(args, 'a') ||
+	    (args->argc == 1 && strchr(args->argv[0], ',') != NULL);
+	if (page_jump) {
+		if (args_has(args, 'a') && args->argc != 0) {
 			cmdq_error(cmdq,
 			    "scroll: -a takes no positional arguments");
 			return (CMD_RETURN_ERROR);
 		}
-		const char *spec  = args_get(args, 'a');
+		const char *spec  = args_has(args, 'a') ? args_get(args, 'a') :
+							args->argv[0];
 		const char *comma = strchr(spec, ',');
 		if (comma == NULL) {
 			cmdq_error(cmdq,
-			    "scroll: -a: expected col,row (got '%s')", spec);
+			    "scroll: expected col,row (got '%s')", spec);
 			return (CMD_RETURN_ERROR);
 		}
 		/* Split into two NUL-terminated halves on a local copy so
@@ -219,11 +224,13 @@ cmd_scroll_exec(struct cmd *self, struct cmd_q *cmdq)
 		col_buf[prefix_len] = '\0';
 		const char *row_str = comma + 1;
 		long long   lc, lr;
-		if (!cmd_parse_int(cmdq, "scroll", "col", col_buf, 0, cols - 1,
-			&lc))
+		struct cow_desk *desk = output->current_desk;
+		int cur_col = desk->page_vx / w;
+		int cur_row = desk->page_vy / h;
+
+		if (!parse_page_axis(cmdq, "col", col_buf, cur_col, cols, &lc))
 			return (CMD_RETURN_ERROR);
-		if (!cmd_parse_int(cmdq, "scroll", "row", row_str, 0, rows - 1,
-			&lr))
+		if (!parse_page_axis(cmdq, "row", row_str, cur_row, rows, &lr))
 			return (CMD_RETURN_ERROR);
 		cow_page_scroll_to(output, (int)lc * w, (int)lr * h, false);
 		return (CMD_RETURN_NORMAL);
@@ -362,4 +369,39 @@ cmd_scroll_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	cow_page_scroll_to(output, (int)new_vx, (int)new_vy, wrap);
 	return (CMD_RETURN_NORMAL);
+}
+
+static bool
+parse_page_axis(struct cmd_q *cmdq, const char *name, const char *value,
+    int current, int count, long long *out)
+{
+	size_t len = strlen(value);
+	bool relative = len > 1 && value[len - 1] == 'p' &&
+	    (value[0] == '+' || value[0] == '-');
+	char buf[64];
+	long long v, page;
+
+	if (relative) {
+		if (len >= sizeof(buf)) {
+			cmdq_error(cmdq, "scroll: %s value too long", name);
+			return false;
+		}
+		memcpy(buf, value, len - 1);
+		buf[len - 1] = '\0';
+		if (!cmd_parse_int(cmdq, "scroll", name, buf, INT_MIN,
+			INT_MAX, &v))
+			return false;
+		page = current + v;
+	} else {
+		if (!cmd_parse_int(cmdq, "scroll", name, value, -count,
+			count - 1, &v))
+			return false;
+		page = v < 0 ? count + v : v;
+	}
+	if (page < 0 || page >= count) {
+		cmdq_error(cmdq, "scroll: %s out of range: %lld", name, page);
+		return false;
+	}
+	*out = page;
+	return true;
 }
