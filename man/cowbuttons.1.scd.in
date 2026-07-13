@@ -6,7 +6,7 @@ cowbuttons - FvwmButtons-style button panel for the cow window manager
 
 # SYNOPSIS
 
-*cowbuttons* [*-c* _path_] [*-p* _panel_] [*-h*]
+*cowbuttons* [*-c* _path_] [*-h*]
 
 # DESCRIPTION
 
@@ -22,9 +22,6 @@ applications, and use cow rules to style or place companion windows.
 
 *-c* _path_
 	Load _path_ instead of the default configuration file.
-
-*-p* _panel_
-	Load only named _panel_.
 
 *-h*
 	Show usage.
@@ -52,8 +49,11 @@ ignored.  Labels and commands containing whitespace must be quoted.
 	Set one column's width in pixels.
 
 *show panel* _name_ [...]
-	Load one or more named panel definitions from the configuration file.
-	Settings outside panel blocks can be used as shared defaults.
+	Show one or more named panel definitions from the configuration file.
+	Multiple names on the same *show panel* line are combined into one
+	cowbuttons window.  Multiple top-level *show panel* lines create
+	separate cowbuttons windows from the same configuration file.  Settings
+	outside panel blocks can be used as shared defaults.
 
 *panel* _name_ [_direction_ [_property_ _value_ ...]] *{*
 	Start a named panel definition.  A panel is loaded when it is named by
@@ -143,6 +143,8 @@ ignored.  Labels and commands containing whitespace must be quoted.
 
 ```
 show panel launcher
+show panel telephone
+show panel pager
 
 resizable true
 
@@ -158,7 +160,7 @@ panel launcher {
 	row height 18 {
 		button "Root" "menu root" width 38 bg 0x5b3f58
 		button "Modules" "menu modules" width 58 bg 0x3f5b51
-		button "Dial" "exec cowbuttons -p telephone" width 58 bg 0x5b523f
+		button "Dial" "focus /cowbuttons:telephone/" width 58 bg 0x5b523f
 	}
 }
 

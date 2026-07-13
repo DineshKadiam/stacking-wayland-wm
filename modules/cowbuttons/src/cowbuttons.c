@@ -63,6 +63,7 @@
 #define EXTERNAL_PLACE_TRIES 20
 #define EXTERNAL_PLACE_DELAY_US 50000
 #define EXTERNAL_MOVE_TRIES 6
+#define SHOW_INDEX_ENV "COWBUTTONS_SHOW_INDEX"
 
 enum cell_type {
 	CELL_EMPTY,
@@ -261,7 +262,10 @@ static pthread_mutex_t state_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct state    current_state;
 static int	       dirty = 1;
 static char	      *config_dir;
-static char	      *override_panel;
+static int	       instance_index;
+static int	       show_group_count;
+static bool	       spawn_extra_instances = true;
+static char	       instance_title[256] = PROG;
 static struct panel_selection selected_panels[MAX_SELECTED_PANELS];
 static int	       n_selected_panels;
 
@@ -278,11 +282,14 @@ static bool cell_hidden(const struct cell *);
 static bool load_cell_props(struct cell *, char **, int, int, const char **);
 static bool parse_cell_style_prop(struct cell_style *, const char *,
     const char *, const char **);
+static void build_instance_title(void);
+static bool parse_instance_index(void);
+static void spawn_config_instances(const char *, const char *);
 
 static void
 usage(void)
 {
-	fprintf(stderr, "usage: cowbuttons [-c path] [-p panel] [-h]\n");
+	fprintf(stderr, "usage: cowbuttons [-c path] [-h]\n");
 }
 
 static void
@@ -1298,6 +1305,8 @@ scan_selected_panels(const char *path)
 	size_t cap = 0;
 	unsigned int lineno = 0;
 	int depth = 0;
+	int group = 0;
+	bool selected = false;
 
 	f = fopen(path, "r");
 	if (f == NULL) {
@@ -1324,7 +1333,9 @@ scan_selected_panels(const char *path)
 			continue;
 		}
 		if (depth == 0 && strcmp(fields[0], "show") == 0) {
-			if (!load_show(fields, n, &why, true)) {
+			bool collect = group == instance_index;
+
+			if (!load_show(fields, n, &why, collect)) {
 				fprintf(stderr, "%s: %s:%u: %s\n", PROG, path,
 				    lineno, why);
 				free_fields(fields, n);
@@ -1332,6 +1343,9 @@ scan_selected_panels(const char *path)
 				fclose(f);
 				return 0;
 			}
+			if (collect)
+				selected = true;
+			group++;
 		}
 		if (strcmp(fields[0], "}") == 0 && n == 1) {
 			if (depth > 0)
@@ -1342,6 +1356,16 @@ scan_selected_panels(const char *path)
 	}
 	free(line);
 	fclose(f);
+	show_group_count = group;
+	if (group == 0) {
+		fprintf(stderr, "%s: %s: no show panel lines\n", PROG, path);
+		return 0;
+	}
+	if (!selected) {
+		fprintf(stderr, "%s: %s: no show panel line %d\n", PROG, path,
+		    instance_index);
+		return 0;
+	}
 	return 1;
 }
 
@@ -1364,12 +1388,7 @@ load_config(const char *path)
 	current_col = 0;
 	in_row = false;
 	n_blocks = 0;
-	if (override_panel != NULL) {
-		if (!panel_selection_add(override_panel)) {
-			fclose(f);
-			return 0;
-		}
-	} else if (!scan_selected_panels(path)) {
+	if (!scan_selected_panels(path)) {
 		fclose(f);
 		return 0;
 	}
@@ -1534,6 +1553,7 @@ line_error:
 		cfg.cols = 1;
 	if (cfg.rows < 1)
 		cfg.rows = 1;
+	build_instance_title();
 	return 1;
 }
 
@@ -1555,6 +1575,62 @@ default_config_path(void)
 	if (asprintf(&path, "%s/.config/cow/cowbuttons.conf", home) < 0)
 		return NULL;
 	return path;
+}
+
+static bool
+parse_instance_index(void)
+{
+	const char *value = getenv(SHOW_INDEX_ENV);
+	int idx;
+
+	if (value == NULL || *value == '\0')
+		return true;
+	spawn_extra_instances = false;
+	if (!parse_int(value, &idx) || idx < 0) {
+		fprintf(stderr, "%s: bad %s\n", PROG, SHOW_INDEX_ENV);
+		return false;
+	}
+	instance_index = idx;
+	return true;
+}
+
+static void
+build_instance_title(void)
+{
+	size_t len;
+
+	if (n_selected_panels == 0) {
+		strlcpy(instance_title, PROG, sizeof(instance_title));
+		return;
+	}
+	snprintf(instance_title, sizeof(instance_title), "%s:%s", PROG,
+	    selected_panels[0].name);
+	len = strlen(instance_title);
+	for (int i = 1; i < n_selected_panels; i++) {
+		int n = snprintf(instance_title + len, sizeof(instance_title) - len,
+		    "+%s", selected_panels[i].name);
+		if (n < 0 || (size_t)n >= sizeof(instance_title) - len)
+			break;
+		len += (size_t)n;
+	}
+}
+
+static void
+spawn_config_instances(const char *path, const char *prog)
+{
+	if (!spawn_extra_instances)
+		return;
+	for (int i = 1; i < show_group_count; i++) {
+		pid_t pid = fork();
+
+		if (pid != 0)
+			continue;
+		char idx[32];
+		snprintf(idx, sizeof(idx), "%d", i);
+		setenv(SHOW_INDEX_ENV, idx, 1);
+		execlp(prog, prog, "-c", path, (char *)NULL);
+		_exit(127);
+	}
 }
 
 static const struct cell *
@@ -2487,7 +2563,9 @@ windows_find_for_panel(struct panel_selection *p, struct win_info *panel,
 		win_from_json(&wi, w);
 		if (strcmp(wi.app_id, panel_app) == 0 ||
 		    strcmp(wi.title, panel_app) == 0 ||
-		    strcmp(wi.display_title, panel_app) == 0) {
+		    strcmp(wi.display_title, panel_app) == 0 ||
+		    strcmp(wi.title, instance_title) == 0 ||
+		    strcmp(wi.display_title, instance_title) == 0) {
 			*panel = wi;
 			found_panel = true;
 			continue;
@@ -3120,17 +3198,11 @@ parse_args(int argc, char **argv, char **config_path)
 {
 	int ch;
 
-	while ((ch = getopt(argc, argv, "c:p:h")) != -1) {
+	while ((ch = getopt(argc, argv, "c:h")) != -1) {
 		switch (ch) {
 		case 'c':
 			*config_path = strdup(optarg);
 			if (*config_path == NULL)
-				return 0;
-			break;
-		case 'p':
-			free(override_panel);
-			override_panel = strdup(optarg);
-			if (override_panel == NULL)
 				return 0;
 			break;
 		case 'h':
@@ -3153,6 +3225,8 @@ main(int argc, char **argv)
 	struct event *wl_ev = NULL, *wake_ev = NULL;
 
 	style_init();
+	if (!parse_instance_index())
+		return 1;
 	if (!parse_args(argc, argv, &config_path)) {
 		usage();
 		return 1;
@@ -3169,6 +3243,7 @@ main(int argc, char **argv)
 		free(config_path);
 		return 1;
 	}
+	spawn_config_instances(config_path, argv[0]);
 	free(config_path);
 
 	if (pipe(wake_pipe) < 0) {
@@ -3198,16 +3273,8 @@ main(int argc, char **argv)
 	xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, NULL);
 	xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
 	xdg_toplevel_add_listener(xdg_toplevel, &xdg_toplevel_listener, NULL);
-	if (override_panel != NULL) {
-		char title[256];
-
-		snprintf(title, sizeof title, "%s:%s", PROG, override_panel);
-		xdg_toplevel_set_title(xdg_toplevel, title);
-		xdg_toplevel_set_app_id(xdg_toplevel, title);
-	} else {
-		xdg_toplevel_set_title(xdg_toplevel, PROG);
-		xdg_toplevel_set_app_id(xdg_toplevel, PROG);
-	}
+	xdg_toplevel_set_title(xdg_toplevel, instance_title);
+	xdg_toplevel_set_app_id(xdg_toplevel, PROG);
 	xdg_toplevel_set_min_size(xdg_toplevel, natural_width(),
 	    natural_height());
 	if (cfg.resizable)
@@ -3277,7 +3344,6 @@ main(int argc, char **argv)
 	free(style.image);
 	free(style.image_pressed);
 	free(config_dir);
-	free(override_panel);
 	wl_display_disconnect(display);
 	return 0;
 }
