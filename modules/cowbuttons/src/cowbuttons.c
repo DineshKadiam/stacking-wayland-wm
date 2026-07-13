@@ -63,6 +63,7 @@
 #define EXTERNAL_PLACE_TRIES 20
 #define EXTERNAL_PLACE_DELAY_US 50000
 #define EXTERNAL_MOVE_TRIES 6
+#define EXTERNAL_SYNC_MS 500
 #define SHOW_INDEX_ENV "COWBUTTONS_SHOW_INDEX"
 
 enum cell_type {
@@ -164,6 +165,7 @@ struct panel_selection {
 	char		     *name;
 	bool		      seen;
 	bool		      open;
+	bool		      mapped;
 	bool		      directed;
 	enum panel_direction  direction;
 	struct cell_style     handle_style;
@@ -285,6 +287,8 @@ static bool parse_cell_style_prop(struct cell_style *, const char *,
 static void build_instance_title(void);
 static bool parse_instance_index(void);
 static void spawn_config_instances(const char *, const char *);
+static bool external_panels_exist(void);
+static void update_toplevel_size(void);
 
 static void
 usage(void)
@@ -638,6 +642,7 @@ panel_selection_add(const char *name)
 		return false;
 	selected_panels[n_selected_panels].seen = false;
 	selected_panels[n_selected_panels].open = true;
+	selected_panels[n_selected_panels].mapped = true;
 	selected_panels[n_selected_panels].directed = false;
 	selected_panels[n_selected_panels].direction = PANEL_RIGHT;
 	selected_panels[n_selected_panels].external_pid = -1;
@@ -1087,6 +1092,7 @@ load_external(char **fields, int n, const char **why)
 	selected_panels[current_panel].external_w = cfg.col_w[c->col];
 	selected_panels[current_panel].external_h = cfg.row_h[c->row];
 	selected_panels[current_panel].open = false;
+	selected_panels[current_panel].mapped = false;
 	return true;
 }
 
@@ -1221,6 +1227,12 @@ panel_finish(int panel, const char **why)
 
 	switch (p->direction) {
 	case PANEL_LEFT:
+		handle = panel_handle_add(min_row, max_col,
+		    max_row - min_row, 1, panel);
+		if (handle != NULL)
+			cfg.col_w[handle->col] = PANEL_HANDLE_SIZE;
+		break;
+	case PANEL_RIGHT:
 		panel_shift(panel, 0, 1);
 		if (!panel_bounds(panel, &min_row, &max_row, &min_col,
 		    &max_col))
@@ -1230,24 +1242,18 @@ panel_finish(int panel, const char **why)
 		if (handle != NULL)
 			cfg.col_w[handle->col] = PANEL_HANDLE_SIZE;
 		break;
-	case PANEL_RIGHT:
-		handle = panel_handle_add(min_row, max_col,
-		    max_row - min_row, 1, panel);
-		if (handle != NULL)
-			cfg.col_w[handle->col] = PANEL_HANDLE_SIZE;
-		break;
 	case PANEL_UP:
-		panel_shift(panel, 1, 0);
-		if (!panel_bounds(panel, &min_row, &max_row, &min_col,
-		    &max_col))
-			return true;
-		handle = panel_handle_add(min_row - 1, min_col, 1,
+		handle = panel_handle_add(max_row, min_col, 1,
 		    max_col - min_col, panel);
 		if (handle != NULL)
 			cfg.row_h[handle->row] = PANEL_HANDLE_SIZE;
 		break;
 	case PANEL_DOWN:
-		handle = panel_handle_add(max_row, min_col, 1,
+		panel_shift(panel, 1, 0);
+		if (!panel_bounds(panel, &min_row, &max_row, &min_col,
+		    &max_col))
+			return true;
+		handle = panel_handle_add(min_row - 1, min_col, 1,
 		    max_col - min_col, panel);
 		if (handle != NULL)
 			cfg.row_h[handle->row] = PANEL_HANDLE_SIZE;
@@ -2273,12 +2279,41 @@ panel_indicator_vector(enum panel_direction direction)
 	return v;
 }
 
+static enum panel_direction
+panel_direction_opposite(enum panel_direction direction)
+{
+	switch (direction) {
+	case PANEL_LEFT:
+		return PANEL_RIGHT;
+	case PANEL_RIGHT:
+		return PANEL_LEFT;
+	case PANEL_UP:
+		return PANEL_DOWN;
+	case PANEL_DOWN:
+		return PANEL_UP;
+	}
+	return PANEL_RIGHT;
+}
+
+static bool
+panel_visible(int panel)
+{
+	if (panel < 0 || panel >= n_selected_panels)
+		return false;
+	return selected_panels[panel].mapped;
+}
+
 static void
 draw_panel_indicator(struct cow_pixbuf *pixbuf, const struct cell *c, int x,
     int y, int w, int h, bool sunken)
 {
-	struct cow_vector_button vector = panel_indicator_vector(c->panel_dir);
+	enum panel_direction direction = c->panel_dir;
+	struct cow_vector_button vector;
 	int btn_s = (w < h ? w : h) - TEXT_PAD * 2;
+
+	if (panel_visible(c->target_panel))
+		direction = panel_direction_opposite(direction);
+	vector = panel_indicator_vector(direction);
 
 	if (btn_s < 6)
 		btn_s = h < w ? h : w;
@@ -2715,6 +2750,7 @@ external_place(int panel)
 		break;
 	}
 	strlcpy(p->external_id, ew.id, sizeof(p->external_id));
+	p->mapped = true;
 	external_rule_remove(p);
 	xasprintf(&cmd, "window-move -t '#%s' -x %d -y %d", ew.id, x, y);
 	for (int i = 0; i < EXTERNAL_MOVE_TRIES; i++) {
@@ -2735,6 +2771,15 @@ external_reap(struct panel_selection *p)
 		p->external_pid = -1;
 	else if (errno == ECHILD)
 		p->external_pid = -1;
+}
+
+static bool
+external_panels_exist(void)
+{
+	for (int i = 0; i < n_selected_panels; i++)
+		if (selected_panels[i].external_command != NULL)
+			return true;
+	return false;
 }
 
 static const char *
@@ -2767,6 +2812,8 @@ external_start(int panel)
 		return;
 	external_reap(p);
 	if (windows_find_for_panel(p, &panel_win, &external_win)) {
+		p->mapped = true;
+		strlcpy(p->external_id, external_win.id, sizeof(p->external_id));
 		external_place(panel);
 		return;
 	}
@@ -2808,10 +2855,42 @@ external_stop(int panel)
 		free(cmd);
 		p->external_id[0] = '\0';
 	}
+	p->mapped = false;
 	if (p->external_pid <= 0)
 		return;
 	kill(p->external_pid, SIGTERM);
 	external_reap(p);
+}
+
+static void
+external_refresh(void)
+{
+	bool changed = false;
+
+	for (int i = 0; i < n_selected_panels; i++) {
+		struct panel_selection *p = &selected_panels[i];
+		struct win_info pw, ew;
+		bool mapped;
+
+		if (p->external_command == NULL)
+			continue;
+		external_reap(p);
+		mapped = windows_find_for_panel(p, &pw, &ew);
+		if (mapped)
+			strlcpy(p->external_id, ew.id, sizeof(p->external_id));
+		else if (p->external_id[0] != '\0') {
+			p->external_id[0] = '\0';
+			p->open = false;
+		}
+		if (p->mapped != mapped) {
+			p->mapped = mapped;
+			changed = true;
+		}
+	}
+	if (changed) {
+		update_toplevel_size();
+		render();
+	}
 }
 
 static void
@@ -2847,13 +2926,60 @@ update_toplevel_size(void)
 }
 
 static void
+panel_reposition_toplevel(int panel, const struct win_info *before, int old_w,
+    int old_h)
+{
+	struct panel_selection *p;
+	char *cmd;
+	int new_w, new_h, x, y;
+
+	if (panel < 0 || panel >= n_selected_panels || before->id[0] == '\0')
+		return;
+	p = &selected_panels[panel];
+	if (p->external_command != NULL)
+		return;
+
+	new_w = target_width();
+	new_h = target_height();
+	x = before->x;
+	y = before->y;
+	switch (p->direction) {
+	case PANEL_LEFT:
+		x -= new_w - old_w;
+		break;
+	case PANEL_UP:
+		y -= new_h - old_h;
+		break;
+	case PANEL_RIGHT:
+	case PANEL_DOWN:
+		break;
+	}
+	if (x == before->x && y == before->y)
+		return;
+	xasprintf(&cmd, "window-move -t '#%s' -x %d -y %d", before->id, x,
+	    y);
+	ipc_send(cmd);
+	free(cmd);
+}
+
+static void
 panel_toggle(int panel)
 {
+	struct win_info before = { 0 };
+	int old_w, old_h;
+
 	if (panel < 0 || panel >= n_selected_panels)
 		return;
+	old_w = target_width();
+	old_h = target_height();
+	windows_find_panel(&selected_panels[panel], &before);
+
 	selected_panels[panel].open = !selected_panels[panel].open;
+	if (selected_panels[panel].external_command == NULL)
+		selected_panels[panel].mapped = selected_panels[panel].open;
 	externals_sync();
 	update_toplevel_size();
+	panel_reposition_toplevel(panel, &before, old_w, old_h);
 	render();
 }
 
@@ -3012,6 +3138,13 @@ wake_cb(__unused evutil_socket_t fd, __unused short events,
     __unused void *data)
 {
 	handle_wake();
+}
+
+static void
+external_sync_cb(__unused evutil_socket_t fd, __unused short events,
+    __unused void *data)
+{
+	external_refresh();
 }
 
 static void
@@ -3222,7 +3355,11 @@ main(int argc, char **argv)
 	struct wl_registry *reg;
 	pthread_t tid;
 	struct event_base *base;
-	struct event *wl_ev = NULL, *wake_ev = NULL;
+	struct event *wl_ev = NULL, *wake_ev = NULL, *external_ev = NULL;
+	struct timeval external_tv = {
+		.tv_sec = 0,
+		.tv_usec = EXTERNAL_SYNC_MS * 1000,
+	};
 
 	style_init();
 	if (!parse_instance_index())
@@ -3298,8 +3435,12 @@ main(int argc, char **argv)
 	    wayland_cb, NULL);
 	wake_ev = event_new(base, wake_pipe[0], EV_READ | EV_PERSIST, wake_cb,
 	    NULL);
+	if (external_panels_exist())
+		external_ev = event_new(base, -1, EV_PERSIST,
+		    external_sync_cb, NULL);
 	if (wl_ev == NULL || wake_ev == NULL || event_add(wl_ev, NULL) < 0 ||
-	    event_add(wake_ev, NULL) < 0) {
+	    event_add(wake_ev, NULL) < 0 || (external_ev != NULL &&
+	    event_add(external_ev, &external_tv) < 0)) {
 		fprintf(stderr, "%s: failed to add events\n", PROG);
 		running = 0;
 	}
@@ -3315,6 +3456,8 @@ main(int argc, char **argv)
 		event_free(wl_ev);
 	if (wake_ev != NULL)
 		event_free(wake_ev);
+	if (external_ev != NULL)
+		event_free(external_ev);
 	event_base_free(base);
 	externals_stop_all();
 

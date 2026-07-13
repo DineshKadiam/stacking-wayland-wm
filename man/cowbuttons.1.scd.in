@@ -58,9 +58,9 @@ ignored.  Labels and commands containing whitespace must be quoted.
 *panel* _name_ [_direction_ [_property_ _value_ ...]] *{*
 	Start a named panel definition.  A panel is loaded when it is named by
 	*show panel*.  When _direction_ is *left*, *right*, *up*, or *down*,
-	cowbuttons adds an attached handle on that edge.  Pressing the handle
-	collapses or expands the panel.  Handle properties use the same styling
-	keys as *button*.
+	cowbuttons adds an attached handle and opens the panel in that
+	direction.  Pressing the handle collapses or expands the panel.  Handle
+	properties use the same styling keys as *button*.
 
 *row* [*height* _N_] *{*
 	Start a new visual row.  Cells inside the block are appended
