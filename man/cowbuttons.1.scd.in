@@ -2,11 +2,11 @@ cowbuttons(1) "@VERSION@" "cowbuttons - button panel for cow"
 
 # NAME
 
-cowbuttons - FvwmButtons-style button panel for the cow window manager
+cowbuttons - Button panel for the cow window manager
 
 # SYNOPSIS
 
-*cowbuttons* [*-c* _path_] [*-h*]
+*cowbuttons* [*-c* _config_] [*-h*]
 
 # DESCRIPTION
 
@@ -14,27 +14,19 @@ cowbuttons - FvwmButtons-style button panel for the cow window manager
 *cow*(1) commands, show selected state from cow's status socket, or act as
 empty spacers.
 
-Wayland does not provide X11-style arbitrary window reparenting, so
-*cowbuttons* does not swallow clients.  Use command buttons to launch or focus
-applications, and use cow rules to style or place companion windows.
+Wayland does not provide X11 window reparenting, so *cowbuttons* does not
+swallow clients.  Use command buttons to launch or focus applications, and use
+cow rules to style or place companion windows.
 
 # OPTIONS
 
-*-c* _path_
-	Load _path_ instead of the default configuration file.
+*-c* _config_
+	Load _config_ instead of the default configuration file.
 
 *-h*
 	Show usage.
 
 # CONFIGURATION
-
-The default configuration file is:
-
-	_$XDG\_CONFIG\_HOME/cow/cowbuttons.conf_
-
-or, when *XDG_CONFIG_HOME* is unset:
-
-	_~/.config/cow/cowbuttons.conf_
 
 The format is line-oriented.  Blank lines and lines starting with *#* are
 ignored.  Labels and commands containing whitespace must be quoted.
@@ -62,21 +54,18 @@ ignored.  Labels and commands containing whitespace must be quoted.
 	direction.  Pressing the handle collapses or expands the panel.  Handle
 	properties use the same styling keys as *button*.
 
-*row* [*height* _N_] *{*
+*row* [*height* _N_] *{* ... *}*
 	Start a new visual row.  Cells inside the block are appended
 	left-to-right.
 
-*}*
-	End the current row.
-
-*if* [*not*] *command* _name_ *{*
+*if* [*not*] *command* _name_ *{* ... *}*
 	Process the block only when _name_ exists in *PATH* and is executable.
 
-*if* [*not*] *file* _path_ *{*
+*if* [*not*] *file* _path_ *{* ... *}*
 	Process the block only when _path_ exists.  Relative paths are resolved
 	against the configuration file's directory.
 
-*if* [*not*] *env* _name_ *{*
+*if* [*not*] *env* _name_ *{* ... *}*
 	Process the block only when the environment variable _name_ is set and
 	non-empty.
 
@@ -185,13 +174,13 @@ panel pager right bg 0x3f5b51 {
 }
 ```
 
-Remove cowbuttons' own window chrome using a cow rule:
+Remove cowbuttons' own window decors using a cow rule:
 
 ```
-decor -d cowbuttons-chrome border.width 0
-decor -d cowbuttons-chrome border.handles false
-decor -d cowbuttons-chrome titlebar.enabled false
-rule -g -Ton-map -ncowbuttons-chrome -s %cowbuttons decor -a cowbuttons-chrome
+decor -d cowbuttons-nodecor border.width 0
+decor -d cowbuttons-nodecor border.handles false
+decor -d cowbuttons-nodecor titlebar.enabled false
+rule -g -Ton-map -ncowbuttons-chrome -s %cowbuttons decor -a cowbuttons-nodecor
 ```
 
 # FILES
