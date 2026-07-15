@@ -77,6 +77,7 @@ typedef struct {
 	int  number;  /* 1-based ordinal from cow (raster-scan order). */
 	int  current; /* 1 if this is cow's "current_output". */
 	int  current_desk;
+	int  output_x, output_y;
 	int  page_cols, page_rows;
 	int  page_col, page_row;
 	/*
@@ -89,6 +90,13 @@ typedef struct {
 	pdesk_t desks[MAX_DESKS];
 	int	n_desks;
 } pout_t;
+
+typedef struct {
+	int x, y, w, h;
+	int page_cols, page_rows;
+	int tracked;
+	const pout_t *tracked_output;
+} canvas_t;
 
 typedef struct {
 	pout_t outs[MAX_OUTS];
@@ -134,11 +142,13 @@ static char cp_user_output[64];
 
 static int    surface_configured;
 static int    win_w, win_h; /* current window size from configure */
+static int    configured_w_seen, configured_h_seen;
 static double ptr_x, ptr_y;
 static int    opt_running = 1;
 static int    opt_rows = 0;	/* -r ROWS; 0 = auto */
 static int    opt_cols = 0;	/* -c COLS; 0 = auto */
 static int    opt_current_only; /* -1: only show the active desk */
+static int    initial_size_done;
 
 /*
  * Drag-an-overlay-plate handles.  The page-grid drawing publishes one
@@ -169,13 +179,15 @@ static int    opt_verbose; /* -v: log click decisions to stderr */
 /*
  * -m NAME[,NAME,...] restricts the pager to a subset of monitors.
  *
- *   - No -m: every monitor.  Tabs sorted by cow's `number` field;
- *     windows on the page grid come from every monitor.
- *   - -m MON: single monitor.  No tab strip is drawn (it would have
- *     only one slot); windows on the page grid are filtered to that
- *     one monitor and click commands target it explicitly.
- *   - -m MON1,MON2,...: multiple monitors.  Tabs and windows are both
- *     restricted to the listed set, in the order given on the CLI.
+ *   - No -m: every monitor.  The page canvas is the physical bounding
+ *     box of those monitors, and monitor labels are sorted by cow's
+ *     `number` field.
+ *   - -m MON: single monitor.  The pager tracks that monitor, so the
+ *     page canvas is that monitor alone and no monitor-label row is
+ *     drawn.
+ *   - -m MON1,MON2,...: multiple monitors.  The canvas and monitor
+ *     labels are restricted to the listed set, in the order given on
+ *     the CLI.
  */
 #define MAX_OPT_MONITORS 16
 static char opt_monitors[MAX_OPT_MONITORS][64];
@@ -337,7 +349,7 @@ window_colour(const char *id, double *r, double *g, double *b)
 
 /*
  * Stable colour per monitor name.  Used to colour-code the
- * per-monitor tab in the chrome strip and the viewport overlay drawn
+ * per-monitor label in the chrome strip and the viewport overlay drawn
  * in each desk's page grid, so the user can read the monitor->page
  * relationship at a glance.
  */
@@ -411,8 +423,8 @@ is_per_output_mode(const state_t *st)
  *
  * When neither holds (multiple monitors each with their own
  * current_desk), the per-monitor information is already conveyed by
- * the tab strip and any single desk-level highlight would be at best
- * arbitrary and at worst misleading.
+ * the monitor labels and any single desk-level highlight would be at
+ * best arbitrary and at worst misleading.
  */
 static int
 has_canonical_current_desk(const state_t *st)
@@ -443,9 +455,9 @@ tab_outputs_cmp(const void *a, const void *b)
 }
 
 /*
- * Build the list of outputs the pager should consider "visible",
- * in display order.  This drives both the tab strip and the window-
- * placement filter.
+ * Build the list of outputs the pager should consider "visible", in
+ * display order.  This drives monitor labels, canvas bounds, and the
+ * window-placement filter.
  */
 static int
 tab_outputs(const state_t *st, const pout_t **out_arr, int max)
@@ -490,7 +502,7 @@ single_pinned_output(void)
 	return NULL;
 }
 
-/* Number of monitor tabs we would draw. */
+/* Number of monitor labels we would draw. */
 static int
 mon_tab_count(const state_t *st)
 {
@@ -533,6 +545,106 @@ output_for_window(const state_t *st, const pwin_t *w)
 	return NULL;
 }
 
+static int
+canvas_from_outputs(const state_t *st, canvas_t *cv)
+{
+	memset(cv, 0, sizeof(*cv));
+
+	const pout_t *outs[MAX_OUTS];
+	int n = tab_outputs(st, outs, MAX_OUTS);
+	if (n <= 0)
+		return 0;
+
+	const pout_t *ref = outs[0];
+	cv->page_cols = ref->page_cols > 0 ? ref->page_cols : 1;
+	cv->page_rows = ref->page_rows > 0 ? ref->page_rows : 1;
+
+	if (n == 1) {
+		cv->tracked = 1;
+		cv->tracked_output = outs[0];
+		cv->x = outs[0]->output_x;
+		cv->y = outs[0]->output_y;
+		cv->w = outs[0]->output_w > 0 ? outs[0]->output_w : 1;
+		cv->h = outs[0]->output_h > 0 ? outs[0]->output_h : 1;
+		return 1;
+	}
+
+	int min_x = outs[0]->output_x;
+	int min_y = outs[0]->output_y;
+	int max_x = outs[0]->output_x +
+	    (outs[0]->output_w > 0 ? outs[0]->output_w : 1);
+	int max_y = outs[0]->output_y +
+	    (outs[0]->output_h > 0 ? outs[0]->output_h : 1);
+
+	for (int i = 1; i < n; i++) {
+		int ow = outs[i]->output_w > 0 ? outs[i]->output_w : 1;
+		int oh = outs[i]->output_h > 0 ? outs[i]->output_h : 1;
+		if (outs[i]->output_x < min_x)
+			min_x = outs[i]->output_x;
+		if (outs[i]->output_y < min_y)
+			min_y = outs[i]->output_y;
+		if (outs[i]->output_x + ow > max_x)
+			max_x = outs[i]->output_x + ow;
+		if (outs[i]->output_y + oh > max_y)
+			max_y = outs[i]->output_y + oh;
+	}
+
+	cv->x = min_x;
+	cv->y = min_y;
+	cv->w = max_x - min_x;
+	cv->h = max_y - min_y;
+	if (cv->w < 1)
+		cv->w = 1;
+	if (cv->h < 1)
+		cv->h = 1;
+	return 1;
+}
+
+static int
+output_in_canvas(const canvas_t *cv, const pout_t *out)
+{
+	if (cv->tracked_output != NULL && out != cv->tracked_output)
+		return 0;
+	return out != NULL;
+}
+
+static double
+canvas_page_x(const canvas_t *cv, const pout_t *out, int vx)
+{
+	int ow = out->output_w > 0 ? out->output_w : 1;
+	return ((double)vx / ow) * cv->w + (out->output_x - cv->x);
+}
+
+static double
+canvas_page_y(const canvas_t *cv, const pout_t *out, int vy)
+{
+	int oh = out->output_h > 0 ? out->output_h : 1;
+	return ((double)vy / oh) * cv->h + (out->output_y - cv->y);
+}
+
+static const pout_t *
+output_at_canvas_point(const state_t *st, const canvas_t *cv, double x,
+    double y)
+{
+	if (cv->tracked_output != NULL)
+		return cv->tracked_output;
+
+	for (int i = 0; i < st->n_outs; i++) {
+		const pout_t *o = &st->outs[i];
+		if (!monitor_visible(o->name))
+			continue;
+		if (!output_in_canvas(cv, o))
+			continue;
+		int ox = o->output_x - cv->x;
+		int oy = o->output_y - cv->y;
+		int ow = o->output_w > 0 ? o->output_w : 1;
+		int oh = o->output_h > 0 ? o->output_h : 1;
+		if (x >= ox && x < ox + ow && y >= oy && y < oy + oh)
+			return o;
+	}
+	return NULL;
+}
+
 static void
 compute_grid(int n_desks, int *rows, int *cols)
 {
@@ -564,7 +676,7 @@ compute_grid(int n_desks, int *rows, int *cols)
 typedef struct {
 	int rows, cols;	     /* grid of desks */
 	int desk_label_h;    /* "Desk N" band height */
-	int mon_tab_h;	     /* monitor-tab strip height (0 if only
+	int mon_tab_h;	     /* monitor-label row height (0 if only
 				one monitor and so the strip would be
 				redundant) */
 	int cell_w;	     /* width  of one desk cell */
@@ -654,9 +766,9 @@ compute_layout(const state_t *st, layout_t *L)
 		compute_grid(n_desks, &L->rows, &L->cols);
 	}
 
-	/* Draw monitor tabs only when there's more than one effective
-	 * monitor to distinguish.  With `-o NAME` or a single-output
-	 * setup there is no useful information in the tab strip. */
+	/* Draw monitor labels only when there's more than one effective
+	 * monitor to distinguish.  With `-m NAME` or a single-output
+	 * setup there is no useful information in the monitor-label row. */
 	int n_tab_mons = mon_tab_count(st);
 	choose_label_heights(win_h, n_tab_mons > 1, &L->desk_font_px,
 	    &L->desk_label_h, &L->tab_font_px, &L->mon_tab_h);
@@ -674,6 +786,46 @@ compute_layout(const state_t *st, layout_t *L)
 
 	L->page_cw = (double)L->cell_w / pcols;
 	L->page_ch = (double)L->page_grid_h / prows;
+}
+
+static void
+maybe_apply_initial_size(const state_t *st, const layout_t *L)
+{
+	if (initial_size_done)
+		return;
+
+	canvas_t cv;
+	if (!canvas_from_outputs(st, &cv))
+		return;
+
+	if (configured_w_seen && configured_h_seen) {
+		initial_size_done = 1;
+		return;
+	}
+
+	const pout_t *ref = reference_output(st);
+	int pcols = ref && ref->page_cols > 0 ? ref->page_cols : 1;
+	int prows = ref && ref->page_rows > 0 ? ref->page_rows : 1;
+	const int vscale = 32; /* FvwmPager's default Scr.VScale. */
+
+	int label_h = L->chrome_h;
+	int w = win_w;
+	int h = win_h;
+
+	if (configured_w_seen) {
+		h = (w * cv.h) / cv.w + label_h * L->rows + L->rows;
+	} else if (configured_h_seen && h > label_h * L->rows) {
+		w = ((h - label_h * L->rows + L->rows) * cv.w) / cv.h +
+		    L->cols;
+	} else {
+		w = (pcols * cv.w * L->cols) / vscale + L->cols;
+		h = (prows * cv.h * L->rows) / vscale +
+		    label_h * L->rows + L->rows;
+	}
+
+	win_w = w;
+	win_h = h;
+	initial_size_done = 1;
 }
 
 static void
@@ -725,12 +877,11 @@ draw_text_centered(cairo_t *cr, double x, double w, double baseline_y,
  */
 static void
 draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
-    const pout_t *ref, const pdesk_t *d, int sx, int sy, int sw, int sh)
+    const pout_t *ref, const canvas_t *cv, const pdesk_t *d, int sx, int sy,
+    int sw, int sh)
 {
 	int pcols = ref->page_cols > 0 ? ref->page_cols : 1;
 	int prows = ref->page_rows > 0 ? ref->page_rows : 1;
-	int ow	  = ref->output_w > 0 ? ref->output_w : 1920;
-	int oh	  = ref->output_h > 0 ? ref->output_h : 1080;
 
 	double cw = (double)sw / pcols;
 	double ch = (double)sh / prows;
@@ -748,6 +899,10 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 			int is_cur = 0;
 			for (int oi = 0; oi < st->n_outs; oi++) {
 				const pout_t *o = &st->outs[oi];
+				if (!monitor_visible(o->name))
+					continue;
+				if (!output_in_canvas(cv, o))
+					continue;
 				if (o->current_desk == d->nr &&
 				    o->page_col == pc && o->page_row == pr) {
 					is_cur = 1;
@@ -770,8 +925,6 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 	 * Each window's thumbnail is sized in terms of its OWN
 	 * monitor's pixel dimensions, not the reference monitor's.
 	 */
-	double cell_w = (double)sw / pcols;
-	double cell_h = (double)sh / prows;
 	for (int wi = 0; wi < st->n_wins; wi++) {
 		const pwin_t *w = &st->wins[wi];
 		if (w->desk != d->nr)
@@ -782,8 +935,10 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 			continue;
 
 		const pout_t *wo = output_for_window(st, w);
-		int wow		 = (wo && wo->output_w > 0) ? wo->output_w : ow;
-		int woh		 = (wo && wo->output_h > 0) ? wo->output_h : oh;
+		if (!output_in_canvas(cv, wo))
+			continue;
+		int wow		 = (wo && wo->output_w > 0) ? wo->output_w : 1;
+		int woh		 = (wo && wo->output_h > 0) ? wo->output_h : 1;
 		if (wow <= 0 || woh <= 0)
 			continue;
 		int desk_w = pcols * wow;
@@ -793,10 +948,10 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		if (w->vy < 0 || w->vy >= desk_h)
 			continue;
 
-		double wx = sx + ((double)w->vx / wow) * cell_w;
-		double wy = sy + ((double)w->vy / woh) * cell_h;
-		double ww = ((double)w->w / wow) * cell_w;
-		double wh = ((double)w->h / woh) * cell_h;
+		double wx = sx + (canvas_page_x(cv, wo, w->vx) / cv->w) * cw;
+		double wy = sy + (canvas_page_y(cv, wo, w->vy) / cv->h) * ch;
+		double ww = ((double)w->w / wow) * (cw * wo->output_w / cv->w);
+		double wh = ((double)w->h / woh) * (ch * wo->output_h / cv->h);
 
 		if (ww < 3)
 			ww = 3;
@@ -853,14 +1008,16 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 			continue;
 		if (!monitor_visible(o->name))
 			continue;
-		int oow = o->output_w > 0 ? o->output_w : ow;
-		int ooh = o->output_h > 0 ? o->output_h : oh;
+		if (!output_in_canvas(cv, o))
+			continue;
+		int oow = o->output_w > 0 ? o->output_w : 1;
+		int ooh = o->output_h > 0 ? o->output_h : 1;
 		if (oow <= 0 || ooh <= 0)
 			continue;
-		double ax = sx + ((double)o->page_vx / oow) * cell_w;
-		double ay = sy + ((double)o->page_vy / ooh) * cell_h;
-		double aw = cell_w;
-		double ah = cell_h;
+		double ax = sx + (canvas_page_x(cv, o, o->page_vx) / cv->w) * cw;
+		double ay = sy + (canvas_page_y(cv, o, o->page_vy) / cv->h) * ch;
+		double aw = ((double)oow / cv->w) * cw;
+		double ah = ((double)ooh / cv->h) * ch;
 
 		double mr, mg, mb;
 		monitor_colour(o->name, &mr, &mg, &mb);
@@ -989,11 +1146,11 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 }
 
 /*
- * Draw the chrome (label band + monitor tab strip) at the top of a
+ * Draw the chrome (label band + monitor-label row) at the top of a
  * single desk cell.
  *
- * The monitor tabs are evenly spaced left-to-right in monitor order
- * (filtered by -o / -m).  A tab is highlighted iff its monitor's
+ * The monitor labels are evenly spaced left-to-right in monitor order
+ * (filtered by -m).  A label is highlighted iff its monitor's
  * current_desk equals this desk -- a quick visual indicator of which
  * monitor is currently "on" each desk.  Match FvwmPager's
  * MonitorLabels look.
@@ -1002,8 +1159,9 @@ static void
 draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
     const pdesk_t *d, int dx, int dy, int is_active_desk)
 {
-	/* Desk-label band. */
-	if (is_active_desk)
+	int desk_hilight = is_active_desk && L->mon_tab_h <= 0;
+
+	if (desk_hilight)
 		cairo_set_source_rgba(cr, 0.20, 0.40, 0.70, 1.0);
 	else
 		cairo_set_source_rgba(cr, 0.22, 0.22, 0.26, 1.0);
@@ -1018,7 +1176,6 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 	draw_text_centered(cr, dx, L->cell_w,
 	    dy + L->desk_label_h - L->desk_label_h * 0.22, lbl);
 
-	/* Monitor-tab strip. */
 	if (L->mon_tab_h <= 0)
 		return;
 
@@ -1032,109 +1189,16 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 
 	set_font(cr, L->tab_font_px, 1);
 
-	/*
-	 * Work out the (monitor, desk) cell that should carry the
-	 * green "you are here" highlight.
-	 *
-	 *   - If a window is focused, use its (output, desk): this
-	 *     captures the user's actual locus of attention.
-	 *   - Otherwise fall back to cow's current_output (the monitor
-	 *     where the pointer is) and that output's current_desk.
-	 *     This keeps the highlight visible even after the user
-	 *     switches to a desk with no windows on it, which is when
-	 *     no `focused` field is emitted.
-	 *
-	 * Either lookup populates `foc_out_name` and `foc_desk`; when
-	 * neither yields a result the FOCUSED state is unreachable.
-	 */
-	const char *foc_out_name = NULL;
-	int	    foc_desk	 = -1;
-
-	if (st->focused_id[0]) {
-		for (int wi = 0; wi < st->n_wins; wi++) {
-			if (strcmp(st->wins[wi].id, st->focused_id) == 0) {
-				foc_out_name = st->wins[wi].output;
-				foc_desk     = st->wins[wi].desk;
-				break;
-			}
-		}
-	}
-	if (foc_out_name == NULL || foc_out_name[0] == '\0') {
-		for (int oi = 0; oi < st->n_outs; oi++) {
-			if (st->outs[oi].current) {
-				foc_out_name = st->outs[oi].name;
-				foc_desk     = st->outs[oi].current_desk;
-				break;
-			}
-		}
-	}
-
 	for (int i = 0; i < n_tab; i++) {
 		double tx = dx + i * tw;
-
-		/*
-		 * Four-state tab highlight, brightest to dimmest:
-		 *
-		 *   FOCUSED this monitor holds the focused window AND
-		 *           that window is on this desk (the "you are
-		 *           here" cell -- bright green).
-		 *   ACTIVE  monitor's current_desk == this desk (but
-		 *           focus is elsewhere).
-		 *   PRESENT monitor is elsewhere, but this desk has at
-		 *           least one window belonging to that monitor.
-		 *   EMPTY   monitor is elsewhere AND has no windows on
-		 *           this desk.
-		 */
-		enum {
-			TAB_FOCUSED,
-			TAB_ACTIVE,
-			TAB_PRESENT,
-			TAB_EMPTY
-		} tab_state;
-
-		int has_focus = foc_desk == d->nr && foc_out_name != NULL &&
-		    foc_out_name[0] && strcmp(foc_out_name, tab[i]->name) == 0;
-
-		if (has_focus) {
-			tab_state = TAB_FOCUSED;
-		} else if (tab[i]->current_desk == d->nr) {
-			tab_state = TAB_ACTIVE;
-		} else {
-			tab_state = TAB_EMPTY;
-			for (int wi = 0; wi < st->n_wins; wi++) {
-				const pwin_t *w = &st->wins[wi];
-				if (w->desk != d->nr)
-					continue;
-				if (is_self_window(w))
-					continue;
-				if (w->output[0] &&
-				    strcmp(w->output, tab[i]->name) == 0) {
-					tab_state = TAB_PRESENT;
-					break;
-				}
-			}
-		}
-
-		switch (tab_state) {
-		case TAB_FOCUSED:
+		int active = tab[i]->current_desk == d->nr;
+		if (active)
 			cairo_set_source_rgba(cr, 0.24, 0.55, 0.28, 1.0);
-			break;
-		case TAB_ACTIVE:
-			cairo_set_source_rgba(cr, 0.42, 0.42, 0.48, 1.0);
-			break;
-		case TAB_PRESENT:
-			cairo_set_source_rgba(cr, 0.28, 0.30, 0.36, 1.0);
-			break;
-		case TAB_EMPTY:
+		else
 			cairo_set_source_rgba(cr, 0.14, 0.14, 0.17, 1.0);
-			break;
-		}
 		cairo_rectangle(cr, tx, tab_y, tw, L->mon_tab_h);
 		cairo_fill(cr);
 
-		/* Solid 1px borders around each tab so they read as
-		 * distinct slots even when adjacent tabs are both
-		 * highlighted. */
 		cairo_set_source_rgba(cr, 0.04, 0.04, 0.06, 1.0);
 		cairo_set_line_width(cr, 1.0);
 		cairo_set_dash(cr, NULL, 0, 0);
@@ -1142,32 +1206,12 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 		    L->mon_tab_h - 1);
 		cairo_stroke(cr);
 
-		/* Per-monitor colour stripe along the top of every tab. */
 		double mr, mg, mb;
 		monitor_colour(tab[i]->name, &mr, &mg, &mb);
 		cairo_set_source_rgba(cr, mr, mg, mb, 1.0);
 		cairo_rectangle(cr, tx + 1, tab_y + 1, tw - 2, 2.5);
 		cairo_fill(cr);
 
-		/* Subtle accent stripe along the bottom of "present"
-		 * tabs -- a quiet hint that this monitor has work
-		 * parked on this desk without competing with the bold
-		 * active highlight. */
-		if (tab_state == TAB_PRESENT) {
-			cairo_set_source_rgba(cr, 0.55, 0.70, 0.95, 1.0);
-			cairo_rectangle(cr, tx + 1, tab_y + L->mon_tab_h - 2.5,
-			    tw - 2, 1.5);
-			cairo_fill(cr);
-		}
-
-		/*
-		 * Label.  Prefer the monitor's cow-assigned ordinal
-		 * (the `number` field) when the full name would
-		 * overflow the slot, so the digits cowpager shows are
-		 * the same ones `show output` reports.  Fall back to
-		 * the tab index if the IPC didn't deliver a number
-		 * (e.g. talking to an older cow).
-		 */
 		const char	    *name = tab[i]->name;
 		char		     short_name[16];
 		cairo_text_extents_t te;
@@ -1178,20 +1222,10 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 			name = short_name;
 		}
 
-		switch (tab_state) {
-		case TAB_FOCUSED:
-			cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);
-			break;
-		case TAB_ACTIVE:
+		if (active)
 			cairo_set_source_rgba(cr, 0.98, 0.98, 1.0, 1.0);
-			break;
-		case TAB_PRESENT:
-			cairo_set_source_rgba(cr, 0.85, 0.88, 0.95, 1.0);
-			break;
-		case TAB_EMPTY:
+		else
 			cairo_set_source_rgba(cr, 0.55, 0.55, 0.60, 1.0);
-			break;
-		}
 		draw_text_centered(cr, tx, tw,
 		    tab_y + L->mon_tab_h - L->mon_tab_h * 0.22, name);
 	}
@@ -1201,6 +1235,19 @@ static void
 do_render(const state_t *st)
 {
 	if (!surface_configured || win_w <= 0 || win_h <= 0)
+		return;
+
+	if (st->n_outs == 0)
+		return;
+
+	layout_t L;
+	compute_layout(st, &L);
+	maybe_apply_initial_size(st, &L);
+	if (initial_size_done)
+		compute_layout(st, &L);
+
+	canvas_t cv;
+	if (!canvas_from_outputs(st, &cv))
 		return;
 
 	/*
@@ -1223,12 +1270,6 @@ do_render(const state_t *st)
 	/* Outer background */
 	cairo_set_source_rgba(cr, 0.06, 0.06, 0.08, 1.0);
 	cairo_paint(cr);
-
-	if (st->n_outs == 0)
-		goto commit;
-
-	layout_t L;
-	compute_layout(st, &L);
 
 	const pout_t *ref = reference_output(st);
 	if (!ref)
@@ -1262,7 +1303,7 @@ do_render(const state_t *st)
 		 * single canonical current desk to point at.  In
 		 * per-output mode with multiple monitors visible, each
 		 * monitor has its own current_desk and the per-monitor
-		 * info is conveyed through the tab strip; a blanket
+		 * info is conveyed through the monitor labels; a blanket
 		 * desk-level highlight there would be arbitrary.
 		 */
 		int is_active = has_canonical_current_desk(st) &&
@@ -1273,7 +1314,7 @@ do_render(const state_t *st)
 		cairo_rectangle(cr, dx, dy, L.cell_w, L.cell_h);
 		cairo_fill(cr);
 
-		/* Chrome: desk label + monitor tab strip. */
+		/* Chrome: desk label + monitor-label row. */
 		draw_desk_chrome(cr, st, &L, d, dx, dy, is_active);
 
 		/* Page grid: one unified canvas per desk, windows from
@@ -1282,7 +1323,7 @@ do_render(const state_t *st)
 		int gh = L.cell_h - L.chrome_h;
 		if (gh < 1)
 			gh = 1;
-		draw_desk_pages(cr, st, &L, ref, d, dx, gy, L.cell_w, gh);
+		draw_desk_pages(cr, st, &L, ref, &cv, d, dx, gy, L.cell_w, gh);
 
 		/* Active-desk highlight frame */
 		if (is_active) {
@@ -1365,12 +1406,12 @@ commit:
 
 /*
  * Convert pointer coords to a visible-desk index, and identify which
- * piece of chrome (label band, monitor tab strip, page grid) the
+ * piece of chrome (label band, monitor-label row, page grid) the
  * pointer is over.  All "out" values are -1 / 0 on miss.
  *
  *   *vis_idx    : index into the visible-desks array.
- *   *tab_idx    : if the pointer is in the monitor-tab strip, the
- *                 tab slot index (0..mon_tab_count-1).  -1 otherwise.
+ *   *tab_idx    : if the pointer is in the monitor-label row, the
+ *                 label slot index (0..mon_tab_count-1).  -1 otherwise.
  *   *in_page    : 1 if the pointer is in the page-grid area, else 0.
  */
 static void
@@ -1398,7 +1439,7 @@ locate(const state_t *st, double x, double y, const layout_t *L, int *vis_idx,
 		return;
 	}
 	if (ly < L->chrome_h) {
-		/* Inside the monitor tab strip. */
+		/* Inside the monitor-label row. */
 		int n_tab = mon_tab_count(st);
 		if (n_tab > 0) {
 			double tw = (double)L->cell_w / n_tab;
@@ -1452,6 +1493,9 @@ hit_test_window(const state_t *st, double x, double y,
 	const pout_t *ref = reference_output(st);
 	if (!ref)
 		return NULL;
+	canvas_t cv;
+	if (!canvas_from_outputs(st, &cv))
+		return NULL;
 
 	int vis_idx, tab_idx, in_page;
 	locate(st, x, y, &L, &vis_idx, &tab_idx, &in_page);
@@ -1474,8 +1518,6 @@ hit_test_window(const state_t *st, double x, double y,
 
 	int pcols = ref->page_cols > 0 ? ref->page_cols : 1;
 	int prows = ref->page_rows > 0 ? ref->page_rows : 1;
-	int ow	  = ref->output_w > 0 ? ref->output_w : 1920;
-	int oh	  = ref->output_h > 0 ? ref->output_h : 1080;
 	if (sw <= 0 || sh <= 0)
 		return NULL;
 
@@ -1501,8 +1543,10 @@ hit_test_window(const state_t *st, double x, double y,
 			continue;
 
 		const pout_t *wo = output_for_window(st, w);
-		int wow		 = (wo && wo->output_w > 0) ? wo->output_w : ow;
-		int woh		 = (wo && wo->output_h > 0) ? wo->output_h : oh;
+		if (!output_in_canvas(&cv, wo))
+			continue;
+		int wow		 = (wo && wo->output_w > 0) ? wo->output_w : 1;
+		int woh		 = (wo && wo->output_h > 0) ? wo->output_h : 1;
 		if (wow <= 0 || woh <= 0)
 			continue;
 		int desk_w = pcols * wow;
@@ -1512,10 +1556,10 @@ hit_test_window(const state_t *st, double x, double y,
 		if (w->vy < 0 || w->vy >= desk_h)
 			continue;
 
-		double wx_ = sx + ((double)w->vx / wow) * cell_w;
-		double wy_ = sy + ((double)w->vy / woh) * cell_h;
-		double ww  = ((double)w->w / wow) * cell_w;
-		double wh  = ((double)w->h / woh) * cell_h;
+		double wx_ = sx + (canvas_page_x(&cv, wo, w->vx) / cv.w) * cell_w;
+		double wy_ = sy + (canvas_page_y(&cv, wo, w->vy) / cv.h) * cell_h;
+		double ww  = ((double)w->w / cv.w) * cell_w;
+		double wh  = ((double)w->h / cv.h) * cell_h;
 		if (ww < 3)
 			ww = 3;
 		if (wh < 3)
@@ -1621,6 +1665,9 @@ hit_test_page(const state_t *st, double x, double y, int *desk_nr, int *pc_out,
 	const pout_t *ref = reference_output(st);
 	if (!ref)
 		return 0;
+	canvas_t cv;
+	if (!canvas_from_outputs(st, &cv))
+		return 0;
 
 	int vis_idx, tab_idx, in_page;
 	locate(st, x, y, &L, &vis_idx, &tab_idx, &in_page);
@@ -1633,8 +1680,8 @@ hit_test_page(const state_t *st, double x, double y, int *desk_nr, int *pc_out,
 	*desk_nr = d->nr;
 
 	if (tab_idx >= 0) {
-		/* Click in a monitor tab.  Look up which monitor that
-		 * tab corresponds to and return its name. */
+		/* Click in a monitor label.  Look up which monitor that
+		 * label corresponds to and return its name. */
 		const pout_t *tab[MAX_OUTS];
 		int	      n_tab = tab_outputs(st, tab, MAX_OUTS);
 		if (tab_idx < n_tab) {
@@ -1642,18 +1689,6 @@ hit_test_page(const state_t *st, double x, double y, int *desk_nr, int *pc_out,
 			*out_for_cmd = tab[tab_idx]->name;
 		}
 		return 1;
-	}
-
-	/*
-	 * In per-output mode, pin click commands to the single -m
-	 * monitor when one is specified.  With multiple -m monitors
-	 * there's no unambiguous target so we leave it unset and let
-	 * cow apply commands to the focused output.
-	 */
-	if (is_per_output_mode(st)) {
-		const char *pin = single_pinned_output();
-		if (pin)
-			*out_for_cmd = pin;
 	}
 
 	if (!in_page)
@@ -1680,6 +1715,15 @@ hit_test_page(const state_t *st, double x, double y, int *desk_nr, int *pc_out,
 	if (pc >= 0 && pc < pcols && pr >= 0 && pr < prows) {
 		*pc_out = pc;
 		*pr_out = pr;
+		/* Match FvwmPager: a page click targets the monitor whose
+		 * physical rectangle contains that point in the pager canvas. */
+		double page_w = (double)sw / pcols;
+		double page_h = (double)sh / prows;
+		double cx = ((x - sx) - pc * page_w) / page_w * cv.w;
+		double cy = ((y - sy) - pr * page_h) / page_h * cv.h;
+		const pout_t *out = output_at_canvas_point(st, &cv, cx, cy);
+		if (out != NULL)
+			*out_for_cmd = out->name;
 	}
 	return 1;
 }
@@ -1705,10 +1749,14 @@ static void
 xdg_toplevel_configure(__unused void *data, __unused struct xdg_toplevel *tl,
     int32_t w, int32_t h, __unused struct wl_array *states)
 {
-	if (w > 0)
+	if (w > 0) {
 		win_w = w;
-	if (h > 0)
+		configured_w_seen = 1;
+	}
+	if (h > 0) {
 		win_h = h;
+		configured_h_seen = 1;
+	}
 }
 
 static void
@@ -2346,6 +2394,8 @@ parse_status(const char *json)
 		strncpy(po->f, v->valuestring, z - 1);
 		GS("name", name, 64)
 		GN("number", number)
+		GN("x", output_x)
+		GN("y", output_y)
 		GN("current_desk", current_desk)
 		v = cJSON_GetObjectItem(out, "current");
 		if (cJSON_IsBool(v))
@@ -2563,10 +2613,10 @@ main(int argc, char *argv[])
 			    "  -r ROWS   arrange desks in ROWS rows\n"
 			    "  -c COLS   arrange desks in COLS columns\n"
 			    "  -m LIST   restrict pager to the listed\n"
-			    "            monitors (comma-separated); both\n"
-			    "            the tab strip and windows on the\n"
-			    "            page grid are filtered.  A single\n"
-			    "            monitor suppresses the tab strip\n"
+			    "            monitors (comma-separated). A\n"
+			    "            single monitor is tracked; otherwise\n"
+			    "            the page canvas uses the monitor\n"
+			    "            layout and labels use LIST order\n"
 			    "  -1        show only the currently active desk\n"
 			    "  -v        log click decisions to stderr\n"
 			    "  -h        show this help\n");

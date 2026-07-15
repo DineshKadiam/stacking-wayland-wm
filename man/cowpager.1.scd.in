@@ -11,8 +11,9 @@ cowpager - FvwmPager-style visual pager for the cow window manager
 # DESCRIPTION
 
 *cowpager* is a small graphical pager that displays desks tracked by
-and the windows on them.  Each desk is drawn as one unified
-canvas containing every windoW.
+*cow* and the windows on them.  By default, each desk is drawn as one
+canvas containing the full visible monitor layout, similar to
+*FvwmPager* when it is not tracking a specific monitor.
 
 Without any options, *cowpager* will show all desks and windows across all
 outputs.
@@ -29,13 +30,14 @@ outputs.
 	neither *-r* nor *-c* is given, all desks are arranged in a single row.
 
 *-m* _LIST_
-	Restrict the pager to the listed outputss.  _LIST_ is one or
+	Restrict the pager to the listed outputs.  _LIST_ is one or
 	more output names separated by commas (e.g.
-	*-m HDMI-A-1,DP-1*).  Both the tab strip and the windows
-	drawn on the page grid are filtered to this set; tabs appear
-	in the order given on the command line.
+	*-m HDMI-A-1,DP-1*).  Monitor labels appear in the order
+	given on the command line.
 
-	When *-m* names a *single* output, the tab strip is not shown.
+	When *-m* names a *single* output, cowpager tracks that output:
+	the page grid is scaled to that monitor rather than to the full
+	monitor layout.
 
 	Without *-m*, all outputs are shown in the way *cow* manages them.  See
 	*cow(1)* -- _OUTPUT MANAGEMENT_.
@@ -48,20 +50,21 @@ outputs.
 
 # DISPLAY
 
-## OUTPUT TABS
+## DESKTOP AND MONITOR LABELS
 
-Each tab in a desk cell will show the following information:
+Each desk cell has a desktop label.  When more than one output is
+shown, a second monitor-label row is drawn below it.  This mirrors
+*FvwmPager*'s *DesktopLabels*, *MonitorLabels*, and *LabelHilight*
+concepts:
 
-- *focused* -- this output holds the focused window *and* that
-  window lives on this desk.  Shown as a bright green background.
-- *active* -- this output's current desk is this desk (but the
-  focused window is elsewhere).  Shown as a light-grey background.
-- *present* -- this output is on a different desk, but this desk
-  contains at least one window owned by it.  Shown as a thin blue
-  accent stripe along the bottom of the tab.
-- *empty* -- No windows at all, shown as a light-grey background.
+- the desktop label identifies the desk;
+- each monitor label identifies an output;
+- a monitor label is highlighted on the desk that output currently
+  views;
+- when only one output is shown, the desktop label itself is
+  highlighted for the active desk.
 
-The tab label is the output's name when it fits, falling back to its
+The monitor label is the output's name when it fits, falling back to its
 cow-assigned *number* when the name would overflow the slot.
 
 ## PAGE GRID AND VIEWPORTS
@@ -69,15 +72,18 @@ cow-assigned *number* when the name would overflow the slot.
 Window miniatures are placed on the grid.  Windows are coloured by their id.
 The focused window is drawn in yellow.
 
-For every output currently on the active desk, a translucent yellow
-rectangle marks that output's viewport position within the page
-grid.  When two outputs share a desk but sit on different pages,
-both rectangles are drawn.
+Without *-m*, the page grid is scaled to the bounding box of all shown
+outputs.  Window miniatures and viewport rectangles are placed using
+the physical monitor layout, so adjacent monitors appear adjacent in
+the pager instead of overlapping.
+
+For every output currently viewing a desk, a translucent rectangle
+marks that output's viewport position within that desk's page grid.
 
 # USE
 
-- *Click a page cell*: switches the *host* monitor (the one
-	*cowpager* itself is sitting on) to that desk and page. 
+- *Click a page cell*: switches the monitor under that point in the
+	pager's monitor layout to that desk and page.
 - *Drag a coloured monitor name plate*: grabs the small dark
 	pill at the top-left of a monitor's coloured viewport overlay
 	and drags it to another page cell.  When you release, that
@@ -85,7 +91,7 @@ both rectangles are drawn.
 - *Click a window thumbnail*: navigates that window's monitor to
 	the window's desk and page, then focuses the window.  Other
 	monitors are not affected.
-- *Click an output tab*: switches that monitor to the clicked desk.
+- *Click a monitor label*: switches that monitor to the clicked desk.
 
 # EXAMPLES
 
