@@ -37,6 +37,7 @@
 #include <fcntl.h>
 #include <math.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,12 +48,19 @@
 #include <wayland-client.h>
 
 #include "cow/attrs.h"
+#include "cow/colour.h"
 #include "cow/module.h"
+#include "cow/module_config.h"
 #include "xdg-shell-client-protocol.h"
+
+#define PROG "cowpager"
+#define SHOW_INDEX_ENV "COWPAGER_SHOW_INDEX"
 
 #define MAX_DESKS 32
 #define MAX_WINS 512
 #define MAX_OUTS 8
+#define MAX_FIELDS 8
+#define MAX_SELECTED_PAGERS 16
 
 #define INIT_W 420
 #define INIT_H 120
@@ -70,6 +78,7 @@ typedef struct {
 	int nr;
 	int window_count;
 	int active;
+	char name[64];
 } pdesk_t;
 
 typedef struct {
@@ -87,6 +96,8 @@ typedef struct {
 	 */
 	int	page_vx, page_vy;
 	int	output_w, output_h;
+	int	has_background;
+	float	background[4];
 	pdesk_t desks[MAX_DESKS];
 	int	n_desks;
 } pout_t;
@@ -105,7 +116,54 @@ typedef struct {
 	int    n_wins;
 	char   focused_id[128];
 	char   desktop_config[32]; /* "global" | "per-output" | "Shared" */
+	char   user_output[64];
+	struct {
+		int   has_background;
+		int   has_active_bg;
+		int   has_inactive_bg;
+		int   has_active_fg;
+		int   has_inactive_fg;
+		float background[4];
+		float active_bg[4];
+		float inactive_bg[4];
+		float active_fg[4];
+		float inactive_fg[4];
+	} theme;
 } state_t;
+
+struct pager_config {
+	int rows;
+	int cols;
+	int current_only;
+	int verbose;
+	int desktop_labels;
+	int monitor_labels;
+	int label_highlight;
+	int desktop_scale;
+	float background[4];
+	float desk_bg[4];
+	float page_bg[4];
+	float page_active_bg[4];
+	float label_bg[4];
+	float label_active_bg[4];
+	float label_fg[4];
+	float label_inactive_fg[4];
+	float window_focused_bg[4];
+	int   background_set;
+	int   desk_bg_set;
+	int   page_bg_set;
+	int   page_active_bg_set;
+	int   label_bg_set;
+	int   label_active_bg_set;
+	int   label_fg_set;
+	int   label_inactive_fg_set;
+	int   window_focused_bg_set;
+};
+
+struct pager_selection {
+	char *name;
+	int   seen;
+};
 
 static struct wl_display    *display;
 static struct wl_compositor *compositor;
@@ -149,6 +207,7 @@ static int    opt_rows = 0;	/* -r ROWS; 0 = auto */
 static int    opt_cols = 0;	/* -c COLS; 0 = auto */
 static int    opt_current_only; /* -1: only show the active desk */
 static int    initial_size_done;
+static struct pager_config cfg;
 
 /*
  * Drag-an-overlay-plate handles.  The page-grid drawing publishes one
@@ -192,6 +251,158 @@ static int    opt_verbose; /* -v: log click decisions to stderr */
 #define MAX_OPT_MONITORS 16
 static char opt_monitors[MAX_OPT_MONITORS][64];
 static int  opt_n_monitors;
+static struct pager_selection selected_pagers[MAX_SELECTED_PAGERS];
+static int n_selected_pagers;
+static int instance_index;
+static int show_group_count;
+static bool spawn_extra_instances = true;
+static char instance_title[256] = PROG;
+
+struct pager_load_ctx {
+	int depth;
+	int in_selected_pager;
+};
+
+static void
+config_colour(float out[4], uint32_t rgb)
+{
+	cow_colour_convert(out, rgb);
+}
+
+static void
+pager_config_init(struct pager_config *pc)
+{
+	memset(pc, 0, sizeof(*pc));
+	pc->desktop_labels = 1;
+	pc->monitor_labels = 1;
+	pc->label_highlight = 1;
+	pc->desktop_scale = 32;
+	config_colour(pc->background, 0xffffff);
+	memcpy(pc->desk_bg, pc->background, sizeof(pc->desk_bg));
+	memcpy(pc->page_bg, pc->background, sizeof(pc->page_bg));
+	memcpy(pc->page_active_bg, pc->background, sizeof(pc->page_active_bg));
+	config_colour(pc->label_bg, 0xd8d8d8);
+	config_colour(pc->label_active_bg, 0x3366b3);
+	config_colour(pc->label_fg, 0x000000);
+	config_colour(pc->label_inactive_fg, 0x000000);
+	config_colour(pc->window_focused_bg, 0xf7c733);
+}
+
+static void
+set_source_colour(cairo_t *cr, const float c[4])
+{
+	cairo_set_source_rgba(cr, c[0], c[1], c[2], c[3]);
+}
+
+static void
+apply_theme_defaults(const state_t *st)
+{
+	if (st == NULL)
+		return;
+
+	if (!cfg.background_set) {
+		if (st->theme.has_background) {
+			memcpy(cfg.background, st->theme.background,
+			    sizeof(cfg.background));
+		} else if (st->theme.has_inactive_bg) {
+			memcpy(cfg.background, st->theme.inactive_bg,
+			    sizeof(cfg.background));
+		}
+	}
+
+	if (!cfg.desk_bg_set)
+		memcpy(cfg.desk_bg, cfg.background, sizeof(cfg.desk_bg));
+	if (!cfg.page_bg_set)
+		memcpy(cfg.page_bg, cfg.background, sizeof(cfg.page_bg));
+	if (!cfg.page_active_bg_set) {
+		if (!cfg.background_set && st->theme.has_active_bg) {
+			memcpy(cfg.page_active_bg, st->theme.active_bg,
+			    sizeof(cfg.page_active_bg));
+		} else {
+			memcpy(cfg.page_active_bg, cfg.background,
+			    sizeof(cfg.page_active_bg));
+		}
+	}
+
+	if (!cfg.label_bg_set && st->theme.has_inactive_bg)
+		memcpy(cfg.label_bg, st->theme.inactive_bg,
+		    sizeof(cfg.label_bg));
+	if (!cfg.label_active_bg_set && st->theme.has_active_bg)
+		memcpy(cfg.label_active_bg, st->theme.active_bg,
+		    sizeof(cfg.label_active_bg));
+	if (!cfg.label_fg_set && st->theme.has_active_fg)
+		memcpy(cfg.label_fg, st->theme.active_fg,
+		    sizeof(cfg.label_fg));
+	if (!cfg.label_inactive_fg_set && st->theme.has_inactive_fg)
+		memcpy(cfg.label_inactive_fg, st->theme.inactive_fg,
+		    sizeof(cfg.label_inactive_fg));
+	if (!cfg.window_focused_bg_set && st->theme.has_active_bg)
+		memcpy(cfg.window_focused_bg, st->theme.active_bg,
+		    sizeof(cfg.window_focused_bg));
+}
+
+static int
+parse_monitor_list(const char *list, int replace)
+{
+	if (replace)
+		opt_n_monitors = 0;
+	char *dup = strdup(list);
+	if (dup == NULL)
+		return 0;
+	char *save = NULL;
+	char *tok = strtok_r(dup, ",", &save);
+	while (tok != NULL && opt_n_monitors < MAX_OPT_MONITORS) {
+		while (*tok == ' ' || *tok == '\t')
+			tok++;
+		size_t L = strlen(tok);
+		while (L > 0 && (tok[L - 1] == ' ' || tok[L - 1] == '\t'))
+			tok[--L] = '\0';
+		if (*tok != '\0') {
+			strlcpy(opt_monitors[opt_n_monitors], tok,
+			    sizeof(opt_monitors[0]));
+			opt_n_monitors++;
+		}
+		tok = strtok_r(NULL, ",", &save);
+	}
+	free(dup);
+	return 1;
+}
+
+static int
+pager_selection_find(const char *name)
+{
+	for (int i = 0; i < n_selected_pagers; i++)
+		if (strcmp(selected_pagers[i].name, name) == 0)
+			return i;
+	return -1;
+}
+
+static bool
+pager_selection_add(const char *name)
+{
+	if (pager_selection_find(name) != -1)
+		return true;
+	if (n_selected_pagers >= MAX_SELECTED_PAGERS)
+		return false;
+
+	selected_pagers[n_selected_pagers].name = strdup(name);
+	if (selected_pagers[n_selected_pagers].name == NULL)
+		return false;
+	selected_pagers[n_selected_pagers].seen = 0;
+	n_selected_pagers++;
+	return true;
+}
+
+static void
+pager_selections_free(void)
+{
+	for (int i = 0; i < n_selected_pagers; i++) {
+		free(selected_pagers[i].name);
+		selected_pagers[i].name = NULL;
+		selected_pagers[i].seen = 0;
+	}
+	n_selected_pagers = 0;
+}
 
 static state_t	       g_state;
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -213,8 +424,10 @@ handle_wake(void)
 	state_t st = g_state;
 	pthread_mutex_unlock(&g_lock);
 
-	if (dirty && surface_configured)
+	if (dirty && surface_configured) {
+		apply_theme_defaults(&st);
 		do_render(&st);
+	}
 }
 
 static void
@@ -521,6 +734,37 @@ reference_output(const state_t *st)
 	return st->n_outs ? &st->outs[0] : NULL;
 }
 
+static const pout_t *
+output_by_name(const state_t *st, const char *name)
+{
+	if (name == NULL || name[0] == '\0')
+		return NULL;
+	for (int i = 0; i < st->n_outs; i++)
+		if (strcmp(st->outs[i].name, name) == 0)
+			return &st->outs[i];
+	return NULL;
+}
+
+static const pout_t *
+current_only_output(const state_t *st)
+{
+	const char *pinned = single_pinned_output();
+	const pout_t *o = output_by_name(st, pinned);
+	if (o != NULL)
+		return o;
+
+	o = output_by_name(st, st->user_output);
+	if (o != NULL && monitor_visible(o->name))
+		return o;
+
+	for (int i = 0; i < st->n_outs; i++) {
+		if (st->outs[i].current && monitor_visible(st->outs[i].name))
+			return &st->outs[i];
+	}
+
+	return reference_output(st);
+}
+
 /*
  * Is this window a cowpager window?
  */
@@ -691,16 +935,13 @@ typedef struct {
 } layout_t;
 
 /*
- * Minimum / maximum font sizes (px).  The actual band height is
- * driven by these so the text remains legible at any window size --
- * if the user shrinks cowpager, the chrome simply takes up
- * proportionally more of the window rather than the labels becoming
- * unreadable.
+ * FvwmPager uses the configured module font at every window size: the
+ * pager geometry shrinks and grows, but labels do not scale with it.
+ * Keep cowpager's chrome on the same model so small pager windows stay
+ * readable instead of becoming a scaled-down preview.
  */
-#define DESK_FONT_MIN 11.0
-#define DESK_FONT_MAX 16.0
-#define TAB_FONT_MIN 10.0
-#define TAB_FONT_MAX 14.0
+#define DESK_FONT_PX 10.0
+#define TAB_FONT_PX 10.0
 
 /* Convert a font size to the band height needed to host it with a
  * little vertical padding.  Mirrors the (font / band_h * 0.75)
@@ -714,34 +955,15 @@ band_h_for_font(double font_px)
 	return h;
 }
 
-/* Pick a font size for a band of label-text, clamped to the readable
- * window.  At larger window heights the font grows proportionally up
- * to MAX; at very small heights it stops at MIN even if that means
- * the band eats a larger share of the window. */
-static double
-pick_font_px(int win_h_local, int divisor, double min_px, double max_px)
-{
-	double f = (double)win_h_local / divisor;
-	if (f < min_px)
-		f = min_px;
-	if (f > max_px)
-		f = max_px;
-	return f;
-}
-
-/* Choose chrome band heights based on the readable-font floor.  The
- * resulting heights honour the floor even when the window is small. */
 static void
-choose_label_heights(int win_h_local, int has_mon_tabs, double *desk_font,
+choose_label_heights(int has_mon_tabs, double *desk_font,
     int *desk_h, double *tab_font, int *tab_h)
 {
-	*desk_font = pick_font_px(win_h_local, 32, DESK_FONT_MIN,
-	    DESK_FONT_MAX);
+	*desk_font = DESK_FONT_PX;
 	*desk_h	   = band_h_for_font(*desk_font);
 
 	if (has_mon_tabs) {
-		*tab_font = pick_font_px(win_h_local, 40, TAB_FONT_MIN,
-		    TAB_FONT_MAX);
+		*tab_font = TAB_FONT_PX;
 		*tab_h	  = band_h_for_font(*tab_font);
 	} else {
 		*tab_font = 0;
@@ -770,8 +992,13 @@ compute_layout(const state_t *st, layout_t *L)
 	 * monitor to distinguish.  With `-m NAME` or a single-output
 	 * setup there is no useful information in the monitor-label row. */
 	int n_tab_mons = mon_tab_count(st);
-	choose_label_heights(win_h, n_tab_mons > 1, &L->desk_font_px,
-	    &L->desk_label_h, &L->tab_font_px, &L->mon_tab_h);
+	choose_label_heights(cfg.monitor_labels && n_tab_mons > 1,
+	    &L->desk_font_px, &L->desk_label_h, &L->tab_font_px,
+	    &L->mon_tab_h);
+	if (!cfg.desktop_labels) {
+		L->desk_font_px = 0;
+		L->desk_label_h = 0;
+	}
 	L->chrome_h = L->desk_label_h + L->mon_tab_h;
 
 	L->cell_w = win_w / L->cols;
@@ -806,7 +1033,7 @@ maybe_apply_initial_size(const state_t *st, const layout_t *L)
 	const pout_t *ref = reference_output(st);
 	int pcols = ref && ref->page_cols > 0 ? ref->page_cols : 1;
 	int prows = ref && ref->page_rows > 0 ? ref->page_rows : 1;
-	const int vscale = 32; /* FvwmPager's default Scr.VScale. */
+	const int vscale = cfg.desktop_scale > 0 ? cfg.desktop_scale : 32;
 
 	int label_h = L->chrome_h;
 	int w = win_w;
@@ -861,6 +1088,71 @@ draw_text_centered(cairo_t *cr, double x, double w, double baseline_y,
 	cairo_show_text(cr, txt);
 }
 
+static void
+draw_text_centered_clipped(cairo_t *cr, double x, double y, double w,
+    double h, double baseline_y, const char *txt)
+{
+	if (w <= 1 || h <= 1)
+		return;
+
+	cairo_save(cr);
+	cairo_rectangle(cr, x, y, w, h);
+	cairo_clip(cr);
+	draw_text_centered(cr, x, w, baseline_y, txt);
+	cairo_restore(cr);
+}
+
+static void
+stroke_page_grid_lines(cairo_t *cr, double sx, double sy, double sw,
+    double sh, int pcols, int prows, double cw, double ch)
+{
+	for (int pc = 1; pc < pcols; pc++) {
+		double x = sx + pc * cw + 0.5;
+		cairo_move_to(cr, x, sy);
+		cairo_line_to(cr, x, sy + sh);
+		cairo_stroke(cr);
+	}
+	for (int pr = 1; pr < prows; pr++) {
+		double y = sy + pr * ch + 0.5;
+		cairo_move_to(cr, sx, y);
+		cairo_line_to(cr, sx + sw, y);
+		cairo_stroke(cr);
+	}
+}
+
+static void
+fill_output_backgrounds(cairo_t *cr, const state_t *st, const canvas_t *cv,
+    double cell_x, double cell_y, double cw, double ch)
+{
+	if (cfg.background_set || cfg.page_bg_set)
+		return;
+
+	for (int oi = 0; oi < st->n_outs; oi++) {
+		const pout_t *o = &st->outs[oi];
+		if (!o->has_background)
+			continue;
+		if (!monitor_visible(o->name))
+			continue;
+		if (!output_in_canvas(cv, o))
+			continue;
+
+		int oow = o->output_w > 0 ? o->output_w : 1;
+		int ooh = o->output_h > 0 ? o->output_h : 1;
+		double ax = cell_x + ((double)(o->output_x - cv->x) / cv->w) *
+		    cw;
+		double ay = cell_y + ((double)(o->output_y - cv->y) / cv->h) *
+		    ch;
+		double aw = ((double)oow / cv->w) * cw;
+		double ah = ((double)ooh / cv->h) * ch;
+		if (aw <= 0.0 || ah <= 0.0)
+			continue;
+
+		set_source_colour(cr, o->background);
+		cairo_rectangle(cr, ax, ay, aw, ah);
+		cairo_fill(cr);
+	}
+}
+
 /*
  * Draw one desk's page-grid: fill page cells, draw window miniatures
  * for windows on this desk from every monitor, mark the current page
@@ -911,14 +1203,73 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 			}
 
 			if (is_cur)
-				cairo_set_source_rgba(cr, 0.22, 0.45, 0.22,
-				    1.0);
+				set_source_colour(cr, cfg.page_active_bg);
 			else
-				cairo_set_source_rgba(cr, 0.28, 0.28, 0.31,
-				    1.0);
+				set_source_colour(cr, cfg.page_bg);
 			cairo_rectangle(cr, cx, cy, cw, ch);
 			cairo_fill(cr);
+			fill_output_backgrounds(cr, st, cv, cx, cy, cw, ch);
 		}
+	}
+
+	/*
+	 * In per-output mode with multiple monitors visible, every page
+	 * cell can target a monitor by its physical rectangle in the
+	 * combined monitor canvas.  Draw faint footprints in each page so
+	 * empty areas still communicate where a click will apply.
+	 */
+	if (is_per_output_mode(st) && !cv->tracked && mon_tab_count(st) > 1) {
+		double dashes[2] = { 4.0, 2.0 };
+		for (int pr = 0; pr < prows; pr++) {
+			for (int pc = 0; pc < pcols; pc++) {
+				double cell_x = sx + pc * cw;
+				double cell_y = sy + pr * ch;
+
+				for (int oi = 0; oi < st->n_outs; oi++) {
+					const pout_t *o = &st->outs[oi];
+					if (!monitor_visible(o->name))
+						continue;
+					if (!output_in_canvas(cv, o))
+						continue;
+					if (d->nr == o->current_desk &&
+					    pc == o->page_col && pr == o->page_row)
+						continue;
+
+					int oow = o->output_w > 0 ?
+					    o->output_w : 1;
+					int ooh = o->output_h > 0 ?
+					    o->output_h : 1;
+					double ax = cell_x +
+					    ((double)(o->output_x - cv->x) /
+					    cv->w) * cw;
+					double ay = cell_y +
+					    ((double)(o->output_y - cv->y) /
+					    cv->h) * ch;
+					double aw = ((double)oow / cv->w) * cw;
+					double ah = ((double)ooh / cv->h) * ch;
+					if (aw <= 1.0 || ah <= 1.0)
+						continue;
+
+					const double inset = 3.0;
+					double rx = ax + inset + 0.5;
+					double ry = ay + inset + 0.5;
+					double rw = aw - 2 * inset - 1.0;
+					double rh = ah - 2 * inset - 1.0;
+					if (rw <= 1.0 || rh <= 1.0)
+						continue;
+
+					double mr, mg, mb;
+					monitor_colour(o->name, &mr, &mg, &mb);
+					cairo_set_source_rgba(cr, mr, mg, mb,
+					    0.68);
+					cairo_set_line_width(cr, 1.5);
+					cairo_set_dash(cr, dashes, 2, 0);
+					cairo_rectangle(cr, rx, ry, rw, rh);
+					cairo_stroke(cr);
+				}
+			}
+		}
+		cairo_set_dash(cr, NULL, 0, 0);
 	}
 
 	/*
@@ -965,9 +1316,9 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		int    foc = strcmp(w->id, st->focused_id) == 0;
 		double r, g, b;
 		if (foc) {
-			r = 0.97;
-			g = 0.78;
-			b = 0.20;
+			r = cfg.window_focused_bg[0];
+			g = cfg.window_focused_bg[1];
+			b = cfg.window_focused_bg[2];
 		} else {
 			window_colour(w->id, &r, &g, &b);
 		}
@@ -1099,9 +1450,8 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 			if (n_overlay_handles < MAX_OVERLAY_HANDLES) {
 				struct overlay_handle *h =
 				    &overlay_handles[n_overlay_handles++];
-				strncpy(h->name, ovi->o->name,
-				    sizeof(h->name) - 1);
-				h->name[sizeof(h->name) - 1] = '\0';
+				strlcpy(h->name, ovi->o->name,
+				    sizeof(h->name));
 				const double slack	     = 2.0;
 				h->px			     = plate_x - slack;
 				h->py			     = plate_y - slack;
@@ -1121,25 +1471,19 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 	 */
 	if (pcols > 1 || prows > 1) {
 		double dashes[2] = { 2.0, 2.0 };
-		/* Brighter than the page-cell background
-		 * (rgba(0.28,0.28,0.31)) and fully opaque so the
-		 * dashes are clearly visible without washing into the
-		 * fill. */
-		cairo_set_source_rgba(cr, 0.78, 0.78, 0.82, 1.0);
-		cairo_set_line_width(cr, 1.0);
 		cairo_set_dash(cr, dashes, 2, 0);
-		for (int pc = 1; pc < pcols; pc++) {
-			double x = sx + pc * cw + 0.5;
-			cairo_move_to(cr, x, sy);
-			cairo_line_to(cr, x, sy + sh);
-			cairo_stroke(cr);
-		}
-		for (int pr = 1; pr < prows; pr++) {
-			double y = sy + pr * ch + 0.5;
-			cairo_move_to(cr, sx, y);
-			cairo_line_to(cr, sx + sw, y);
-			cairo_stroke(cr);
-		}
+
+		/* Contrast against both the light page fill and the
+		 * coloured monitor-target outlines. */
+		cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.72);
+		cairo_set_line_width(cr, 2.0);
+		stroke_page_grid_lines(cr, sx, sy, sw, sh, pcols, prows, cw,
+		    ch);
+
+		cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.92);
+		cairo_set_line_width(cr, 1.0);
+		stroke_page_grid_lines(cr, sx, sy, sw, sh, pcols, prows, cw,
+		    ch);
 		/* Reset to solid for any subsequent strokes. */
 		cairo_set_dash(cr, NULL, 0, 0);
 	}
@@ -1159,22 +1503,33 @@ static void
 draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
     const pdesk_t *d, int dx, int dy, int is_active_desk)
 {
-	int desk_hilight = is_active_desk && L->mon_tab_h <= 0;
+	int desk_hilight = cfg.label_highlight && is_active_desk &&
+	    L->mon_tab_h <= 0;
 
 	if (desk_hilight)
-		cairo_set_source_rgba(cr, 0.20, 0.40, 0.70, 1.0);
+		set_source_colour(cr, cfg.label_active_bg);
 	else
-		cairo_set_source_rgba(cr, 0.22, 0.22, 0.26, 1.0);
-	cairo_rectangle(cr, dx, dy, L->cell_w, L->desk_label_h);
-	cairo_fill(cr);
+		set_source_colour(cr, cfg.label_bg);
+	if (L->desk_label_h > 0) {
+		cairo_rectangle(cr, dx, dy, L->cell_w, L->desk_label_h);
+		cairo_fill(cr);
 
-	cairo_set_source_rgba(cr, 0.94, 0.94, 0.96, 1.0);
-	set_font(cr, L->desk_font_px, 1);
+		set_source_colour(cr, cfg.label_fg);
+		set_font(cr, L->desk_font_px, 1);
 
-	char lbl[32];
-	snprintf(lbl, sizeof(lbl), "Desk %d", d->nr);
-	draw_text_centered(cr, dx, L->cell_w,
-	    dy + L->desk_label_h - L->desk_label_h * 0.22, lbl);
+		char nr_label[16];
+		snprintf(nr_label, sizeof(nr_label), "%d", d->nr);
+		const char *text = nr_label;
+		if (d->name[0] != '\0') {
+			cairo_text_extents_t te;
+			cairo_text_extents(cr, d->name, &te);
+			if (te.width <= L->cell_w - 4)
+				text = d->name;
+		}
+		draw_text_centered_clipped(cr, dx, dy, L->cell_w,
+		    L->desk_label_h,
+		    dy + L->desk_label_h - L->desk_label_h * 0.22, text);
+	}
 
 	if (L->mon_tab_h <= 0)
 		return;
@@ -1191,11 +1546,11 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 
 	for (int i = 0; i < n_tab; i++) {
 		double tx = dx + i * tw;
-		int active = tab[i]->current_desk == d->nr;
+		int active = cfg.label_highlight && tab[i]->current_desk == d->nr;
 		if (active)
-			cairo_set_source_rgba(cr, 0.24, 0.55, 0.28, 1.0);
+			set_source_colour(cr, cfg.label_active_bg);
 		else
-			cairo_set_source_rgba(cr, 0.14, 0.14, 0.17, 1.0);
+			set_source_colour(cr, cfg.label_bg);
 		cairo_rectangle(cr, tx, tab_y, tw, L->mon_tab_h);
 		cairo_fill(cr);
 
@@ -1223,10 +1578,10 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 		}
 
 		if (active)
-			cairo_set_source_rgba(cr, 0.98, 0.98, 1.0, 1.0);
+			set_source_colour(cr, cfg.label_fg);
 		else
-			cairo_set_source_rgba(cr, 0.55, 0.55, 0.60, 1.0);
-		draw_text_centered(cr, tx, tw,
+			set_source_colour(cr, cfg.label_inactive_fg);
+		draw_text_centered_clipped(cr, tx, tab_y, tw, L->mon_tab_h,
 		    tab_y + L->mon_tab_h - L->mon_tab_h * 0.22, name);
 	}
 }
@@ -1268,7 +1623,7 @@ do_render(const state_t *st)
 	cairo_t		*cr = cairo_create(cs);
 
 	/* Outer background */
-	cairo_set_source_rgba(cr, 0.06, 0.06, 0.08, 1.0);
+	set_source_colour(cr, cfg.background);
 	cairo_paint(cr);
 
 	const pout_t *ref = reference_output(st);
@@ -1279,6 +1634,9 @@ do_render(const state_t *st)
 	int desk_indices[MAX_DESKS];
 	int n_visible = 0;
 	if (opt_current_only) {
+		const pout_t *cur = current_only_output(st);
+		if (cur != NULL)
+			ref = cur;
 		for (int i = 0; i < ref->n_desks; i++) {
 			if (ref->desks[i].nr == ref->current_desk) {
 				desk_indices[n_visible++] = i;
@@ -1310,7 +1668,7 @@ do_render(const state_t *st)
 		    d->nr == ref->current_desk;
 
 		/* Desk cell background */
-		cairo_set_source_rgba(cr, 0.16, 0.16, 0.18, 1.0);
+		set_source_colour(cr, cfg.desk_bg);
 		cairo_rectangle(cr, dx, dy, L.cell_w, L.cell_h);
 		cairo_fill(cr);
 
@@ -1460,6 +1818,8 @@ locate(const state_t *st, double x, double y, const layout_t *L, int *vis_idx,
 static const pdesk_t *
 resolve_visible_desk(const pout_t *ref, int vis_idx)
 {
+	if (ref == NULL)
+		return NULL;
 	if (vis_idx < 0)
 		return NULL;
 	if (opt_current_only) {
@@ -1490,7 +1850,8 @@ hit_test_window(const state_t *st, double x, double y,
 	layout_t L;
 	compute_layout(st, &L);
 
-	const pout_t *ref = reference_output(st);
+	const pout_t *ref = opt_current_only ? current_only_output(st) :
+	    reference_output(st);
 	if (!ref)
 		return NULL;
 	canvas_t cv;
@@ -1662,7 +2023,8 @@ hit_test_page(const state_t *st, double x, double y, int *desk_nr, int *pc_out,
 	layout_t L;
 	compute_layout(st, &L);
 
-	const pout_t *ref = reference_output(st);
+	const pout_t *ref = opt_current_only ? current_only_output(st) :
+	    reference_output(st);
 	if (!ref)
 		return 0;
 	canvas_t cv;
@@ -1738,6 +2100,7 @@ xdg_surface_configure(__unused void *data, struct xdg_surface *xs,
 	pthread_mutex_lock(&g_lock);
 	state_t st = g_state;
 	pthread_mutex_unlock(&g_lock);
+	apply_theme_defaults(&st);
 	do_render(&st);
 }
 
@@ -1840,8 +2203,7 @@ ptr_button(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t s,
 	pthread_mutex_lock(&g_lock);
 	state_t st = g_state;
 	char	user_out[64];
-	strncpy(user_out, cp_user_output, sizeof(user_out) - 1);
-	user_out[sizeof(user_out) - 1] = '\0';
+	strlcpy(user_out, cp_user_output, sizeof(user_out));
 	pthread_mutex_unlock(&g_lock);
 
 	/*
@@ -1861,9 +2223,8 @@ ptr_button(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t s,
 			drag_start_y = ptr_y;
 			drag_cur_x   = ptr_x;
 			drag_cur_y   = ptr_y;
-			strncpy(drag_monitor, plate_mon,
-			    sizeof(drag_monitor) - 1);
-			drag_monitor[sizeof(drag_monitor) - 1] = '\0';
+			strlcpy(drag_monitor, plate_mon,
+			    sizeof(drag_monitor));
 			if (opt_verbose)
 				fprintf(stderr,
 				    "cowpager: drag-start mon=%s at "
@@ -2229,8 +2590,7 @@ out_name(__unused void *d, struct wl_output *wo, const char *name)
 	struct cp_output *o = cp_output_for_wl(wo);
 	if (o == NULL || name == NULL)
 		return;
-	strncpy(o->name, name, sizeof(o->name) - 1);
-	o->name[sizeof(o->name) - 1] = '\0';
+	strlcpy(o->name, name, sizeof(o->name));
 }
 
 static void
@@ -2357,6 +2717,15 @@ cp_host_output(void)
 	return NULL;
 }
 
+static int
+parse_theme_colour(cJSON *theme, const char *key, float out[4])
+{
+	cJSON *v = cJSON_GetObjectItem(theme, key);
+	if (!cJSON_IsString(v))
+		return 0;
+	return cow_colour_parse(v->valuestring, out) ? 1 : 0;
+}
+
 static void
 parse_status(const char *json)
 {
@@ -2369,11 +2738,25 @@ parse_status(const char *json)
 
 	cJSON *dcfg = cJSON_GetObjectItem(root, "desktop_configuration");
 	if (cJSON_IsString(dcfg))
-		strncpy(st.desktop_config, dcfg->valuestring,
-		    sizeof(st.desktop_config) - 1);
+		strlcpy(st.desktop_config, dcfg->valuestring,
+		    sizeof(st.desktop_config));
 	else
-		strncpy(st.desktop_config, "global",
-		    sizeof(st.desktop_config) - 1);
+		strlcpy(st.desktop_config, "global",
+		    sizeof(st.desktop_config));
+
+	cJSON *theme = cJSON_GetObjectItem(root, "theme");
+	if (cJSON_IsObject(theme)) {
+		st.theme.has_background = parse_theme_colour(theme,
+		    "background", st.theme.background);
+		st.theme.has_active_bg = parse_theme_colour(theme,
+		    "active_bg", st.theme.active_bg);
+		st.theme.has_inactive_bg = parse_theme_colour(theme,
+		    "inactive_bg", st.theme.inactive_bg);
+		st.theme.has_active_fg = parse_theme_colour(theme,
+		    "active_fg", st.theme.active_fg);
+		st.theme.has_inactive_fg = parse_theme_colour(theme,
+		    "inactive_fg", st.theme.inactive_fg);
+	}
 
 	cJSON *outs = cJSON_GetObjectItem(root, "outputs");
 	cJSON *out;
@@ -2391,7 +2774,7 @@ parse_status(const char *json)
 #define GS(k, f, z)                      \
 	v = cJSON_GetObjectItem(out, k); \
 	if (cJSON_IsString(v))           \
-		strncpy(po->f, v->valuestring, z - 1);
+		strlcpy(po->f, v->valuestring, z);
 		GS("name", name, 64)
 		GN("number", number)
 		GN("x", output_x)
@@ -2410,6 +2793,8 @@ parse_status(const char *json)
 		GN("output_h", output_h)
 #undef GN
 #undef GS
+		po->has_background = parse_theme_colour(out, "background",
+		    po->background);
 		cJSON *desks = cJSON_GetObjectItem(out, "desks");
 		cJSON *dk;
 		int    di = 0;
@@ -2421,6 +2806,10 @@ parse_status(const char *json)
 			v	    = cJSON_GetObjectItem(dk, "nr");
 			if (cJSON_IsNumber(v))
 				pd->nr = (int)v->valuedouble;
+			v = cJSON_GetObjectItem(dk, "name");
+			if (cJSON_IsString(v))
+				strlcpy(pd->name, v->valuestring,
+				    sizeof(pd->name));
 			v = cJSON_GetObjectItem(dk, "windows");
 			if (cJSON_IsNumber(v))
 				pd->window_count = (int)v->valuedouble;
@@ -2435,8 +2824,8 @@ parse_status(const char *json)
 	if (foc) {
 		cJSON *fid = cJSON_GetObjectItem(foc, "id");
 		if (cJSON_IsString(fid))
-			strncpy(st.focused_id, fid->valuestring,
-			    sizeof(st.focused_id) - 1);
+			strlcpy(st.focused_id, fid->valuestring,
+			    sizeof(st.focused_id));
 	}
 	cJSON_Delete(root);
 
@@ -2458,11 +2847,11 @@ parse_status(const char *json)
 			continue;
 		if (cp_surface_on_output(st.outs[i].name))
 			continue;
-		strncpy(cp_user_output, st.outs[i].name,
-		    sizeof(cp_user_output) - 1);
-		cp_user_output[sizeof(cp_user_output) - 1] = '\0';
+		strlcpy(cp_user_output, st.outs[i].name,
+		    sizeof(cp_user_output));
 		break;
 	}
+	strlcpy(st.user_output, cp_user_output, sizeof(st.user_output));
 	st.n_wins = g_state.n_wins;
 	memcpy(st.wins, g_state.wins, sizeof(st.wins));
 	g_state = st;
@@ -2505,7 +2894,7 @@ fetch_windows(void)
 #define GS(k, f, z)                    \
 	v = cJSON_GetObjectItem(w, k); \
 	if (cJSON_IsString(v))         \
-		strncpy(pw->f, v->valuestring, z - 1);
+		strlcpy(pw->f, v->valuestring, z);
 		GS("id", id, 128)
 		GS("output", output, 64)
 		GS("app_id", app_id, 64)
@@ -2555,76 +2944,421 @@ status_thread(__unused void *arg)
 	return NULL;
 }
 
+static bool
+load_pager_style(char **fields, int n, const char **why)
+{
+	if (n != 3) {
+		*why = "bad style";
+		return false;
+	}
+
+	float *slot = NULL;
+	if (strcmp(fields[1], "background") == 0) {
+		slot = cfg.background;
+		cfg.background_set = 1;
+	} else if (strcmp(fields[1], "desk.bg") == 0) {
+		slot = cfg.desk_bg;
+		cfg.desk_bg_set = 1;
+	} else if (strcmp(fields[1], "page.bg") == 0) {
+		slot = cfg.page_bg;
+		cfg.page_bg_set = 1;
+	} else if (strcmp(fields[1], "page.active.bg") == 0) {
+		slot = cfg.page_active_bg;
+		cfg.page_active_bg_set = 1;
+	} else if (strcmp(fields[1], "label.bg") == 0) {
+		slot = cfg.label_bg;
+		cfg.label_bg_set = 1;
+	} else if (strcmp(fields[1], "label.active.bg") == 0) {
+		slot = cfg.label_active_bg;
+		cfg.label_active_bg_set = 1;
+	} else if (strcmp(fields[1], "label.fg") == 0) {
+		slot = cfg.label_fg;
+		cfg.label_fg_set = 1;
+	} else if (strcmp(fields[1], "label.inactive.fg") == 0) {
+		slot = cfg.label_inactive_fg;
+		cfg.label_inactive_fg_set = 1;
+	} else if (strcmp(fields[1], "window.focused.bg") == 0) {
+		slot = cfg.window_focused_bg;
+		cfg.window_focused_bg_set = 1;
+	} else {
+		*why = "unknown style";
+		return false;
+	}
+	if (!cow_colour_parse(fields[2], slot)) {
+		*why = "bad colour";
+		return false;
+	}
+	if (strcmp(fields[1], "background") == 0) {
+		if (!cfg.desk_bg_set)
+			memcpy(cfg.desk_bg, cfg.background, sizeof(cfg.desk_bg));
+		if (!cfg.page_bg_set)
+			memcpy(cfg.page_bg, cfg.background, sizeof(cfg.page_bg));
+		if (!cfg.page_active_bg_set)
+			memcpy(cfg.page_active_bg, cfg.background,
+			    sizeof(cfg.page_active_bg));
+	}
+	return true;
+}
+
+static bool
+load_show_pager(char **fields, int n, const char **why, bool collect)
+{
+	if (n < 3 || strcmp(fields[1], "pager") != 0) {
+		*why = "bad show";
+		return false;
+	}
+	if (!collect)
+		return true;
+
+	for (int i = 2; i < n; i++) {
+		if (!pager_selection_add(fields[i])) {
+			*why = "too many pagers";
+			return false;
+		}
+	}
+	return true;
+}
+
+static bool
+scan_pager_config_line(const struct cow_module_config_line *line,
+    const char **why, void *data)
+{
+	struct pager_load_ctx *ctx = data;
+	char **fields = line->fields;
+	int n = line->nfields;
+
+	if (ctx->depth == 0 && strcmp(fields[0], "show") == 0) {
+		bool collect = show_group_count == instance_index;
+
+		if (!load_show_pager(fields, n, why, collect))
+			return false;
+		show_group_count++;
+	}
+
+	if (strcmp(fields[0], "}") == 0 && n == 1) {
+		if (ctx->depth > 0)
+			ctx->depth--;
+	} else if (strcmp(fields[n - 1], "{") == 0)
+		ctx->depth++;
+
+	return true;
+}
+
+static bool
+load_pager_option(char **fields, int n, const char **why)
+{
+	int v;
+	bool b;
+
+	if (strcmp(fields[0], "rows") == 0) {
+		if (n != 2 || !cow_module_config_parse_int(fields[1], &v) ||
+		    v < 1) {
+			*why = "bad rows";
+			return false;
+		}
+		opt_rows = cfg.rows = v;
+	} else if (strcmp(fields[0], "columns") == 0) {
+		if (n != 2 || !cow_module_config_parse_int(fields[1], &v) ||
+		    v < 1) {
+			*why = "bad columns";
+			return false;
+		}
+		opt_cols = cfg.cols = v;
+	} else if (strcmp(fields[0], "monitors") == 0) {
+		if (n != 2 || !parse_monitor_list(fields[1], 1)) {
+			*why = "bad monitors";
+			return false;
+		}
+	} else if (strcmp(fields[0], "current-only") == 0) {
+		if (n != 2 || !cow_module_config_parse_bool(fields[1], &b)) {
+			*why = "bad current-only";
+			return false;
+		}
+		opt_current_only = cfg.current_only = b ? 1 : 0;
+	} else if (strcmp(fields[0], "desktop-labels") == 0) {
+		if (n != 2 || !cow_module_config_parse_bool(fields[1], &b)) {
+			*why = "bad desktop-labels";
+			return false;
+		}
+		cfg.desktop_labels = b ? 1 : 0;
+	} else if (strcmp(fields[0], "monitor-labels") == 0) {
+		if (n != 2 || !cow_module_config_parse_bool(fields[1], &b)) {
+			*why = "bad monitor-labels";
+			return false;
+		}
+		cfg.monitor_labels = b ? 1 : 0;
+	} else if (strcmp(fields[0], "label-highlight") == 0) {
+		if (n != 2 || !cow_module_config_parse_bool(fields[1], &b)) {
+			*why = "bad label-highlight";
+			return false;
+		}
+		cfg.label_highlight = b ? 1 : 0;
+	} else if (strcmp(fields[0], "desktop-scale") == 0) {
+		if (n != 2 || !cow_module_config_parse_int(fields[1], &v) ||
+		    v < 1) {
+			*why = "bad desktop-scale";
+			return false;
+		}
+		cfg.desktop_scale = v;
+	} else if (strcmp(fields[0], "style") == 0) {
+		return load_pager_style(fields, n, why);
+	} else {
+		*why = "unknown command";
+		return false;
+	}
+	return true;
+}
+
+static bool
+load_pager_config_line(const struct cow_module_config_line *line,
+    const char **why, void *data)
+{
+	struct pager_load_ctx *ctx = data;
+	char **fields = line->fields;
+	int n = line->nfields;
+
+	if (strcmp(fields[0], "}") == 0) {
+		if (n != 1 || ctx->depth == 0) {
+			*why = "bad block close";
+			return false;
+		}
+		ctx->depth--;
+		if (ctx->depth == 0)
+			ctx->in_selected_pager = 0;
+		return true;
+	}
+
+	if (strcmp(fields[0], "show") == 0)
+		return load_show_pager(fields, n, why, false);
+
+	if (strcmp(fields[0], "pager") == 0) {
+		if (n != 3 || strcmp(fields[2], "{") != 0) {
+			*why = "bad pager";
+			return false;
+		}
+		if (ctx->depth != 0) {
+			*why = "nested pager";
+			return false;
+		}
+
+		int idx = pager_selection_find(fields[1]);
+		ctx->depth = 1;
+		ctx->in_selected_pager = idx != -1;
+		if (idx != -1)
+			selected_pagers[idx].seen = 1;
+		return true;
+	}
+
+	if (ctx->depth > 0 && !ctx->in_selected_pager)
+		return true;
+
+	return load_pager_option(fields, n, why);
+}
+
+static bool
+load_pager_config(const char *path)
+{
+	struct pager_load_ctx scan_ctx = { 0 };
+	struct pager_load_ctx load_ctx = { 0 };
+
+	pager_selections_free();
+	show_group_count = 0;
+	if (!cow_module_config_load(PROG, path, MAX_FIELDS,
+		scan_pager_config_line, &scan_ctx))
+		return false;
+	if (show_group_count > 0 && n_selected_pagers == 0) {
+		fprintf(stderr, "%s: %s: no show pager line %d\n", PROG, path,
+		    instance_index);
+		return false;
+	}
+
+	if (!cow_module_config_load(PROG, path, MAX_FIELDS,
+		load_pager_config_line, &load_ctx))
+		return false;
+
+	for (int i = 0; i < n_selected_pagers; i++) {
+		if (selected_pagers[i].seen)
+			continue;
+		fprintf(stderr, "%s: %s: pager not found: %s\n", PROG, path,
+		    selected_pagers[i].name);
+		return false;
+	}
+
+	return true;
+}
+
+static bool
+parse_instance_index(void)
+{
+	const char *value = getenv(SHOW_INDEX_ENV);
+	int idx;
+
+	if (value == NULL || *value == '\0')
+		return true;
+	spawn_extra_instances = false;
+	if (!cow_module_config_parse_int(value, &idx) || idx < 0) {
+		fprintf(stderr, "%s: bad %s\n", PROG, SHOW_INDEX_ENV);
+		return false;
+	}
+	instance_index = idx;
+	return true;
+}
+
+static void
+build_instance_title(void)
+{
+	size_t len;
+
+	if (n_selected_pagers == 0 && opt_n_monitors == 1) {
+		snprintf(instance_title, sizeof(instance_title), "%s:%s", PROG,
+		    opt_monitors[0]);
+		return;
+	}
+
+	if (n_selected_pagers == 0) {
+		strlcpy(instance_title, PROG, sizeof(instance_title));
+		return;
+	}
+
+	snprintf(instance_title, sizeof(instance_title), "%s:%s", PROG,
+	    selected_pagers[0].name);
+	len = strlen(instance_title);
+	for (int i = 1; i < n_selected_pagers; i++) {
+		int n = snprintf(instance_title + len, sizeof(instance_title) - len,
+		    "+%s", selected_pagers[i].name);
+		if (n < 0 || (size_t)n >= sizeof(instance_title) - len)
+			break;
+		len += (size_t)n;
+	}
+}
+
+static void
+spawn_config_instances(char *argv[])
+{
+	if (!spawn_extra_instances)
+		return;
+	for (int i = 1; i < show_group_count; i++) {
+		pid_t pid = fork();
+
+		if (pid != 0)
+			continue;
+		char idx[32];
+		snprintf(idx, sizeof(idx), "%d", i);
+		setenv(SHOW_INDEX_ENV, idx, 1);
+		execvp(argv[0], argv);
+		_exit(127);
+	}
+}
+
+static char *
+find_config_path(int argc, char *argv[], bool *explicit_path)
+{
+	*explicit_path = false;
+	for (int i = 1; i < argc; i++) {
+		if (strcmp(argv[i], "-f") == 0 && i + 1 < argc) {
+			*explicit_path = true;
+			return strdup(argv[i + 1]);
+		}
+		if (strncmp(argv[i], "-f", 2) == 0 && argv[i][2] != '\0') {
+			*explicit_path = true;
+			return strdup(argv[i] + 2);
+		}
+	}
+	return cow_module_config_default_path("cowpager");
+}
+
+static void
+usage(void)
+{
+	fprintf(stderr,
+	    "usage: cowpager [-r rows] [-c cols] "
+	    "[-m mon[,mon...]] [-1] [-v] [-h]\n"
+	    "       cowpager [-f path]\n"
+	    "  -r ROWS   arrange desks in ROWS rows\n"
+	    "  -c COLS   arrange desks in COLS columns\n"
+	    "  -m LIST   restrict pager to the listed\n"
+	    "            monitors (comma-separated). A\n"
+	    "            single monitor is tracked; otherwise\n"
+	    "            the page canvas uses the monitor\n"
+	    "            layout and labels use LIST order\n"
+	    "  -1        show only the currently active desk\n"
+	    "  -v        log click decisions to stderr\n"
+	    "  -f PATH   load cowpager config from PATH\n"
+	    "  -h        show this help\n");
+}
+
 int
 main(int argc, char *argv[])
 {
 	int opt;
-	while ((opt = getopt(argc, argv, "r:c:m:1vh")) != -1) {
+	bool explicit_config = false;
+	char *config_path = NULL;
+
+	for (int i = 1; i < argc; i++) {
+		if (strcmp(argv[i], "-h") == 0) {
+			usage();
+			return 0;
+		}
+	}
+
+	if (!parse_instance_index())
+		return 1;
+
+	pager_config_init(&cfg);
+	config_path = find_config_path(argc, argv, &explicit_config);
+	if (config_path != NULL) {
+		if (access(config_path, R_OK) == 0) {
+			if (!load_pager_config(config_path)) {
+				free(config_path);
+				return 1;
+			}
+			spawn_config_instances(argv);
+		} else if (explicit_config) {
+			fprintf(stderr, "%s: %s: %s\n", PROG, config_path,
+			    strerror(errno));
+			free(config_path);
+			return 1;
+		}
+		free(config_path);
+	}
+	optind = 1;
+	while ((opt = getopt(argc, argv, "r:c:f:m:1vh")) != -1) {
 		switch (opt) {
 		case 'r':
 			opt_rows = atoi(optarg);
 			if (opt_rows < 1)
 				opt_rows = 1;
+			cfg.rows = opt_rows;
 			break;
 		case 'c':
 			opt_cols = atoi(optarg);
 			if (opt_cols < 1)
 				opt_cols = 1;
+			cfg.cols = opt_cols;
+			break;
+		case 'f':
 			break;
 		case 'm': {
-			/* Comma-separated list of monitor names.  Preserved
-			 * order defines display order in the pager.
-			 */
-			char *dup = strdup(optarg);
-			if (dup == NULL) {
-				perror("strdup");
+			if (!parse_monitor_list(optarg, 1))
 				return 1;
-			}
-			char *save = NULL;
-			char *tok  = strtok_r(dup, ",", &save);
-			while (
-			    tok != NULL && opt_n_monitors < MAX_OPT_MONITORS) {
-				while (*tok == ' ' || *tok == '\t')
-					tok++;
-				size_t L = strlen(tok);
-				while (L > 0 &&
-				    (tok[L - 1] == ' ' || tok[L - 1] == '\t'))
-					tok[--L] = '\0';
-				if (*tok != '\0') {
-					strncpy(opt_monitors[opt_n_monitors],
-					    tok, sizeof(opt_monitors[0]) - 1);
-					opt_n_monitors++;
-				}
-				tok = strtok_r(NULL, ",", &save);
-			}
-			free(dup);
 			break;
 		}
 		case '1':
 			opt_current_only = 1;
+			cfg.current_only = 1;
 			break;
 		case 'v':
 			opt_verbose = 1;
+			cfg.verbose = 1;
 			break;
 		case 'h':
-			fprintf(stderr,
-			    "usage: cowpager [-r rows] [-c cols] "
-			    "[-m mon[,mon...]] [-1] [-v] [-h]\n"
-			    "  -r ROWS   arrange desks in ROWS rows\n"
-			    "  -c COLS   arrange desks in COLS columns\n"
-			    "  -m LIST   restrict pager to the listed\n"
-			    "            monitors (comma-separated). A\n"
-			    "            single monitor is tracked; otherwise\n"
-			    "            the page canvas uses the monitor\n"
-			    "            layout and labels use LIST order\n"
-			    "  -1        show only the currently active desk\n"
-			    "  -v        log click decisions to stderr\n"
-			    "  -h        show this help\n");
+			usage();
 			return 0;
 		default:
 			return 1;
 		}
 	}
+	build_instance_title();
 
 	if (pipe(wake_pipe) < 0) {
 		perror("pipe");
@@ -2634,7 +3368,7 @@ main(int argc, char *argv[])
 
 	display = wl_display_connect(NULL);
 	if (!display) {
-		fprintf(stderr, "cowpager: no Wayland display\n");
+		fprintf(stderr, "%s: no Wayland display\n", PROG);
 		return 1;
 	}
 
@@ -2645,9 +3379,10 @@ main(int argc, char *argv[])
 
 	if (!compositor || !wl_shm || !xdg_wm_base) {
 		fprintf(stderr,
-		    "cowpager: missing Wayland globals "
+		    "%s: missing Wayland globals "
 		    "(compositor=%p shm=%p xdg=%p)\n",
-		    (void *)compositor, (void *)wl_shm, (void *)xdg_wm_base);
+		    PROG, (void *)compositor, (void *)wl_shm,
+		    (void *)xdg_wm_base);
 		return 1;
 	}
 
@@ -2660,8 +3395,8 @@ main(int argc, char *argv[])
 	xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, NULL);
 	xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
 	xdg_toplevel_add_listener(xdg_toplevel, &xdg_toplevel_listener, NULL);
-	xdg_toplevel_set_title(xdg_toplevel, "cowpager");
-	xdg_toplevel_set_app_id(xdg_toplevel, "cowpager");
+	xdg_toplevel_set_title(xdg_toplevel, instance_title);
+	xdg_toplevel_set_app_id(xdg_toplevel, PROG);
 
 	/* No min/max -- cowpager reflows to whatever size the user picks. */
 	wl_surface_commit(surface);
@@ -2673,7 +3408,7 @@ main(int argc, char *argv[])
 	struct event_base *base = event_base_new();
 	struct event	  *wl_ev = NULL, *wake_ev = NULL;
 	if (base == NULL) {
-		fprintf(stderr, "cowpager: failed to initialise event loop\n");
+		fprintf(stderr, "%s: failed to initialise event loop\n", PROG);
 		return 1;
 	}
 
@@ -2683,7 +3418,7 @@ main(int argc, char *argv[])
 	    wake_cb, NULL);
 	if (wl_ev == NULL || wake_ev == NULL ||
 	    event_add(wl_ev, NULL) < 0 || event_add(wake_ev, NULL) < 0) {
-		fprintf(stderr, "cowpager: failed to add events\n");
+		fprintf(stderr, "%s: failed to add events\n", PROG);
 		opt_running = 0;
 	}
 
@@ -2705,6 +3440,7 @@ main(int argc, char *argv[])
 	xdg_surface_destroy(xdg_surface);
 	wl_surface_destroy(surface);
 	wl_display_disconnect(display);
+	pager_selections_free();
 
 	return 0;
 }

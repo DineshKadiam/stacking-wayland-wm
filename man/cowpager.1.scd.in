@@ -6,7 +6,7 @@ cowpager - FvwmPager-style visual pager for the cow window manager
 
 # SYNOPSIS
 
-*cowpager* [*-r* _rows_] [*-c* _cols_] [*-m* _mon_[,_mon_...]] [*-1*] [*-h*]
+*cowpager* [*-f* _path_] [*-r* _rows_] [*-c* _cols_] [*-m* _mon_[,_mon_...]] [*-1*] [*-h*]
 
 # DESCRIPTION
 
@@ -18,7 +18,16 @@ canvas containing the full visible monitor layout, similar to
 Without any options, *cowpager* will show all desks and windows across all
 outputs.
 
+On startup, *cowpager* reads _cowpager.conf_ from
+_$XDG_CONFIG_HOME/cow/cowpager.conf_ or _~/.config/cow/cowpager.conf_
+when that file exists.  Command-line options override settings loaded
+from the config file.
+
 # OPTIONS
+
+*-f* _PATH_
+	Load configuration from _PATH_ instead of the default location.
+	Unlike a missing default file, a missing explicit file is an error.
 
 *-r* _ROWS_
 	Arrange desks in _ROWS_ rows.  If only *-r* is given, the
@@ -47,6 +56,79 @@ outputs.
 
 *-h*
 	Print usage and exit.
+
+# CONFIGURATION
+
+The config file uses the same simple, whitespace-separated format as
+*cowbuttons*.  Double-quoted strings are supported, and *#* starts a
+comment outside quoted strings.
+
+Top-level options act as defaults.  A config may also contain named
+pager blocks, selected by top-level *show pager* lines.  Each top-level
+*show pager* line creates one *cowpager* window, matching *cowbuttons*:
+
+```
+show pager main
+show pager compact
+
+pager main {
+	columns 4
+	monitors HDMI-A-1,DP-1
+}
+
+pager compact {
+	current-only true
+	monitors DP-1
+}
+```
+
+When no *show pager* line is present, only top-level options are used.
+When a pager block is selected for an instance, options inside that
+block override the top-level defaults.  Multiple names may be listed on
+one *show pager* line; those matching blocks are combined into that one
+instance as they are encountered in the file.
+
+Supported layout commands:
+
+```
+rows 2
+columns 4
+monitors HDMI-A-1,DP-1
+current-only false
+desktop-labels true
+monitor-labels true
+label-highlight true
+desktop-scale 32
+```
+
+*monitors* selects the outputs shown by this pager.  Use a single output
+name to track one monitor, or a comma-separated list to show several
+monitors in the given order.
+
+Supported colour roles:
+
+```
+style background 0xffffff
+style desk.bg 0xffffff
+style page.bg 0xffffff
+style page.active.bg 0x3366b3
+style label.bg 0xd8d8d8
+style label.active.bg 0x3366b3
+style label.fg 0x000000
+style label.inactive.fg 0x000000
+style window.focused.bg 0xf7c733
+```
+
+By default, *cowpager* derives these colours from cow's current
+configured theme.  The output background becomes the pager background
+when one is configured; otherwise the inactive titlebar or tab colour is
+used.  Active/inactive titlebar or tab colours are used for highlights
+and labels.  Any *style* line in *cowpager.conf* overrides the derived
+value for that role.
+
+*background* is the default colour for the whole pager surface,
+including desk and page backgrounds.  *desk.bg*, *page.bg*, and
+*page.active.bg* may be set when those areas should differ.
 
 # DISPLAY
 
@@ -107,11 +189,36 @@ Limit the pager to two specific outputs, arranged in two rows:
 cowpager -r 2 -m HDMI-A-1,DP-1 &
 ```
 
+Use a custom config file:
+
+```
+cowpager -f ./cowpager.conf &
+```
+
 Single-output pager pinned to *DP-1*, showing only the active desk:
 
 ```
 cowpager -1 -m DP-1 &
 ```
+
+Start one active-desk pager per output from *cow*'s config, remove the
+pager decoration, and place each pager in the lower-right corner of its
+output:
+
+```
+decor -d cowpager-nodecor titlebar.enabled false
+decor -d cowpager-nodecor border.width 0
+
+rule -g -T on-start -n cowpager-per-output script {
+	for o in (outputs) {
+		rule -g -T on-map -n cowpager-place-#{o.name} -s "/cowpager:#{o.name}/" "decor -a cowpager-nodecor ; window-move -o #{o.name} ; window-move -d right -n ; window-move -d down -n"
+		exec "cowpager -1 -m #{o.name}"
+	}
+}
+```
+
+A single-monitor pager uses a title of *cowpager:*_OUTPUT_, which lets
+the generated rules match the pager for each output.
 
 # SEE ALSO
 
