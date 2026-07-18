@@ -18,6 +18,7 @@
 #include <cJSON.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -166,6 +167,54 @@ status_broadcast(const char *msg, size_t len)
 	}
 }
 
+static void
+status_add_colour(cJSON *obj, const char *name, const float colour[4])
+{
+	uint32_t pixel = cow_colour_to_pixel(colour) & 0x00ffffff;
+	char	 buf[16];
+
+	snprintf(buf, sizeof(buf), "0x%06X", pixel);
+	cJSON_AddStringToObject(obj, name, buf);
+}
+
+static void
+status_add_theme(cJSON *root)
+{
+	if (cow_config == NULL)
+		return;
+
+	cJSON *theme = cJSON_AddObjectToObject(root, "theme");
+	if (theme == NULL)
+		return;
+
+	if (cow_config->has_output_bg_colour) {
+		status_add_colour(theme, "background",
+		    cow_config->output_bg_colour);
+	} else if (cow_wm.current_output != NULL &&
+	    cow_wm.current_output->has_bg_colour) {
+		status_add_colour(theme, "background",
+		    cow_wm.current_output->bg_colour);
+	}
+
+	const float *active_bg = cow_config->container.has_tab_active ?
+	    cow_config->container.tab_active :
+	    cow_config->titlebar.active_colour;
+	const float *inactive_bg = cow_config->container.has_tab_inactive ?
+	    cow_config->container.tab_inactive :
+	    cow_config->titlebar.inactive_colour;
+	const float *active_fg = cow_config->container.has_tab_fg_active ?
+	    cow_config->container.tab_fg_active :
+	    cow_config->titlebar.fg_active;
+	const float *inactive_fg = cow_config->container.has_tab_fg_inactive ?
+	    cow_config->container.tab_fg_inactive :
+	    cow_config->titlebar.fg_inactive;
+
+	status_add_colour(theme, "active_bg", active_bg);
+	status_add_colour(theme, "inactive_bg", inactive_bg);
+	status_add_colour(theme, "active_fg", active_fg);
+	status_add_colour(theme, "inactive_fg", inactive_fg);
+}
+
 void
 cow_status_add_output_geometry(cJSON *out, const struct cow_output *output)
 {
@@ -183,6 +232,13 @@ cow_status_add_output_geometry(cJSON *out, const struct cow_output *output)
 	cJSON *ua = cJSON_CreateObject();
 	cow_box_json_add(ua, &output->usable_area);
 	cJSON_AddItemToObject(out, "usable", ua);
+
+	if (output->has_bg_colour) {
+		status_add_colour(out, "background", output->bg_colour);
+	} else if (cow_config != NULL && cow_config->has_output_bg_colour) {
+		status_add_colour(out, "background",
+		    cow_config->output_bg_colour);
+	}
 }
 
 void
@@ -250,6 +306,7 @@ cow_status_emit(void)
 		return;
 
 	cJSON *root = cJSON_CreateObject();
+	status_add_theme(root);
 
 	/* Per-output desk state */
 	cJSON		  *outputs = cJSON_AddArrayToObject(root, "outputs");

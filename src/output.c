@@ -152,6 +152,7 @@ static const struct river_output_v1_listener output_listener = {
 
 static void output_adopt_orphan_views(struct cow_output *);
 static void output_adopt_unnamed_orphans(struct cow_output *);
+static void output_apply_configured_background(struct cow_output *);
 
 struct cow_output *
 cow_output_create(struct river_output_v1 *river_output)
@@ -415,8 +416,22 @@ output_adopt_orphan_views(struct cow_output *adopter)
 void
 cow_output_name_known(struct cow_output *output)
 {
+	output_apply_configured_background(output);
 	output_session_restore(output);
 	output_adopt_orphan_views(output);
+}
+
+static void
+output_apply_configured_background(struct cow_output *output)
+{
+	if (output == NULL || output->name == NULL)
+		return;
+	if (!cow_config_get_output_background(cow_config, output->name,
+		output->bg_colour))
+		return;
+
+	output->has_bg_colour = true;
+	output->bg_dirty      = true;
 }
 
 void
@@ -470,7 +485,10 @@ cow_output_destroy(struct cow_output *output)
 void
 cow_output_prepare_background(struct cow_output *output)
 {
-	if (cow_config == NULL || !cow_config->has_output_bg_colour)
+	bool has_colour = output->has_bg_colour ||
+	    (cow_config != NULL && cow_config->has_output_bg_colour);
+
+	if (!has_colour)
 		return;
 	if (output->width <= 0 || output->height <= 0)
 		return;

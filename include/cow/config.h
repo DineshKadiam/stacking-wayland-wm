@@ -390,6 +390,8 @@ struct cow_config {
 	float output_bg_colour[4];
 	bool  has_output_bg_colour;
 
+	struct wl_list output_backgrounds;
+
 	/* Parsed binding lists */
 	struct wl_list keyboard_bindings;   /* cow_binding_entry.link */
 	struct wl_list mouse_bindings;	    /* cow_mouse_binding_entry.link */
@@ -422,6 +424,11 @@ void cow_config_destroy(struct cow_config *);
  * ~/.config/cow/cow.conf, /etc/cow/cow.conf.
  */
 const char *cow_config_default_path(void);
+
+bool cow_config_get_output_background(struct cow_config *, const char *,
+    float[4]);
+void cow_config_set_output_background(struct cow_config *, const char *,
+    const float[4]);
 
 /*
  * Find an action entry by name. Returns the command string, or NULL.

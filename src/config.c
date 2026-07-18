@@ -28,6 +28,12 @@
 
 struct cow_config *cow_config = NULL;
 
+struct cow_output_background_config {
+	struct wl_list link;
+	char	      *name;
+	float	       colour[4];
+};
+
 bool
 cow_parse_squeeze_mode(const char *s, enum cow_squeeze_mode *out)
 {
@@ -308,6 +314,7 @@ cow_config_create(void)
 	wl_list_init(&config->keyboard_bindings);
 	wl_list_init(&config->mouse_bindings);
 	wl_list_init(&config->decoration_bindings);
+	wl_list_init(&config->output_backgrounds);
 
 	return config;
 }
@@ -380,6 +387,14 @@ cow_config_destroy(struct cow_config *config)
 		xfree(db);
 	}
 
+	struct cow_output_background_config *ob, *ob_tmp;
+	wl_list_for_each_safe(ob, ob_tmp, &config->output_backgrounds, link)
+	{
+		wl_list_remove(&ob->link);
+		xfree(ob->name);
+		xfree(ob);
+	}
+
 	xfree(config);
 }
 
@@ -421,6 +436,47 @@ cow_config_default_path(void)
 		return COW_SYSCONFDIR "/cow.conf";
 
 	return NULL;
+}
+
+bool
+cow_config_get_output_background(struct cow_config *config, const char *name,
+    float colour[4])
+{
+	if (config == NULL || name == NULL)
+		return false;
+
+	struct cow_output_background_config *ob;
+	wl_list_for_each(ob, &config->output_backgrounds, link)
+	{
+		if (strcmp(ob->name, name) != 0)
+			continue;
+		memcpy(colour, ob->colour, sizeof(float) * 4);
+		return true;
+	}
+
+	return false;
+}
+
+void
+cow_config_set_output_background(struct cow_config *config, const char *name,
+    const float colour[4])
+{
+	if (config == NULL || name == NULL || colour == NULL)
+		return;
+
+	struct cow_output_background_config *ob;
+	wl_list_for_each(ob, &config->output_backgrounds, link)
+	{
+		if (strcmp(ob->name, name) != 0)
+			continue;
+		memcpy(ob->colour, colour, sizeof(float) * 4);
+		return;
+	}
+
+	ob = xcalloc(1, sizeof(*ob));
+	ob->name = xstrdup(name);
+	memcpy(ob->colour, colour, sizeof(float) * 4);
+	wl_list_insert(&config->output_backgrounds, &ob->link);
 }
 
 /*

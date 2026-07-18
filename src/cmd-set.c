@@ -1268,11 +1268,19 @@ set_output_colour(const char *key, const char *val, struct cmd_q *cmdq)
 			cmdq_error(cmdq, "set: invalid colour value");
 			return (true);
 		}
+
+		if (cow_ipc.startup_mode) {
+			cow_config_set_output_background(cow_config, oname, c);
+			return (true);
+		}
+
 		struct cow_output *out;
 		wl_list_for_each(out, &cow_wm.outputs, wm_link)
 		{
 			if (out->name != NULL &&
 			    strcmp(out->name, oname) == 0) {
+				cow_config_set_output_background(cow_config,
+				    oname, c);
 				memcpy(out->bg_colour, c, sizeof(float) * 4);
 				out->has_bg_colour = true;
 				out->bg_dirty	   = true;
