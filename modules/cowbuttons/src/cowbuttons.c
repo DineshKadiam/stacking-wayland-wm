@@ -19,7 +19,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
-#include <libgen.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -39,6 +38,7 @@
 #include "cow/image.h"
 #include "cow/memory.h"
 #include "cow/module.h"
+#include "cow/module_config.h"
 #include "cow/vector.h"
 #include "xdg-shell-client-protocol.h"
 
@@ -311,70 +311,25 @@ style_init(void)
 static int
 parse_int(const char *s, int *out)
 {
-	char *end;
-	long  n;
-
-	if (s == NULL || *s == '\0')
-		return 0;
-	errno = 0;
-	n = strtol(s, &end, 10);
-	if (errno != 0 || *end != '\0')
-		return 0;
-	*out = (int)n;
-	return 1;
+	return cow_module_config_parse_int(s, out);
 }
 
 static int
 parse_bool(const char *s, bool *out)
 {
-	if (strcmp(s, "true") == 0 || strcmp(s, "yes") == 0 ||
-	    strcmp(s, "on") == 0 || strcmp(s, "1") == 0) {
-		*out = true;
-		return 1;
-	}
-	if (strcmp(s, "false") == 0 || strcmp(s, "no") == 0 ||
-	    strcmp(s, "off") == 0 || strcmp(s, "0") == 0) {
-		*out = false;
-		return 1;
-	}
-	return 0;
+	return cow_module_config_parse_bool(s, out);
 }
 
 static char *
 path_dirname(const char *path)
 {
-	char *copy = strdup(path);
-	char *dir, *out;
-
-	if (copy == NULL)
-		return NULL;
-	dir = dirname(copy);
-	out = strdup(dir);
-	free(copy);
-	return out;
+	return cow_module_config_dirname(path);
 }
 
 static char *
 resolve_path(const char *path)
 {
-	const char *home;
-	char *out;
-
-	if (path[0] == '/')
-		return strdup(path);
-	if (path[0] == '~' && path[1] == '/') {
-		home = getenv("HOME");
-		if (home == NULL || *home == '\0')
-			return NULL;
-		if (asprintf(&out, "%s/%s", home, path + 2) < 0)
-			return NULL;
-		return out;
-	}
-	if (config_dir == NULL)
-		return strdup(path);
-	if (asprintf(&out, "%s/%s", config_dir, path) < 0)
-		return NULL;
-	return out;
+	return cow_module_config_resolve_path(config_dir, path);
 }
 
 static char *
@@ -411,70 +366,15 @@ command_app_id(const char *cmd)
 static void
 free_fields(char **fields, int n)
 {
-	for (int i = 0; i < n; i++)
-		free(fields[i]);
+	cow_module_config_free_fields(fields, n);
 }
 
 static int
 parse_fields(const char *line, char **fields, int max_fields, char *err,
     size_t errsz)
 {
-	int n = 0;
-	const char *p = line;
-
-	while (*p != '\0') {
-		while (*p == ' ' || *p == '\t' || *p == '\n')
-			p++;
-		if (*p == '\0' || *p == '#')
-			break;
-		if (n == max_fields) {
-			snprintf(err, errsz, "too many fields");
-			goto fail;
-		}
-
-		char buf[1024];
-		size_t len = 0;
-		if (*p == '"') {
-			p++;
-			while (*p != '\0' && *p != '"') {
-				if (*p == '\\' && p[1] != '\0')
-					p++;
-				if (len + 1 >= sizeof(buf)) {
-					snprintf(err, errsz, "quoted field too long");
-					goto fail;
-				}
-				buf[len++] = *p++;
-			}
-			if (*p != '"') {
-				snprintf(err, errsz, "unterminated quote");
-				goto fail;
-			}
-			p++;
-		} else {
-			while (*p != '\0' && *p != ' ' && *p != '\t' &&
-			    *p != '\n') {
-				if (*p == '#')
-					break;
-				if (len + 1 >= sizeof(buf)) {
-					snprintf(err, errsz, "field too long");
-					goto fail;
-				}
-				buf[len++] = *p++;
-			}
-		}
-		buf[len] = '\0';
-		fields[n] = strdup(buf);
-		if (fields[n] == NULL) {
-			snprintf(err, errsz, "out of memory");
-			goto fail;
-		}
-		n++;
-	}
-	return n;
-
-fail:
-	free_fields(fields, n);
-	return -1;
+	return cow_module_config_parse_fields(line, fields, max_fields, err,
+	    errsz);
 }
 
 static int
@@ -1566,21 +1466,7 @@ line_error:
 static char *
 default_config_path(void)
 {
-	const char *xdg = getenv("XDG_CONFIG_HOME");
-	const char *home;
-	char *path;
-
-	if (xdg != NULL && *xdg != '\0') {
-		if (asprintf(&path, "%s/cow/cowbuttons.conf", xdg) < 0)
-			return NULL;
-		return path;
-	}
-	home = getenv("HOME");
-	if (home == NULL || *home == '\0')
-		return NULL;
-	if (asprintf(&path, "%s/.config/cow/cowbuttons.conf", home) < 0)
-		return NULL;
-	return path;
+	return cow_module_config_default_path(PROG);
 }
 
 static bool
