@@ -135,6 +135,9 @@ struct pager_config {
 	int rows;
 	int cols;
 	int current_only;
+	int desk_range_set;
+	int desk_first;
+	int desk_last;
 	int verbose;
 	int desktop_labels;
 	int monitor_labels;
@@ -206,6 +209,9 @@ static int    opt_running = 1;
 static int    opt_rows = 0;	/* -r ROWS; 0 = auto */
 static int    opt_cols = 0;	/* -c COLS; 0 = auto */
 static int    opt_current_only; /* -1: only show the active desk */
+static int    opt_desk_range_set;
+static int    opt_desk_first;
+static int    opt_desk_last;
 static int    initial_size_done;
 static struct pager_config cfg;
 
@@ -366,6 +372,31 @@ parse_monitor_list(const char *list, int replace)
 	}
 	free(dup);
 	return 1;
+}
+
+static bool
+set_desk_range(int first, int last)
+{
+	if (first < 0 || last < first)
+		return false;
+
+	opt_desk_range_set = 1;
+	opt_desk_first = cfg.desk_first = first;
+	opt_desk_last = cfg.desk_last = last;
+	cfg.desk_range_set = 1;
+	opt_current_only = cfg.current_only = 0;
+	return true;
+}
+
+static void
+set_current_only(bool enabled)
+{
+	opt_current_only = cfg.current_only = enabled ? 1 : 0;
+	if (enabled) {
+		opt_desk_range_set = cfg.desk_range_set = 0;
+		opt_desk_first = cfg.desk_first = 0;
+		opt_desk_last = cfg.desk_last = 0;
+	}
 }
 
 static int
@@ -985,6 +1016,12 @@ compute_layout(const state_t *st, layout_t *L)
 		L->rows = 1;
 		L->cols = 1;
 	} else {
+		if (opt_desk_range_set) {
+			int n = opt_desk_last - opt_desk_first + 1;
+			if (n < 1)
+				n = 1;
+			n_desks = n;
+		}
 		compute_grid(n_desks, &L->rows, &L->cols);
 	}
 
@@ -1587,6 +1624,59 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 }
 
 static void
+build_visible_desks(const pout_t *ref, int desk_indices[MAX_DESKS],
+    int max_visible, int *n_visible)
+{
+	*n_visible = 0;
+	if (ref == NULL || max_visible <= 0)
+		return;
+
+	if (opt_current_only) {
+		for (int i = 0; i < ref->n_desks; i++) {
+			if (ref->desks[i].nr == ref->current_desk) {
+				desk_indices[(*n_visible)++] = i;
+				return;
+			}
+		}
+		return;
+	}
+
+	for (int i = 0; i < ref->n_desks && *n_visible < max_visible; i++) {
+		if (opt_desk_range_set &&
+		    (ref->desks[i].nr < opt_desk_first ||
+			ref->desks[i].nr > opt_desk_last))
+			continue;
+		desk_indices[(*n_visible)++] = i;
+	}
+}
+
+static const pdesk_t *
+visible_desk_at(const pout_t *ref, int vis_idx, int max_visible)
+{
+	int desk_indices[MAX_DESKS];
+	int n_visible;
+
+	build_visible_desks(ref, desk_indices, max_visible, &n_visible);
+	if (vis_idx < 0 || vis_idx >= n_visible)
+		return NULL;
+	return &ref->desks[desk_indices[vis_idx]];
+}
+
+static int
+visible_index_for_desk(const pout_t *ref, int desk_nr, int max_visible)
+{
+	int desk_indices[MAX_DESKS];
+	int n_visible;
+
+	build_visible_desks(ref, desk_indices, max_visible, &n_visible);
+	for (int i = 0; i < n_visible; i++) {
+		if (ref->desks[desk_indices[i]].nr == desk_nr)
+			return i;
+	}
+	return -1;
+}
+
+static void
 do_render(const state_t *st)
 {
 	if (!surface_configured || win_w <= 0 || win_h <= 0)
@@ -1637,17 +1727,8 @@ do_render(const state_t *st)
 		const pout_t *cur = current_only_output(st);
 		if (cur != NULL)
 			ref = cur;
-		for (int i = 0; i < ref->n_desks; i++) {
-			if (ref->desks[i].nr == ref->current_desk) {
-				desk_indices[n_visible++] = i;
-				break;
-			}
-		}
-	} else {
-		for (int i = 0; i < ref->n_desks && n_visible < L.rows * L.cols;
-		    i++)
-			desk_indices[n_visible++] = i;
 	}
+	build_visible_desks(ref, desk_indices, L.rows * L.cols, &n_visible);
 
 	for (int v = 0; v < n_visible; v++) {
 		int row, col;
@@ -1723,8 +1804,12 @@ do_render(const state_t *st)
 		if (hit_test_page(st, drag_cur_x, drag_cur_y, &desk_nr, &pc,
 			&pr, &tab_idx, &out_dummy) &&
 		    desk_nr >= 0 && pc >= 0 && pr >= 0) {
+			int vis_idx = visible_index_for_desk(ref, desk_nr,
+			    L.rows * L.cols);
+			if (vis_idx < 0)
+				goto commit_drag_ghost;
 			int row, col;
-			desk_index_to_rc(&L, desk_nr, &row, &col);
+			desk_index_to_rc(&L, vis_idx, &row, &col);
 			int gdx, gdy;
 			desk_cell_origin(&L, row, col, &gdx, &gdy);
 
@@ -1751,6 +1836,7 @@ do_render(const state_t *st)
 			cairo_stroke(cr);
 		}
 	}
+commit_drag_ghost:
 
 commit:
 	cairo_destroy(cr);
@@ -1816,23 +1902,13 @@ locate(const state_t *st, double x, double y, const layout_t *L, int *vis_idx,
 /* Resolve the visible-desk index to a real desk_t pointer in ref's
  * desks[].  Returns NULL on miss. */
 static const pdesk_t *
-resolve_visible_desk(const pout_t *ref, int vis_idx)
+resolve_visible_desk(const pout_t *ref, const layout_t *L, int vis_idx)
 {
 	if (ref == NULL)
 		return NULL;
-	if (vis_idx < 0)
+	if (L == NULL)
 		return NULL;
-	if (opt_current_only) {
-		if (vis_idx != 0)
-			return NULL;
-		for (int i = 0; i < ref->n_desks; i++)
-			if (ref->desks[i].nr == ref->current_desk)
-				return &ref->desks[i];
-		return NULL;
-	}
-	if (vis_idx >= ref->n_desks)
-		return NULL;
-	return &ref->desks[vis_idx];
+	return visible_desk_at(ref, vis_idx, L->rows * L->cols);
 }
 
 /*
@@ -1863,7 +1939,7 @@ hit_test_window(const state_t *st, double x, double y,
 	if (!in_page)
 		return NULL;
 
-	const pdesk_t *d = resolve_visible_desk(ref, vis_idx);
+	const pdesk_t *d = resolve_visible_desk(ref, &L, vis_idx);
 	if (d == NULL)
 		return NULL;
 
@@ -2036,7 +2112,7 @@ hit_test_page(const state_t *st, double x, double y, int *desk_nr, int *pc_out,
 	if (vis_idx < 0)
 		return 0;
 
-	const pdesk_t *d = resolve_visible_desk(ref, vis_idx);
+	const pdesk_t *d = resolve_visible_desk(ref, &L, vis_idx);
 	if (d == NULL)
 		return 0;
 	*desk_nr = d->nr;
@@ -3069,12 +3145,21 @@ load_pager_option(char **fields, int n, const char **why)
 			*why = "bad monitors";
 			return false;
 		}
+	} else if (strcmp(fields[0], "desks") == 0) {
+		int first, last;
+		if (n != 3 ||
+		    !cow_module_config_parse_int(fields[1], &first) ||
+		    !cow_module_config_parse_int(fields[2], &last) ||
+		    !set_desk_range(first, last)) {
+			*why = "bad desks";
+			return false;
+		}
 	} else if (strcmp(fields[0], "current-only") == 0) {
 		if (n != 2 || !cow_module_config_parse_bool(fields[1], &b)) {
 			*why = "bad current-only";
 			return false;
 		}
-		opt_current_only = cfg.current_only = b ? 1 : 0;
+		set_current_only(b);
 	} else if (strcmp(fields[0], "desktop-labels") == 0) {
 		if (n != 2 || !cow_module_config_parse_bool(fields[1], &b)) {
 			*why = "bad desktop-labels";
@@ -3272,7 +3357,7 @@ usage(void)
 {
 	fprintf(stderr,
 	    "usage: cowpager [-r rows] [-c cols] "
-	    "[-m mon[,mon...]] [-1] [-v] [-h]\n"
+	    "[-m mon[,mon...]] [-1] [-v] [-h] [first last]\n"
 	    "       cowpager [-f path]\n"
 	    "  -r ROWS   arrange desks in ROWS rows\n"
 	    "  -c COLS   arrange desks in COLS columns\n"
@@ -3282,6 +3367,8 @@ usage(void)
 	    "            the page canvas uses the monitor\n"
 	    "            layout and labels use LIST order\n"
 	    "  -1        show only the currently active desk\n"
+	    "  FIRST LAST\n"
+	    "            show desks FIRST through LAST, inclusive\n"
 	    "  -v        log click decisions to stderr\n"
 	    "  -f PATH   load cowpager config from PATH\n"
 	    "  -h        show this help\n");
@@ -3344,8 +3431,7 @@ main(int argc, char *argv[])
 			break;
 		}
 		case '1':
-			opt_current_only = 1;
-			cfg.current_only = 1;
+			set_current_only(true);
 			break;
 		case 'v':
 			opt_verbose = 1;
@@ -3355,6 +3441,16 @@ main(int argc, char *argv[])
 			usage();
 			return 0;
 		default:
+			return 1;
+		}
+	}
+	if (argc - optind != 0) {
+		int first, last;
+		if (argc - optind != 2 ||
+		    !cow_module_config_parse_int(argv[optind], &first) ||
+		    !cow_module_config_parse_int(argv[optind + 1], &last) ||
+		    !set_desk_range(first, last)) {
+			usage();
 			return 1;
 		}
 	}

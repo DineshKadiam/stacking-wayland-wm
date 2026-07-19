@@ -6,7 +6,7 @@ cowpager - FvwmPager-style visual pager for the cow window manager
 
 # SYNOPSIS
 
-*cowpager* [*-f* _path_] [*-r* _rows_] [*-c* _cols_] [*-m* _mon_[,_mon_...]] [*-1*] [*-h*]
+*cowpager* [*-f* _path_] [*-r* _rows_] [*-c* _cols_] [*-m* _mon_[,_mon_...]] [*-1*] [*-h*] [_first_ _last_]
 
 # DESCRIPTION
 
@@ -54,6 +54,10 @@ from the config file.
 *-1*
 	Display only the currently active desk.
 
+_first_ _last_
+	Display desks _first_ through _last_, inclusive.  For example,
+	*cowpager 0 3* shows desks 0, 1, 2, and 3.
+
 *-h*
 	Print usage and exit.
 
@@ -73,6 +77,7 @@ show pager compact
 
 pager main {
 	columns 4
+	desks 0 3
 	monitors HDMI-A-1,DP-1
 }
 
@@ -92,6 +97,7 @@ Supported layout commands:
 ```
 rows 2
 columns 4
+desks 0 3
 monitors HDMI-A-1,DP-1
 current-only false
 desktop-labels true
@@ -103,6 +109,11 @@ desktop-scale 32
 *monitors* selects the outputs shown by this pager.  Use a single output
 name to track one monitor, or a comma-separated list to show several
 monitors in the given order.
+
+*desks* selects the desks shown by this pager.  The range is inclusive,
+so *desks 0 3* shows desks 0, 1, 2, and 3.  It is mutually exclusive
+with *current-only true*: setting *desks* clears current-only mode, and
+setting *current-only true* clears the desk range.
 
 Supported colour roles:
 
@@ -183,6 +194,12 @@ Single-output pager pinned to *DP-1*, showing only the active desk:
 
 ```
 cowpager -1 -m DP-1 &
+```
+
+Show desks 0 through 3:
+
+```
+cowpager 0 3 &
 ```
 
 # SEE ALSO
