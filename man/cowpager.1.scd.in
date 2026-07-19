@@ -65,7 +65,7 @@ comment outside quoted strings.
 
 Top-level options act as defaults.  A config may also contain named
 pager blocks, selected by top-level *show pager* lines.  Each top-level
-*show pager* line creates one *cowpager* window, matching *cowbuttons*:
+*show pager* line creates one *cowpager* window:
 
 ```
 show pager main
@@ -83,10 +83,9 @@ pager compact {
 ```
 
 When no *show pager* line is present, only top-level options are used.
-When a pager block is selected for an instance, options inside that
-block override the top-level defaults.  Multiple names may be listed on
-one *show pager* line; those matching blocks are combined into that one
-instance as they are encountered in the file.
+When a pager block is selectd, options inside that block override the top-level
+defaults.  Multiple names may be listed on one *show pager* line; those matching
+blocks are combined into that one instance as they are encountered in the file.
 
 Supported layout commands:
 
@@ -135,9 +134,7 @@ including desk and page backgrounds.  *desk.bg*, *page.bg*, and
 ## DESKTOP AND MONITOR LABELS
 
 Each desk cell has a desktop label.  When more than one output is
-shown, a second monitor-label row is drawn below it.  This mirrors
-*FvwmPager*'s *DesktopLabels*, *MonitorLabels*, and *LabelHilight*
-concepts:
+shown, a second monitor-label row is drawn below it.  Hence:
 
 - the desktop label identifies the desk;
 - each monitor label identifies an output;
@@ -152,7 +149,7 @@ cow-assigned *number* when the name would overflow the slot.
 ## PAGE GRID AND VIEWPORTS
 
 Window miniatures are placed on the grid.  Windows are coloured by their id.
-The focused window is drawn in yellow.
+The focused window is drawn in yellowi by default.
 
 Without *-m*, the page grid is scaled to the bounding box of all shown
 outputs.  Window miniatures and viewport rectangles are placed using
@@ -161,19 +158,6 @@ the pager instead of overlapping.
 
 For every output currently viewing a desk, a translucent rectangle
 marks that output's viewport position within that desk's page grid.
-
-# USE
-
-- *Click a page cell*: switches the monitor under that point in the
-	pager's monitor layout to that desk and page.
-- *Drag a coloured monitor name plate*: grabs the small dark
-	pill at the top-left of a monitor's coloured viewport overlay
-	and drags it to another page cell.  When you release, that
-	monitor moves to the page selected.
-- *Click a window thumbnail*: navigates that window's monitor to
-	the window's desk and page, then focuses the window.  Other
-	monitors are not affected.
-- *Click a monitor label*: switches that monitor to the clicked desk.
 
 # EXAMPLES
 
@@ -200,25 +184,6 @@ Single-output pager pinned to *DP-1*, showing only the active desk:
 ```
 cowpager -1 -m DP-1 &
 ```
-
-Start one active-desk pager per output from *cow*'s config, remove the
-pager decoration, and place each pager in the lower-right corner of its
-output:
-
-```
-decor -d cowpager-nodecor titlebar.enabled false
-decor -d cowpager-nodecor border.width 0
-
-rule -g -T on-start -n cowpager-per-output script {
-	for o in (outputs) {
-		rule -g -T on-map -n cowpager-place-#{o.name} -s "/cowpager:#{o.name}/" "decor -a cowpager-nodecor ; window-move -o #{o.name} ; window-move -d right -n ; window-move -d down -n"
-		exec "cowpager -1 -m #{o.name}"
-	}
-}
-```
-
-A single-monitor pager uses a title of *cowpager:*_OUTPUT_, which lets
-the generated rules match the pager for each output.
 
 # SEE ALSO
 
