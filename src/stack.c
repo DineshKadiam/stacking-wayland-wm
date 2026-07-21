@@ -21,10 +21,9 @@
  * Once per manage cycle (called from cow_wm_manage_dirty_now()) we
  * gather every non-closed view, sort by (effective_layer, raise_seq),
  * and walk the sorted list from bottom to top issuing
- * river_node_v1_place_above(prev) chains.  The first node uses
- * place_bottom so the absolute floor of the layered nodes is well
- * defined (output background nodes are placed below the floor at
- * output-create time).
+ * river_node_v1_place_above(prev) chains.  Output backgrounds are
+ * layer-shell background surfaces and are therefore outside this River
+ * node chain.
  *
  * Iconified views' icon_nodes are pinned to layer 0 (fvwm-classic).
  * They are placed BEFORE any non-iconified view, regardless of the
@@ -145,16 +144,15 @@ cow_stack_apply(void)
 	/*
 	 * Emit the chain bottom-to-top.
 	 *
-	 * The first node uses place_top so the chain anchors *above*
-	 * the output background nodes (which were already placed at the
-	 * river floor via place_bottom at output-create time).  Using
-	 * place_bottom here would push the entire view chain BELOW the
-	 * backgrounds, hiding every window.
+	 * The first node uses place_top so the chain anchors above any
+	 * unmanaged River shell surfaces.  Using place_bottom here would
+	 * risk pushing the entire view chain below surfaces outside the
+	 * managed stack.
 	 *
 	 * Each subsequent node is positioned immediately above its
-	 * predecessor with place_above.  The final result is, from
-	 * bottom to top: backgrounds, icons (layer 0), then views
-	 * sorted by (layer, raise_seq).
+	 * predecessor with place_above.  The final managed-node result is,
+	 * from bottom to top: icons (layer 0), then views sorted by
+	 * (layer, raise_seq).
 	 */
 	struct river_node_v1 *prev = NULL;
 	for (size_t i = 0; i < icon_count; i++) {

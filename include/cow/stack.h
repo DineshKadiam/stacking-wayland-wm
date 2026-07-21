@@ -32,9 +32,9 @@ struct cow_view;
  * Iconified views' icon_nodes are pinned to layer 0 (fvwm-classic),
  * independently of their parent view's layer.
  *
- * Output backgrounds (placed at river-level place_bottom at output-
- * create time) sit below every layered view; this module does not
- * touch them.
+ * Output backgrounds are layer-shell background surfaces and sit below
+ * layer-shell bottom/top/overlay clients as well as managed views; this
+ * module does not touch them.
  */
 
 /*

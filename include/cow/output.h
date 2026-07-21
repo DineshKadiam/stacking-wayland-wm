@@ -95,12 +95,12 @@ struct cow_output {
 
 	bool removed;
 
-	/* Background shell surface (filled with background colour) */
-	struct wl_surface	      *bg_surface;
-	struct river_shell_surface_v1 *bg_shell_surface;
-	struct river_node_v1	      *bg_node;
-	struct cow_shm_buffer	      *bg_buffer;
-	bool			       bg_dirty;
+	/* Background layer-shell surface (filled with background colour) */
+	struct wl_surface	     *bg_surface;
+	struct zwlr_layer_surface_v1 *bg_layer_surface;
+	struct cow_shm_buffer	     *bg_buffer;
+	bool			      bg_configured;
+	bool			      bg_dirty;
 
 	/* Per-output layer-shell state (opaque to consumers). */
 	struct cow_layer_shell_output *layer_shell_state;

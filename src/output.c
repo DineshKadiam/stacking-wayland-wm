@@ -34,8 +34,30 @@
 #include "cow/view.h"
 
 #include "river-window-management-v1-client-protocol.h"
+#include "wlr-layer-shell-unstable-v1-client-protocol.h"
 
 #define OUTPUT_PAN_SUPPRESS_MS 1000
+
+static void
+output_background_destroy_resources(struct cow_output *output)
+{
+	if (output == NULL)
+		return;
+	if (output->bg_buffer != NULL) {
+		cow_shm_buffer_destroy(output->bg_buffer);
+		output->bg_buffer = NULL;
+	}
+	if (output->bg_layer_surface != NULL) {
+		zwlr_layer_surface_v1_destroy(output->bg_layer_surface);
+		output->bg_layer_surface = NULL;
+	}
+	if (output->bg_surface != NULL) {
+		wl_surface_destroy(output->bg_surface);
+		output->bg_surface = NULL;
+	}
+	output->bg_configured = false;
+	output->bg_dirty      = true;
+}
 
 /* Subtract the configured reserved area. */
 void
@@ -137,6 +159,7 @@ output_handle_dimensions(void	    *data,
 	/* Startup applies reserved area after initial output events settle. */
 	if (!cow_wm.exec_pending)
 		cow_output_apply_reserved_area(output);
+	output_background_destroy_resources(output);
 
 	/* Startup creates pan frames once at the end of exec_pending. */
 	if (!cow_wm.exec_pending)
@@ -148,6 +171,36 @@ static const struct river_output_v1_listener output_listener = {
 	.wl_output  = output_handle_wl_output,
 	.position   = output_handle_position,
 	.dimensions = output_handle_dimensions,
+};
+
+static void
+background_layer_configure(void *data, struct zwlr_layer_surface_v1 *lsurf,
+    uint32_t serial, __unused uint32_t width, __unused uint32_t height)
+{
+	struct cow_output *output = data;
+
+	zwlr_layer_surface_v1_ack_configure(lsurf, serial);
+	if (output == NULL)
+		return;
+
+	output->bg_configured = true;
+	output->bg_dirty      = true;
+	cow_wm.needs_manage_dirty = true;
+}
+
+static void
+background_layer_closed(void *data,
+    __unused struct zwlr_layer_surface_v1 *lsurf)
+{
+	struct cow_output *output = data;
+
+	if (output != NULL)
+		output->bg_configured = false;
+}
+
+static const struct zwlr_layer_surface_v1_listener background_layer_listener = {
+	.configure = background_layer_configure,
+	.closed	   = background_layer_closed,
 };
 
 static void output_adopt_orphan_views(struct cow_output *);
@@ -460,15 +513,7 @@ cow_output_destroy(struct cow_output *output)
 		}
 	}
 
-	/* Background shell surface resources */
-	if (output->bg_buffer != NULL)
-		cow_shm_buffer_destroy(output->bg_buffer);
-	if (output->bg_node != NULL)
-		river_node_v1_destroy(output->bg_node);
-	if (output->bg_shell_surface != NULL)
-		river_shell_surface_v1_destroy(output->bg_shell_surface);
-	if (output->bg_surface != NULL)
-		wl_surface_destroy(output->bg_surface);
+	output_background_destroy_resources(output);
 
 	cow_desk_set_fini(&output->desk_set);
 	xfree(output->name);
@@ -490,10 +535,14 @@ cow_output_prepare_background(struct cow_output *output)
 
 	if (!has_colour)
 		return;
+	if (cow_wm.compositor == NULL || cow_wm.wl_layer_shell == NULL)
+		return;
 	if (output->width <= 0 || output->height <= 0)
 		return;
+	if (output->wl_output == NULL)
+		return;
 
-	/* Create wl_surface + shell_surface during manage sequence */
+	/* Create wl_surface + layer-shell surface during manage sequence. */
 	if (output->bg_surface == NULL) {
 		output->bg_surface = wl_compositor_create_surface(
 		    cow_wm.compositor);
@@ -501,17 +550,34 @@ cow_output_prepare_background(struct cow_output *output)
 			return;
 	}
 
-	if (output->bg_shell_surface == NULL) {
-		output->bg_shell_surface =
-		    river_window_manager_v1_get_shell_surface(cow_wm.manager,
-			output->bg_surface);
-		if (output->bg_shell_surface == NULL)
+	if (output->bg_layer_surface == NULL) {
+		output->bg_layer_surface =
+		    zwlr_layer_shell_v1_get_layer_surface(
+			cow_wm.wl_layer_shell, output->bg_surface,
+			output->wl_output, ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND,
+			"cow-background");
+		if (output->bg_layer_surface == NULL)
 			return;
-	}
 
-	if (output->bg_node == NULL) {
-		output->bg_node = river_shell_surface_v1_get_node(
-		    output->bg_shell_surface);
+		zwlr_layer_surface_v1_set_size(output->bg_layer_surface,
+		    output->width, output->height);
+		zwlr_layer_surface_v1_set_anchor(output->bg_layer_surface,
+		    ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+			ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
+			ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
+			ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
+		zwlr_layer_surface_v1_set_exclusive_zone(
+		    output->bg_layer_surface, -1);
+		zwlr_layer_surface_v1_set_keyboard_interactivity(
+		    output->bg_layer_surface,
+		    ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
+		zwlr_layer_surface_v1_add_listener(output->bg_layer_surface,
+		    &background_layer_listener, output);
+
+		/* Initial commit requests the configure event.  Do not attach
+		 * a buffer until the compositor has configured the layer
+		 * surface. */
+		wl_surface_commit(output->bg_surface);
 	}
 }
 
@@ -523,8 +589,8 @@ cow_output_render_background(struct cow_output *output)
 	    (cow_config != NULL && cow_config->has_output_bg_colour);
 	if (!has_colour)
 		return;
-	if (output->bg_node == NULL || output->bg_surface == NULL ||
-	    output->bg_shell_surface == NULL)
+	if (output->bg_surface == NULL || output->bg_layer_surface == NULL ||
+	    !output->bg_configured)
 		return;
 	if (output->width <= 0 || output->height <= 0)
 		return;
@@ -569,15 +635,10 @@ cow_output_render_background(struct cow_output *output)
 	if (output->bg_buffer == NULL)
 		return;
 
-	/* Position at output origin, place at bottom */
-	river_node_v1_set_position(output->bg_node, output->x, output->y);
-	river_node_v1_place_bottom(output->bg_node);
-
-	/* Commit the surface */
+	/* Commit the background layer surface. */
 	wl_surface_attach(output->bg_surface, output->bg_buffer->buffer, 0, 0);
 	wl_surface_damage_buffer(output->bg_surface, 0, 0, output->width,
 	    output->height);
-	river_shell_surface_v1_sync_next_commit(output->bg_shell_surface);
 	wl_surface_commit(output->bg_surface);
 	output->bg_buffer->busy = true;
 }
