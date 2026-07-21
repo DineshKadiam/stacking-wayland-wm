@@ -43,6 +43,12 @@ static void do_transfer_to_output(struct cow_view *, struct cow_output *,
     const char *);
 static struct cow_output *output_neighbour_in_dir(struct cow_output *,
     const char *);
+static int  move_content_width(const struct cow_view *);
+static int  move_content_height(const struct cow_view *);
+static void move_frame_geometry(const struct cow_view *, int *, int *, int *,
+    int *);
+static struct cow_box move_frame_box(const struct cow_view *);
+static void sync_pending_move_position(struct cow_view *);
 
 struct cmd_entry cmd_move_entry = {
 	"window-move",
@@ -190,12 +196,60 @@ unmax_if_needed(struct cow_view *view)
 static void
 apply_move(struct cow_view *view)
 {
+	sync_pending_move_position(view);
 	cow_view_update_output(view);
 	view->placed = true;
 	/* Keep virtual position in sync with global position */
 	cow_view_sync_vxy_from_global(view);
 	cow_view_sync_container_pos(view);
 	cmd_view_dirty(view);
+}
+
+static int
+move_content_width(const struct cow_view *view)
+{
+	return (view->pending_resize ? view->pending_width :
+	    view->content_width);
+}
+
+static int
+move_content_height(const struct cow_view *view)
+{
+	return (view->pending_resize ? view->pending_height :
+	    view->content_height);
+}
+
+static void
+move_frame_geometry(const struct cow_view *view, int *frame_w, int *frame_h,
+    int *content_x, int *content_y)
+{
+	cow_titlebar_frame_geometry(view, move_content_width(view),
+	    move_content_height(view), frame_w, frame_h, content_x,
+	    content_y);
+}
+
+static struct cow_box
+move_frame_box(const struct cow_view *view)
+{
+	int frame_w, frame_h, content_x, content_y;
+
+	move_frame_geometry(view, &frame_w, &frame_h, &content_x,
+	    &content_y);
+	return (struct cow_box) {
+		.x	= view->x - content_x,
+		.y	= view->y - content_y,
+		.width	= frame_w,
+		.height = frame_h,
+	};
+}
+
+static void
+sync_pending_move_position(struct cow_view *view)
+{
+	if (!view->pending_resize)
+		return;
+	view->pending_x = view->x;
+	view->pending_y = view->y;
 }
 
 /*
@@ -209,8 +263,7 @@ do_transfer_to_output(struct cow_view *view, struct cow_output *target,
 {
 	struct cow_box *ua = &target->usable_area;
 	int frame_w, frame_h, content_x, content_y;
-	cow_titlebar_frame_geometry(view, view->content_width,
-	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
+	move_frame_geometry(view, &frame_w, &frame_h, &content_x, &content_y);
 
 	/* Place at entry edge; clamp perpendicular coord. */
 	if (strcmp(dir, "right") == 0) {
@@ -329,8 +382,7 @@ do_centre(struct cow_view *view)
 {
 	struct cow_box *ua = &view->output->usable_area;
 	int frame_w, frame_h, content_x, content_y;
-	cow_titlebar_frame_geometry(view, view->content_width,
-	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
+	move_frame_geometry(view, &frame_w, &frame_h, &content_x, &content_y);
 
 	unmax_if_needed(view);
 	view->x = ua->x + (ua->width - frame_w) / 2 + content_x;
@@ -388,8 +440,7 @@ do_screen(struct cow_view *view, const char *name, struct cmd_q *cmdq)
 		 * the pointer.
 		 */
 		int frame_w, frame_h, content_x, content_y;
-		cow_titlebar_frame_geometry(view, view->content_width,
-		    view->content_height, &frame_w, &frame_h, &content_x,
+		move_frame_geometry(view, &frame_w, &frame_h, &content_x,
 		    &content_y);
 		view->x = dst_ua->x + content_x;
 		view->y = dst_ua->y + content_y;
@@ -412,6 +463,7 @@ do_screen(struct cow_view *view, const char *name, struct cmd_q *cmdq)
 	 */
 	view->placed = true;
 
+	sync_pending_move_position(view);
 	cow_view_sync_vxy_from_global(view);
 	cow_view_sync_container_pos(view);
 	cmd_view_dirty(view);
@@ -454,8 +506,7 @@ do_step(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
 	int step = cow_config ? cow_config->step : COW_CFG_DEFAULT_STEP;
 	struct cow_box *ua = &view->output->usable_area;
 	int frame_w, frame_h, content_x, content_y;
-	cow_titlebar_frame_geometry(view, view->content_width,
-	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
+	move_frame_geometry(view, &frame_w, &frame_h, &content_x, &content_y);
 
 	unmax_if_needed(view);
 
@@ -463,7 +514,7 @@ do_step(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
 	int at_left   = ua->x;
 	int at_bottom = ua->y + ua->height;
 	int at_top    = ua->y;
-	struct cow_box fb = cow_view_frame_box(view);
+	struct cow_box fb = move_frame_box(view);
 
 	bool at_edge = false;
 	if (strcmp(dir, "right") == 0) {
@@ -524,9 +575,8 @@ do_snap(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
 
 	struct cow_box *ua	     = &view->output->usable_area;
 	int frame_w, frame_h, content_x, content_y;
-	cow_titlebar_frame_geometry(view, view->content_width,
-	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
-	struct cow_box	fb	     = cow_view_frame_box(view);
+	move_frame_geometry(view, &frame_w, &frame_h, &content_x, &content_y);
+	struct cow_box	fb	     = move_frame_box(view);
 	int		frame_left   = fb.x;
 	int		frame_top    = fb.y;
 	int		frame_right  = fb.x + fb.width;
