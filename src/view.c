@@ -2038,8 +2038,8 @@ cow_view_fullscreen(struct cow_view *view)
 
 	view->x	 = view->output->x;
 	view->y	 = view->output->y;
-	view->vx = 0;
-	view->vy = 0;
+	view->vx = view->desk != NULL ? view->desk->page_vx : 0;
+	view->vy = view->desk != NULL ? view->desk->page_vy : 0;
 	river_window_v1_propose_dimensions(view->river_window,
 	    view->output->width, view->output->height);
 	river_window_v1_fullscreen(view->river_window,
