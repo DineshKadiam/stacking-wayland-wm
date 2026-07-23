@@ -303,6 +303,7 @@ struct cow_view {
 	bool configured; /* true after first propose_dimensions */
 	bool use_ssd;	 /* true if we want server-side decorations */
 	bool fullscreen;
+	bool fullscreen_applied; /* true while River is placing fullscreen */
 	/* Unified and per-axis maximized state. */
 	bool maximized;
 	bool maximized_h;

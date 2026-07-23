@@ -50,16 +50,27 @@ view_visible_in_page(const struct cow_view *view,
 	int		 vpx  = desk->page_vx;
 	int		 vpy  = desk->page_vy;
 
-	/* Sub-page scrolls use overlap visibility even with edge_scroll. */
-	bool aligned = (w > 0 && h > 0 && vpx % w == 0 && vpy % h == 0);
+	if (w <= 0 || h <= 0)
+		return true;
 
-	if (cow_config->edge_scroll && aligned) {
-		return !(view->vx < vpx || view->vx >= vpx + w ||
-		    view->vy < vpy || view->vy >= vpy + h);
-	}
+	bool origin_visible = !(view->vx < vpx || view->vx >= vpx + w ||
+	    view->vy < vpy || view->vy >= vpy + h);
+
 	int frame_w, frame_h, content_x, content_y;
 	cow_titlebar_frame_geometry(view, view->content_width,
 	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
+
+	bool page_sized = frame_w >= w && frame_h >= h &&
+	    view->vx % w == 0 && view->vy % h == 0;
+
+	if (view->fullscreen || view->maximized || page_sized)
+		return origin_visible;
+
+	/* Sub-page scrolls use overlap visibility even with edge_scroll. */
+	bool aligned = (vpx % w == 0 && vpy % h == 0);
+
+	if (cow_config->edge_scroll && aligned)
+		return origin_visible;
 	int fx = view->vx - content_x;
 	int fy = view->vy - content_y;
 	return !(fx + frame_w <= vpx || fx >= vpx + w ||

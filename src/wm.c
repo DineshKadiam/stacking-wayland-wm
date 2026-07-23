@@ -87,6 +87,7 @@ static void manage_apply_deferred_views(void);
 static void manage_apply_deferred_close(struct cow_view *);
 static void manage_apply_deferred_resize(struct cow_view *);
 static void manage_apply_deferred_position(struct cow_view *, bool);
+static void manage_apply_fullscreen_visibility(struct cow_view *);
 static void manage_apply_focus(void);
 static void manage_apply_pending_focus(void);
 static void manage_apply_needs_focus(void);
@@ -835,6 +836,25 @@ manage_apply_deferred_views(void)
 	{
 		manage_apply_deferred_close(view);
 		manage_apply_deferred_resize(view);
+		manage_apply_fullscreen_visibility(view);
+	}
+}
+
+static void
+manage_apply_fullscreen_visibility(struct cow_view *view)
+{
+	if (view->closed || !view->fullscreen || view->river_window == NULL)
+		return;
+
+	bool visible = view->output != NULL && cow_view_visible(view,
+	    view->output);
+	if (visible && !view->fullscreen_applied) {
+		river_window_v1_fullscreen(view->river_window,
+		    view->output->river_output);
+		view->fullscreen_applied = true;
+	} else if (!visible && view->fullscreen_applied) {
+		river_window_v1_exit_fullscreen(view->river_window);
+		view->fullscreen_applied = false;
 	}
 }
 

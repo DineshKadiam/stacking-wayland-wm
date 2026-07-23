@@ -2046,6 +2046,7 @@ cow_view_fullscreen(struct cow_view *view)
 	    view->output->river_output);
 	river_window_v1_inform_fullscreen(view->river_window);
 	view->fullscreen = true;
+	view->fullscreen_applied = true;
 	view->use_ssd	 = false;
 }
 
@@ -2069,9 +2070,11 @@ cow_view_exit_fullscreen(struct cow_view *view)
 	}
 	river_window_v1_propose_dimensions(view->river_window,
 	    view->saved_width, view->saved_height);
-	river_window_v1_exit_fullscreen(view->river_window);
+	if (view->fullscreen_applied)
+		river_window_v1_exit_fullscreen(view->river_window);
 	river_window_v1_inform_not_fullscreen(view->river_window);
 	view->fullscreen = false;
+	view->fullscreen_applied = false;
 	view->use_ssd	 = true;
 }
 
