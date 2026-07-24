@@ -1591,6 +1591,13 @@ cow_view_focusable(const struct cow_view *v)
 	    !(v->flags & COW_VIEW_ICONIFIED_FLAG);
 }
 
+bool
+cow_view_circulatable(const struct cow_view *v)
+{
+	return cow_view_focusable(v) &&
+	    !(v->flags & COW_VIEW_CIRCULATE_SKIP_FLAG);
+}
+
 uint8_t
 cow_view_effective_layer(const struct cow_view *v)
 {

@@ -122,6 +122,8 @@ do_show_windows(int fd)
 		cJSON_AddBoolToObject(w, "shaded", view->sd != COW_SHADE_NONE);
 		cJSON_AddBoolToObject(w, "iconified",
 		    cow_view_is_iconified(view));
+		cJSON_AddBoolToObject(w, "circulate_skip",
+		    (view->flags & COW_VIEW_CIRCULATE_SKIP_FLAG) != 0);
 		cJSON_AddNumberToObject(w, "raise_seq",
 		    (double)view->raise_seq);
 		cJSON_AddNumberToObject(w, "layer", (double)view->layer);

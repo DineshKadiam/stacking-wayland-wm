@@ -75,6 +75,7 @@ struct view_info {
 	bool	 maximized;
 	bool	 shaded;
 	bool	 iconified;
+	bool	 circulate_skip;
 	bool	 use_ssd;
 	int	 title_thickness;
 	int	 border_width;
@@ -253,6 +254,7 @@ fetch_views(void)
 		v->maximized	   = get_jbool(w, "maximized");
 		v->shaded	   = get_jbool(w, "shaded");
 		v->iconified	   = get_jbool(w, "iconified");
+		v->circulate_skip = get_jbool(w, "circulate_skip");
 		v->use_ssd	   = get_jbool(w, "use_ssd");
 		v->title_thickness = get_jnum(w, "title_thickness", 0);
 		v->border_width	   = get_jnum(w, "border_width", 0);
@@ -1099,10 +1101,21 @@ add_row(const char *label, const char *fmt, ...)
 }
 
 static void
+append_state(char *buf, size_t len, bool active, const char *name)
+{
+	if (!active)
+		return;
+	if (buf[0] != '\0')
+		strlcat(buf, " ", len);
+	strlcat(buf, name, len);
+}
+
+static void
 build_popup_rows(void)
 {
 	struct view_info *v = &views[selected_view];
 	n_rows		    = 0;
+	char state[128]	    = "";
 
 	add_row("Window ID:", "%s", v->id);
 	add_row("App ID:", "%s", v->app_id[0] ? v->app_id : "(none)");
@@ -1114,9 +1127,13 @@ build_popup_rows(void)
 	add_row("Size:", "%d x %d", v->width, v->height);
 	add_row("Frame:", "%d,%d  %d x %d", v->frame_x, v->frame_y, v->frame_w,
 	    v->frame_h);
-	add_row("State:", "%s%s%s%s", v->focused ? "focused " : "",
-	    v->maximized ? "maximized " : "", v->shaded ? "shaded " : "",
-	    v->iconified ? "iconified" : "");
+	append_state(state, sizeof(state), v->focused, "focused");
+	append_state(state, sizeof(state), v->maximized, "maximized");
+	append_state(state, sizeof(state), v->shaded, "shaded");
+	append_state(state, sizeof(state), v->iconified, "iconified");
+	append_state(state, sizeof(state), v->circulate_skip,
+	    "circulate-skip");
+	add_row("State:", "%s", state);
 	if (v->use_ssd)
 		add_row("Decoration:", "SSD (border %d, titlebar %d)",
 		    v->border_width, v->title_thickness);

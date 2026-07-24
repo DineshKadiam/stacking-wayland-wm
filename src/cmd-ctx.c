@@ -193,7 +193,7 @@ resolve_window(const char *spec, struct cow_output *output,
 		if (focused == NULL || wl_list_empty(&cow_wm.views))
 			return NULL;
 		struct cow_view *v = cow_view_walk(focused,
-		    strcmp(spec, "@next") == 0, cow_view_focusable);
+		    strcmp(spec, "@next") == 0, cow_view_circulatable);
 		/*
 		 * Behaviour is 'stay on current' rather than 'report none':
 		 * historically this resolver has returned the focused view

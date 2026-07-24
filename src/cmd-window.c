@@ -66,6 +66,8 @@ static void		    do_raise(struct cow_view *);
 static void		    do_lower(struct cow_view *);
 static enum cmd_retval	    do_set_layer(struct cow_view *, const char *,
 	 struct cmd_q *);
+static enum cmd_retval	    do_set_circulate_skip(struct cow_view *,
+	 const char *, struct cmd_q *);
 static void		    do_expand(struct cow_view *, enum expand_dir, bool);
 static void		    do_maximize(struct cow_view *, enum maximize_type,
 		    enum maximize_axis);
@@ -76,10 +78,10 @@ static enum shade_direction resolve_shade_direction(struct cow_view *,
 
 struct cmd_entry cmd_winops_entry = {
 	"winops",
-	"t:IcrlsiSL:",
+	"t:IcrlsiSL:C:",
 	0,
 	0,
-	"[-Icilrs] [-L layer] [-t target window]",
+	"[-Icilrs] [-C on|off|toggle] [-L layer] [-t target window]",
 	cmd_winops_exec,
 	0,
 };
@@ -149,6 +151,14 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (args_has(args, 'L')) {
 		const char     *lval = args_get(args, 'L');
 		enum cmd_retval r    = do_set_layer(view, lval, cmdq);
+		if (r != CMD_RETURN_NORMAL)
+			return (r);
+	}
+
+	if (args_has(args, 'C')) {
+		const char     *cval = args_get(args, 'C');
+		enum cmd_retval r    =
+		    do_set_circulate_skip(view, cval, cmdq);
 		if (r != CMD_RETURN_NORMAL)
 			return (r);
 	}
@@ -352,6 +362,40 @@ do_set_layer(struct cow_view *view, const char *arg, struct cmd_q *cmdq)
 	}
 
 	cow_view_set_layer(view, target);
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+do_set_circulate_skip(struct cow_view *view, const char *arg,
+    struct cmd_q *cmdq)
+{
+	if (arg == NULL || arg[0] == '\0') {
+		cmdq_error(cmdq,
+		    "winops: -C: expected on, off, or toggle");
+		return (CMD_RETURN_ERROR);
+	}
+
+	bool currently =
+	    (view->flags & COW_VIEW_CIRCULATE_SKIP_FLAG) != 0;
+	bool target;
+	if (strcmp(arg, "on") == 0)
+		target = true;
+	else if (strcmp(arg, "off") == 0)
+		target = false;
+	else if (strcmp(arg, "toggle") == 0)
+		target = !currently;
+	else {
+		cmdq_error(cmdq,
+		    "winops: -C: expected on, off, or toggle, got '%s'",
+		    arg);
+		return (CMD_RETURN_ERROR);
+	}
+
+	if (target)
+		view->flags |= COW_VIEW_CIRCULATE_SKIP_FLAG;
+	else
+		view->flags &= ~COW_VIEW_CIRCULATE_SKIP_FLAG;
+
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -709,6 +753,8 @@ do_identify(struct cow_view *view, struct cmd_q *cmdq)
 	    (view->flags & COW_VIEW_STICKY_PAGE_FLAG) != 0);
 	cJSON_AddBoolToObject(flags, "iconified",
 	    (view->flags & COW_VIEW_ICONIFIED_FLAG) != 0);
+	cJSON_AddBoolToObject(flags, "circulate_skip",
+	    (view->flags & COW_VIEW_CIRCULATE_SKIP_FLAG) != 0);
 	cJSON_AddBoolToObject(flags, "maximized", view->maximized);
 	cJSON_AddBoolToObject(flags, "shaded", view->sd != COW_SHADE_NONE);
 	cJSON_AddBoolToObject(flags, "fullscreen", view->fullscreen);

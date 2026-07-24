@@ -296,8 +296,9 @@ Each iterable source yields records whose fields match the matching
 *show* topic JSON (see *show windows*, *show desk*, *show output*,
 *show rules*).  Common window fields include *id*, *app_id*,
 *title*, *desk*, *output*, *layer*, *focused*, *iconified*,
-*maximized*, *width*, *height*, *sticky_desk*, *sticky_page*,
-*border_width*, *title_thickness*, *squeeze*, and *squeezed_rect*.
+*circulate_skip*, *maximized*, *width*, *height*, *sticky_desk*,
+*sticky_page*, *border_width*, *title_thickness*, *squeeze*, and
+*squeezed_rect*.
 Common desk fields include *nr*, *name*, *output*, *current*,
 *active*, *collected*, *window_count*, *page_col*, *page_row*,
 *page_cols*, *page_rows*, *page_vx*, and *page_vy*.  Common output
@@ -712,7 +713,8 @@ When used via *moocow*(1) the JSON is printed to standard output.
 *show windows*
 	Return an array of all managed windows. Each element contains:
 	_id_, _app\_id_, _title_, _desk_, _x_, _y_, _width_, _height_,
-	_focused_, _maximized_, _shaded_, _iconified_.
+	_focused_, _maximized_, _shaded_, _iconified_,
+	_circulate\_skip_.
 
 *show desk*
 	Return _{"current": N}_ for the current output's active desk.
@@ -799,7 +801,7 @@ this man page.
 
 The following detail commands which operate on windows directly.
 
-## winops [-Icilrs] [-L layer] [-t target]
+## winops [-Icilrs] [-C on|off|toggle] [-L layer] [-t target]
 
 Operate on a window.
 
@@ -831,6 +833,11 @@ Operate on a window.
 	Toggle the window's iconified (minimised) state.
 	Click an iconified window to restore it; drag it to remember a manual
 	icon position for later iconify operations.
+
+*-C* _on|off|toggle_
+	Set, clear, or toggle CirculateSkip.  Skipped windows are ignored by
+	*focus -n*, *focus -p*, *@next*, and *@prev*; explicit focus and mouse
+	focus still work.
 
 *-L* _layer_
 	Set the window's layer (see *LAYERS*).  Accepted forms:

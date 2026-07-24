@@ -62,6 +62,16 @@ focusable_layered(const struct cow_view *v)
 	return (int)cow_view_effective_layer(v) == g_layer_filter;
 }
 
+static bool
+circulatable_layered(const struct cow_view *v)
+{
+	if (!cow_view_circulatable(v))
+		return false;
+	if (g_layer_filter < 0)
+		return true;
+	return (int)cow_view_effective_layer(v) == g_layer_filter;
+}
+
 struct cmd_entry cmd_focus_entry = {
 	"focus",
 	"t:npwd:o:Ll:",
@@ -217,7 +227,8 @@ defer_focus(struct cow_view *view)
  * layer equals target_layer; -1 means "any layer" (back-compat).
  */
 static struct cow_view *
-find_focusable(struct cow_view *focused, bool forward, int target_layer)
+find_matching(struct cow_view *focused, bool forward, int target_layer,
+    bool (*pred)(const struct cow_view *))
 {
 	if (wl_list_empty(&cow_wm.views))
 		return NULL;
@@ -230,7 +241,7 @@ find_focusable(struct cow_view *focused, bool forward, int target_layer)
 		if (forward) {
 			wl_list_for_each(v, &cow_wm.views, wm_link)
 			{
-				if (focusable_layered(v)) {
+				if (pred(v)) {
 					result = v;
 					break;
 				}
@@ -238,18 +249,31 @@ find_focusable(struct cow_view *focused, bool forward, int target_layer)
 		} else {
 			wl_list_for_each_reverse(v, &cow_wm.views, wm_link)
 			{
-				if (focusable_layered(v)) {
+				if (pred(v)) {
 					result = v;
 					break;
 				}
 			}
 		}
 	} else {
-		result = cow_view_walk(focused, forward, focusable_layered);
+		result = cow_view_walk(focused, forward, pred);
 	}
 
 	g_layer_filter = -1;
 	return result;
+}
+
+static struct cow_view *
+find_focusable(struct cow_view *focused, bool forward, int target_layer)
+{
+	return find_matching(focused, forward, target_layer, focusable_layered);
+}
+
+static struct cow_view *
+find_circulatable(struct cow_view *focused, bool forward, int target_layer)
+{
+	return find_matching(focused, forward, target_layer,
+	    circulatable_layered);
 }
 
 /* focus -n [-L | -l N] */
@@ -257,7 +281,8 @@ static void
 do_next(int target_layer)
 {
 	struct cow_view *focused = cow_wm.focused_view;
-	struct cow_view *next	 = find_focusable(focused, true, target_layer);
+	struct cow_view *next	 = find_circulatable(focused, true,
+	    target_layer);
 
 	if (next != NULL && next != focused)
 		defer_focus(next);
@@ -268,7 +293,8 @@ static void
 do_prev(int target_layer)
 {
 	struct cow_view *focused = cow_wm.focused_view;
-	struct cow_view *prev	 = find_focusable(focused, false, target_layer);
+	struct cow_view *prev	 = find_circulatable(focused, false,
+	    target_layer);
 
 	if (prev != NULL && prev != focused)
 		defer_focus(prev);

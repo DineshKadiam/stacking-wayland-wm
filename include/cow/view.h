@@ -64,6 +64,7 @@ struct cow_container {
 #define COW_VIEW_STICKY_PAGE_FLAG (1 << 2)
 #define COW_VIEW_STICKY_FLAG COW_VIEW_STICKY_DESK_FLAG /* legacy alias */
 #define COW_VIEW_ICONIFIED_FLAG (1 << 1)
+#define COW_VIEW_CIRCULATE_SKIP_FLAG (1 << 3)
 
 enum shade_direction {
 	COW_SHADE_NONE,
@@ -398,6 +399,7 @@ void cow_view_update_output(struct cow_view *);
 bool cow_view_visible(const struct cow_view *, const struct cow_output *);
 
 bool cow_view_focusable(const struct cow_view *);
+bool cow_view_circulatable(const struct cow_view *);
 
 /* Effective layer used by stack sorting. */
 uint8_t cow_view_effective_layer(const struct cow_view *);
