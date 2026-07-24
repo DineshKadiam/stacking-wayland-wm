@@ -116,6 +116,12 @@ do_show_windows(int fd)
 		cJSON_AddNumberToObject(w, "vy", view->vy);
 		cJSON_AddNumberToObject(w, "width", view->content_width);
 		cJSON_AddNumberToObject(w, "height", view->content_height);
+		cJSON_AddNumberToObject(w, "page_col",
+		    cow_view_page_col(view));
+		cJSON_AddNumberToObject(w, "page_row",
+		    cow_view_page_row(view));
+		cJSON_AddBoolToObject(w, "current_page",
+		    cow_view_current_page(view));
 		cJSON_AddBoolToObject(w, "focused",
 		    view == cow_wm.focused_view);
 		cJSON_AddBoolToObject(w, "maximized", view->maximized);

@@ -296,9 +296,9 @@ Each iterable source yields records whose fields match the matching
 *show* topic JSON (see *show windows*, *show desk*, *show output*,
 *show rules*).  Common window fields include *id*, *app_id*,
 *title*, *desk*, *output*, *layer*, *focused*, *iconified*,
-*circulate_skip*, *maximized*, *width*, *height*, *sticky_desk*,
-*sticky_page*, *border_width*, *title_thickness*, *squeeze*, and
-*squeezed_rect*.
+*circulate_skip*, *maximized*, *width*, *height*, *page_col*,
+*page_row*, *current_page*, *sticky_desk*, *sticky_page*,
+*border_width*, *title_thickness*, *squeeze*, and *squeezed_rect*.
 Common desk fields include *nr*, *name*, *output*, *current*,
 *active*, *collected*, *window_count*, *page_col*, *page_row*,
 *page_cols*, *page_rows*, *page_vx*, and *page_vy*.  Common output
@@ -714,7 +714,7 @@ When used via *moocow*(1) the JSON is printed to standard output.
 	Return an array of all managed windows. Each element contains:
 	_id_, _app\_id_, _title_, _desk_, _x_, _y_, _width_, _height_,
 	_focused_, _maximized_, _shaded_, _iconified_,
-	_circulate\_skip_.
+	_circulate\_skip_, _page\_col_, _page\_row_, _current\_page_.
 
 *show desk*
 	Return _{"current": N}_ for the current output's active desk.

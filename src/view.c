@@ -1591,6 +1591,63 @@ cow_view_focusable(const struct cow_view *v)
 	    !(v->flags & COW_VIEW_ICONIFIED_FLAG);
 }
 
+static int
+view_floor_div(int n, int d)
+{
+	if (d <= 0)
+		return 0;
+	if (n >= 0)
+		return n / d;
+	return -((-n + d - 1) / d);
+}
+
+int
+cow_view_page_col(const struct cow_view *view)
+{
+	if (view == NULL || view->output == NULL || cow_config == NULL ||
+	    cow_config->page_cols <= 1)
+		return 0;
+
+	return view_floor_div(view->vx, view->output->usable_area.width);
+}
+
+int
+cow_view_page_row(const struct cow_view *view)
+{
+	if (view == NULL || view->output == NULL || cow_config == NULL ||
+	    cow_config->page_rows <= 1)
+		return 0;
+
+	return view_floor_div(view->vy, view->output->usable_area.height);
+}
+
+bool
+cow_view_current_page(const struct cow_view *view)
+{
+	if (view == NULL || view->output == NULL || view->desk == NULL ||
+	    view->output->current_desk == NULL)
+		return false;
+
+	bool current_desk = view->desk == view->output->current_desk ||
+	    (view->flags & COW_VIEW_STICKY_DESK_FLAG) != 0;
+	if (!current_desk)
+		return false;
+	if (view->flags & COW_VIEW_STICKY_PAGE_FLAG)
+		return true;
+	if (cow_config == NULL ||
+	    (cow_config->page_cols <= 1 && cow_config->page_rows <= 1))
+		return true;
+
+	int w = view->output->usable_area.width;
+	int h = view->output->usable_area.height;
+	if (w <= 0 || h <= 0)
+		return true;
+
+	struct cow_desk *desk = view->output->current_desk;
+	return cow_view_page_col(view) == view_floor_div(desk->page_vx, w) &&
+	    cow_view_page_row(view) == view_floor_div(desk->page_vy, h);
+}
+
 bool
 cow_view_circulatable(const struct cow_view *v)
 {
