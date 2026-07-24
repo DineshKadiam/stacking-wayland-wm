@@ -33,6 +33,7 @@
 #include "cow/geometry_window.h"
 #include "cow/ipc.h"
 #include "cow/keybinding.h"
+#include "cow/layer_shell.h"
 #include "cow/memory.h"
 #include "cow/desk_ops.h"
 #include "cow/output.h"
@@ -258,6 +259,12 @@ registry_global(__unused void *data, struct wl_registry *registry,
 	    0) {
 		cow_wm.layer_shell = wl_registry_bind(registry, name,
 		    &river_layer_shell_v1_interface, 1);
+		struct cow_output *output;
+		wl_list_for_each(output, &cow_wm.outputs, wm_link)
+			cow_layer_shell_init_output(output);
+		struct cow_seat *seat;
+		wl_list_for_each(seat, &cow_wm.seats, wm_link)
+			cow_layer_shell_init_seat(seat);
 	} else if (strcmp(interface, "wl_compositor") == 0) {
 		cow_wm.compositor = wl_registry_bind(registry, name,
 		    &wl_compositor_interface, 6);
@@ -472,7 +479,7 @@ manage_titlebar_button_action(struct cow_view *view, int idx)
 
 	cow_wm.focused_view = view;
 	if (view->output != NULL)
-		cow_wm.current_output = view->output;
+		cow_output_set_current(view->output);
 
 	struct cmd_list *cmdlist = NULL;
 	char		*cause	 = NULL;
@@ -798,7 +805,7 @@ manage_sloppy_focus(struct cow_seat *seat)
 		seat->focused_view = view;
 		cow_wm.focused_view = view;
 		if (view->output != NULL)
-			cow_wm.current_output = view->output;
+			cow_output_set_current(view->output);
 		cow_status_emit();
 	}
 	seat->sloppy_focus_view = NULL;
@@ -1138,7 +1145,7 @@ handle_wm_session_unlocked(__unused void    *data,
 			seat->focused_view  = target;
 			cow_wm.focused_view = target;
 			if (target->output != NULL)
-				cow_wm.current_output = target->output;
+				cow_output_set_current(target->output);
 		}
 	}
 	cow_status_emit();

@@ -103,7 +103,7 @@ seat_handle_window_interaction(void *data,
 		seat->focused_view  = view;
 		cow_wm.focused_view = view;
 		if (view->output != NULL)
-			cow_wm.current_output = view->output;
+			cow_output_set_current(view->output);
 	}
 }
 
@@ -252,7 +252,7 @@ cow_seat_focus_view(struct cow_seat *seat, struct cow_view *view)
 
 	/* Update current output to follow focus */
 	if (view->output != NULL)
-		cow_wm.current_output = view->output;
+		cow_output_set_current(view->output);
 
 	cow_status_emit();
 }

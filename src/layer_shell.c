@@ -93,6 +93,19 @@ cow_layer_shell_init_output(struct cow_output *output)
 	    &ls_output_listener, lso);
 
 	output->layer_shell_state = lso;
+	if (output == cow_wm.current_output)
+		cow_layer_shell_set_default_output(output);
+}
+
+void
+cow_layer_shell_set_default_output(struct cow_output *output)
+{
+	if (output == NULL || output->layer_shell_state == NULL ||
+	    output->layer_shell_state->river_ls_output == NULL)
+		return;
+
+	river_layer_shell_output_v1_set_default(
+	    output->layer_shell_state->river_ls_output);
 }
 
 void

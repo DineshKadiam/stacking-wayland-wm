@@ -48,6 +48,12 @@ struct cow_layer_shell_seat {
 void cow_layer_shell_init_output(struct cow_output *);
 
 /*
+ * Tell river which output should be used as the default for layer-shell
+ * clients that do not request a specific output.
+ */
+void cow_layer_shell_set_default_output(struct cow_output *);
+
+/*
  * Tear down the per-output layer-shell state and free the backing struct.
  * Safe to call on an output with no layer-shell state.
  */

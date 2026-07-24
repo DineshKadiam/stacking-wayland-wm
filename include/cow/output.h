@@ -127,6 +127,7 @@ struct cow_output {
 /* Create/destroy output wrappers. */
 struct cow_output *cow_output_create(struct river_output_v1 *);
 void cow_output_destroy(struct cow_output *);
+void cow_output_set_current(struct cow_output *);
 
 /* Called once the human-readable output name is known. */
 void cow_output_name_known(struct cow_output *);

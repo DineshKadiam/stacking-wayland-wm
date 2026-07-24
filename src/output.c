@@ -227,10 +227,9 @@ cow_output_create(struct river_output_v1 *river_output)
 
 	wl_list_insert(&cow_wm.outputs, &output->wm_link);
 
-	/* Set as current output if we don't have one yet */
-	if (cow_wm.current_output == NULL) {
-		cow_wm.current_output = output;
-	}
+	/* Set as current output if we don't have one yet. */
+	if (cow_wm.current_output == NULL)
+		cow_output_set_current(output);
 
 	/* Register with layer shell for non_exclusive_area events */
 	cow_layer_shell_init_output(output);
@@ -504,13 +503,11 @@ cow_output_destroy(struct cow_output *output)
 	wl_list_remove(&output->wm_link);
 
 	if (cow_wm.current_output == output) {
-		if (!wl_list_empty(&cow_wm.outputs)) {
-			cow_wm.current_output =
-			    wl_container_of(cow_wm.outputs.next,
-				cow_wm.current_output, wm_link);
-		} else {
-			cow_wm.current_output = NULL;
-		}
+		struct cow_output *next = NULL;
+		if (!wl_list_empty(&cow_wm.outputs))
+			next = wl_container_of(cow_wm.outputs.next, next,
+			    wm_link);
+		cow_output_set_current(next);
 	}
 
 	output_background_destroy_resources(output);
@@ -746,6 +743,13 @@ cow_outputs_max_bottom(void)
 }
 
 void
+cow_output_set_current(struct cow_output *output)
+{
+	cow_wm.current_output = output;
+	cow_layer_shell_set_default_output(output);
+}
+
+void
 cow_output_update_current(void)
 {
 	/* TODO -- make this a setting?  To either say the current output is
@@ -767,7 +771,7 @@ cow_output_update_current(void)
 			struct cow_output *this = cow_output_at(ps->pointer_x,
 			    ps->pointer_y);
 			if (this != NULL && this != cow_wm.current_output)
-				cow_wm.current_output = this;
+				cow_output_set_current(this);
 		}
 	}
 }
