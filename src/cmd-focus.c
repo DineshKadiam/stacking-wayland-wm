@@ -16,7 +16,7 @@
 /*
  * Command: focus -- focus a window by various selectors.
 t*
- * usage: focus [-npw] [-d up|down|left|right] [-o output]
+ * usage: focus [-npwL] [-F expr] [-l N] [-d up|down|left|right] [-o output]
  *              [-A app_id] [-T title] [-i id]
  */
 
@@ -25,6 +25,7 @@ t*
 #include <string.h>
 
 #include "cow/cmd.h"
+#include "cow/cmd-filter.h"
 #include "cow/compat.h"
 #include "cow/config.h"
 #include "cow/memory.h"
@@ -34,8 +35,8 @@ t*
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_focus_exec(struct cmd *, struct cmd_q *);
-static void	       do_next(int target_layer);
-static void	       do_prev(int target_layer);
+static enum cmd_retval do_next(int, struct cmd_filter *, struct cmd_q *);
+static enum cmd_retval do_prev(int, struct cmd_filter *, struct cmd_q *);
 static void	       do_app_id(const char *, struct cmd_q *);
 static void	       do_title(const char *, struct cmd_q *);
 static void	       do_id(const char *, struct cmd_q *);
@@ -51,6 +52,7 @@ static void	       do_layer_focus(int layer, struct cmd_q *);
  * function return; not multi-thread safe (the WM is single-threaded).
  */
 static int g_layer_filter = -1;
+static struct cmd_filter *g_filter = NULL;
 
 static bool
 focusable_layered(const struct cow_view *v)
@@ -65,19 +67,31 @@ focusable_layered(const struct cow_view *v)
 static bool
 circulatable_layered(const struct cow_view *v)
 {
+	if (g_filter != NULL && g_filter->failed)
+		return true;
 	if (!cow_view_circulatable(v))
 		return false;
 	if (g_layer_filter < 0)
-		return true;
-	return (int)cow_view_effective_layer(v) == g_layer_filter;
+		goto filter;
+	if ((int)cow_view_effective_layer(v) != g_layer_filter)
+		return false;
+
+filter:
+	if (!cmd_filter_empty(g_filter)) {
+		bool matches = false;
+		if (!cmd_filter_view(g_filter, v, &matches))
+			return true;
+		return matches;
+	}
+	return true;
 }
 
 struct cmd_entry cmd_focus_entry = {
 	"focus",
-	"t:npwd:o:Ll:",
+	"t:npwF:d:o:Ll:",
 	0,
 	0,
-	"focus [-npwL] [-l N] [-d dir] [-o output] "
+	"focus [-npwL] [-F expr] [-l N] [-d dir] [-o output] "
 	"[-t %app|/title/|#id]",
 	cmd_focus_exec,
 	0,
@@ -133,6 +147,7 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 	const char *dir_val    = args_get(args, 'd');
 	const char *scr_val    = args_get(args, 'o');
 	const char *t_val      = args_get(args, 't');
+	const char *filter_val = args_get(args, 'F');
 	const char *layer_val  = args_get(args, 'l');
 	bool	    do_warp    = args_has(args, 'w');
 	bool	    same_layer = args_has(args, 'L');
@@ -147,6 +162,14 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 		cmdq_error(cmdq, "focus: -L and -l are mutually exclusive");
 		return (CMD_RETURN_ERROR);
 	}
+	if (filter_val != NULL && !args_has(args, 'n') &&
+	    !args_has(args, 'p')) {
+		cmdq_error(cmdq, "focus: -F requires -n or -p");
+		return (CMD_RETURN_ERROR);
+	}
+	struct cmd_filter filter;
+	if (!cmd_filter_parse(&filter, cmdq, "focus", "-F", filter_val))
+		return (CMD_RETURN_ERROR);
 
 	/*
 	 * Resolve target_layer for the layer-aware modifiers:
@@ -170,19 +193,28 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 		if (errstr != NULL) {
 			cmdq_error(cmdq, "focus: -l: bad layer value: %s",
 			    layer_val);
+			cmd_filter_free(&filter);
 			return (CMD_RETURN_ERROR);
 		}
 		target_layer = (int)v;
 	}
 
 	if (args_has(args, 'n')) {
-		do_next(target_layer);
+		enum cmd_retval r = do_next(target_layer, &filter, cmdq);
+		cmd_filter_free(&filter);
+		if (r != CMD_RETURN_NORMAL)
+			return (r);
 	} else if (args_has(args, 'p')) {
-		do_prev(target_layer);
+		enum cmd_retval r = do_prev(target_layer, &filter, cmdq);
+		cmd_filter_free(&filter);
+		if (r != CMD_RETURN_NORMAL)
+			return (r);
 	} else if (scr_val != NULL) {
+		cmd_filter_free(&filter);
 		do_screen(scr_val, cmdq);
 		return (CMD_RETURN_NORMAL);
 	} else if (dir_val != NULL) {
+		cmd_filter_free(&filter);
 		enum cow_direction dir = cow_parse_direction(dir_val);
 		if (dir == COW_DIR_NONE) {
 			cmdq_error(cmdq, "focus: unknown direction: %s",
@@ -191,17 +223,22 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 		}
 		do_directional(dir, target_layer, cmdq);
 	} else if (t_val != NULL) {
+		cmd_filter_free(&filter);
 		if (!focus_dispatch_selector(t_val, cmdq))
 			return (CMD_RETURN_ERROR);
 	} else if (layer_val != NULL) {
+		cmd_filter_free(&filter);
 		/* `focus -l N` with no -n/-p: topmost (or cycle if
 		 * focused view is already in N). */
 		do_layer_focus(target_layer, cmdq);
 	} else if (same_layer) {
+		cmd_filter_free(&filter);
 		/* -L is a modifier; not a standalone verb. */
 		cmdq_error(cmdq,
 		    "focus: -L requires -n, -p, or -d <direction>");
 		return (CMD_RETURN_ERROR);
+	} else {
+		cmd_filter_free(&filter);
 	}
 
 	if (do_warp) {
@@ -272,32 +309,39 @@ find_focusable(struct cow_view *focused, bool forward, int target_layer)
 static struct cow_view *
 find_circulatable(struct cow_view *focused, bool forward, int target_layer)
 {
-	return find_matching(focused, forward, target_layer,
-	    circulatable_layered);
+	return find_matching(focused, forward, target_layer, circulatable_layered);
 }
 
-/* focus -n [-L | -l N] */
-static void
-do_next(int target_layer)
+/* focus -n [-F expr] [-L | -l N] */
+static enum cmd_retval
+do_next(int target_layer, struct cmd_filter *filter, struct cmd_q *cmdq)
 {
 	struct cow_view *focused = cow_wm.focused_view;
-	struct cow_view *next	 = find_circulatable(focused, true,
-	    target_layer);
+	g_filter = filter;
+	struct cow_view *next = find_circulatable(focused, true, target_layer);
+	g_filter = NULL;
+	if (!cmd_filter_finish(filter, cmdq))
+		return (CMD_RETURN_ERROR);
 
 	if (next != NULL && next != focused)
 		defer_focus(next);
+	return (CMD_RETURN_NORMAL);
 }
 
-/* focus -p [-L | -l N] */
-static void
-do_prev(int target_layer)
+/* focus -p [-F expr] [-L | -l N] */
+static enum cmd_retval
+do_prev(int target_layer, struct cmd_filter *filter, struct cmd_q *cmdq)
 {
 	struct cow_view *focused = cow_wm.focused_view;
-	struct cow_view *prev	 = find_circulatable(focused, false,
-	    target_layer);
+	g_filter = filter;
+	struct cow_view *prev = find_circulatable(focused, false, target_layer);
+	g_filter = NULL;
+	if (!cmd_filter_finish(filter, cmdq))
+		return (CMD_RETURN_ERROR);
 
 	if (prev != NULL && prev != focused)
 		defer_focus(prev);
+	return (CMD_RETURN_NORMAL);
 }
 
 /*

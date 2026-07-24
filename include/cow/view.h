@@ -400,6 +400,8 @@ bool cow_view_visible(const struct cow_view *, const struct cow_output *);
 
 int  cow_view_page_col(const struct cow_view *);
 int  cow_view_page_row(const struct cow_view *);
+bool cow_view_current_desk(const struct cow_view *);
+bool cow_view_current_output(const struct cow_view *);
 bool cow_view_current_page(const struct cow_view *);
 bool cow_view_focusable(const struct cow_view *);
 bool cow_view_circulatable(const struct cow_view *);

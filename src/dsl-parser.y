@@ -114,6 +114,10 @@ script
 		{
 			ctx->ast->root = $2;
 		}
+	| expr
+		{
+			ctx->ast->root = $1;
+		}
 	;
 
 stmt_list

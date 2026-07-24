@@ -628,6 +628,15 @@ dsl_eval(struct dsl_ast *ast, struct cmd_q *cmdq, struct dsl_error *err)
 {
 	if (ast == NULL || ast->root == NULL)
 		return (true);
+	if (ast->root->kind != DSL_N_BLOCK) {
+		if (err != NULL) {
+			err->file    = NULL;
+			err->line    = ast->root->line;
+			err->col     = ast->root->col;
+			err->message = xstrdup("script root is not a block");
+		}
+		return (false);
+	}
 
 	struct dsl_eval_ctx ctx = { 0 };
 	ctx.cmdq		= cmdq;
@@ -644,4 +653,35 @@ dsl_eval(struct dsl_ast *ast, struct cmd_q *cmdq, struct dsl_error *err)
 	env_free(env);
 
 	return (!ctx.failed);
+}
+
+bool
+dsl_eval_view_expr(struct dsl_ast *ast, const struct cow_view *view,
+    bool *out, struct dsl_error *err)
+{
+	if (out == NULL)
+		return (false);
+	*out = false;
+	if (ast == NULL || ast->root == NULL)
+		return (true);
+
+	struct dsl_eval_ctx ctx = { 0 };
+	ctx.err			= err;
+
+	struct dsl_env *env = env_new(NULL);
+	if (view != NULL) {
+		struct dsl_value *self = dsl_snapshot_view(view);
+		env_set(env, "self", self);
+		dsl_value_unref(self);
+	}
+
+	struct dsl_value *v = eval_expr(&ctx, env, ast->root);
+	bool ok = v != NULL;
+	if (v != NULL) {
+		*out = dsl_value_truthy(v);
+		dsl_value_unref(v);
+	}
+	env_free(env);
+
+	return (!ctx.failed && ok);
 }

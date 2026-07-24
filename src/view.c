@@ -1622,15 +1622,30 @@ cow_view_page_row(const struct cow_view *view)
 }
 
 bool
+cow_view_current_desk(const struct cow_view *view)
+{
+	if (view == NULL || view->output == NULL || view->desk == NULL ||
+	    view->output->current_desk == NULL)
+		return false;
+	return view->desk == view->output->current_desk ||
+	    (view->flags & COW_VIEW_STICKY_DESK_FLAG) != 0;
+}
+
+bool
+cow_view_current_output(const struct cow_view *view)
+{
+	return view != NULL && view->output != NULL &&
+	    view->output == cow_wm.current_output;
+}
+
+bool
 cow_view_current_page(const struct cow_view *view)
 {
 	if (view == NULL || view->output == NULL || view->desk == NULL ||
 	    view->output->current_desk == NULL)
 		return false;
 
-	bool current_desk = view->desk == view->output->current_desk ||
-	    (view->flags & COW_VIEW_STICKY_DESK_FLAG) != 0;
-	if (!current_desk)
+	if (!cow_view_current_desk(view))
 		return false;
 	if (view->flags & COW_VIEW_STICKY_PAGE_FLAG)
 		return true;

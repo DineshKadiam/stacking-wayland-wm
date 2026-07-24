@@ -100,6 +100,8 @@ dsl_snapshot_view(const struct cow_view *view)
 	rec_set_number(r, "height", view->content_height);
 	rec_set_number(r, "page_col", cow_view_page_col(view));
 	rec_set_number(r, "page_row", cow_view_page_row(view));
+	rec_set_bool(r, "current_desk", cow_view_current_desk(view));
+	rec_set_bool(r, "current_output", cow_view_current_output(view));
 	rec_set_bool(r, "current_page", cow_view_current_page(view));
 	rec_set_bool(r, "focused", view == cow_wm.focused_view);
 	rec_set_bool(r, "maximized", view->maximized);

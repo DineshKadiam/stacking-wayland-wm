@@ -120,6 +120,10 @@ do_show_windows(int fd)
 		    cow_view_page_col(view));
 		cJSON_AddNumberToObject(w, "page_row",
 		    cow_view_page_row(view));
+		cJSON_AddBoolToObject(w, "current_desk",
+		    cow_view_current_desk(view));
+		cJSON_AddBoolToObject(w, "current_output",
+		    cow_view_current_output(view));
 		cJSON_AddBoolToObject(w, "current_page",
 		    cow_view_current_page(view));
 		cJSON_AddBoolToObject(w, "focused",

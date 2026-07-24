@@ -28,6 +28,7 @@
  */
 
 struct cmd_q;
+struct cow_view;
 struct dsl_ast;
 
 /* Parse / eval error carrier. */
@@ -58,5 +59,12 @@ void dsl_free(struct dsl_ast *);
  * evaluation failure (e.g. unknown property, type mismatch).
  */
 bool dsl_eval(struct dsl_ast *ast, struct cmd_q *cmdq, struct dsl_error *err);
+
+/*
+ * Evaluate an expression AST with "self" bound to a window snapshot.
+ * Writes the expression's truthiness to out on success.
+ */
+bool dsl_eval_view_expr(struct dsl_ast *ast, const struct cow_view *view,
+    bool *out, struct dsl_error *err);
 
 #endif /* COW_DSL_H */

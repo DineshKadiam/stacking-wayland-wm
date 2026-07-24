@@ -36,6 +36,7 @@ srcs = [
     'src/cmd-desk.c',
     'src/cmd-desk-name.c',
     'src/cmd-exec.c',
+    'src/cmd-filter.c',
     'src/cmd-focus.c',
     'src/cmd-icon.c',
     'src/cmd-include.c',
