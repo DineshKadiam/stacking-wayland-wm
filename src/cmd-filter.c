@@ -100,6 +100,23 @@ cmd_filter_finish(struct cmd_filter *filter, struct cmd_q *cmdq)
 }
 
 void
+cmd_filter_fprint_error(struct cmd_filter *filter, FILE *fp,
+    const char *prefix)
+{
+	if (filter == NULL || !filter->failed || fp == NULL)
+		return;
+
+	fprintf(fp, "%s%s: %s eval error at %d:%d: %s\n",
+	    prefix != NULL ? prefix : "",
+	    filter->command != NULL ? filter->command : "(unknown)",
+	    filter->flag != NULL ? filter->flag : "-F",
+	    filter->err != NULL ? filter->err->line : 0,
+	    filter->err != NULL ? filter->err->col : 0,
+	    filter->err != NULL && filter->err->message != NULL ?
+	    filter->err->message : "(unknown)");
+}
+
+void
 cmd_filter_free(struct cmd_filter *filter)
 {
 	if (filter == NULL)

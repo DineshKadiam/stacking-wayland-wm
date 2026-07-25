@@ -28,6 +28,7 @@
 #include <string.h>
 
 #include "cow/cmd.h"
+#include "cow/cmd-filter.h"
 #include "cow/config.h"
 #include "cow/ipc.h"
 #include "cow/output.h"
@@ -38,7 +39,8 @@
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_show_exec(struct cmd *, struct cmd_q *);
-static void	       do_show_windows(int fd);
+static enum cmd_retval do_show_windows(int, struct cmd_filter *,
+    struct cmd_q *);
 static void	       do_show_desk(int fd);
 static void	       do_show_output(int fd);
 static void	       do_show_rules(int fd);
@@ -46,10 +48,10 @@ static void	       do_show_config(const char *ckey, int fd, struct cmd_q *);
 
 struct cmd_entry cmd_show_entry = {
 	"show",
-	"",
+	"F:",
 	1,
 	2,
-	"show topic",
+	"show [-F expr] topic",
 	cmd_show_exec,
 	0,
 };
@@ -60,11 +62,22 @@ cmd_show_exec(struct cmd *self, struct cmd_q *cmdq)
 	struct args *args  = self->args;
 	int	     fd	   = cmdq->client_fd;
 	const char  *topic = args->argv[0];
+	const char  *filter_val = args_get(args, 'F');
+	struct cmd_filter filter;
+
+	if (filter_val != NULL && strcmp(topic, "windows") != 0) {
+		cmdq_error(cmdq, "show: -F is only valid with windows");
+		return (CMD_RETURN_ERROR);
+	}
+	if (!cmd_filter_parse(&filter, cmdq, "show", "-F", filter_val))
+		return (CMD_RETURN_ERROR);
 
 	if (strcmp(topic, "windows") == 0) {
-		do_show_windows(fd);
-		return (CMD_RETURN_NORMAL);
+		enum cmd_retval r = do_show_windows(fd, &filter, cmdq);
+		cmd_filter_free(&filter);
+		return (r);
 	}
+	cmd_filter_free(&filter);
 
 	if (strcmp(topic, "desk") == 0) {
 		do_show_desk(fd);
@@ -97,8 +110,8 @@ cmd_show_exec(struct cmd *self, struct cmd_q *cmdq)
 	return (CMD_RETURN_ERROR);
 }
 
-static void
-do_show_windows(int fd)
+static enum cmd_retval
+do_show_windows(int fd, struct cmd_filter *filter, struct cmd_q *cmdq)
 {
 	cJSON		*arr = cJSON_CreateArray();
 	struct cow_view *view;
@@ -106,6 +119,14 @@ do_show_windows(int fd)
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
 		if (view->closed)
+			continue;
+		bool matches = false;
+		if (!cmd_filter_view(filter, view, &matches)) {
+			cJSON_Delete(arr);
+			cmd_filter_finish(filter, cmdq);
+			return (CMD_RETURN_ERROR);
+		}
+		if (!matches)
 			continue;
 		cJSON *w = cJSON_CreateObject();
 		cow_view_json_add_identity(w, view);
@@ -188,7 +209,12 @@ do_show_windows(int fd)
 
 		cJSON_AddItemToArray(arr, w);
 	}
+	if (!cmd_filter_finish(filter, cmdq)) {
+		cJSON_Delete(arr);
+		return (CMD_RETURN_ERROR);
+	}
 	cow_ipc_respond_data(fd, arr);
+	return (CMD_RETURN_NORMAL);
 }
 
 static void

@@ -18,6 +18,7 @@
 #define COW_CMD_FILTER_H
 
 #include <stdbool.h>
+#include <stdio.h>
 
 struct cmd_q;
 struct cow_view;
@@ -37,6 +38,7 @@ bool cmd_filter_parse(struct cmd_filter *, struct cmd_q *, const char *,
 bool cmd_filter_empty(const struct cmd_filter *);
 bool cmd_filter_view(struct cmd_filter *, const struct cow_view *, bool *);
 bool cmd_filter_finish(struct cmd_filter *, struct cmd_q *);
+void cmd_filter_fprint_error(struct cmd_filter *, FILE *, const char *);
 void cmd_filter_free(struct cmd_filter *);
 
 #endif /* COW_CMD_FILTER_H */

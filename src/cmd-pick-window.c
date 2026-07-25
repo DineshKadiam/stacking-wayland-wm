@@ -25,6 +25,7 @@
 #include <xkbcommon/xkbcommon.h>
 
 #include "cow/cmd.h"
+#include "cow/cmd-filter.h"
 #include "cow/cmd_scan.h"
 #include "cow/compat.h"
 #include "cow/memory.h"
@@ -42,10 +43,10 @@ static enum cmd_retval cmd_pick_window_exec(struct cmd *, struct cmd_q *);
 
 struct cmd_entry cmd_pick_window_entry = {
 	"pick-window",
-	"",
+	"F:",
 	1,
 	-1,
-	"pick-window <command...>",
+	"pick-window [-F expr] <command...>",
 	cmd_pick_window_exec,
 	0,
 };
@@ -70,6 +71,7 @@ struct pick_session {
 	struct cow_output   *cur_output;
 	int		     cur_sx;
 	int		     cur_sy;
+	struct cmd_filter    filter;
 };
 
 static struct pick_session *active_session;
@@ -80,7 +82,7 @@ static char *pick_command_string(struct args *);
 static void pick_session_seed_pointer(struct pick_session *);
 
 static struct cow_view *
-pick_view_at(int x, int y)
+pick_view_at(struct pick_session *s, int x, int y)
 {
 	struct cow_view *best = NULL;
 	struct cow_view *v;
@@ -96,6 +98,13 @@ pick_view_at(int x, int y)
 			continue;
 		if (best == NULL || v->raise_seq > best->raise_seq)
 			best = v;
+	}
+	if (best != NULL) {
+		bool matches = false;
+		if (!cmd_filter_view(&s->filter, best, &matches))
+			return NULL;
+		if (!matches)
+			return NULL;
 	}
 	return best;
 }
@@ -370,7 +379,13 @@ pick_session_fire(struct pick_session *s)
 	if (s->cur_output != NULL) {
 		int gx = s->cur_output->x + s->cur_sx;
 		int gy = s->cur_output->y + s->cur_sy;
-		view   = pick_view_at(gx, gy);
+		view   = pick_view_at(s, gx, gy);
+	}
+
+	if (s->filter.failed) {
+		cmd_filter_fprint_error(&s->filter, stderr, "cow: ");
+		pick_session_destroy(s);
+		return;
 	}
 
 	if (view == NULL || view->closed) {
@@ -447,6 +462,7 @@ pick_session_destroy(struct pick_session *s)
 			overlay_destroy(&s->overlays[i]);
 		xfree(s->overlays);
 	}
+	cmd_filter_free(&s->filter);
 	xfree(s->cmd_str);
 	xfree(s);
 
@@ -473,15 +489,22 @@ cmd_pick_window_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_ERROR);
 	}
 
+	struct cmd_filter filter;
+	if (!cmd_filter_parse(&filter, cmdq, "pick-window", "-F",
+		args_get(args, 'F')))
+		return (CMD_RETURN_ERROR);
+
 	int n_outs = 0;
 	struct cow_output *out;
 	wl_list_for_each(out, &cow_wm.outputs, wm_link) n_outs++;
 	if (n_outs == 0) {
+		cmd_filter_free(&filter);
 		cmdq_error(cmdq, "pick-window: no outputs");
 		return (CMD_RETURN_ERROR);
 	}
 
 	struct pick_session *s = xcalloc(1, sizeof(*s));
+	s->filter = filter;
 	s->cmd_str = pick_command_string(args);
 	s->overlays = xcalloc((size_t)n_outs, sizeof(*s->overlays));
 	s->n_overlays = 0;

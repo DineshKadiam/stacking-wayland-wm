@@ -704,10 +704,14 @@ Defined rules can be seen with the *show* command.
 Execute a shell command. During configuration loading, *exec* commands are
 deferred until *cow* has fully connected to River.
 
-## show [topic] [config key]
+## show [-F expr] [topic] [config key]
 
 Query window manager state. The response is a JSON object.
 When used via *moocow*(1) the JSON is printed to standard output.
+
+*-F* _expr_
+	Filter *show windows* with a DSL expression.  *self* is bound to
+	each candidate window.
 
 *Topics:*
 
@@ -717,6 +721,9 @@ When used via *moocow*(1) the JSON is printed to standard output.
 	_focused_, _maximized_, _shaded_, _iconified_,
 	_circulate\_skip_, _page\_col_, _page\_row_, _current\_page_,
 	_current\_desk_, _current\_output_.
+
+	Example:
+	*show -F 'self.current_page' windows*
 
 *show desk*
 	Return _{"current": N}_ for the current output's active desk.
@@ -1052,7 +1059,7 @@ window-maximize -u -v  # un-maximise vertical only, keep horizontal
 window-maximize -k     # mark maximised without changing size
 ```
 
-## pick-window command ...
+## pick-window [-F expr] command ...
 
 Pick a window with the mouse and run _command_ targeting that window.
 The cursor changes to a crosshair icon, indicating a target window should be
@@ -1062,11 +1069,16 @@ The picked window is passed to _command_ as the default target, so a
 _command_ without an explicit *-t* operates on the picked view.  Any
 explicit *-t* in _command_ takes precedence. 
 
+*-F* _expr_
+	Only allow matching windows to be picked.  *self* is bound to each
+	candidate window.
+
 Examples:
 
 ```
 bind Super+p pick-window winops -c
 bind Super+P pick-window { winops -c ; focus -L }
+bind Super+o pick-window -F 'self.current_output' focus
 ```
 
 ## window-shade [-t target] -d dir
@@ -1358,12 +1370,19 @@ moved manualky will be placed automatically along the bottom of the output.
 
 The following commands control icons:
 
-## icon-reset [-t target]
+## icon-reset [-F expr] [-t target]
 
 Reset manual icon positions.  Without *-t*, all saved icon positions are
 cleared and iconified windows are returned to automatic placement.  With *-t*,
 the target may be a window, output, or desk; for example *-t #id*, *-t @1*, or
 *-t :2*.
+
+*-F* _expr_
+	Only reset matching windows.  *self* is bound to each candidate
+	window.  With a single target window, the expression is a guard.
+
+Example:
+	*icon-reset -F 'self.current_desk and self.iconified'*
 
 ## ICON SETTINGS
 
