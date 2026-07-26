@@ -18,6 +18,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 
 #include "cow/compat.h"
 #include "cow/cmd.h"
@@ -116,6 +117,110 @@ cmd_argv_to_string(int argc, char **argv, int start)
 	}
 
 	return (buf);
+}
+
+static bool
+cmd_arg_needs_quotes(const char *s)
+{
+	if (s == NULL || *s == '\0')
+		return true;
+	for (; *s != '\0'; s++) {
+		unsigned char ch = (unsigned char)*s;
+		if (isspace(ch) || ch == '"' || ch == '\'' || ch == '\\' ||
+		    ch == '#')
+			return true;
+	}
+	return false;
+}
+
+static size_t
+cmd_arg_quoted_len(const char *s)
+{
+	if (!cmd_arg_needs_quotes(s))
+		return strlen(s);
+
+	size_t len = 2; /* surrounding quotes */
+	for (; *s != '\0'; s++) {
+		switch (*s) {
+		case '\\':
+		case '"':
+		case '\n':
+		case '\r':
+		case '\t':
+			len += 2;
+			break;
+		default:
+			len++;
+			break;
+		}
+	}
+	return len;
+}
+
+static char *
+cmd_arg_quote(char *dst, const char *s)
+{
+	if (!cmd_arg_needs_quotes(s)) {
+		size_t len = strlen(s);
+		memcpy(dst, s, len);
+		return dst + len;
+	}
+
+	*dst++ = '"';
+	for (; *s != '\0'; s++) {
+		switch (*s) {
+		case '\\':
+			*dst++ = '\\';
+			*dst++ = '\\';
+			break;
+		case '"':
+			*dst++ = '\\';
+			*dst++ = '"';
+			break;
+		case '\n':
+			*dst++ = '\\';
+			*dst++ = 'n';
+			break;
+		case '\r':
+			*dst++ = '\\';
+			*dst++ = 'r';
+			break;
+		case '\t':
+			*dst++ = '\\';
+			*dst++ = 't';
+			break;
+		default:
+			*dst++ = *s;
+			break;
+		}
+	}
+	*dst++ = '"';
+	return dst;
+}
+
+/*
+ * Join argv[start..argc-1] into a command string that cmd_string_parse()
+ * can later parse back to the same argv.
+ */
+char *
+cmd_argv_to_command_string(int argc, char **argv, int start)
+{
+	size_t len = 0;
+
+	for (int i = start; i < argc; i++)
+		len += cmd_arg_quoted_len(argv[i]) + 1;
+	if (len == 0)
+		return xstrdup("");
+
+	char *buf = xmalloc(len);
+	char *p = buf;
+	for (int i = start; i < argc; i++) {
+		if (i != start)
+			*p++ = ' ';
+		p = cmd_arg_quote(p, argv[i]);
+	}
+	*p = '\0';
+	return buf;
 }
 
 void

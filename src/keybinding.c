@@ -710,4 +710,5 @@ cow_rebind_all_seats(void)
 		cow_seat_destroy_bindings(seat);
 		cow_seat_register_default_bindings(seat);
 	}
+	cow_wm_request_manage_dirty();
 }

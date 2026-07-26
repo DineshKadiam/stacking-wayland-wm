@@ -27,6 +27,7 @@ struct cow_ipc_client {
 	char	      buf[COW_IPC_BUF_SIZE];
 	int	      buf_len;
 	bool	      active;
+	bool	      responded;
 	struct event *ev;
 };
 

@@ -253,6 +253,7 @@ struct cmd_entry *cmd_find_cmd(const char *);
 char		**cmd_copy_argv(int, char *const *);
 void		  cmd_free_argv(int, char **);
 char		 *cmd_argv_to_string(int, char **, int);
+char		 *cmd_argv_to_command_string(int, char **, int);
 size_t		  cmd_print(struct cmd *, char *, size_t);
 struct cmd	 *cmd_parse(int, char **, const char *, u_int, char **);
 

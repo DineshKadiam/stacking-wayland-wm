@@ -41,6 +41,7 @@ struct cow_ipc cow_ipc;
 static void ipc_accept_cb(evutil_socket_t, short, void *);
 static void ipc_client_cb(evutil_socket_t, short, void *);
 static bool cow_ipc_load_file(const char *, int);
+static struct cow_ipc_client *ipc_find_client_fd(int);
 
 bool
 cow_ipc_init(void)
@@ -107,6 +108,9 @@ cow_ipc_respond(int fd, const char *json)
 {
 	if (fd < 0)
 		return;
+	struct cow_ipc_client *client = ipc_find_client_fd(fd);
+	if (client != NULL)
+		client->responded = true;
 	size_t len = strlen(json);
 	if (cow_write_all(fd, json, len) < 0)
 		return;
@@ -197,6 +201,9 @@ cow_ipc_dispatch(const char *line, int client_fd)
 		}
 		ARRAY_FREE(&cfg_causes);
 	}
+	struct cow_ipc_client *client = ipc_find_client_fd(client_fd);
+	if (ok && client != NULL && !client->responded)
+		cow_ipc_respond(client_fd, "{\"ok\":true}");
 
 	cmdq_free(cmdq);
 
@@ -345,6 +352,18 @@ ipc_find_free_client(void)
 	return (NULL);
 }
 
+static struct cow_ipc_client *
+ipc_find_client_fd(int fd)
+{
+	if (fd < 0)
+		return NULL;
+	for (int i = 0; i < COW_IPC_MAX_CLIENTS; i++) {
+		if (cow_ipc.clients[i].active && cow_ipc.clients[i].fd == fd)
+			return &cow_ipc.clients[i];
+	}
+	return NULL;
+}
+
 static void
 ipc_remove_client(struct cow_ipc_client *client)
 {
@@ -384,6 +403,7 @@ ipc_accept_client(void)
 	client->fd	 = fd;
 	client->buf_len	 = 0;
 	client->active	 = true;
+	client->responded = false;
 	client->ev	 = event_new(cow_event_base(), fd, EV_READ | EV_PERSIST,
 	     ipc_client_cb, client);
 	if (client->ev == NULL || event_add(client->ev, NULL) < 0) {

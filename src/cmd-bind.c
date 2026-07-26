@@ -24,6 +24,8 @@
  *       fires once per press.
  */
 
+#include <string.h>
+
 #include "cow/cmd.h"
 #include "cow/config.h"
 #include "cow/keybinding.h"
@@ -57,9 +59,22 @@ cmd_bind_exec(struct cmd *self, __unused struct cmd_q *cmdq)
 {
 	struct args *args = self->args;
 
+	struct cow_binding_entry *existing, *tmp;
+	wl_list_for_each_safe(existing, tmp, &cow_config->keyboard_bindings,
+	    link)
+	{
+		if (strcmp(existing->key_string, args->argv[0]) == 0) {
+			wl_list_remove(&existing->link);
+			xfree(existing->key_string);
+			xfree(existing->action_string);
+			xfree(existing);
+		}
+	}
+
 	struct cow_binding_entry *entry = xcalloc(1, sizeof(*entry));
 	entry->key_string		= xstrdup(args->argv[0]);
-	entry->action_string = cmd_argv_to_string(args->argc, args->argv, 1);
+	entry->action_string =
+	    cmd_argv_to_command_string(args->argc, args->argv, 1);
 	entry->repeatable    = args_has(args, 'r');
 
 	wl_list_insert(&cow_config->keyboard_bindings, &entry->link);

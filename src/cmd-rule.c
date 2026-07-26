@@ -218,7 +218,8 @@ do_rule_add(struct args *args, struct cmd_q *cmdq)
 	}
 
 	/* Reconstruct + parse the command body. */
-	char		*body = cmd_argv_to_string(args->argc, args->argv, 0);
+	char		*body =
+	    cmd_argv_to_command_string(args->argc, args->argv, 0);
 	struct cmd_list *cmdlist = NULL;
 	char		*cause	 = NULL;
 	if (cmd_string_parse(body, &cmdlist, NULL, 0, &cause) != 0 ||

@@ -566,7 +566,12 @@ pick_session_seed_pointer(struct pick_session *s)
 static char *
 pick_command_string(struct args *args)
 {
-	char *cmd = cmd_argv_to_string(args->argc, args->argv, 0);
+	char *cmd;
+
+	if (args->argc == 1 && args->argv[0][0] == '{')
+		cmd = xstrdup(args->argv[0]);
+	else
+		cmd = cmd_argv_to_command_string(args->argc, args->argv, 0);
 
 	if (args->argc != 1 || cmd[0] != '{')
 		return cmd;
