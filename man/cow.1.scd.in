@@ -856,6 +856,12 @@ Operate on a window.
 	*focus -n*, *focus -p*, *@next*, and *@prev*; explicit focus and mouse
 	focus still work.
 
+	CirculateSkip is window state.  Once set, it applies to ordinary
+	next/previous circulation regardless of which key binding or command
+	started the focus change.  This is useful for panels, pagers, docks,
+	and other utility windows which should generally remain reachable by
+	direct focus, but not appear in normal circulation.
+
 *-L* _layer_
 	Set the window's layer (see *LAYERS*).  Accepted forms:
 
@@ -962,6 +968,11 @@ Move keyboard focus.
 	is bound to each candidate window.  CirculateSkip still applies, so
 	utility windows marked with *winops -C on* are skipped independently
 	from the expression.
+
+	The filter is local to this *focus* invocation.  Use it for predicates
+	which are part of a particular focus action, such as limiting
+	circulation to the current output and page.  Use *winops -C* instead
+	when a window should be skipped by normal circulation in general.
 
 	Examples:
 
