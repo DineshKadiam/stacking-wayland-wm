@@ -30,6 +30,8 @@
 #include "cow/view.h"
 #include "cow/wm.h"
 
+#include "river-window-management-v1-client-protocol.h"
+
 enum maximize_type {
 	MAXIMIZE,
 	MAXIMIZE_KEEP,
@@ -414,8 +416,11 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 				view->maximized_v = false;
 			view->maximized = view->maximized_h ||
 			    view->maximized_v;
-			if (!view->maximized)
+			if (!view->maximized) {
+				river_window_v1_inform_unmaximized(
+				    view->river_window);
 				view->icon_inverted_button = -1;
+			}
 			return;
 		}
 		/* Toggle with no restore state becomes maximize. */
@@ -470,6 +475,7 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 	if (axis == MAX_AXIS_BOTH || axis == MAX_AXIS_V)
 		view->maximized_v = true;
 	view->maximized = view->maximized_h || view->maximized_v;
+	river_window_v1_inform_maximized(view->river_window);
 
 	int mbi = cow_view_maximize_button_index(view);
 	if (mbi >= 0)

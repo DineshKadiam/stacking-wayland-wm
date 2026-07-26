@@ -50,6 +50,7 @@
 static int next_container_id;
 
 static void cow_view_icon_destroy(struct cow_view *);
+static void view_refit_maximized(struct cow_view *);
 
 static int
 titlebar_button_vector_index(enum cow_view_cfg_option option)
@@ -751,6 +752,8 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 		cow_rule_fire(COW_RULE_ON_DESK, view, view->desk,
 		    view->output);
 	}
+
+	view_refit_maximized(view);
 
 	/*
 	 * Notify status clients (cowpager, cowbar, ...) so that
@@ -1728,6 +1731,52 @@ cow_view_frame_box_at(const struct cow_view *v, int x, int y)
 		.width	= frame_w,
 		.height = frame_h,
 	};
+}
+
+static void
+view_refit_maximized(struct cow_view *view)
+{
+	if (view == NULL || !view->maximized || view->output == NULL)
+		return;
+
+	struct cow_box *ua = &view->output->usable_area;
+	int frame_w, frame_h, content_x, content_y;
+	cow_titlebar_frame_geometry(view, view->content_width,
+	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
+
+	int new_x = view->x;
+	int new_y = view->y;
+	if (view->maximized_h)
+		new_x = ua->x + content_x;
+	if (view->maximized_v)
+		new_y = ua->y + content_y;
+
+	if (view->maximized_h && frame_w <= ua->width) {
+		int min_x = ua->x + content_x;
+		int max_x = ua->x + ua->width - frame_w + content_x;
+		if (new_x < min_x)
+			new_x = min_x;
+		else if (new_x > max_x)
+			new_x = max_x;
+	}
+	if (view->maximized_v && frame_h <= ua->height) {
+		int min_y = ua->y + content_y;
+		int max_y = ua->y + ua->height - frame_h + content_y;
+		if (new_y < min_y)
+			new_y = min_y;
+		else if (new_y > max_y)
+			new_y = max_y;
+	}
+
+	if (new_x == view->x && new_y == view->y)
+		return;
+
+	view->x = new_x;
+	view->y = new_y;
+	cow_view_sync_vxy_from_global(view);
+	cow_view_sync_container_pos(view);
+	view->dec.dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 /* ================================================================
