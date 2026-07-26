@@ -388,6 +388,8 @@ do_centre(struct cow_view *view)
 	view->x = ua->x + (ua->width - frame_w) / 2 + content_x;
 	view->y = ua->y + (ua->height - frame_h) / 2 + content_y;
 	apply_move(view);
+	if (view == cow_wm.focused_view && cow_view_focusable(view))
+		cow_wm.pending_focus = view;
 }
 
 static void
