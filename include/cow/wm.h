@@ -38,6 +38,8 @@ struct river_window_manager_v1;
 struct zwlr_layer_shell_v1;
 struct zwp_pointer_constraints_v1;
 struct wp_cursor_shape_manager_v1;
+struct wp_cursor_shape_device_v1;
+struct wl_cursor_theme;
 struct river_xkb_bindings_v1;
 struct river_layer_shell_v1;
 struct river_window_v1;
@@ -81,6 +83,11 @@ struct cow_wm {
 	struct wl_pointer		  *wl_pointer_raw;
 	struct zwp_pointer_constraints_v1 *wl_pointer_constraints;
 	struct wp_cursor_shape_manager_v1 *wl_cursor_shape_mgr;
+	struct wp_cursor_shape_device_v1  *wl_cursor_shape_dev;
+	struct wl_surface		  *wl_cursor_surface;
+	struct wl_cursor_theme		  *wl_cursor_theme;
+	uint32_t			   wl_cursor_shape;
+	uint32_t			   wl_cursor_serial;
 
 	/* Currently armed pan edge (at most one across all outputs). */
 	struct cow_output *pan_lock_output;
@@ -234,6 +241,13 @@ void cow_drag_ghost_destroy(void);
  * directly so dirty triggers stay greppable and uniform.
  */
 void cow_wm_request_manage_dirty(void);
+
+/*
+ * Manage the default pointer shape used by River when no client surface
+ * owns pointer focus, such as while hovering server-side decorations.
+ */
+void cow_wm_ensure_cursor_shape_device(void);
+void cow_wm_set_cursor_shape(uint32_t, uint32_t);
 
 /*
  * Request that the pointer be warped to (x, y) at the next manage

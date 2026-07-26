@@ -51,6 +51,8 @@ void cow_output_pan_frame_tick(struct cow_output *);
  */
 void cow_output_pan_pointer_leave(int, int);
 void cow_output_pan_pointer_enter(void);
+void cow_pan_cursor_hold_start(void);
+void cow_pan_cursor_hold_end(void);
 
 /*
  * Op-mode (drag) dwell arming.  Layer-surface pointer events don't

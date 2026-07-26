@@ -27,9 +27,11 @@
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
 #include "cow/shm.h"
+#include "cow/titlebar.h"
 #include "cow/util.h"
 #include "cow/view.h"
 #include "cow/wm.h"
+#include "cursor-shape-v1-client-protocol.h"
 #include "pointer-constraints-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 
@@ -78,6 +80,22 @@ static void pan_frame_paint(struct cow_output *output, int edge, bool orange);
 static void pan_frame_set_level(struct cow_output *output, int edge, int level);
 static void pan_disarm(void);
 static void pan_fire(struct cow_output *output, int edge);
+
+static struct wl_surface *decoration_cursor_surface;
+static uint32_t		  decoration_cursor_serial;
+static struct cow_output *pan_cursor_output;
+static int		  pan_cursor_edge = -1;
+static bool		  cursor_held;
+
+struct dec_frame_hit {
+	int bw;
+	int tt;
+	int cl;
+	int frame_w;
+	int frame_h;
+	int fx;
+	int fy;
+};
 
 /* Cooldown after a fire so the post-warp cursor doesn't re-arm. */
 #define PAN_GIVEUP_COOLDOWN_MS 200
@@ -151,6 +169,262 @@ pan_arm_edge(struct cow_output *output, int edge)
 	cow_wm_request_manage_dirty();
 }
 
+static struct cow_view *
+view_for_decoration_surface(struct wl_surface *surface)
+{
+	struct cow_view *view;
+
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (!view->closed && view->decoration_surface == surface)
+			return (view);
+	}
+	return (NULL);
+}
+
+static struct dec_frame_hit
+decoration_frame_hit(struct cow_view *view, int sx, int sy, int cw, int ch)
+{
+	struct dec_frame_hit hit;
+
+	hit.bw = view->dec.border_width;
+	hit.tt = view->dec.title_thickness;
+	hit.cl = view->cfg.corner_length;
+	if (hit.cl < hit.bw)
+		hit.cl = hit.bw;
+
+	int content_x, content_y;
+	cow_titlebar_frame_geometry(view, cw, ch, &hit.frame_w,
+	    &hit.frame_h, &content_x, &content_y);
+	hit.fx = sx;
+	hit.fy = sy;
+	return (hit);
+}
+
+static bool
+decoration_in_border(const struct dec_frame_hit *hit)
+{
+	if (hit->fx < 0 || hit->fx >= hit->frame_w ||
+	    hit->fy < 0 || hit->fy >= hit->frame_h)
+		return (false);
+	return (hit->fx < hit->bw || hit->fx >= hit->frame_w - hit->bw ||
+	    hit->fy < hit->bw || hit->fy >= hit->frame_h - hit->bw);
+}
+
+static uint32_t
+decoration_corner_edges(struct cow_view *view, int sx, int sy, int cw, int ch)
+{
+	struct dec_frame_hit hit = decoration_frame_hit(view, sx, sy, cw, ch);
+
+	if (!decoration_in_border(&hit))
+		return (0);
+
+	int content_x, content_y, frame_w, frame_h;
+	cow_titlebar_frame_geometry(view, cw, ch, &frame_w, &frame_h,
+	    &content_x, &content_y);
+	if (cow_titlebar_hit_for(view, cw, ch, sx - content_x,
+		sy - content_y))
+		return (0);
+
+	bool near_top	= (hit.fy < hit.cl);
+	bool near_bot	= (hit.fy >= hit.frame_h - hit.cl);
+	bool near_left	= (hit.fx < hit.cl);
+	bool near_right = (hit.fx >= hit.frame_w - hit.cl);
+
+	if (near_top && near_left)
+		return (COW_EDGE_TOP | COW_EDGE_LEFT);
+	if (near_top && near_right)
+		return (COW_EDGE_TOP | COW_EDGE_RIGHT);
+	if (near_bot && near_left)
+		return (COW_EDGE_BOTTOM | COW_EDGE_LEFT);
+	if (near_bot && near_right)
+		return (COW_EDGE_BOTTOM | COW_EDGE_RIGHT);
+	if (hit.fy < hit.bw)
+		return (COW_EDGE_TOP);
+	if (hit.fy >= hit.frame_h - hit.bw)
+		return (COW_EDGE_BOTTOM);
+	if (hit.fx < hit.bw)
+		return (COW_EDGE_LEFT);
+	if (hit.fx >= hit.frame_w - hit.bw)
+		return (COW_EDGE_RIGHT);
+	return (0);
+}
+
+static uint32_t
+cursor_shape_for_edges(uint32_t edges)
+{
+	if (edges == (COW_EDGE_TOP | COW_EDGE_LEFT))
+		return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NW_RESIZE);
+	if (edges == (COW_EDGE_TOP | COW_EDGE_RIGHT))
+		return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NE_RESIZE);
+	if (edges == (COW_EDGE_BOTTOM | COW_EDGE_LEFT))
+		return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_SW_RESIZE);
+	if (edges == (COW_EDGE_BOTTOM | COW_EDGE_RIGHT))
+		return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_SE_RESIZE);
+	if (edges == COW_EDGE_TOP)
+		return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_N_RESIZE);
+	if (edges == COW_EDGE_BOTTOM)
+		return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_S_RESIZE);
+	if (edges == COW_EDGE_LEFT)
+		return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_W_RESIZE);
+	if (edges == COW_EDGE_RIGHT)
+		return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_E_RESIZE);
+	return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
+}
+
+static uint32_t
+decoration_cursor_shape_at(struct cow_view *view, int x, int y, int cw, int ch)
+{
+	uint32_t edges = decoration_corner_edges(view, x, y, cw, ch);
+	if (edges != 0)
+		return (cursor_shape_for_edges(edges));
+
+	int content_x, content_y, frame_w, frame_h;
+	cow_titlebar_frame_geometry(view, cw, ch, &frame_w, &frame_h,
+	    &content_x, &content_y);
+	if (cow_titlebar_hit_for(view, cw, ch, x - content_x, y - content_y))
+		return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_GRAB);
+
+	return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
+}
+
+static bool
+decoration_cursor_update(struct wl_surface *surface, uint32_t serial,
+    wl_fixed_t sx, wl_fixed_t sy)
+{
+	struct cow_view *view = view_for_decoration_surface(surface);
+	if (view == NULL)
+		return (false);
+
+	if (serial != 0)
+		decoration_cursor_serial = serial;
+
+	int x  = wl_fixed_to_int(sx);
+	int y  = wl_fixed_to_int(sy);
+	int cw = view->content_width;
+	int ch = view->content_height;
+	if (view->sd != COW_SHADE_NONE)
+		cow_view_shaded_content_size(view, view->sd, &cw, &ch);
+
+	uint32_t shape = decoration_cursor_shape_at(view, x, y, cw, ch);
+
+	cow_wm_set_cursor_shape(shape, decoration_cursor_serial);
+	return (true);
+}
+
+static bool
+pan_frame_point(struct cow_output *output, int edge, wl_fixed_t sx,
+    wl_fixed_t sy, int *gx, int *gy)
+{
+	if (output == NULL || edge < 0 || edge > 3)
+		return (false);
+
+	*gx = output->x + wl_fixed_to_int(sx);
+	*gy = output->y + wl_fixed_to_int(sy);
+	switch (edge) {
+	case PAN_BOTTOM:
+		*gy += output->height - PAN_FRAME_SIZE;
+		break;
+	case PAN_RIGHT:
+		*gx += output->width - PAN_FRAME_SIZE;
+		break;
+	case PAN_TOP:
+	case PAN_LEFT:
+		break;
+	default:
+		return (false);
+	}
+	return (true);
+}
+
+static struct cow_view *
+view_for_global_decoration_point(int gx, int gy, int *dx, int *dy, int *cw,
+    int *ch)
+{
+	struct cow_view *view, *best = NULL;
+	uint64_t	best_raise = 0;
+
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (view->closed || !view->use_ssd || view->output == NULL)
+			continue;
+		if (!cow_view_visible(view, view->output))
+			continue;
+
+		int vcw = view->content_width;
+		int vch = view->content_height;
+		if (view->sd != COW_SHADE_NONE)
+			cow_view_shaded_content_size(view, view->sd, &vcw, &vch);
+
+		int content_x, content_y, frame_w, frame_h;
+		cow_titlebar_frame_geometry(view, vcw, vch, &frame_w,
+		    &frame_h, &content_x, &content_y);
+		int fx = view->x - content_x;
+		int fy = view->y - content_y;
+		if (gx < fx || gx >= fx + frame_w || gy < fy ||
+		    gy >= fy + frame_h)
+			continue;
+
+		uint32_t shape = decoration_cursor_shape_at(view, gx - fx,
+		    gy - fy, vcw, vch);
+		if (shape == WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT)
+			continue;
+		if (best == NULL || view->raise_seq > best_raise) {
+			best	    = view;
+			best_raise  = view->raise_seq;
+			*dx	    = gx - fx;
+			*dy	    = gy - fy;
+			*cw	    = vcw;
+			*ch	    = vch;
+		}
+	}
+	return (best);
+}
+
+static bool
+pan_cursor_update(struct cow_output *output, int edge, uint32_t serial,
+    wl_fixed_t sx, wl_fixed_t sy)
+{
+	if (serial != 0)
+		decoration_cursor_serial = serial;
+
+	int gx, gy;
+	if (!pan_frame_point(output, edge, sx, sy, &gx, &gy))
+		return (false);
+
+	int dx, dy, cw, ch;
+	struct cow_view *view = view_for_global_decoration_point(gx, gy, &dx,
+	    &dy, &cw, &ch);
+	if (view == NULL) {
+		cow_wm_set_cursor_shape(
+		    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT,
+		    decoration_cursor_serial);
+		return (false);
+	}
+
+	cow_wm_set_cursor_shape(decoration_cursor_shape_at(view, dx, dy, cw,
+	    ch), decoration_cursor_serial);
+	return (true);
+}
+
+void
+cow_pan_cursor_hold_start(void)
+{
+	if (cow_wm.wl_cursor_shape !=
+	    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT)
+		cursor_held = true;
+}
+
+void
+cow_pan_cursor_hold_end(void)
+{
+	if (!cursor_held)
+		return;
+	cursor_held = false;
+	cow_wm_set_cursor_shape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT,
+	    decoration_cursor_serial);
+}
+
 static void
 pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
     struct wl_surface *surf, wl_fixed_t sx, wl_fixed_t sy)
@@ -161,10 +435,18 @@ pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 	struct cow_output *output;
 	int		   edge = surface_to_output_edge(surf, &output);
 	if (edge < 0) {
-		cow_pick_pointer_enter(surf, serial, sx, sy);
+		if (cow_pick_pointer_enter(surf, serial, sx, sy))
+			return;
+		if (decoration_cursor_update(surf, serial, sx, sy)) {
+			decoration_cursor_surface = surf;
+			return;
+		}
 		return;
 	}
 
+	pan_cursor_output = output;
+	pan_cursor_edge   = edge;
+	pan_cursor_update(output, edge, serial, sx, sy);
 	output->pan_entered[edge] = true;
 
 	long now = cow_mono_ms();
@@ -187,11 +469,27 @@ pointer_leave(void *data, struct wl_pointer *pointer, uint32_t serial,
 	struct cow_output *output;
 	int		   edge = surface_to_output_edge(surf, &output);
 	if (edge < 0) {
-		cow_pick_pointer_leave(surf);
+		if (cow_pick_pointer_leave(surf))
+			return;
+		if (decoration_cursor_surface == surf) {
+			decoration_cursor_surface = NULL;
+			if (!cursor_held)
+				cow_wm_set_cursor_shape(
+				    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT,
+				    decoration_cursor_serial);
+		}
 		return;
 	}
 
 	output->pan_entered[edge] = false;
+	if (pan_cursor_output == output && pan_cursor_edge == edge) {
+		pan_cursor_output = NULL;
+		pan_cursor_edge   = -1;
+		if (!cursor_held)
+			cow_wm_set_cursor_shape(
+			    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT,
+			    decoration_cursor_serial);
+	}
 	if (cow_wm.pan_lock_output == output && cow_wm.pan_lock_edge == edge)
 		pan_disarm();
 }
@@ -202,6 +500,12 @@ pointer_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x,
 {
 	(void)d;
 	(void)p;
+	if (decoration_cursor_surface != NULL &&
+	    decoration_cursor_update(decoration_cursor_surface, 0, x, y))
+		return;
+	if (pan_cursor_output != NULL && pan_cursor_edge >= 0 &&
+	    pan_cursor_update(pan_cursor_output, pan_cursor_edge, 0, x, y))
+		return;
 	cow_pick_pointer_motion(t, x, y);
 }
 
@@ -212,6 +516,11 @@ pointer_button(void *d, struct wl_pointer *p, uint32_t ser, uint32_t t,
 	(void)d;
 	(void)p;
 	(void)t;
+	if (state == WL_POINTER_BUTTON_STATE_PRESSED &&
+	    (decoration_cursor_surface != NULL || pan_cursor_output != NULL))
+		cow_pan_cursor_hold_start();
+	else if (state == WL_POINTER_BUTTON_STATE_RELEASED)
+		cow_pan_cursor_hold_end();
 	cow_pick_pointer_button(ser, btn, state);
 }
 
@@ -631,6 +940,7 @@ pan_frames_init(void)
 		if (cow_wm.wl_pointer_raw != NULL)
 			wl_pointer_add_listener(cow_wm.wl_pointer_raw,
 			    &pointer_listener, NULL);
+		cow_wm_ensure_cursor_shape_device();
 	}
 }
 

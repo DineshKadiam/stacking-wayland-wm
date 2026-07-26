@@ -266,6 +266,7 @@ endif
 
 # Dependencies
 wayland_client = dependency('wayland-client')
+wayland_cursor = dependency('wayland-cursor')
 wayland_protos = dependency('wayland-protocols', version: '>=1.41', default_options: ['tests=false'])
 xkbcommon      = dependency('xkbcommon')
 pangocairo     = dependency('pangocairo')
@@ -274,6 +275,7 @@ libevent       = dependency('libevent')
 
 all_deps = [
     wayland_client,
+    wayland_cursor,
     xkbcommon,
     pangocairo,
     cairo,

@@ -203,6 +203,7 @@ cow_pointer_op_start_move(struct cow_seat *seat, struct cow_view *view)
 	seat->titlebar_press = COW_TITLEBAR_PRESS_TITLE;
 	seat->pressed_view   = view;
 
+	cow_pan_cursor_hold_start();
 	river_seat_v1_op_start_pointer(seat->river_seat);
 }
 
@@ -288,6 +289,7 @@ cow_pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
 	seat->op_dy	      = 0;
 
 	river_window_v1_inform_resize_start(view->river_window);
+	cow_pan_cursor_hold_start();
 	river_seat_v1_op_start_pointer(seat->river_seat);
 }
 
@@ -425,6 +427,7 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 	seat->op_released    = false;
 	seat->op.icon_moved  = false;
 	seat->op.type	     = COW_POINTER_OP_NONE;
+	cow_pan_cursor_hold_end();
 
 	if (finished_type == COW_POINTER_OP_ICON_MOVE && !icon_moved) {
 		cow_view_deiconify(view);
@@ -495,6 +498,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 			seat->op_released      = false;
 			seat->op.type	       = COW_POINTER_OP_NONE;
 			seat->op.scroll_output = NULL;
+			cow_pan_cursor_hold_end();
 		}
 		return;
 	}
@@ -513,6 +517,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 		seat->op_in_progress = false;
 		seat->op_released    = false;
 		seat->op.type	     = COW_POINTER_OP_NONE;
+		cow_pan_cursor_hold_end();
 		cow_geometry_window_hide();
 		return;
 	}

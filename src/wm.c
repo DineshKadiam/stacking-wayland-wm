@@ -25,6 +25,7 @@
 #include <event2/event.h>
 
 #include <wayland-client.h>
+#include <wayland-cursor.h>
 
 #include "cow/cmd.h"
 #include "cow/command.h"
@@ -224,6 +225,12 @@ wl_seat_handle_capabilities(__unused void *data, __unused struct wl_seat *seat,
 
 	if (!cow_wm.wl_seat_has_pointer && cow_wm.wl_pointer_raw != NULL) {
 		/* Pointer capability removed — release the wl_pointer. */
+		if (cow_wm.wl_cursor_shape_dev != NULL) {
+			wp_cursor_shape_device_v1_destroy(
+			    cow_wm.wl_cursor_shape_dev);
+			cow_wm.wl_cursor_shape_dev = NULL;
+			cow_wm.wl_cursor_shape	    = 0;
+		}
 		wl_pointer_destroy(cow_wm.wl_pointer_raw);
 		cow_wm.wl_pointer_raw = NULL;
 	}
@@ -532,6 +539,7 @@ manage_titlebar_button_release(struct cow_seat *seat)
 	seat->op_released    = false;
 	seat->titlebar_press = COW_TITLEBAR_PRESS_NONE;
 	seat->pressed_view   = NULL;
+	cow_pan_cursor_hold_end();
 }
 
 static void
@@ -718,6 +726,7 @@ manage_titlebar_button_press(struct cow_seat *seat, struct cow_view *view,
 	seat->titlebar_press	    = COW_TITLEBAR_PRESS_BUTTON;
 	seat->pressed_button_idx    = hit_btn;
 	seat->pressed_view	    = view;
+	cow_pan_cursor_hold_start();
 	river_seat_v1_op_start_pointer(seat->river_seat);
 	seat->op_in_progress = true;
 	seat->op_released    = false;
@@ -1299,6 +1308,7 @@ cow_wm_init(void)
 
 	/* Initialise pan frames after globals are bound */
 	pan_frames_init();
+	cow_wm_ensure_cursor_shape_device();
 
 	cow_wm.running	    = true;
 	cow_wm.exec_pending = true;
@@ -1350,6 +1360,13 @@ cow_wm_fini(void)
 	}
 	pan_frames_destroy_all();
 
+	if (cow_wm.wl_cursor_shape_dev != NULL)
+		wp_cursor_shape_device_v1_destroy(
+		    cow_wm.wl_cursor_shape_dev);
+	if (cow_wm.wl_cursor_surface != NULL)
+		wl_surface_destroy(cow_wm.wl_cursor_surface);
+	if (cow_wm.wl_cursor_theme != NULL)
+		wl_cursor_theme_destroy(cow_wm.wl_cursor_theme);
 	if (cow_wm.wl_pointer_raw != NULL)
 		wl_pointer_destroy(cow_wm.wl_pointer_raw);
 	if (cow_wm.wl_seat_raw != NULL)
@@ -1558,6 +1575,152 @@ void
 cow_wm_request_manage_dirty(void)
 {
 	cow_wm.needs_manage_dirty = true;
+}
+
+void
+cow_wm_ensure_cursor_shape_device(void)
+{
+	if (cow_wm.wl_cursor_shape_dev != NULL ||
+	    cow_wm.wl_cursor_shape_mgr == NULL || cow_wm.wl_pointer_raw == NULL)
+		return;
+
+	cow_wm.wl_cursor_shape_dev = wp_cursor_shape_manager_v1_get_pointer(
+	    cow_wm.wl_cursor_shape_mgr, cow_wm.wl_pointer_raw);
+	cow_wm.wl_cursor_shape = 0;
+}
+
+static const char *const *
+cursor_shape_names(uint32_t shape)
+{
+	static const char *const default_names[] = {
+		"default", "left_ptr", NULL
+	};
+	static const char *const grab_names[] = {
+		"grab", "openhand", "hand1", NULL
+	};
+	static const char *const n_names[] = {
+		"n-resize", "top_side", "ns-resize", NULL
+	};
+	static const char *const s_names[] = {
+		"s-resize", "bottom_side", "ns-resize", NULL
+	};
+	static const char *const e_names[] = {
+		"e-resize", "right_side", "ew-resize", NULL
+	};
+	static const char *const w_names[] = {
+		"w-resize", "left_side", "ew-resize", NULL
+	};
+	static const char *const ne_names[] = {
+		"ne-resize", "top_right_corner", "nesw-resize", NULL
+	};
+	static const char *const nw_names[] = {
+		"nw-resize", "top_left_corner", "nwse-resize", NULL
+	};
+	static const char *const se_names[] = {
+		"se-resize", "bottom_right_corner", "nwse-resize", NULL
+	};
+	static const char *const sw_names[] = {
+		"sw-resize", "bottom_left_corner", "nesw-resize", NULL
+	};
+
+	switch (shape) {
+	case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_GRAB:
+		return (grab_names);
+	case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_N_RESIZE:
+		return (n_names);
+	case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_S_RESIZE:
+		return (s_names);
+	case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_E_RESIZE:
+		return (e_names);
+	case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_W_RESIZE:
+		return (w_names);
+	case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NE_RESIZE:
+		return (ne_names);
+	case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NW_RESIZE:
+		return (nw_names);
+	case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_SE_RESIZE:
+		return (se_names);
+	case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_SW_RESIZE:
+		return (sw_names);
+	default:
+		return (default_names);
+	}
+}
+
+static void
+cow_wm_ensure_cursor_theme(void)
+{
+	if (cow_wm.wl_cursor_theme != NULL || cow_wm.shm == NULL ||
+	    cow_wm.compositor == NULL)
+		return;
+
+	const char *theme  = getenv("XCURSOR_THEME");
+	const char *size_s = getenv("XCURSOR_SIZE");
+	int	    size   = 24;
+	if (size_s != NULL) {
+		char *end = NULL;
+		long  n	  = strtol(size_s, &end, 10);
+		if (end != size_s && *end == '\0' && n > 0 && n <= 1024)
+			size = (int)n;
+	}
+
+	cow_wm.wl_cursor_theme = wl_cursor_theme_load(theme, size, cow_wm.shm);
+	if (cow_wm.wl_cursor_theme != NULL)
+		cow_wm.wl_cursor_surface =
+		    wl_compositor_create_surface(cow_wm.compositor);
+}
+
+static void
+cow_wm_set_cursor_surface(uint32_t shape)
+{
+	if (cow_wm.wl_pointer_raw == NULL || cow_wm.wl_cursor_serial == 0)
+		return;
+
+	cow_wm_ensure_cursor_theme();
+	if (cow_wm.wl_cursor_theme == NULL ||
+	    cow_wm.wl_cursor_surface == NULL)
+		return;
+
+	const char *const *names = cursor_shape_names(shape);
+	struct wl_cursor  *cursor = NULL;
+	for (size_t i = 0; names[i] != NULL; i++) {
+		cursor = wl_cursor_theme_get_cursor(cow_wm.wl_cursor_theme,
+		    names[i]);
+		if (cursor != NULL)
+			break;
+	}
+	if (cursor == NULL || cursor->image_count == 0)
+		return;
+
+	struct wl_cursor_image *img = cursor->images[0];
+	struct wl_buffer       *buf = wl_cursor_image_get_buffer(img);
+	if (buf == NULL)
+		return;
+
+	wl_pointer_set_cursor(cow_wm.wl_pointer_raw, cow_wm.wl_cursor_serial,
+	    cow_wm.wl_cursor_surface, img->hotspot_x, img->hotspot_y);
+	wl_surface_attach(cow_wm.wl_cursor_surface, buf, 0, 0);
+	wl_surface_damage_buffer(cow_wm.wl_cursor_surface, 0, 0, img->width,
+	    img->height);
+	wl_surface_commit(cow_wm.wl_cursor_surface);
+}
+
+void
+cow_wm_set_cursor_shape(uint32_t shape, uint32_t serial)
+{
+	cow_wm_ensure_cursor_shape_device();
+	uint32_t old_serial = cow_wm.wl_cursor_serial;
+	if (serial != 0)
+		cow_wm.wl_cursor_serial = serial;
+	if (cow_wm.wl_cursor_shape == shape &&
+	    (serial == 0 || old_serial == cow_wm.wl_cursor_serial))
+		return;
+
+	if (cow_wm.wl_cursor_shape_dev != NULL && cow_wm.wl_cursor_serial != 0)
+		wp_cursor_shape_device_v1_set_shape(cow_wm.wl_cursor_shape_dev,
+		    cow_wm.wl_cursor_serial, shape);
+	cow_wm_set_cursor_surface(shape);
+	cow_wm.wl_cursor_shape = shape;
 }
 
 void
