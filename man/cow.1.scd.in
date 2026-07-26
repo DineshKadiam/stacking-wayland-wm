@@ -312,6 +312,10 @@ fields include *name*, *nr*, *number*, geometry, usable geometry, *current*,
 fields include *name*, *type*, *global*, *output*, *desk*, *match*,
 and *body*.
 
+For window records, *current_page* is relative to that window's output.
+Use *current_output and current_page* when matching windows only on the
+current output's current page.
+
 Inside a rule body, the identifier *self* resolves to a record for
 the event's target view; outside a rule body it is unbound.
 
@@ -961,11 +965,11 @@ Move keyboard focus.
 
 	Examples:
 
-	- focus -nw -F 'self.current_page'
+	- focus -nw -F 'self.current_output and self.current_page'
 	- focus -nw -F 'self.current_desk'
 	- focus -nw -F 'self.current_output'
-	- focus -nw -F 'self.current_page and self.app_id not in ["cowpager"]'
-	- focus -nw -F 'self.current_page and self.app_id not in ["cowpager", "appA", "appB"]'
+	- focus -nw -F 'self.current_output and self.current_page and self.app_id not in ["cowpager"]'
+	- focus -nw -F 'self.current_output and self.current_page and self.app_id not in ["cowpager", "appA", "appB"]'
 
 *-w*
 	Warp the pointer to the centre of the focused window after focus is
