@@ -305,6 +305,51 @@ compare(struct dsl_eval_ctx *ctx, struct dsl_node *n, struct dsl_value *lhs,
 	return (false);
 }
 
+static bool
+value_equal(const struct dsl_value *a, const struct dsl_value *b)
+{
+	if (a->type != b->type)
+		return (false);
+
+	switch (a->type) {
+	case DSL_V_NIL:
+		return (true);
+	case DSL_V_BOOL:
+		return (a->u.b == b->u.b);
+	case DSL_V_NUMBER:
+		return (a->u.n == b->u.n);
+	case DSL_V_STRING:
+		return (strcmp(a->u.s ? a->u.s : "", b->u.s ? b->u.s : "")
+		    == 0);
+	case DSL_V_LIST:
+	case DSL_V_RECORD:
+		return (false);
+	}
+	return (false);
+}
+
+static bool
+membership(struct dsl_eval_ctx *ctx, struct dsl_node *n,
+    struct dsl_value *lhs, struct dsl_value *rhs, bool *out)
+{
+	if (rhs->type != DSL_V_LIST) {
+		fail_at(ctx, n->line, n->col,
+		    "right side of 'in' must be a list");
+		return (false);
+	}
+
+	*out = false;
+	for (size_t i = 0; i < rhs->u.list.n; i++) {
+		if (value_equal(lhs, rhs->u.list.items[i])) {
+			*out = true;
+			break;
+		}
+	}
+	if (n->u.in.negated)
+		*out = !*out;
+	return (true);
+}
+
 static struct dsl_value *
 eval_expr(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 {
@@ -322,6 +367,20 @@ eval_expr(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 		return (dsl_value_nil());
 	case DSL_N_PATH:
 		return (eval_path(ctx, env, n));
+	case DSL_N_LIST: {
+		struct dsl_value *list = dsl_value_list();
+		for (size_t i = 0; i < n->u.list.n; i++) {
+			struct dsl_value *item = eval_expr(ctx, env,
+			    n->u.list.items[i]);
+			if (item == NULL) {
+				dsl_value_unref(list);
+				return (NULL);
+			}
+			dsl_list_append(list, item);
+			dsl_value_unref(item);
+		}
+		return (list);
+	}
 	case DSL_N_NOT: {
 		struct dsl_value *e = eval_expr(ctx, env, n->u.unop.e);
 		if (e == NULL)
@@ -373,6 +432,21 @@ eval_expr(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 		}
 		bool result = false;
 		bool ok	    = compare(ctx, n, l, r, &result);
+		dsl_value_unref(l);
+		dsl_value_unref(r);
+		return (ok ? dsl_value_bool(result) : NULL);
+	}
+	case DSL_N_IN: {
+		struct dsl_value *l = eval_expr(ctx, env, n->u.in.lhs);
+		if (l == NULL)
+			return (NULL);
+		struct dsl_value *r = eval_expr(ctx, env, n->u.in.rhs);
+		if (r == NULL) {
+			dsl_value_unref(l);
+			return (NULL);
+		}
+		bool result = false;
+		bool ok	    = membership(ctx, n, l, r, &result);
 		dsl_value_unref(l);
 		dsl_value_unref(r);
 		return (ok ? dsl_value_bool(result) : NULL);

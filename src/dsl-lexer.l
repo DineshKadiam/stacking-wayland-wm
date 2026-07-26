@@ -254,8 +254,11 @@ DEC	[0-9]+\.[0-9]+
 <INITIAL,INTERP>{
 	"{"			{ return (LBRACE); }
 	"}"			{ return (RBRACE); }
+	"["			{ return (LBRACKET); }
+	"]"			{ return (RBRACKET); }
 	"("			{ return (LPAREN); }
 	")"			{ return (RPAREN); }
+	","			{ return (COMMA); }
 	"."			{ return (DOT); }
 	"=="			{
 				yylval->cmp = DSL_CMP_EQ;

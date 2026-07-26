@@ -50,6 +50,8 @@ enum dsl_node_kind {
 	DSL_N_AND,
 	DSL_N_NOT,
 	DSL_N_CMP,  /* binary comparison; op encoded in u.cmp.op */
+	DSL_N_IN,   /* membership test; negated encoded in u.in.negated */
+	DSL_N_LIST, /* list literal */
 	DSL_N_PATH, /* IDENT(.IDENT)*  -- variable + field access */
 	DSL_N_NIL,
 	DSL_N_NUM,
@@ -153,6 +155,17 @@ struct dsl_node {
 		} cmp;
 
 		struct {
+			bool		 negated;
+			struct dsl_node *lhs;
+			struct dsl_node *rhs;
+		} in;
+
+		struct {
+			struct dsl_node **items;
+			size_t		  n;
+		} list;
+
+		struct {
 			char *
 			    *parts; /* parts[0]=base ident, parts[1..]=fields */
 			size_t n;
@@ -225,6 +238,9 @@ struct dsl_node *dsl_node_not(struct dsl_ast *, int line, int col,
     struct dsl_node *e);
 struct dsl_node *dsl_node_cmp(struct dsl_ast *, int line, int col,
     enum dsl_cmp_op, struct dsl_node *lhs, struct dsl_node *rhs);
+struct dsl_node *dsl_node_in(struct dsl_ast *, int line, int col,
+    struct dsl_node *lhs, struct dsl_node *rhs, bool negated);
+struct dsl_node *dsl_node_list(struct dsl_ast *, int line, int col);
 struct dsl_node *dsl_node_path(struct dsl_ast *, int line, int col,
     const char *base);
 struct dsl_node *dsl_node_nil(struct dsl_ast *, int line, int col);
@@ -241,6 +257,8 @@ void dsl_block_append(struct dsl_ast *, struct dsl_node *block,
     struct dsl_node *stmt);
 void dsl_path_append(struct dsl_ast *, struct dsl_node *path,
     const char *field);
+void dsl_list_append_node(struct dsl_ast *, struct dsl_node *list,
+    struct dsl_node *item);
 /*
  * Bare-argument forms: a single raw chunk or a single interp.  Each
  * appends one new cmd_arg with exactly one piece.

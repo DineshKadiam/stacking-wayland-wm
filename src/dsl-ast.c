@@ -223,6 +223,23 @@ dsl_node_cmp(struct dsl_ast *ast, int line, int col, enum dsl_cmp_op op,
 }
 
 struct dsl_node *
+dsl_node_in(struct dsl_ast *ast, int line, int col, struct dsl_node *lhs,
+    struct dsl_node *rhs, bool negated)
+{
+	struct dsl_node *n = node_new(ast, DSL_N_IN, line, col);
+	n->u.in.negated    = negated;
+	n->u.in.lhs	   = lhs;
+	n->u.in.rhs	   = rhs;
+	return (n);
+}
+
+struct dsl_node *
+dsl_node_list(struct dsl_ast *ast, int line, int col)
+{
+	return (node_new(ast, DSL_N_LIST, line, col));
+}
+
+struct dsl_node *
 dsl_node_path(struct dsl_ast *ast, int line, int col, const char *base)
 {
 	struct dsl_node *n = node_new(ast, DSL_N_PATH, line, col);
@@ -287,6 +304,15 @@ dsl_block_append(struct dsl_ast *ast, struct dsl_node *block,
 	block->u.block.stmts = arena_array_append(ast, block->u.block.stmts,
 	    block->u.block.n, sizeof(*block->u.block.stmts), &stmt);
 	block->u.block.n++;
+}
+
+void
+dsl_list_append_node(struct dsl_ast *ast, struct dsl_node *list,
+    struct dsl_node *item)
+{
+	list->u.list.items = arena_array_append(ast, list->u.list.items,
+	    list->u.list.n, sizeof(*list->u.list.items), &item);
+	list->u.list.n++;
 }
 
 void

@@ -275,6 +275,8 @@ in v1; it covers what's needed to choose work to do.
 :  boolean literal
 |  *nil*
 :  absence of a value; missing record fields also evaluate to *nil*
+|  [_A_, _B_, ...]
+:  list literal, commonly used with *in* and *not in*
 |  _NAME_
 :  variable in the current or enclosing scope
 |  _NAME_._FIELD_._FIELD_
@@ -283,6 +285,8 @@ in v1; it covers what's needed to choose work to do.
 :  comparison (also *!=*, *<*, *<=*, *>*, *>=*); cross-type
    compares are evaluation errors; ordering on booleans is an
    evaluation error; *nil* supports only *==* and *!=*
+|  _A_ *in* [_B_, _C_], _A_ *not in* [_B_, _C_]
+:  membership tests; list elements compare with exact scalar equality
 |  *not* _A_
 :  unary negation
 |  _A_ *and* _B_, _A_ *or* _B_
@@ -960,7 +964,8 @@ Move keyboard focus.
 	- focus -nw -F 'self.current_page'
 	- focus -nw -F 'self.current_desk'
 	- focus -nw -F 'self.current_output'
-	- focus -nw -F 'self.current_page and self.app_id != "cowpager"'
+	- focus -nw -F 'self.current_page and self.app_id not in ["cowpager"]'
+	- focus -nw -F 'self.current_page and self.app_id not in ["cowpager", "appA", "appB"]'
 
 *-w*
 	Warp the pointer to the centre of the focused window after focus is

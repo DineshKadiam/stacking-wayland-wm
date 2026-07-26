@@ -87,8 +87,8 @@ struct dsl_source_spec {
 	struct dsl_source_spec source_spec;
 }
 
-%token LBRACE RBRACE LPAREN RPAREN
-%token DOT EQUALS
+%token LBRACE RBRACE LBRACKET RBRACKET LPAREN RPAREN
+%token COMMA DOT EQUALS
 %token LET FOR IN IF ELSE BREAK CONTINUE WHERE AND OR NOT
 %token SELF
 %token TRUE_LIT FALSE_LIT NIL_LIT
@@ -102,7 +102,8 @@ struct dsl_source_spec {
 
 %type <node> script stmt_list stmt let_stmt for_stmt if_stmt control_stmt
 %type <node> cmd_stmt block
-%type <node> expr or_expr and_expr not_expr rel_expr atom path
+%type <node> expr or_expr and_expr not_expr rel_expr atom path list_literal
+%type <node> list_items
 %type <source_spec> source
 
 %destructor { xfree($$); } <str>
@@ -298,10 +299,21 @@ rel_expr
 			$$ = dsl_node_cmp(ctx->ast, @1.first_line,
 			    @1.first_column, $2, $1, $3);
 		}
+	| rel_expr IN atom
+		{
+			$$ = dsl_node_in(ctx->ast, @1.first_line,
+			    @1.first_column, $1, $3, false);
+		}
+	| rel_expr NOT IN atom
+		{
+			$$ = dsl_node_in(ctx->ast, @1.first_line,
+			    @1.first_column, $1, $4, true);
+		}
 	;
 
 atom
 	: path
+	| list_literal
 	| NUMBER_LIT
 		{
 			$$ = dsl_node_num(ctx->ast, @1.first_line,
@@ -331,6 +343,32 @@ atom
 	| LPAREN expr RPAREN
 		{
 			$$ = $2;
+		}
+	;
+
+list_literal
+	: LBRACKET list_items RBRACKET
+		{
+			$$ = $2;
+		}
+	;
+
+list_items
+	: %empty
+		{
+			$$ = dsl_node_list(ctx->ast, @$.first_line,
+			    @$.first_column);
+		}
+	| expr
+		{
+			$$ = dsl_node_list(ctx->ast, @1.first_line,
+			    @1.first_column);
+			dsl_list_append_node(ctx->ast, $$, $1);
+		}
+	| list_items COMMA expr
+		{
+			$$ = $1;
+			dsl_list_append_node(ctx->ast, $$, $3);
 		}
 	;
 
