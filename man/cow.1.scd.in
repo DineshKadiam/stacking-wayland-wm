@@ -956,10 +956,11 @@ Move keyboard focus.
 	from the expression.
 
 	Examples:
-	*focus -nw -F 'self.current_page'*
-	*focus -nw -F 'self.current_desk'*
-	*focus -nw -F 'self.current_output'*
-	*focus -nw -F 'self.current_page and self.app_id != "cowpager"'*
+
+	- focus -nw -F 'self.current_page'
+	- focus -nw -F 'self.current_desk'
+	- focus -nw -F 'self.current_output'
+	- focus -nw -F 'self.current_page and self.app_id != "cowpager"'
 
 *-w*
 	Warp the pointer to the centre of the focused window after focus is
