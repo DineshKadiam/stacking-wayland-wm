@@ -1022,6 +1022,9 @@ Move keyboard focus.
 Expand a window to fill available space between windows, or the whole monitor if
 the window is the only window on that monitor.
 
+Use *window-maximize -k* after expanding if the current geometry should become
+maximized state.
+
 *-t* _target_
 	Target window.
 

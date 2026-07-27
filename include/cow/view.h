@@ -309,6 +309,8 @@ struct cow_view {
 	bool maximized;
 	bool maximized_h;
 	bool maximized_v;
+	bool expanded; /* window-expand restore/toggle state */
+	uint32_t tiled_edges; /* river_window_v1 tiled edge hint */
 	bool needs_raise; /* set during manage, applied in render */
 
 	/* Monotonic intra-layer z-order. */
@@ -333,6 +335,10 @@ struct cow_view {
 	/* Saved geometry for maximize/restore */
 	int saved_x, saved_y;
 	int saved_width, saved_height;
+
+	/* Saved geometry for window-expand restore. */
+	int expanded_saved_x, expanded_saved_y;
+	int expanded_saved_width, expanded_saved_height;
 
 	/* Saved geometry when collected (restored on uncollect) */
 	bool collected_geo_saved;
@@ -419,6 +425,16 @@ void cow_view_save_geometry(struct cow_view *);
 
 /* Keep unified and per-axis maximized bits in sync. */
 void cow_view_set_maximized(struct cow_view *, bool);
+
+/* Set/clear the client's tiled edge hint. */
+void cow_view_set_tiled_edges(struct cow_view *, uint32_t);
+
+/* Clear window-expand state without restoring geometry. */
+void cow_view_clear_expanded_state(struct cow_view *);
+
+/* Save/restore window-expand geometry. */
+void cow_view_save_expanded_geometry(struct cow_view *);
+void cow_view_restore_expanded_geometry(struct cow_view *);
 
 /*
  * Set pending geometry change (deferred to manage callback).

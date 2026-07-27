@@ -186,6 +186,7 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 static void
 unmax_if_needed(struct cow_view *view)
 {
+	cow_view_clear_expanded_state(view);
 	if (!view->maximized)
 		return;
 	cow_view_set_maximized(view, false);

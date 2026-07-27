@@ -288,6 +288,7 @@ cow_pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
 	seat->op_dx	      = 0;
 	seat->op_dy	      = 0;
 
+	cow_view_clear_expanded_state(view);
 	river_window_v1_inform_resize_start(view->river_window);
 	cow_pan_cursor_hold_start();
 	river_seat_v1_op_start_pointer(seat->river_seat);
@@ -547,8 +548,10 @@ cow_pointer_op_process(struct cow_seat *seat)
 		 * state.
 		 */
 		if (!seat->op.unmax_done && (dx != 0 || dy != 0) &&
-		    view->maximized) {
-			cow_view_set_maximized(view, false);
+		    (view->maximized || view->expanded)) {
+			if (view->maximized)
+				cow_view_set_maximized(view, false);
+			cow_view_clear_expanded_state(view);
 			view->icon_inverted_button = -1;
 			view->dec.dirty		   = true;
 			seat->op.unmax_done	   = true;

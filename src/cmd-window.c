@@ -73,6 +73,7 @@ static void		    do_maximize(struct cow_view *, enum maximize_type,
 		    enum maximize_axis);
 static void		    do_shade(struct cow_view *, const char *);
 static enum expand_dir	    resolve_direction(const char *);
+static uint32_t		    expand_tiled_edges(enum expand_dir);
 static enum shade_direction resolve_shade_direction(struct cow_view *,
     const char *);
 
@@ -428,6 +429,8 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 	if (view->output == NULL)
 		return;
 
+	cow_view_clear_expanded_state(view);
+
 	/* Restore only the requested maximized axes. */
 	if (mt == UNMAXIMIZE || mt == MAX_TOGGLE || mt == MAX_TOGGLE_KEEP) {
 		bool touch_h, touch_v;
@@ -526,6 +529,29 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 		view->icon_inverted_button = mbi;
 }
 
+static uint32_t
+expand_tiled_edges(enum expand_dir dir)
+{
+	switch (dir) {
+	case EXPAND_ALL:
+		return RIVER_WINDOW_V1_EDGES_TOP |
+		    RIVER_WINDOW_V1_EDGES_BOTTOM |
+		    RIVER_WINDOW_V1_EDGES_LEFT |
+		    RIVER_WINDOW_V1_EDGES_RIGHT;
+	case EXPAND_LEFT:
+		return RIVER_WINDOW_V1_EDGES_LEFT;
+	case EXPAND_RIGHT:
+		return RIVER_WINDOW_V1_EDGES_RIGHT;
+	case EXPAND_UP:
+		return RIVER_WINDOW_V1_EDGES_TOP;
+	case EXPAND_DOWN:
+		return RIVER_WINDOW_V1_EDGES_BOTTOM;
+	case EXPAND_ERROR:
+	default:
+		return RIVER_WINDOW_V1_EDGES_NONE;
+	}
+}
+
 static enum expand_dir
 resolve_direction(const char *dir_str)
 {
@@ -603,8 +629,8 @@ do_expand(struct cow_view *view, enum expand_dir dir, bool toggle)
 		return;
 
 	/* Toggle: if already expanded, restore saved geometry. */
-	if (toggle && view->maximized) {
-		cow_view_restore_saved_geometry(view);
+	if (toggle && view->expanded) {
+		cow_view_restore_expanded_geometry(view);
 		return;
 	}
 
@@ -615,8 +641,8 @@ do_expand(struct cow_view *view, enum expand_dir dir, bool toggle)
 	int frame_extra_w = frame_w - view->content_width;
 	int frame_extra_h = frame_h - view->content_height;
 
-	if (!view->maximized)
-		cow_view_save_geometry(view);
+	if (!view->expanded)
+		cow_view_save_expanded_geometry(view);
 
 	struct cow_box fb  = cow_view_frame_box(view);
 	int	       fx2 = fb.x + fb.width;
@@ -688,11 +714,14 @@ do_expand(struct cow_view *view, enum expand_dir dir, bool toggle)
 	if (view->container_member != NULL)
 		cow_view_sync_container_geometry(view, new_x, new_y, new_w,
 		    new_h);
-	cow_view_set_maximized(view, true);
-
-	int mbi = cow_view_maximize_button_index(view);
-	if (mbi >= 0)
-		view->icon_inverted_button = mbi;
+	if (view->maximized) {
+		cow_view_set_maximized(view, false);
+		river_window_v1_inform_unmaximized(view->river_window);
+		view->icon_inverted_button = -1;
+		view->dec.dirty		   = true;
+	}
+	view->expanded = true;
+	cow_view_set_tiled_edges(view, expand_tiled_edges(dir));
 }
 
 static void

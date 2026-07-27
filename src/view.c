@@ -1791,6 +1791,62 @@ cow_view_set_maximized(struct cow_view *view, bool max)
 		cow_status_emit();
 }
 
+void
+cow_view_set_tiled_edges(struct cow_view *view, uint32_t edges)
+{
+	if (view == NULL)
+		return;
+
+	view->tiled_edges = edges;
+	if (view->river_window != NULL)
+		river_window_v1_set_tiled(view->river_window, edges);
+}
+
+void
+cow_view_clear_expanded_state(struct cow_view *view)
+{
+	if (view == NULL)
+		return;
+	if (!view->expanded && view->tiled_edges == RIVER_WINDOW_V1_EDGES_NONE)
+		return;
+
+	view->expanded = false;
+	cow_view_set_tiled_edges(view, RIVER_WINDOW_V1_EDGES_NONE);
+	if (!view->maximized)
+		view->icon_inverted_button = -1;
+	view->dec.dirty = true;
+}
+
+void
+cow_view_save_expanded_geometry(struct cow_view *view)
+{
+	view->expanded_saved_x      = view->vx;
+	view->expanded_saved_y      = view->vy;
+	view->expanded_saved_width  = view->content_width;
+	view->expanded_saved_height = view->content_height;
+}
+
+void
+cow_view_restore_expanded_geometry(struct cow_view *view)
+{
+	/*
+	 * expanded_saved_x/y are in virtual (vx/vy) coordinates.  Convert to
+	 * global for the pending resize; it will re-sync vx/vy when applied.
+	 */
+	int gx = view->expanded_saved_x;
+	int gy = view->expanded_saved_y;
+	if (view->output != NULL && view->desk != NULL) {
+		gx = view->output->x +
+		    (view->expanded_saved_x - view->desk->page_vx);
+		gy = view->output->y +
+		    (view->expanded_saved_y - view->desk->page_vy);
+	}
+
+	cow_view_set_pending_geometry(view, gx, gy,
+	    view->expanded_saved_width, view->expanded_saved_height);
+	cow_view_clear_expanded_state(view);
+}
+
 struct cow_box
 cow_view_frame_box(const struct cow_view *v)
 {
@@ -1885,6 +1941,8 @@ cow_view_maximize(struct cow_view *view)
 	if (view->output == NULL)
 		return;
 
+	cow_view_clear_expanded_state(view);
+
 	/* Save virtual coordinates so cow_view_unmaximize can restore
 	 * them correctly via vx/vy regardless of the current page.
 	 * Only save if the window has been placed; if maximize_requested
@@ -1937,6 +1995,8 @@ cow_view_maximize(struct cow_view *view)
 void
 cow_view_unmaximize(struct cow_view *view)
 {
+	cow_view_clear_expanded_state(view);
+
 	/* saved_x/y hold virtual (vx/vy) coordinates saved by
 	 * cow_view_maximize.  If maximize fired before the window was
 	 * placed (e.g. Chrome's startup maximize_requested), saved_x/y
@@ -2148,6 +2208,8 @@ cow_view_fullscreen(struct cow_view *view)
 {
 	if (view->output == NULL)
 		return;
+
+	cow_view_clear_expanded_state(view);
 
 	if (!view->fullscreen) {
 		/*
@@ -3039,6 +3101,7 @@ cow_view_restore_saved_geometry(struct cow_view *view)
 	cow_view_set_pending_geometry(view, gx, gy, view->saved_width,
 	    view->saved_height);
 	cow_view_set_maximized(view, false);
+	cow_view_clear_expanded_state(view);
 	view->icon_inverted_button = -1;
 }
 

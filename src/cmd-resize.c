@@ -179,6 +179,7 @@ do_resize_step(struct cow_view *view, const char *dir, int sign,
 	if (sign < 0)
 		cow_clamp_dimensions(&w, &h);
 
+	cow_view_clear_expanded_state(view);
 	cow_view_set_pending_geometry(view, x, y, w, h);
 	cow_view_sync_container_geometry(view, x, y, w, h);
 }
@@ -206,6 +207,7 @@ do_set_size(struct cow_view *view, const char *ws, const char *hs,
 
 	cow_clamp_dimensions(&w, &h);
 
+	cow_view_clear_expanded_state(view);
 	cow_view_set_pending_geometry(view, view->x, view->y, w, h);
 	cow_view_sync_container_geometry(view, view->x, view->y, w, h);
 }
