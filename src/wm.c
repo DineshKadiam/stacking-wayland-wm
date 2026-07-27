@@ -92,6 +92,7 @@ static void manage_apply_fullscreen_visibility(struct cow_view *);
 static void manage_apply_focus(void);
 static void manage_apply_pending_focus(void);
 static void manage_apply_needs_focus(void);
+static void manage_apply_seat_refocus(void);
 static void manage_apply_warp(void);
 static void manage_run_deferred_exec(void);
 static void manage_mark_views_dirty(void);
@@ -101,6 +102,10 @@ static void render_outputs(void);
 static void render_views(void);
 static void render_drag_ghost(void);
 static struct cow_view *session_unlock_focus_target(struct cow_seat *);
+static bool manage_focus_replacement_candidate(const struct cow_view *);
+static struct cow_view *manage_focus_replacement_for_close(struct cow_seat *,
+    struct cow_view *);
+static void manage_prepare_focus_replacement(struct cow_view *);
 static int  manage_click_count(struct cow_seat *, struct cow_view *,
     struct timespec *);
 static void manage_store_click(struct cow_seat *, struct cow_view *,
@@ -380,8 +385,10 @@ manage_destroy_removed(void)
 	struct cow_view *view, *view_tmp;
 	wl_list_for_each_safe(view, view_tmp, &cow_wm.views, wm_link)
 	{
-		if (view->closed)
+		if (view->closed) {
+			manage_prepare_focus_replacement(view);
 			cow_view_destroy(view);
+		}
 	}
 
 	struct cow_output *output, *output_tmp;
@@ -916,6 +923,7 @@ manage_apply_focus(void)
 {
 	manage_apply_pending_focus();
 	manage_apply_needs_focus();
+	manage_apply_seat_refocus();
 }
 
 static void
@@ -946,6 +954,62 @@ manage_apply_needs_focus(void)
 				cow_seat_focus_view(seat, view);
 			view->needs_focus = false;
 		}
+	}
+}
+
+static void
+manage_apply_seat_refocus(void)
+{
+	struct cow_seat *seat;
+
+	wl_list_for_each(seat, &cow_wm.seats, wm_link)
+	{
+		if (!seat->needs_refocus)
+			continue;
+
+		seat->needs_refocus = false;
+		struct cow_view *target = session_unlock_focus_target(seat);
+		if (target == NULL)
+			continue;
+		cow_seat_focus_view(seat, target);
+	}
+}
+
+static bool
+manage_focus_replacement_candidate(const struct cow_view *view)
+{
+	return cow_view_focusable(view) && view->output != NULL &&
+	    cow_view_visible(view, view->output);
+}
+
+static struct cow_view *
+manage_focus_replacement_for_close(struct cow_seat *seat,
+    struct cow_view *closing)
+{
+	if (seat->pointer_entered_view != NULL &&
+	    seat->pointer_entered_view != closing &&
+	    manage_focus_replacement_candidate(seat->pointer_entered_view))
+		return (seat->pointer_entered_view);
+
+	return cow_view_walk(closing, true, manage_focus_replacement_candidate);
+}
+
+static void
+manage_prepare_focus_replacement(struct cow_view *closing)
+{
+	struct cow_seat *seat;
+
+	wl_list_for_each(seat, &cow_wm.seats, wm_link)
+	{
+		if (seat->focused_view != closing)
+			continue;
+
+		struct cow_view *replacement =
+		    manage_focus_replacement_for_close(seat, closing);
+		if (replacement == NULL)
+			continue;
+
+		cow_seat_focus_view(seat, replacement);
 	}
 }
 

@@ -69,7 +69,13 @@ ls_seat_handle_focus_none(void		      *data,
     __unused struct river_layer_shell_seat_v1 *ls_seat)
 {
 	struct cow_layer_shell_seat *lss = data;
+	bool had_exclusive		 = lss->has_exclusive_focus;
+
 	lss->has_exclusive_focus	 = false;
+	if (had_exclusive) {
+		lss->seat->needs_refocus = true;
+		cow_wm_request_manage_dirty();
+	}
 }
 
 static const struct river_layer_shell_seat_v1_listener ls_seat_listener = {
