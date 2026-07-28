@@ -396,9 +396,7 @@ pan_cursor_update(struct cow_output *output, int edge, uint32_t serial,
 	struct cow_view *view = view_for_global_decoration_point(gx, gy, &dx,
 	    &dy, &cw, &ch);
 	if (view == NULL) {
-		cow_wm_set_cursor_shape(
-		    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT,
-		    decoration_cursor_serial);
+		cow_wm_reset_cursor_shape(decoration_cursor_serial);
 		return (false);
 	}
 
@@ -421,8 +419,19 @@ cow_pan_cursor_hold_end(void)
 	if (!cursor_held)
 		return;
 	cursor_held = false;
-	cow_wm_set_cursor_shape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT,
-	    decoration_cursor_serial);
+	cow_wm_reset_cursor_shape(decoration_cursor_serial);
+}
+
+void
+cow_pan_cursor_clear(void)
+{
+	if (cursor_held)
+		return;
+
+	decoration_cursor_surface = NULL;
+	pan_cursor_output	  = NULL;
+	pan_cursor_edge		  = -1;
+	cow_wm_reset_cursor_shape(decoration_cursor_serial);
 }
 
 static void
@@ -474,8 +483,7 @@ pointer_leave(void *data, struct wl_pointer *pointer, uint32_t serial,
 		if (decoration_cursor_surface == surf) {
 			decoration_cursor_surface = NULL;
 			if (!cursor_held)
-				cow_wm_set_cursor_shape(
-				    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT,
+				cow_wm_reset_cursor_shape(
 				    decoration_cursor_serial);
 		}
 		return;
@@ -486,9 +494,7 @@ pointer_leave(void *data, struct wl_pointer *pointer, uint32_t serial,
 		pan_cursor_output = NULL;
 		pan_cursor_edge   = -1;
 		if (!cursor_held)
-			cow_wm_set_cursor_shape(
-			    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT,
-			    decoration_cursor_serial);
+			cow_wm_reset_cursor_shape(decoration_cursor_serial);
 	}
 	if (cow_wm.pan_lock_output == output && cow_wm.pan_lock_edge == edge)
 		pan_disarm();

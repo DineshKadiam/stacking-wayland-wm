@@ -1788,14 +1788,14 @@ cow_wm_set_cursor_surface(uint32_t shape)
 	wl_surface_commit(cow_wm.wl_cursor_surface);
 }
 
-void
-cow_wm_set_cursor_shape(uint32_t shape, uint32_t serial)
+static void
+cow_wm_set_cursor_shape_internal(uint32_t shape, uint32_t serial, bool force)
 {
 	cow_wm_ensure_cursor_shape_device();
 	uint32_t old_serial = cow_wm.wl_cursor_serial;
 	if (serial != 0)
 		cow_wm.wl_cursor_serial = serial;
-	if (cow_wm.wl_cursor_shape == shape &&
+	if (!force && cow_wm.wl_cursor_shape == shape &&
 	    (serial == 0 || old_serial == cow_wm.wl_cursor_serial))
 		return;
 
@@ -1804,6 +1804,19 @@ cow_wm_set_cursor_shape(uint32_t shape, uint32_t serial)
 		    cow_wm.wl_cursor_serial, shape);
 	cow_wm_set_cursor_surface(shape);
 	cow_wm.wl_cursor_shape = shape;
+}
+
+void
+cow_wm_set_cursor_shape(uint32_t shape, uint32_t serial)
+{
+	cow_wm_set_cursor_shape_internal(shape, serial, false);
+}
+
+void
+cow_wm_reset_cursor_shape(uint32_t serial)
+{
+	cow_wm_set_cursor_shape_internal(
+	    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT, serial, true);
 }
 
 void

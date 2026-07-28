@@ -80,6 +80,7 @@ seat_handle_pointer_leave(void *data, __unused struct river_seat_v1 *river_seat)
 {
 	struct cow_seat *seat	   = data;
 	seat->pointer_entered_view = NULL;
+	cow_pan_cursor_clear();
 
 	/* Arm edge scroll if the pointer is now at a screen edge */
 	if (seat->has_pointer_position)

@@ -248,6 +248,7 @@ void cow_wm_request_manage_dirty(void);
  */
 void cow_wm_ensure_cursor_shape_device(void);
 void cow_wm_set_cursor_shape(uint32_t, uint32_t);
+void cow_wm_reset_cursor_shape(uint32_t);
 
 /*
  * Request that the pointer be warped to (x, y) at the next manage

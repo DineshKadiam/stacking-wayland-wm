@@ -53,6 +53,7 @@ void cow_output_pan_pointer_leave(int, int);
 void cow_output_pan_pointer_enter(void);
 void cow_pan_cursor_hold_start(void);
 void cow_pan_cursor_hold_end(void);
+void cow_pan_cursor_clear(void);
 
 /*
  * Op-mode (drag) dwell arming.  Layer-surface pointer events don't
