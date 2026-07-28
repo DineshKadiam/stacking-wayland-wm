@@ -40,6 +40,7 @@ struct cow_ipc cow_ipc;
 
 static void ipc_accept_cb(evutil_socket_t, short, void *);
 static void ipc_client_cb(evutil_socket_t, short, void *);
+static void ipc_clear_causes(void);
 static bool cow_ipc_load_file(const char *, int);
 static struct cow_ipc_client *ipc_find_client_fd(int);
 
@@ -103,6 +104,17 @@ cow_ipc_fini(void)
 	}
 }
 
+static void
+ipc_clear_causes(void)
+{
+	if (ARRAY_EMPTY(&cfg_causes))
+		return;
+
+	for (u_int i = 0; i < ARRAY_LENGTH(&cfg_causes); i++)
+		xfree(ARRAY_ITEM(&cfg_causes, i));
+	ARRAY_FREE(&cfg_causes);
+}
+
 void
 cow_ipc_respond(int fd, const char *json)
 {
@@ -153,6 +165,8 @@ cow_ipc_respond_data(int fd, cJSON *data)
 bool
 cow_ipc_dispatch(const char *line, int client_fd)
 {
+	ipc_clear_causes();
+
 	/* Skip leading whitespace */
 	while (*line == ' ' || *line == '\t')
 		line++;
