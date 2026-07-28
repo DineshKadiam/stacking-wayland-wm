@@ -907,7 +907,9 @@ manage_apply_deferred_resize(struct cow_view *view)
 
 	bool shrinking = (view->pending_width < view->content_width ||
 	    view->pending_height < view->content_height);
-	manage_apply_deferred_position(view, shrinking);
+	bool anchored = view->deferred_anchor_right ||
+	    view->deferred_anchor_bottom;
+	manage_apply_deferred_position(view, shrinking || anchored);
 	river_window_v1_propose_dimensions(view->river_window,
 	    view->pending_width, view->pending_height);
 	view->pending_resize = false;
@@ -926,6 +928,8 @@ manage_apply_deferred_position(struct cow_view *view, bool shrinking)
 
 	view->x = view->pending_x;
 	view->y = view->pending_y;
+	view->deferred_anchor_right = false;
+	view->deferred_anchor_bottom = false;
 	if (view->output == NULL || view->desk == NULL)
 		return;
 

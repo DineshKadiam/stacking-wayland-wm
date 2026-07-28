@@ -26,6 +26,8 @@
 #include "cow/view.h"
 #include "cow/wm.h"
 
+#include "river-window-management-v1-client-protocol.h"
+
 static enum cmd_retval cmd_resize_exec(struct cmd *, struct cmd_q *);
 static void	       do_resize_step(struct cow_view *, const char *, int,
 	       struct cmd_q *);
@@ -153,11 +155,14 @@ do_resize_step(struct cow_view *view, const char *dir, int sign,
 	int h = view->content_height;
 	int x = view->x;
 	int y = view->y;
+	bool anchor_right = false;
+	bool anchor_bottom = false;
 
 	switch (cow_parse_direction(dir)) {
 	case COW_DIR_UP:
 		h += step;
 		y -= step;
+		anchor_bottom = true;
 		break;
 	case COW_DIR_DOWN:
 		h += step;
@@ -165,6 +170,7 @@ do_resize_step(struct cow_view *view, const char *dir, int sign,
 	case COW_DIR_LEFT:
 		w += step;
 		x -= step;
+		anchor_right = true;
 		break;
 	case COW_DIR_RIGHT:
 		w += step;
@@ -180,8 +186,13 @@ do_resize_step(struct cow_view *view, const char *dir, int sign,
 		cow_clamp_dimensions(&w, &h);
 
 	cow_view_clear_expanded_state(view);
-	cow_view_set_pending_geometry(view, x, y, w, h);
-	cow_view_sync_container_geometry(view, x, y, w, h);
+	cow_view_set_tiled_edges(view, RIVER_WINDOW_V1_EDGES_TOP |
+	    RIVER_WINDOW_V1_EDGES_BOTTOM | RIVER_WINDOW_V1_EDGES_LEFT |
+	    RIVER_WINDOW_V1_EDGES_RIGHT);
+	cow_view_set_pending_geometry_anchored(view, x, y, w, h,
+	    anchor_right, anchor_bottom);
+	if (!anchor_right && !anchor_bottom)
+		cow_view_sync_container_geometry(view, x, y, w, h);
 }
 
 static void
@@ -208,6 +219,9 @@ do_set_size(struct cow_view *view, const char *ws, const char *hs,
 	cow_clamp_dimensions(&w, &h);
 
 	cow_view_clear_expanded_state(view);
+	cow_view_set_tiled_edges(view, RIVER_WINDOW_V1_EDGES_TOP |
+	    RIVER_WINDOW_V1_EDGES_BOTTOM | RIVER_WINDOW_V1_EDGES_LEFT |
+	    RIVER_WINDOW_V1_EDGES_RIGHT);
 	cow_view_set_pending_geometry(view, view->x, view->y, w, h);
 	cow_view_sync_container_geometry(view, view->x, view->y, w, h);
 }

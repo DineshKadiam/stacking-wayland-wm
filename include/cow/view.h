@@ -367,6 +367,8 @@ struct cow_view {
 	/* Avoid showing a shrinking window at its new top-left too early. */
 	bool deferred_position;
 	int  deferred_x, deferred_y;
+	bool deferred_anchor_right, deferred_anchor_bottom;
+	int  deferred_anchor_right_x, deferred_anchor_bottom_y;
 
 	/* Pending clip box change (applied during manage cycle) */
 	bool pending_clip;
@@ -443,6 +445,8 @@ void cow_view_restore_expanded_geometry(struct cow_view *);
  * Also marks decoration dirty and requests a manage cycle.
  */
 void cow_view_set_pending_geometry(struct cow_view *, int, int, int, int);
+void cow_view_set_pending_geometry_anchored(struct cow_view *, int, int, int,
+    int, bool, bool);
 
 /*
  * Compute the frame bounding box (border + titlebar + content).

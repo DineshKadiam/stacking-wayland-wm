@@ -723,10 +723,17 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 	 * (larger) buffer at the new top-left, which on multi-output
 	 * setups visually overshoots into a neighbouring monitor.
 	 */
+	bool applied_deferred_position = view->deferred_position;
 	if (view->deferred_position) {
-		view->x			= view->deferred_x;
-		view->y			= view->deferred_y;
+		view->x = view->deferred_anchor_right ?
+		    view->deferred_anchor_right_x - width :
+		    view->deferred_x;
+		view->y = view->deferred_anchor_bottom ?
+		    view->deferred_anchor_bottom_y - height :
+		    view->deferred_y;
 		view->deferred_position = false;
+		view->deferred_anchor_right = false;
+		view->deferred_anchor_bottom = false;
 		if (view->output != NULL && view->desk != NULL) {
 			view->vx = (view->x - view->output->x) +
 			    view->desk->page_vx;
@@ -734,6 +741,9 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 			    view->desk->page_vy;
 		}
 	}
+	if (changed || applied_deferred_position)
+		cow_view_sync_container_geometry(view, view->x, view->y,
+		    width, height);
 
 	bool first_dims	     = !view->has_dimensions;
 	view->has_dimensions = true;
@@ -1499,11 +1509,23 @@ cow_view_update_output(struct cow_view *view)
 void
 cow_view_set_pending_geometry(struct cow_view *view, int x, int y, int w, int h)
 {
+	cow_view_set_pending_geometry_anchored(view, x, y, w, h, false,
+	    false);
+}
+
+void
+cow_view_set_pending_geometry_anchored(struct cow_view *view, int x, int y,
+    int w, int h, bool anchor_right, bool anchor_bottom)
+{
 	view->pending_resize = true;
 	view->pending_x	     = x;
 	view->pending_y	     = y;
 	view->pending_width  = w;
 	view->pending_height = h;
+	view->deferred_anchor_right = anchor_right;
+	view->deferred_anchor_bottom = anchor_bottom;
+	view->deferred_anchor_right_x = view->x + view->content_width;
+	view->deferred_anchor_bottom_y = view->y + view->content_height;
 	view->dec.dirty	     = true;
 	cow_wm_request_manage_dirty();
 }
