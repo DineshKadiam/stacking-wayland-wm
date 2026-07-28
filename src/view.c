@@ -1852,6 +1852,27 @@ cow_view_set_pending_maximized_hint(struct cow_view *view, bool maximized)
 }
 
 void
+cow_view_inform_fullscreen_state(struct cow_view *view, bool fullscreen)
+{
+	if (view == NULL)
+		return;
+
+	view->pending_fullscreen_state = false;
+	if (view->river_window != NULL &&
+	    cow_wm.sequence == COW_WM_SEQUENCE_MANAGE) {
+		if (fullscreen)
+			river_window_v1_inform_fullscreen(view->river_window);
+		else
+			river_window_v1_inform_not_fullscreen(view->river_window);
+		return;
+	}
+
+	view->pending_fullscreen_state = true;
+	view->pending_fullscreen	     = fullscreen;
+	cow_wm_request_manage_dirty();
+}
+
+void
 cow_view_set_tiled_edges(struct cow_view *view, uint32_t edges)
 {
 	if (view == NULL)
@@ -2044,8 +2065,8 @@ cow_view_maximize(struct cow_view *view)
 	int w = ua->width - frame_extra_w;
 	int h = ua->height - frame_extra_h;
 	cow_clamp_dimensions(&w, &h);
-	river_window_v1_propose_dimensions(view->river_window, w, h);
-	river_window_v1_inform_maximized(view->river_window);
+	cow_view_set_pending_geometry(view, view->x, view->y, w, h);
+	cow_view_set_pending_maximized_hint(view, true);
 	cow_view_set_maximized(view, true);
 
 	/*
@@ -2076,9 +2097,9 @@ cow_view_unmaximize(struct cow_view *view)
 		/* Placement hasn't run yet; just drop the maximized state
 		 * and let cow_view_apply_render place the window normally. */
 		cow_view_set_maximized(view, false);
-		river_window_v1_propose_dimensions(view->river_window,
+		cow_view_set_pending_geometry(view, view->x, view->y,
 		    view->saved_width, view->saved_height);
-		river_window_v1_inform_unmaximized(view->river_window);
+		cow_view_set_pending_maximized_hint(view, false);
 		view->dec.dirty = true;
 		return;
 	}
@@ -2092,9 +2113,9 @@ cow_view_unmaximize(struct cow_view *view)
 		view->x = view->saved_x;
 		view->y = view->saved_y;
 	}
-	river_window_v1_propose_dimensions(view->river_window,
+	cow_view_set_pending_geometry(view, view->x, view->y,
 	    view->saved_width, view->saved_height);
-	river_window_v1_inform_unmaximized(view->river_window);
+	cow_view_set_pending_maximized_hint(view, false);
 	cow_view_set_maximized(view, false);
 
 	/* Restore container geometry to the saved (pre-maximize) values.
@@ -2340,13 +2361,10 @@ cow_view_fullscreen(struct cow_view *view)
 	view->y	 = view->output->y;
 	view->vx = view->desk != NULL ? view->desk->page_vx : 0;
 	view->vy = view->desk != NULL ? view->desk->page_vy : 0;
-	river_window_v1_propose_dimensions(view->river_window,
+	cow_view_set_pending_geometry(view, view->x, view->y,
 	    view->output->width, view->output->height);
-	river_window_v1_fullscreen(view->river_window,
-	    view->output->river_output);
-	river_window_v1_inform_fullscreen(view->river_window);
+	cow_view_inform_fullscreen_state(view, true);
 	view->fullscreen = true;
-	view->fullscreen_applied = true;
 	view->use_ssd	 = false;
 }
 
@@ -2368,13 +2386,10 @@ cow_view_exit_fullscreen(struct cow_view *view)
 			view->y = view->output->y + view->vy;
 		}
 	}
-	river_window_v1_propose_dimensions(view->river_window,
+	cow_view_set_pending_geometry(view, view->x, view->y,
 	    view->saved_width, view->saved_height);
-	if (view->fullscreen_applied)
-		river_window_v1_exit_fullscreen(view->river_window);
-	river_window_v1_inform_not_fullscreen(view->river_window);
+	cow_view_inform_fullscreen_state(view, false);
 	view->fullscreen = false;
-	view->fullscreen_applied = false;
 	view->use_ssd	 = true;
 }
 

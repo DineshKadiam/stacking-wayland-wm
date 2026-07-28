@@ -96,6 +96,7 @@ static void manage_apply_deferred_maximized_hint(struct cow_view *);
 static void manage_apply_deferred_resize(struct cow_view *);
 static void manage_apply_deferred_position(struct cow_view *, bool);
 static void manage_apply_fullscreen_visibility(struct cow_view *);
+static void manage_apply_deferred_client_state(struct cow_view *);
 static void manage_apply_focus(void);
 static void manage_apply_pending_focus(void);
 static void manage_apply_needs_focus(void);
@@ -932,22 +933,23 @@ manage_apply_deferred_views(void)
 		manage_apply_deferred_maximized_hint(view);
 		manage_apply_deferred_resize(view);
 		manage_apply_fullscreen_visibility(view);
+		manage_apply_deferred_client_state(view);
 	}
 }
 
 static void
 manage_apply_fullscreen_visibility(struct cow_view *view)
 {
-	if (view->closed || !view->fullscreen || view->river_window == NULL)
+	if (view->closed || view->river_window == NULL)
 		return;
 
 	bool visible = view->output != NULL && cow_view_visible(view,
 	    view->output);
-	if (visible && !view->fullscreen_applied) {
+	if (view->fullscreen && visible && !view->fullscreen_applied) {
 		river_window_v1_fullscreen(view->river_window,
 		    view->output->river_output);
 		view->fullscreen_applied = true;
-	} else if (!visible && view->fullscreen_applied) {
+	} else if ((!view->fullscreen || !visible) && view->fullscreen_applied) {
 		river_window_v1_exit_fullscreen(view->river_window);
 		view->fullscreen_applied = false;
 	}
@@ -1027,6 +1029,21 @@ manage_apply_deferred_position(struct cow_view *view, bool shrinking)
 
 	view->vx = (view->x - view->output->x) + view->desk->page_vx;
 	view->vy = (view->y - view->output->y) + view->desk->page_vy;
+}
+
+static void
+manage_apply_deferred_client_state(struct cow_view *view)
+{
+	if (view->closed || view->river_window == NULL)
+		return;
+
+	if (view->pending_fullscreen_state) {
+		if (view->pending_fullscreen)
+			river_window_v1_inform_fullscreen(view->river_window);
+		else
+			river_window_v1_inform_not_fullscreen(view->river_window);
+		view->pending_fullscreen_state = false;
+	}
 }
 
 static void

@@ -315,6 +315,8 @@ struct cow_view {
 	uint32_t pending_tiled_edges_value;
 	bool pending_maximized_hint;
 	bool pending_maximized_hint_value;
+	bool pending_fullscreen_state;
+	bool pending_fullscreen;
 	bool needs_raise; /* set during manage, applied in render */
 
 	/* Monotonic intra-layer z-order. */
@@ -434,6 +436,9 @@ void cow_view_set_maximized(struct cow_view *, bool);
 
 /* Set/clear the client's maximized state hint during the manage cycle. */
 void cow_view_set_pending_maximized_hint(struct cow_view *, bool);
+
+/* Inform the client of fullscreen state during a manage sequence. */
+void cow_view_inform_fullscreen_state(struct cow_view *, bool);
 
 /* Set/clear the client's tiled edge hint. */
 void cow_view_set_tiled_edges(struct cow_view *, uint32_t);
