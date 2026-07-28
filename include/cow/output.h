@@ -67,6 +67,8 @@ struct cow_output {
 
 	/* Output area after layer-shell/reserved exclusions. */
 	struct cow_box usable_area;
+	struct cow_box layer_usable_area;
+	bool	       has_layer_usable_area;
 
 	/* Corresponding wl_output global name (for wl_registry binding) */
 	uint32_t wl_output_name;
@@ -132,8 +134,8 @@ void cow_output_set_current(struct cow_output *);
 /* Called once the human-readable output name is known. */
 void cow_output_name_known(struct cow_output *);
 
-/* Apply configured reserved area to output->usable_area. */
-void cow_output_apply_reserved_area(struct cow_output *);
+/* Recompute output->usable_area from River layer-shell state and reserved area. */
+bool cow_output_recompute_usable_area(struct cow_output *);
 
 /* Background surface lifecycle. */
 void cow_output_prepare_background(struct cow_output *);

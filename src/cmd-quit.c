@@ -125,11 +125,7 @@ do_reload(struct cmd_q *cmdq)
 	struct cow_output *output;
 	wl_list_for_each(output, &cow_wm.outputs, wm_link)
 	{
-		output->usable_area.x	   = output->x;
-		output->usable_area.y	   = output->y;
-		output->usable_area.width  = output->width;
-		output->usable_area.height = output->height;
-		cow_output_apply_reserved_area(output);
+		(void)cow_output_recompute_usable_area(output);
 		output->bg_dirty = true;
 	}
 

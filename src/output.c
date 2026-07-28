@@ -59,9 +59,8 @@ output_background_destroy_resources(struct cow_output *output)
 	output->bg_dirty      = true;
 }
 
-/* Subtract the configured reserved area. */
-void
-cow_output_apply_reserved_area(struct cow_output *output)
+static void
+output_apply_reserved_area(struct cow_box *area)
 {
 	if (cow_config == NULL)
 		return;
@@ -74,15 +73,40 @@ cow_output_apply_reserved_area(struct cow_output *output)
 	if (rt == 0 && rb == 0 && rl == 0 && rr == 0)
 		return;
 
-	output->usable_area.x += rl;
-	output->usable_area.y += rt;
-	output->usable_area.width -= rl + rr;
-	output->usable_area.height -= rt + rb;
+	area->x += rl;
+	area->y += rt;
+	area->width -= rl + rr;
+	area->height -= rt + rb;
 
-	if (output->usable_area.width < 100)
-		output->usable_area.width = 100;
-	if (output->usable_area.height < 100)
-		output->usable_area.height = 100;
+	if (area->width < 100)
+		area->width = 100;
+	if (area->height < 100)
+		area->height = 100;
+}
+
+bool
+cow_output_recompute_usable_area(struct cow_output *output)
+{
+	if (output == NULL)
+		return (false);
+
+	struct cow_box old = output->usable_area;
+
+	if (output->has_layer_usable_area) {
+		output->usable_area = output->layer_usable_area;
+	} else {
+		output->usable_area.x	    = output->x;
+		output->usable_area.y	    = output->y;
+		output->usable_area.width  = output->width;
+		output->usable_area.height = output->height;
+	}
+
+	output_apply_reserved_area(&output->usable_area);
+
+	return (old.x != output->usable_area.x ||
+	    old.y != output->usable_area.y ||
+	    old.width != output->usable_area.width ||
+	    old.height != output->usable_area.height);
 }
 
 /*
@@ -133,11 +157,8 @@ output_handle_position(void	    *data,
 	struct cow_output *output  = data;
 	output->x		   = x;
 	output->y		   = y;
-	output->usable_area.x	   = x;
-	output->usable_area.y	   = y;
-	output->usable_area.width  = output->width;
-	output->usable_area.height = output->height;
-	cow_output_apply_reserved_area(output);
+	if (!output->has_layer_usable_area)
+		(void)cow_output_recompute_usable_area(output);
 
 	/* A monitor moved -- the raster-scan order may have changed. */
 	cow_outputs_renumber();
@@ -151,14 +172,16 @@ output_handle_dimensions(void	    *data,
 	struct cow_output *output  = data;
 	output->width		   = width;
 	output->height		   = height;
-	output->usable_area.x	   = output->x;
-	output->usable_area.y	   = output->y;
-	output->usable_area.width  = width;
-	output->usable_area.height = height;
+	if (output->has_layer_usable_area) {
+		output->layer_usable_area.x	   = output->x;
+		output->layer_usable_area.y	   = output->y;
+		output->layer_usable_area.width  = width;
+		output->layer_usable_area.height = height;
+	}
 
 	/* Startup applies reserved area after initial output events settle. */
 	if (!cow_wm.exec_pending)
-		cow_output_apply_reserved_area(output);
+		(void)cow_output_recompute_usable_area(output);
 	output_background_destroy_resources(output);
 
 	/* Startup creates pan frames once at the end of exec_pending. */

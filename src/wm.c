@@ -1499,7 +1499,7 @@ cow_wm_init(void)
 	{
 		struct cow_output *co;
 		wl_list_for_each(co, &cow_wm.outputs, wm_link)
-		    cow_output_apply_reserved_area(co);
+		    (void)cow_output_recompute_usable_area(co);
 	}
 
 	/* Initialise pan frames after globals are bound */
