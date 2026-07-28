@@ -63,7 +63,9 @@ By default only the current output's desk is rearranged.
 	Default: first window's _title\_thickness_ + _border\_width_.
 
 *-r*
-	Resize windows to fit the layout.  Default for *tile*.
+	Resize windows to fit the layout.  Default for *tile*.  Resized
+	windows are also marked tiled so clients that normally resize in
+	increments can honour the exact layout geometry.
 
 *-R*
 	Place only, do not resize.  Default for *cascade*.

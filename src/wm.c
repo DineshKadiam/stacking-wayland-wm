@@ -86,6 +86,7 @@ static void manage_configure_views(void);
 static void manage_process_seat(struct cow_seat *);
 static void manage_apply_deferred_views(void);
 static void manage_apply_deferred_close(struct cow_view *);
+static void manage_apply_deferred_tiled_edges(struct cow_view *);
 static void manage_apply_deferred_resize(struct cow_view *);
 static void manage_apply_deferred_position(struct cow_view *, bool);
 static void manage_apply_fullscreen_visibility(struct cow_view *);
@@ -851,6 +852,7 @@ manage_apply_deferred_views(void)
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
 		manage_apply_deferred_close(view);
+		manage_apply_deferred_tiled_edges(view);
 		manage_apply_deferred_resize(view);
 		manage_apply_fullscreen_visibility(view);
 	}
@@ -882,6 +884,19 @@ manage_apply_deferred_close(struct cow_view *view)
 
 	river_window_v1_close(view->river_window);
 	view->pending_close = false;
+}
+
+static void
+manage_apply_deferred_tiled_edges(struct cow_view *view)
+{
+	if (!view->pending_tiled_edges || view->closed)
+		return;
+
+	if (view->river_window != NULL)
+		river_window_v1_set_tiled(view->river_window,
+		    view->pending_tiled_edges_value);
+	view->tiled_edges = view->pending_tiled_edges_value;
+	view->pending_tiled_edges = false;
 }
 
 static void

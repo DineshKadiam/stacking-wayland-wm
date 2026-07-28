@@ -953,6 +953,22 @@ mouse, from the bottom-right corner.
 *-h* _height_
 	Set the window height in pixels.
 
+## window-tile [-t target] [-e edges] [-u]
+
+Set or clear the tiled-edge hint for a window.  This is mainly useful for
+scripts which place and size windows exactly, because some clients use the
+tiled state to ignore normal resize increments.
+
+*-t* _target_
+	Target window.
+
+*-e* _edges_
+	Set the tiled edges.  _edges_ may be *all*, *none*, or any
+	combination of _n_, _s_, _e_, and _w_.  The default is *all*.
+
+*-u*
+	Clear the tiled-edge hint.
+
 ## focus [-npwL] [-F expr] [-l N] [-t target] [-d dir] [-o output] [-A app_id] [-T title] [-i id]
 
 Move keyboard focus.

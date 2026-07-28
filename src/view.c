@@ -1797,9 +1797,12 @@ cow_view_set_tiled_edges(struct cow_view *view, uint32_t edges)
 	if (view == NULL)
 		return;
 
-	view->tiled_edges = edges;
-	if (view->river_window != NULL)
-		river_window_v1_set_tiled(view->river_window, edges);
+	if (view->tiled_edges == edges && !view->pending_tiled_edges)
+		return;
+
+	view->pending_tiled_edges	= true;
+	view->pending_tiled_edges_value	= edges;
+	cow_wm_request_manage_dirty();
 }
 
 void
@@ -1807,7 +1810,10 @@ cow_view_clear_expanded_state(struct cow_view *view)
 {
 	if (view == NULL)
 		return;
-	if (!view->expanded && view->tiled_edges == RIVER_WINDOW_V1_EDGES_NONE)
+	if (!view->expanded &&
+	    view->tiled_edges == RIVER_WINDOW_V1_EDGES_NONE &&
+	    (!view->pending_tiled_edges ||
+		view->pending_tiled_edges_value == RIVER_WINDOW_V1_EDGES_NONE))
 		return;
 
 	view->expanded = false;

@@ -685,7 +685,7 @@ layout_cascade(struct win *wins, int n, const struct workarea *wa,
  * fits comfortably.  Returns a malloc'd string, NULL on failure.
  */
 static char *
-build_cmd(const struct placed *plan, int n)
+build_cmd(const struct placed *plan, int n, bool resize)
 {
 	size_t cap = 256;
 	size_t len = 0;
@@ -696,12 +696,21 @@ build_cmd(const struct placed *plan, int n)
 
 	for (int i = 0; i < n; i++) {
 		char chunk[512];
-		int nm = snprintf(chunk, sizeof(chunk),
-		    "%swindow-move -t \"#%s\" -x %d -y %d ; "
-		    "window-resize -t \"#%s\" -w %d -h %d",
-		    (i == 0) ? "" : " ; ", plan[i].id, plan[i].content_x,
-		    plan[i].content_y, plan[i].id, plan[i].content_w,
-		    plan[i].content_h);
+		int  nm;
+		if (resize) {
+			nm = snprintf(chunk, sizeof(chunk),
+			    "%swindow-move -t \"#%s\" -x %d -y %d ; "
+			    "window-resize -t \"#%s\" -w %d -h %d ; "
+			    "window-tile -t \"#%s\"",
+			    (i == 0) ? "" : " ; ", plan[i].id,
+			    plan[i].content_x, plan[i].content_y, plan[i].id,
+			    plan[i].content_w, plan[i].content_h, plan[i].id);
+		} else {
+			nm = snprintf(chunk, sizeof(chunk),
+			    "%swindow-move -t \"#%s\" -x %d -y %d",
+			    (i == 0) ? "" : " ; ", plan[i].id,
+			    plan[i].content_x, plan[i].content_y);
+		}
 		if (nm < 0 || (size_t)nm >= sizeof(chunk)) {
 			free(buf);
 			return NULL;
@@ -807,7 +816,7 @@ main(int argc, char *argv[])
 	else
 		layout_cascade(wins, n, &wa, &opts, plan);
 
-	char *cmd = build_cmd(plan, n);
+	char *cmd = build_cmd(plan, n, opts.resize);
 	if (cmd == NULL) {
 		fprintf(stderr,
 		    "cowrearrange: failed to build batched command\n");

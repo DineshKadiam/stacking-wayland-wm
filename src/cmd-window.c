@@ -60,6 +60,7 @@ static enum cmd_retval cmd_winops_exec(struct cmd *, struct cmd_q *);
 static enum cmd_retval cmd_window_expand_exec(struct cmd *, struct cmd_q *);
 static enum cmd_retval cmd_window_maximize_exec(struct cmd *, struct cmd_q *);
 static enum cmd_retval cmd_window_shade_exec(struct cmd *, struct cmd_q *);
+static enum cmd_retval cmd_window_tile_exec(struct cmd *, struct cmd_q *);
 
 static void		    do_identify(struct cow_view *, struct cmd_q *);
 static void		    do_raise(struct cow_view *);
@@ -72,6 +73,7 @@ static void		    do_expand(struct cow_view *, enum expand_dir, bool);
 static void		    do_maximize(struct cow_view *, enum maximize_type,
 		    enum maximize_axis);
 static void		    do_shade(struct cow_view *, const char *);
+static bool		    parse_tiled_edges(const char *, uint32_t *);
 static enum expand_dir	    resolve_direction(const char *);
 static uint32_t		    expand_tiled_edges(enum expand_dir);
 static enum shade_direction resolve_shade_direction(struct cow_view *,
@@ -163,6 +165,48 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 		if (r != CMD_RETURN_NORMAL)
 			return (r);
 	}
+
+	return (CMD_RETURN_NORMAL);
+}
+
+struct cmd_entry cmd_window_tile_entry = {
+	"window-tile",
+	"t:e:u",
+	0,
+	0,
+	"window-tile [-t target] [-e edges] [-u]",
+	cmd_window_tile_exec,
+	0,
+};
+
+static enum cmd_retval
+cmd_window_tile_exec(struct cmd *self, struct cmd_q *cmdq)
+{
+	struct args	*args = self->args;
+	struct cow_view *view = cmd_require_target_window(cmdq, "window-tile");
+
+	if (view == NULL)
+		return (CMD_RETURN_ERROR);
+
+	uint32_t edges = RIVER_WINDOW_V1_EDGES_TOP |
+	    RIVER_WINDOW_V1_EDGES_BOTTOM | RIVER_WINDOW_V1_EDGES_LEFT |
+	    RIVER_WINDOW_V1_EDGES_RIGHT;
+
+	if (args_has(args, 'u'))
+		edges = RIVER_WINDOW_V1_EDGES_NONE;
+	else if (args_has(args, 'e') &&
+	    !parse_tiled_edges(args_get(args, 'e'), &edges)) {
+		cmdq_error(cmdq,
+		    "window-tile: -e: bad edge spec '%s' "
+		    "(expected all|none|n|s|e|w combinations)",
+		    args_get(args, 'e'));
+		return (CMD_RETURN_ERROR);
+	}
+
+	view->expanded = false;
+	cow_view_set_tiled_edges(view, edges);
+	view->dec.dirty = true;
+	cow_wm_request_manage_dirty();
 
 	return (CMD_RETURN_NORMAL);
 }
@@ -731,6 +775,50 @@ do_shade(struct cow_view *view, const char *dir_str)
 
 	cow_view_shade(view, sd);
 	cow_wm_request_manage_dirty();
+}
+
+static bool
+parse_tiled_edges(const char *spec, uint32_t *out)
+{
+	if (spec == NULL || *spec == '\0')
+		return false;
+	if (strcmp(spec, "all") == 0) {
+		*out = RIVER_WINDOW_V1_EDGES_TOP |
+		    RIVER_WINDOW_V1_EDGES_BOTTOM |
+		    RIVER_WINDOW_V1_EDGES_LEFT | RIVER_WINDOW_V1_EDGES_RIGHT;
+		return true;
+	}
+	if (strcmp(spec, "none") == 0) {
+		*out = RIVER_WINDOW_V1_EDGES_NONE;
+		return true;
+	}
+
+	uint32_t edges = RIVER_WINDOW_V1_EDGES_NONE;
+	for (const char *p = spec; *p != '\0'; p++) {
+		switch (*p) {
+		case 'n':
+		case 'N':
+			edges |= RIVER_WINDOW_V1_EDGES_TOP;
+			break;
+		case 's':
+		case 'S':
+			edges |= RIVER_WINDOW_V1_EDGES_BOTTOM;
+			break;
+		case 'e':
+		case 'E':
+			edges |= RIVER_WINDOW_V1_EDGES_RIGHT;
+			break;
+		case 'w':
+		case 'W':
+			edges |= RIVER_WINDOW_V1_EDGES_LEFT;
+			break;
+		default:
+			return false;
+		}
+	}
+
+	*out = edges;
+	return true;
 }
 
 static void

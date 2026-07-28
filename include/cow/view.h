@@ -311,6 +311,8 @@ struct cow_view {
 	bool maximized_v;
 	bool expanded; /* window-expand restore/toggle state */
 	uint32_t tiled_edges; /* river_window_v1 tiled edge hint */
+	bool pending_tiled_edges;
+	uint32_t pending_tiled_edges_value;
 	bool needs_raise; /* set during manage, applied in render */
 
 	/* Monotonic intra-layer z-order. */
