@@ -2586,6 +2586,7 @@ cow_view_icon_destroy(struct cow_view *view)
 		view->icon_buffer = NULL;
 	}
 	if (view->icon_node != NULL) {
+		river_node_v1_destroy(view->icon_node);
 		view->icon_node = NULL;
 	}
 	if (view->icon_shell != NULL) {

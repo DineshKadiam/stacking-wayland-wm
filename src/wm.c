@@ -1427,8 +1427,15 @@ cow_wm_fini(void)
 {
 	cow_state_save();
 	cow_geometry_window_hide();
+
+	struct cow_view *view, *view_tmp;
+	wl_list_for_each_safe(view, view_tmp, &cow_wm.views, wm_link)
+		cow_view_destroy(view);
+
 	cow_status_fini();
 	cow_ipc_fini();
+	xfree(cow_ipc.config_path);
+	cow_ipc.config_path = NULL;
 	cow_event_fini();
 	cow_rule_fini();
 
