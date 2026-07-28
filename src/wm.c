@@ -290,7 +290,7 @@ idle_notification_listener = {
  */
 static void
 registry_global(__unused void *data, struct wl_registry *registry,
-    uint32_t name, const char *interface, __unused uint32_t version)
+    uint32_t name, const char *interface, uint32_t version)
 {
 	if (strcmp(interface, river_window_manager_v1_interface.name) == 0) {
 		cow_wm.manager = wl_registry_bind(registry, name,
@@ -299,8 +299,10 @@ registry_global(__unused void *data, struct wl_registry *registry,
 		    &wm_listener, NULL);
 	} else if (strcmp(interface, river_xkb_bindings_v1_interface.name) ==
 	    0) {
+		uint32_t bind_version = version < 3 ? version : 3;
 		cow_wm.xkb_bindings = wl_registry_bind(registry, name,
-		    &river_xkb_bindings_v1_interface, 2);
+		    &river_xkb_bindings_v1_interface, bind_version);
+		cow_wm.xkb_bindings_version = bind_version;
 	} else if (strcmp(interface, river_layer_shell_v1_interface.name) ==
 	    0) {
 		cow_wm.layer_shell = wl_registry_bind(registry, name,

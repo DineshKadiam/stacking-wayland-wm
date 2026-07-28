@@ -121,6 +121,9 @@ void cow_seat_enable_all_bindings(struct cow_seat *);
  */
 void cow_seat_process_bindings(struct cow_seat *);
 
+void cow_seat_update_modifier_watch(struct cow_seat *);
+void cow_seat_handle_modifiers_update(struct cow_seat *, uint32_t, uint32_t);
+
 /*
  * Register the default set of keybindings for a seat.
  */

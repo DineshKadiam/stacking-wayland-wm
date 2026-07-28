@@ -107,6 +107,7 @@ struct cow_wm {
 	/* River protocol globals */
 	struct river_window_manager_v1 *manager;
 	struct river_xkb_bindings_v1   *xkb_bindings;
+	uint32_t			xkb_bindings_version;
 	struct river_layer_shell_v1    *layer_shell;
 
 	/* Sequence state */

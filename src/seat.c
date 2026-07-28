@@ -226,8 +226,17 @@ xkb_seat_handle_ate_unbound_key(void	       *data,
 	}
 }
 
+static void
+xkb_seat_handle_modifiers_update(void *data,
+    __unused struct river_xkb_bindings_seat_v1 *xkb_seat, uint32_t old,
+    uint32_t new)
+{
+	cow_seat_handle_modifiers_update(data, old, new);
+}
+
 static const struct river_xkb_bindings_seat_v1_listener xkb_seat_listener = {
-	.ate_unbound_key = xkb_seat_handle_ate_unbound_key,
+	.ate_unbound_key  = xkb_seat_handle_ate_unbound_key,
+	.modifiers_update = xkb_seat_handle_modifiers_update,
 };
 
 struct cow_seat *
@@ -241,6 +250,7 @@ cow_seat_create(struct river_seat_v1 *river_seat)
 	seat->op_released	   = false;
 	seat->has_pointer_position = false;
 	seat->bindings_enabled	   = false;
+	seat->modifier_watch_dirty = true;
 	seat->titlebar_press	   = COW_TITLEBAR_PRESS_NONE;
 	seat->pressed_button_idx   = -1;
 	seat->pressed_view	   = NULL;

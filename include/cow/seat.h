@@ -39,6 +39,8 @@ struct cow_seat {
 	struct wl_list keybindings;	 /* cow_keybinding.link */
 	struct wl_list pointer_bindings; /* cow_pointer_binding.link */
 	bool	       bindings_enabled;
+	uint32_t       watched_modifiers;
+	bool	       modifier_watch_dirty;
 
 	/* Corresponding wl_seat global name */
 	uint32_t wl_seat_name;

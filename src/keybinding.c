@@ -143,6 +143,10 @@ cow_keybinding_create(struct cow_seat *seat, xkb_keysym_t keysym,
 	    &xkb_binding_listener, kb);
 
 	wl_list_insert(&seat->keybindings, &kb->link);
+	if (repeatable && modifiers != RIVER_SEAT_V1_MODIFIERS_NONE) {
+		seat->modifier_watch_dirty = true;
+		cow_wm_request_manage_dirty();
+	}
 
 	return kb;
 }
@@ -175,7 +179,7 @@ cow_pointer_binding_create(struct cow_seat *seat, uint32_t button,
 void
 cow_seat_enable_all_bindings(struct cow_seat *seat)
 {
-	if (seat->bindings_enabled)
+	if (seat->bindings_enabled && !seat->modifier_watch_dirty)
 		return;
 
 	struct cow_keybinding *kb;
@@ -200,6 +204,56 @@ cow_seat_enable_all_bindings(struct cow_seat *seat)
 	}
 
 	seat->bindings_enabled = true;
+	cow_seat_update_modifier_watch(seat);
+}
+
+void
+cow_seat_update_modifier_watch(struct cow_seat *seat)
+{
+	if (seat == NULL)
+		return;
+	if (seat->xkb_seat == NULL || cow_wm.xkb_bindings_version < 3) {
+		seat->modifier_watch_dirty = false;
+		seat->watched_modifiers	  = RIVER_SEAT_V1_MODIFIERS_NONE;
+		return;
+	}
+	if (!seat->modifier_watch_dirty)
+		return;
+
+	uint32_t modifiers = RIVER_SEAT_V1_MODIFIERS_NONE;
+	struct cow_keybinding *kb;
+	wl_list_for_each(kb, &seat->keybindings, link)
+	{
+		if (kb->repeatable)
+			modifiers |= kb->modifiers;
+	}
+
+	if (modifiers != seat->watched_modifiers) {
+		river_xkb_bindings_seat_v1_modifiers_watch(seat->xkb_seat,
+		    modifiers);
+		seat->watched_modifiers = modifiers;
+	}
+	seat->modifier_watch_dirty = false;
+}
+
+void
+cow_seat_handle_modifiers_update(struct cow_seat *seat, __unused uint32_t old,
+    uint32_t new)
+{
+	if (seat == NULL)
+		return;
+
+	struct cow_keybinding *kb;
+	wl_list_for_each(kb, &seat->keybindings, link)
+	{
+		if (!kb->held || !kb->repeatable ||
+		    kb->modifiers == RIVER_SEAT_V1_MODIFIERS_NONE)
+			continue;
+		if ((new & kb->modifiers) == kb->modifiers)
+			continue;
+		kb->held	 = false;
+		kb->first_repeat = false;
+	}
 }
 
 void
@@ -717,6 +771,7 @@ cow_seat_destroy_bindings(struct cow_seat *seat)
 	}
 
 	seat->bindings_enabled = false;
+	seat->modifier_watch_dirty = true;
 }
 
 void
