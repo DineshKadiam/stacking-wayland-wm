@@ -97,6 +97,7 @@ static void manage_apply_deferred_resize(struct cow_view *);
 static void manage_apply_deferred_position(struct cow_view *, bool);
 static void manage_apply_fullscreen_visibility(struct cow_view *);
 static void manage_apply_deferred_client_state(struct cow_view *);
+static void manage_apply_dimension_bounds(struct cow_view *);
 static void manage_apply_focus(void);
 static void manage_apply_pending_focus(void);
 static void manage_apply_needs_focus(void);
@@ -1037,6 +1038,7 @@ manage_apply_deferred_client_state(struct cow_view *view)
 	if (view->closed || view->river_window == NULL)
 		return;
 
+	manage_apply_dimension_bounds(view);
 	if (view->pending_fullscreen_state) {
 		if (view->pending_fullscreen)
 			river_window_v1_inform_fullscreen(view->river_window);
@@ -1044,6 +1046,39 @@ manage_apply_deferred_client_state(struct cow_view *view)
 			river_window_v1_inform_not_fullscreen(view->river_window);
 		view->pending_fullscreen_state = false;
 	}
+}
+
+static void
+manage_apply_dimension_bounds(struct cow_view *view)
+{
+	int width = 0, height = 0;
+
+	if (view->output != NULL) {
+		if (view->fullscreen || !view->use_ssd) {
+			width  = view->output->width;
+			height = view->output->height;
+		} else {
+			struct cow_box *ua = &view->output->usable_area;
+			int frame_w, frame_h, content_x, content_y;
+			cow_titlebar_frame_geometry(view, view->content_width,
+			    view->content_height, &frame_w, &frame_h,
+			    &content_x, &content_y);
+			width  = ua->width - (frame_w - view->content_width);
+			height = ua->height - (frame_h - view->content_height);
+		}
+		if (width < 0)
+			width = 0;
+		if (height < 0)
+			height = 0;
+	}
+
+	if (view->dimension_bound_width == width &&
+	    view->dimension_bound_height == height)
+		return;
+
+	river_window_v1_set_dimension_bounds(view->river_window, width, height);
+	view->dimension_bound_width  = width;
+	view->dimension_bound_height = height;
 }
 
 static void

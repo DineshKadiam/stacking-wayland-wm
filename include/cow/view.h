@@ -362,6 +362,8 @@ struct cow_view {
 	/* Min/max dimension hints from the window */
 	int min_width, min_height;
 	int max_width, max_height;
+	int dimension_bound_width;
+	int dimension_bound_height;
 
 	/* Pending geometry change (applied during manage cycle) */
 	bool pending_resize;
