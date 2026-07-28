@@ -92,6 +92,9 @@ struct cow_output {
 	/* Desk collect overlay bitmask. */
 	uint32_t collected_desks;
 
+	uint32_t presentation_mode;
+	bool	 has_presentation_mode;
+
 	/* Views currently visible on this output */
 	struct wl_list visible_views; /* cow_view.output_views */
 

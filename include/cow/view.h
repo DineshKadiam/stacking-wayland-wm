@@ -298,6 +298,7 @@ struct cow_view {
 
 	/* Decoration hint from the window */
 	uint32_t decoration_hint;
+	uint32_t presentation_hint;
 
 	/* State tracking */
 	bool closed;

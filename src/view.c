@@ -932,9 +932,16 @@ window_handle_unreliable_pid(__unused void *data,
 }
 
 static void
-window_handle_presentation_hint(__unused void *data,
-    __unused struct river_window_v1 *rw, __unused uint32_t hint)
+window_handle_presentation_hint(void *data,
+    __unused struct river_window_v1 *rw, uint32_t hint)
 {
+	struct cow_view *view = data;
+
+	if (hint != RIVER_OUTPUT_V1_PRESENTATION_MODE_ASYNC)
+		hint = RIVER_OUTPUT_V1_PRESENTATION_MODE_VSYNC;
+
+	view->presentation_hint = hint;
+	cow_wm_request_manage_dirty();
 }
 
 static void

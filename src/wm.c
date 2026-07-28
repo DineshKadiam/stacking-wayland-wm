@@ -86,6 +86,7 @@ static void handle_wm_render_start(void *, struct river_window_manager_v1 *);
 static void drag_ghost_create(struct cow_view *);
 static void manage_destroy_removed(void);
 static void manage_tick_outputs(void);
+static void manage_apply_output_presentation_mode(struct cow_output *);
 static void manage_configure_views(void);
 static void manage_process_seat(struct cow_seat *);
 static void manage_cursor_hide(struct cow_seat *);
@@ -465,9 +466,37 @@ manage_tick_outputs(void)
 	wl_list_for_each(out, &cow_wm.outputs, wm_link)
 	{
 		cow_output_prepare_background(out);
+		manage_apply_output_presentation_mode(out);
 		cow_page_scroll_tick(out);
 		cow_output_pan_frame_tick(out);
 	}
+}
+
+static void
+manage_apply_output_presentation_mode(struct cow_output *output)
+{
+	uint32_t mode = RIVER_OUTPUT_V1_PRESENTATION_MODE_VSYNC;
+
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (view->closed || view->output != output ||
+		    !cow_view_visible(view, output))
+			continue;
+		if (view->presentation_hint ==
+		    RIVER_OUTPUT_V1_PRESENTATION_MODE_ASYNC) {
+			mode = RIVER_OUTPUT_V1_PRESENTATION_MODE_ASYNC;
+			break;
+		}
+	}
+
+	if (output->has_presentation_mode &&
+	    output->presentation_mode == mode)
+		return;
+
+	river_output_v1_set_presentation_mode(output->river_output, mode);
+	output->presentation_mode     = mode;
+	output->has_presentation_mode = true;
 }
 
 static void
