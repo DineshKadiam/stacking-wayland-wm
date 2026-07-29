@@ -278,16 +278,58 @@ fill_gradient_rect(struct cow_pixbuf *p, const struct cow_gradient *g, int x,
 		cow_draw_gradient_rect(p, x, y, w, h, g);
 }
 
+static uint32_t
+gradient_pixel_at(const struct cow_gradient *g, int frame_w, int frame_h, int x,
+    int y)
+{
+	int denom = g->mode == COW_GRADIENT_H ? frame_w - 1 : frame_h - 1;
+	int pos = g->mode == COW_GRADIENT_H ? x : y;
+
+	if (denom <= 0)
+		denom = 1;
+
+	float t = (float)pos / (float)denom;
+	float c[4];
+	for (int i = 0; i < 4; i++)
+		c[i] = g->from[i] + (g->to[i] - g->from[i]) * t;
+	return cow_colour_to_pixel(c);
+}
+
+static void
+fill_border_gradient_base(uint32_t *pixels, int stride, int fw_s, int fh_s,
+    int bws, const struct cow_gradient *g)
+{
+	if (g == NULL || g->mode == COW_GRADIENT_NONE)
+		return;
+
+	for (int y = 0; y < fh_s; y++) {
+		for (int x = 0; x < fw_s; x++) {
+			int dt = y, db = fh_s - 1 - y, dl = x,
+			    dr	 = fw_s - 1 - x;
+			int dmin = dt;
+			if (db < dmin)
+				dmin = db;
+			if (dl < dmin)
+				dmin = dl;
+			if (dr < dmin)
+				dmin = dr;
+			if (dmin >= bws)
+				continue;
+
+			pixels[y * stride + x] = gradient_pixel_at(g, fw_s,
+			    fh_s, x, y);
+		}
+	}
+}
+
 static void
 fill_border_gradients(uint32_t *pixels, int stride, int fw_s, int fh_s,
     int bws, int cls, const struct cow_border_colour *colors)
 {
 	struct cow_pixbuf p = border_pixbuf(pixels, stride, fw_s, fh_s);
 
-	fill_gradient_rect(&p, &colors->gradient, 0, 0, fw_s, bws);
-	fill_gradient_rect(&p, &colors->gradient, 0, fh_s - bws, fw_s, bws);
-	fill_gradient_rect(&p, &colors->gradient, 0, 0, bws, fh_s);
-	fill_gradient_rect(&p, &colors->gradient, fw_s - bws, 0, bws, fh_s);
+	fill_border_gradient_base(pixels, stride, fw_s, fh_s, bws,
+	    &colors->gradient);
 
 	fill_gradient_rect(&p, &colors->gradient_n, 0, 0, fw_s, bws);
 	fill_gradient_rect(&p, &colors->gradient_s, 0, fh_s - bws, fw_s,
