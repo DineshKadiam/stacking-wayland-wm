@@ -285,6 +285,13 @@ enum border_side {
 	BORDER_SIDE_E,
 };
 
+enum border_corner {
+	BORDER_CORNER_NW,
+	BORDER_CORNER_NE,
+	BORDER_CORNER_SW,
+	BORDER_CORNER_SE,
+};
+
 static uint32_t
 gradient_pixel_at(const struct cow_gradient *g, int x0, int y0, int w, int h,
     int x, int y)
@@ -436,6 +443,50 @@ border_has_gradient(const struct cow_border_colour *colours)
 	    colours->gradient_ne.mode != COW_GRADIENT_NONE ||
 	    colours->gradient_sw.mode != COW_GRADIENT_NONE ||
 	    colours->gradient_se.mode != COW_GRADIENT_NONE);
+}
+
+static bool
+border_corner_solid_overridden_by_gradient(
+    const struct cow_border_colour *colours, enum border_corner corner)
+{
+	if (colours->gradient.mode != COW_GRADIENT_NONE)
+		return (true);
+
+	switch (corner) {
+	case BORDER_CORNER_NW:
+		return (colours->gradient_nw.mode != COW_GRADIENT_NONE);
+	case BORDER_CORNER_NE:
+		return (colours->gradient_ne.mode != COW_GRADIENT_NONE);
+	case BORDER_CORNER_SW:
+		return (colours->gradient_sw.mode != COW_GRADIENT_NONE);
+	case BORDER_CORNER_SE:
+		return (colours->gradient_se.mode != COW_GRADIENT_NONE);
+	}
+	return (false);
+}
+
+static bool
+border_corner_uses_solid_colour(const struct cow_border_colour *colours,
+    enum border_corner corner)
+{
+	bool has = false;
+
+	switch (corner) {
+	case BORDER_CORNER_NW:
+		has = colours->has_nw;
+		break;
+	case BORDER_CORNER_NE:
+		has = colours->has_ne;
+		break;
+	case BORDER_CORNER_SW:
+		has = colours->has_sw;
+		break;
+	case BORDER_CORNER_SE:
+		has = colours->has_se;
+		break;
+	}
+	return (has && !border_corner_solid_overridden_by_gradient(colours,
+	    corner));
 }
 
 static void
@@ -623,14 +674,17 @@ overdraw_explicit_corners(uint32_t *pixels, int stride, int fw_s, int fh_s,
 		int	     cx, cy, cw, ch;
 		bool	     ul_vert, ul_horiz, br_horiz, br_vert;
 	} corners[4] = {
-		{ colors->has_nw, colors->nw, 0,		 0,	    cls, cls, true,  true,  false,
-		    false										     },
-		{ colors->has_ne, colors->ne, fw_s - cls, 0,	     cls, cls, false,
-		    true,									false, true  },
-		{ colors->has_sw, colors->sw, 0,		 fh_s - cls, cls, cls, true,
-		    false,								       true,	 false },
-		{ colors->has_se, colors->se, fw_s - cls, fh_s - cls, cls, cls,
-		    false,								false, true,	true  },
+		{ border_corner_uses_solid_colour(colors, BORDER_CORNER_NW),
+		    colors->nw, 0, 0, cls, cls, true, true, false, false },
+		{ border_corner_uses_solid_colour(colors, BORDER_CORNER_NE),
+		    colors->ne, fw_s - cls, 0, cls, cls, false, true, false,
+		    true },
+		{ border_corner_uses_solid_colour(colors, BORDER_CORNER_SW),
+		    colors->sw, 0, fh_s - cls, cls, cls, true, false, true,
+		    false },
+		{ border_corner_uses_solid_colour(colors, BORDER_CORNER_SE),
+		    colors->se, fw_s - cls, fh_s - cls, cls, cls, false, false,
+		    true, true },
 	};
 
 	for (int ci = 0; ci < 4; ci++) {
@@ -852,15 +906,19 @@ draw_handle_marks(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
 		uint32_t     def_xm, def_ym;
 		int	     def_xm_shade, def_ym_shade;
 	} cm[4] = {
-		{ colors->has_nw, colors->nw, 0, 0, 0, cls, true, cls, 0, true,
-		    ec->w[0], ec->n[0], 0, 0 },
-		{ colors->has_ne, colors->ne, fw_s - cls, 0, cls + offset_br,
-		    cls, true, 0, 0, false, ec->e[0], ec->n[1], 0, 1 },
-		{ colors->has_sw, colors->sw, 0, fh_s - cls, 0, 0, false, cls,
+		{ border_corner_uses_solid_colour(colors, BORDER_CORNER_NW),
+		    colors->nw, 0, 0, 0, cls, true, cls, 0, true, ec->w[0],
+		    ec->n[0], 0, 0 },
+		{ border_corner_uses_solid_colour(colors, BORDER_CORNER_NE),
+		    colors->ne, fw_s - cls, 0, cls + offset_br, cls, true, 0,
+		    0, false, ec->e[0], ec->n[1], 0, 1 },
+		{ border_corner_uses_solid_colour(colors, BORDER_CORNER_SW),
+		    colors->sw, 0, fh_s - cls, 0, 0, false, cls,
 		    cls + offset_br, true, ec->w[1], ec->s[0], 1, 0 },
-		{ colors->has_se, colors->se, fw_s - cls, fh_s - cls,
-		    cls + offset_br, 0, false, 0, cls + offset_br, false,
-		    ec->e[1], ec->s[1], 1, 1 },
+		{ border_corner_uses_solid_colour(colors, BORDER_CORNER_SE),
+		    colors->se, fw_s - cls, fh_s - cls, cls + offset_br, 0,
+		    false, 0, cls + offset_br, false, ec->e[1], ec->s[1], 1,
+		    1 },
 	};
 
 	for (int ci = 0; ci < 4; ci++) {
