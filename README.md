@@ -1,4 +1,4 @@
-# CoW -- Compostitor on Wayland
+# CoW -- Compositor on Wayland
 
 <p align="center">
   <img src="./logos/CoW-final.svg">
@@ -126,7 +126,7 @@ cow to be used with wayland login managers.
 ## CoW Themes
 
 CoW has support for themes -- see [the themes directory](examples/themes) for
-more information about how to use these.  They're currently a feable and
+more information about how to use these.  They're currently a feeble and
 incomplete attempt at converting [fvwm-themes to cow](https://fvwm-themes.sourceforge.net/windowdecors/)
 
 ## Contact and Support
@@ -147,7 +147,7 @@ otherwise...
 ## Why is this called Cow?
 
 Because originally, `cow` was going to be an all-in-one Compositor On Wayland
-(CoW), but now that it uses river to do all the heavy-lifting, this nae is a
+(CoW), but now that it uses river to do all the heavy-lifting, this name is a
 slight misnomer.
 
 That said though, I like cows and, I'm going to stick with that name for now.
