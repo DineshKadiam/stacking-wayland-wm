@@ -96,6 +96,32 @@ decor_profile_get(const char *name)
 	return profile;
 }
 
+void
+cow_decor_reset_profiles(void)
+{
+	struct decor_profile *profile, *profile_tmp;
+
+	decor_ensure_init();
+	wl_list_for_each_safe(profile, profile_tmp, &decor_profiles, link)
+	{
+		struct decor_entry *entry, *entry_tmp;
+
+		wl_list_for_each_safe(entry, entry_tmp, &profile->entries, link)
+		{
+			wl_list_remove(&entry->link);
+			xfree(entry->key);
+			xfree(entry->value);
+			xfree(entry);
+		}
+		wl_list_remove(&profile->link);
+		xfree(profile->name);
+		xfree(profile);
+	}
+	wl_list_init(&decor_profiles);
+	xfree(runtime_active_profile);
+	runtime_active_profile = NULL;
+}
+
 static enum cmd_retval
 decor_define(const char *name, const char *key, const char *value,
     struct cmd_q *cmdq)

@@ -82,9 +82,10 @@ do_reload(struct cmd_q *cmdq)
 	cow_config_destroy(old);
 
 	/*
-	 * Drop the previous load's rules.
-	 * */
+	 * Drop the previous load's rules and decor profiles.
+	 */
 	cow_rule_fini();
+	cow_decor_reset_profiles();
 
 	if (!cow_ipc_load_config(path)) {
 		cmdq_error(cmdq, "quit -r: config load failed");
