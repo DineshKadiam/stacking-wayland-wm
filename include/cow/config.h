@@ -395,6 +395,7 @@ struct cow_config {
 	/* Parsed binding lists */
 	struct wl_list keyboard_bindings;   /* cow_binding_entry.link */
 	struct wl_list mouse_bindings;	    /* cow_mouse_binding_entry.link */
+	struct wl_list root_mouse_bindings; /* cow_mouse_binding_entry.link */
 	struct wl_list decoration_bindings; /* cow_dec_binding_entry.link */
 	struct wl_list actions;		    /* cow_action_entry.link */
 };

@@ -61,6 +61,15 @@ struct cow_keybinding {
 	bool		 enabled;
 	bool pending; /* pressed event received, waiting for manage */
 
+	/*
+	 * Menu-navigation bindings (action starts with "menu-key ...")
+	 * are only enabled while at least one menu popup is open.  This
+	 * keeps unmodified arrow/Return/Escape keys from being captured
+	 * globally and prevents them from reaching focused windows when
+	 * no menu is active.
+	 */
+	bool menu_navigation;
+
 	bool repeatable;
 	bool held;
 	bool first_repeat;
@@ -141,5 +150,13 @@ void cow_rebind_all_seats(void);
  * promptly instead of waiting for an unrelated river event.
  */
 int cow_seat_next_repeat_ms(void);
+
+/*
+ * Flip menu-navigation keybindings on/off across every seat.  Called
+ * by the menu subsystem when the first popup opens and when the last
+ * closes, so unmodified arrow/Return/Escape keys are only captured
+ * for the duration of an open menu.
+ */
+void cow_keybindings_set_menu_nav_enabled(bool enabled);
 
 #endif

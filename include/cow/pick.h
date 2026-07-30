@@ -34,5 +34,6 @@ bool cow_pick_pointer_button(uint32_t, uint32_t, uint32_t);
  * running.  Used by output add/remove paths and shutdown.
  */
 void cow_pick_cancel_active(void);
+void cow_pick_run_deferred(void);
 
 #endif /* COW_PICK_H */

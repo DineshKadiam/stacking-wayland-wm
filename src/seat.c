@@ -20,12 +20,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "cow/compat.h"
 #include "cow/config.h"
 #include "cow/keybinding.h"
 #include "cow/layer_shell.h"
+#include "cow/menu.h"
 #include "cow/memory.h"
 #include "cow/desk_ops.h"
 #include "cow/status.h"
@@ -96,6 +96,18 @@ seat_handle_window_interaction(void *data,
 {
 	struct cow_seat *seat = data;
 
+	/*
+	 * Clicking outside any menu popup closes all open menus.
+	 * river only fires window_interaction when the click lands on
+	 * a window (not a shell-surface), so reaching this point with
+	 * menus open means the user clicked a window, which dismisses
+	 * the menu and lets the click also do its usual focus job.
+	 */
+	if (cow_wm.open_menus.next != NULL &&
+	    !wl_list_empty(&cow_wm.open_menus)) {
+		cow_menu_close_all();
+	}
+
 	struct cow_view *view = cow_view_find(river_window);
 	seat->interacted_view = view;
 
@@ -110,11 +122,32 @@ seat_handle_window_interaction(void *data,
 
 static void
 seat_handle_shell_surface_interaction(void *data,
-    __unused struct river_seat_v1		    *river_seat,
-    struct river_shell_surface_v1		    *shell_surface)
+    __unused struct river_seat_v1	   *river_seat,
+    struct river_shell_surface_v1	   *shell_surface)
 {
 	struct cow_seat *seat = data;
 
+	/* Menu popup click?  Walk open menus and flag the click for
+	 * cow_menu_process_input() on the next manage cycle. */
+	if (cow_wm.open_menus.next != NULL &&
+	    !wl_list_empty(&cow_wm.open_menus)) {
+		struct cow_menu_popup *mp;
+		wl_list_for_each(mp, &cow_wm.open_menus, link)
+		{
+			if (mp->shell_surface == shell_surface) {
+				struct cow_seat *seat = data;
+				if (seat != NULL)
+					seat->menu_click_pending = true;
+				cow_wm.needs_manage_dirty = true;
+				return;
+			}
+		}
+		cow_menu_close_all();
+		return;
+	}
+
+	/* Check if the clicked shell surface is an icon for an
+	 * iconified view.  If so, deiconify it. */
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
@@ -151,6 +184,13 @@ seat_handle_pointer_position(void *data,
 	seat->pointer_x		   = x;
 	seat->pointer_y		   = y;
 	seat->has_pointer_position = true;
+
+	/*
+	 * Menu hover tracking is driven by the wm main loop's poll
+	 * timeout while menus are open, so we don't need to request
+	 * a manage cycle here -- the timeout already paces the
+	 * cadence at ~30 Hz.
+	 */
 }
 
 static const struct river_seat_v1_listener seat_listener = {

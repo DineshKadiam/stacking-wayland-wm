@@ -189,6 +189,9 @@ cow_seat_enable_all_bindings(struct cow_seat *seat)
 	struct cow_keybinding *kb;
 	wl_list_for_each(kb, &seat->keybindings, link)
 	{
+		/* Menu keys are enabled only while a menu is open. */
+		if (kb->menu_navigation)
+			continue;
 		if (!kb->enabled) {
 			river_xkb_binding_v1_enable(kb->river_binding);
 			kb->enabled = true;
@@ -205,6 +208,28 @@ cow_seat_enable_all_bindings(struct cow_seat *seat)
 	}
 
 	seat->bindings_enabled = true;
+}
+
+void
+cow_keybindings_set_menu_nav_enabled(bool enabled)
+{
+	struct cow_seat *seat;
+	wl_list_for_each(seat, &cow_wm.seats, wm_link)
+	{
+		struct cow_keybinding *kb;
+		wl_list_for_each(kb, &seat->keybindings, link)
+		{
+			if (!kb->menu_navigation)
+				continue;
+			if (enabled && !kb->enabled) {
+				river_xkb_binding_v1_enable(kb->river_binding);
+				kb->enabled = true;
+			} else if (!enabled && kb->enabled) {
+				river_xkb_binding_v1_disable(kb->river_binding);
+				kb->enabled = false;
+			}
+		}
+	}
 }
 
 /*
@@ -523,8 +548,15 @@ register_config_keyboard_bindings(struct cow_seat *seat)
 		if (!cow_resolve_action(entry->action_string, &fn, &arg))
 			continue;
 
-		cow_keybinding_create(seat, keysym, modifiers, fn, arg,
-		    entry->repeatable);
+		struct cow_keybinding *kb = cow_keybinding_create(seat, keysym,
+		    modifiers, fn, arg, entry->repeatable);
+
+		if (kb != NULL && entry->action_string != NULL &&
+		    strncmp(entry->action_string, "menu-key", 8) == 0) {
+			char tail = entry->action_string[8];
+			if (tail == '\0' || tail == ' ' || tail == '\t')
+				kb->menu_navigation = true;
+		}
 	}
 }
 

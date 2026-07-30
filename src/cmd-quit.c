@@ -26,6 +26,7 @@
 #include "cow/config.h"
 #include "cow/ipc.h"
 #include "cow/keybinding.h"
+#include "cow/menu.h"
 #include "cow/output.h"
 #include "cow/rule.h"
 #include "cow/seat.h"
@@ -82,10 +83,15 @@ do_reload(struct cmd_q *cmdq)
 	cow_config_destroy(old);
 
 	/*
-	 * Drop the previous load's rules and decor profiles.
+	 * Drop the previous load's global objects before replaying the
+	 * config file.  Menu definitions live on cow_wm rather than inside
+	 * cow_config, so they need explicit reset here too.
 	 */
 	cow_rule_fini();
 	cow_decor_reset_profiles();
+	cow_menu_close_all();
+	cow_menu_destroy_all();
+	wl_list_init(&cow_wm.menus);
 
 	if (!cow_ipc_load_config(path)) {
 		cmdq_error(cmdq, "quit -r: config load failed");

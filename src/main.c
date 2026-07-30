@@ -31,6 +31,7 @@
 #include "cow/config.h"
 #include "cow/ipc.h"
 #include "cow/memory.h"
+#include "cow/menu.h"
 #include "cow/wm.h"
 
 #ifndef COW_VERSION
@@ -73,6 +74,15 @@ main(int argc, char *argv[])
 	setenv("XDG_SESSION_TYPE", "wayland", 0);
 
 	cow_config = cow_config_create();
+
+	/*
+	 * Initialize menu lists before loading config: menu-add commands
+	 * in the config file run before cow_wm_init() connects to River,
+	 * so the lists must be valid before cow_ipc_load_config() is called.
+	 */
+	wl_list_init(&cow_wm.menus);
+	wl_list_init(&cow_wm.open_menus);
+	wl_list_init(&cow_wm.menu_graveyard);
 
 	/*
 	 * Resolve the config path: use the explicit -c path if given,

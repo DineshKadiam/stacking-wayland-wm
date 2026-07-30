@@ -20,7 +20,9 @@
 #include "cow/compat.h"
 #include "cow/config.h"
 #include "cow/desk_ops.h"
+#include "cow/ipc.h"
 #include "cow/memory.h"
+#include "cow/menu.h"
 #include "cow/output.h"
 #include "cow/pan_frames.h"
 #include "cow/pick.h"
@@ -50,6 +52,8 @@ static const uint32_t pan_col_fill[5] = {
 	0xA3CC7000u, /* ~64% */
 	0xCCFF8800u, /* ~80% (matches PAN_COL_ORANGE) */
 };
+
+static struct cow_output *pointer_focus_background;
 
 /* Index helpers */
 /* Local short aliases for the public enum values used pervasively
@@ -434,12 +438,94 @@ cow_pan_cursor_clear(void)
 	cow_wm_reset_cursor_shape(decoration_cursor_serial);
 }
 
+static struct cow_menu_popup *
+surface_to_menu_popup(struct wl_surface *surf)
+{
+	if (surf == NULL || cow_wm.open_menus.next == NULL)
+		return NULL;
+	struct cow_menu_popup *p;
+	wl_list_for_each(p, &cow_wm.open_menus, link)
+	{
+		if (p->surface == surf)
+			return p;
+	}
+	return NULL;
+}
+
+static struct cow_output *
+surface_to_output_background(struct wl_surface *surf)
+{
+	if (surf == NULL)
+		return NULL;
+	struct cow_output *output;
+	wl_list_for_each(output, &cow_wm.outputs, wm_link)
+	{
+		if (output->bg_surface == surf)
+			return output;
+	}
+	return NULL;
+}
+
+static bool
+dispatch_background_mouse_binding(const char *key)
+{
+	if (cow_config == NULL || key == NULL)
+		return false;
+
+	struct cow_mouse_binding_entry *entry;
+	wl_list_for_each(entry, &cow_config->root_mouse_bindings, link)
+	{
+		if (entry->key_string == NULL || entry->action_string == NULL)
+			continue;
+		if (strcmp(entry->key_string, key) != 0)
+			continue;
+		return cow_ipc_dispatch(entry->action_string, -1);
+	}
+	return false;
+}
+
+static void
+seed_seat_pointer_from_background(void)
+{
+	if (!cow_wm.has_raw_pointer)
+		return;
+
+	struct cow_seat *seat = cow_seat_primary();
+	if (seat == NULL)
+		return;
+
+	seat->pointer_x		   = cow_wm.raw_pointer_x;
+	seat->pointer_y		   = cow_wm.raw_pointer_y;
+	seat->has_pointer_position = true;
+}
+
 static void
 pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
     struct wl_surface *surf, wl_fixed_t sx, wl_fixed_t sy)
 {
 	(void)data;
 	(void)pointer;
+
+	struct cow_menu_popup *mp = surface_to_menu_popup(surf);
+	if (mp != NULL) {
+		cow_wm.pointer_focus_menu = mp;
+		pointer_focus_background = NULL;
+		cow_wm.raw_pointer_x	  = mp->x + wl_fixed_to_int(sx);
+		cow_wm.raw_pointer_y	  = mp->y + wl_fixed_to_int(sy);
+		cow_wm.has_raw_pointer	  = true;
+		cow_wm.needs_manage_dirty = true;
+		return;
+	}
+
+	struct cow_output *bg_output = surface_to_output_background(surf);
+	if (bg_output != NULL) {
+		pointer_focus_background = bg_output;
+		cow_wm.pointer_focus_menu = NULL;
+		cow_wm.raw_pointer_x = bg_output->x + wl_fixed_to_int(sx);
+		cow_wm.raw_pointer_y = bg_output->y + wl_fixed_to_int(sy);
+		cow_wm.has_raw_pointer = true;
+		return;
+	}
 
 	struct cow_output *output;
 	int		   edge = surface_to_output_edge(surf, &output);
@@ -475,6 +561,19 @@ pointer_leave(void *data, struct wl_pointer *pointer, uint32_t serial,
 	(void)pointer;
 	(void)serial;
 
+	/* Leaving a menu popup surface: drop the focus pointer.  The
+	 * hover-update in cow_menu_process_input picks this up and
+	 * de-highlights items in popups that aren't under the pointer
+	 * any more. */
+	if (cow_wm.pointer_focus_menu != NULL &&
+	    cow_wm.pointer_focus_menu->surface == surf) {
+		cow_wm.pointer_focus_menu = NULL;
+		cow_wm.needs_manage_dirty = true;
+	}
+	if (pointer_focus_background != NULL &&
+	    pointer_focus_background->bg_surface == surf)
+		pointer_focus_background = NULL;
+
 	struct cow_output *output;
 	int		   edge = surface_to_output_edge(surf, &output);
 	if (edge < 0) {
@@ -506,12 +605,40 @@ pointer_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x,
 {
 	(void)d;
 	(void)p;
+
 	if (decoration_cursor_surface != NULL &&
 	    decoration_cursor_update(decoration_cursor_surface, 0, x, y))
 		return;
 	if (pan_cursor_output != NULL && pan_cursor_edge >= 0 &&
 	    pan_cursor_update(pan_cursor_output, pan_cursor_edge, 0, x, y))
 		return;
+
+	/*
+	 * wl_pointer.motion reports surface-local coordinates.  When
+	 * the pointer is focused on a menu popup, translate them to
+	 * screen-absolute by adding the popup's top-left.  Otherwise
+	 * record the values as-is; the menu input path won't use them
+	 * unless pointer_focus_menu is set.
+	 */
+	if (cow_wm.pointer_focus_menu != NULL) {
+		cow_wm.raw_pointer_x = cow_wm.pointer_focus_menu->x +
+		    wl_fixed_to_int(x);
+		cow_wm.raw_pointer_y = cow_wm.pointer_focus_menu->y +
+		    wl_fixed_to_int(y);
+	} else if (pointer_focus_background != NULL) {
+		cow_wm.raw_pointer_x = pointer_focus_background->x +
+		    wl_fixed_to_int(x);
+		cow_wm.raw_pointer_y = pointer_focus_background->y +
+		    wl_fixed_to_int(y);
+	} else {
+		cow_wm.raw_pointer_x = wl_fixed_to_int(x);
+		cow_wm.raw_pointer_y = wl_fixed_to_int(y);
+	}
+	cow_wm.has_raw_pointer = true;
+
+	if (cow_menu_is_open())
+		cow_wm.needs_manage_dirty = true;
+
 	cow_pick_pointer_motion(t, x, y);
 }
 
@@ -522,11 +649,27 @@ pointer_button(void *d, struct wl_pointer *p, uint32_t ser, uint32_t t,
 	(void)d;
 	(void)p;
 	(void)t;
+
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED &&
 	    (decoration_cursor_surface != NULL || pan_cursor_output != NULL))
 		cow_pan_cursor_hold_start();
 	else if (state == WL_POINTER_BUTTON_STATE_RELEASED)
 		cow_pan_cursor_hold_end();
+
+	if (state == WL_POINTER_BUTTON_STATE_PRESSED && cow_menu_is_open()) {
+		(void)btn;
+		struct cow_seat *s = cow_seat_primary();
+		if (s != NULL)
+			s->menu_click_pending = true;
+		cow_wm.needs_manage_dirty = true;
+	}
+	if (state == WL_POINTER_BUTTON_STATE_PRESSED && btn == BTN_LEFT &&
+	    pointer_focus_background != NULL && !cow_menu_is_open()) {
+		seed_seat_pointer_from_background();
+		if (dispatch_background_mouse_binding("0+left"))
+			cow_wm.needs_manage_dirty = true;
+	}
+
 	cow_pick_pointer_button(ser, btn, state);
 }
 

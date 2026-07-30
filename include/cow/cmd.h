@@ -203,11 +203,17 @@ extern struct cmd_entry *cmd_table[];
 void cow_exec_run_deferred(void);
 
 /* Built-in commands. */
+extern struct cmd_entry cmd_menu_add_entry;
+extern struct cmd_entry cmd_menu_clear_entry;
+extern struct cmd_entry cmd_menu_destroy_entry;
+extern struct cmd_entry cmd_menu_key_entry;
+extern struct cmd_entry cmd_menu_show_entry;
 extern struct cmd_entry cmd_set_entry;
 extern struct cmd_entry cmd_decor_entry;
 extern struct cmd_entry cmd_bind_entry;
 extern struct cmd_entry cmd_bind_decoration_entry;
 extern struct cmd_entry cmd_mouse_entry;
+extern struct cmd_entry cmd_root_mouse_entry;
 extern struct cmd_entry cmd_nop_entry;
 extern struct cmd_entry cmd_rule_entry;
 extern struct cmd_entry cmd_exec_entry;

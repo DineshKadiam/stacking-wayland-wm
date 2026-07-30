@@ -74,12 +74,26 @@ struct pick_session {
 	struct cmd_filter    filter;
 };
 
+struct deferred_pick_command {
+	struct wl_list	  link;
+	char		 *cmd_str;
+	struct cow_view	 *target;
+	struct cow_desk	 *target_desk;
+	struct cow_output *target_output;
+	struct cow_seat	 *seat;
+};
+
 static struct pick_session *active_session;
+static struct wl_list	deferred_pick_commands;
+static bool		deferred_pick_commands_ready;
 
 static void pick_session_destroy(struct pick_session *);
 static void pick_session_fire(struct pick_session *);
 static char *pick_command_string(struct args *);
 static void pick_session_seed_pointer(struct pick_session *);
+static void pick_commands_init(void);
+static void pick_command_defer(char *, struct cow_view *);
+static void pick_command_run(struct deferred_pick_command *);
 
 static struct cow_view *
 pick_view_at(struct pick_session *s, int x, int y)
@@ -393,37 +407,98 @@ pick_session_fire(struct pick_session *s)
 		return;
 	}
 
-	/* Tear the overlay down BEFORE running the command so the
-	 * cursor returns to normal and the command's effects (e.g.
-	 * focus) are visible immediately.
+	/*
+	 * Tear the overlay down before queueing the command so the cursor
+	 * returns to normal immediately.  Run the selected window command
+	 * from the next manage pass rather than from this raw pointer
+	 * callback, keeping window-management state changes in the same
+	 * phase as keybindings and other seat-driven commands.
 	 */
 	char *cmd_str = s->cmd_str;
 	s->cmd_str    = NULL;
-	struct cow_view *target = view;
-	struct cow_desk *target_desk = view->desk;
-	struct cow_output *target_out = view->output;
 	pick_session_destroy(s);
+	pick_command_defer(cmd_str, view);
+}
+
+static void
+pick_commands_init(void)
+{
+	if (deferred_pick_commands_ready)
+		return;
+	wl_list_init(&deferred_pick_commands);
+	deferred_pick_commands_ready = true;
+}
+
+static void
+pick_command_defer(char *cmd_str, struct cow_view *view)
+{
+	if (cmd_str == NULL)
+		return;
+
+	if (view == NULL || view->closed) {
+		xfree(cmd_str);
+		return;
+	}
+
+	pick_commands_init();
+	struct deferred_pick_command *cmd = xcalloc(1, sizeof(*cmd));
+	cmd->cmd_str	     = cmd_str;
+	cmd->target	     = view;
+	cmd->target_desk     = view->desk;
+	cmd->target_output   = view->output;
+	cmd->seat	     = cow_seat_first_with_pointer();
+	wl_list_insert(deferred_pick_commands.prev, &cmd->link);
+	cow_wm_request_manage_dirty();
+}
+
+static void
+pick_command_run(struct deferred_pick_command *cmd)
+{
+	if (cmd == NULL)
+		return;
+	if (cmd->target == NULL || cmd->target->closed)
+		return;
 
 	struct cmd_list *cmdlist = NULL;
 	char		*cause	 = NULL;
-	if (cmd_string_parse(cmd_str, &cmdlist, NULL, 0, &cause) != 0) {
+	if (cmd_string_parse(cmd->cmd_str, &cmdlist, NULL, 0, &cause) != 0) {
 		if (cause != NULL) {
 			fprintf(stderr, "cow: pick-window: %s\n", cause);
 			xfree(cause);
 		}
-		xfree(cmd_str);
 		return;
 	}
-	xfree(cmd_str);
 	if (cmdlist == NULL)
 		return;
 
 	struct cmd_q *cmdq = cmdq_new();
 	cmdq->client_fd	   = -1;
-	cmdq_set_default_target(cmdq, target, target_desk, target_out);
+	cmdq_set_default_target(cmdq, cmd->target, cmd->target_desk,
+	    cmd->target_output);
+	struct cow_seat *old_seat = cow_wm.current_interaction_seat;
+	cow_wm.current_interaction_seat =
+	    (cmd->seat != NULL && !cmd->seat->removed) ? cmd->seat : NULL;
 	cmdq_run(cmdq, cmdlist);
+	cow_wm.current_interaction_seat = old_seat;
 	cmd_list_free(cmdlist);
 	cmdq_free(cmdq);
+}
+
+void
+cow_pick_run_deferred(void)
+{
+	struct deferred_pick_command *cmd, *tmp;
+
+	if (!deferred_pick_commands_ready)
+		return;
+
+	wl_list_for_each_safe(cmd, tmp, &deferred_pick_commands, link)
+	{
+		wl_list_remove(&cmd->link);
+		pick_command_run(cmd);
+		xfree(cmd->cmd_str);
+		xfree(cmd);
+	}
 }
 
 void

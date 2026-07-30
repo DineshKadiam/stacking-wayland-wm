@@ -55,6 +55,7 @@ struct river_shell_surface_v1;
 struct cow_view;
 struct cow_output;
 struct cow_seat;
+struct cow_menu_popup;
 
 /*
  * Sequence state: tracks whether we're in a manage or render sequence.
@@ -109,10 +110,42 @@ struct cow_wm {
 	bool state_restored; /* true after first manage restores saved state */
 
 	/* Lists of tracked objects */
-	struct wl_list views;	   /* cow_view.wm_link */
-	struct wl_list outputs;	   /* cow_output.wm_link */
-	struct wl_list seats;	   /* cow_seat.wm_link */
-	struct wl_list containers; /* cow_container.wm_link */
+	struct wl_list views;	       /* cow_view.wm_link */
+	struct wl_list outputs;	       /* cow_output.wm_link */
+	struct wl_list seats;	       /* cow_seat.wm_link */
+	struct wl_list containers;     /* cow_container.wm_link */
+	struct wl_list menus;	       /* cow_menu.link — all defined menus */
+	struct wl_list open_menus;     /* cow_menu_popup.link — open popups */
+	struct wl_list menu_graveyard; /* cow_menu_popup.link — closed,
+					* pending destroy in render */
+
+	/* The window and seat context captured when the topmost menu was
+	 * opened.  Window-operation items target this view, and interactive
+	 * pointer operations use this seat. */
+	struct cow_view *menu_context_view;
+	struct cow_seat *menu_context_seat;
+
+	/*
+	 * Menu popup currently under the raw pointer (cow's wl_pointer).
+	 * Updated by pan_frames.c on wl_pointer.enter / leave for menu
+	 * surfaces.  When non-NULL, raw_pointer_{x,y} are screen-absolute
+	 * (translated from surface-local by adding popup->{x,y}); when
+	 * NULL, they retain whatever value the last motion event left.
+	 */
+	struct cow_menu_popup *pointer_focus_menu;
+
+	/*
+	 * Pending menu-navigation keybinding state.  river only permits
+	 * binding enable/disable calls inside a manage sequence; the
+	 * menu code sets one of these flags from the open/close paths
+	 * (which may run from IPC outside any sequence) and the manage
+	 * hook flips the bindings then clears the flag.
+	 *
+	 *   0 = no action pending
+	 *   1 = enable (a menu just opened)
+	 *  -1 = disable (the last menu just closed)
+	 */
+	int menu_nav_request;
 
 	/* The "current" output and focused view */
 	struct cow_output *current_output;
@@ -158,6 +191,12 @@ struct cow_wm {
 	/* Deferred pointer warp from IPC context */
 	bool pending_warp;
 	int  warp_x, warp_y;
+
+	/* Raw pointer position from wl_pointer.motion events.
+	 * Updated continuously (not just during manage cycles) so that
+	 * menu hover tracking works smoothly under VNC. */
+	int  raw_pointer_x, raw_pointer_y;
+	bool has_raw_pointer;
 
 	/*
 	 * Container drag-and-drop state.

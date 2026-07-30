@@ -88,6 +88,13 @@ struct cow_seat {
 	bool removed;
 
 	/*
+	 * Menu click flag.  Set by the raw wl_pointer.button hook in
+	 * pan_frames.c when a button press arrives while menus are
+	 * open; consumed and acted on in cow_menu_process_input().
+	 */
+	bool menu_click_pending;
+
+	/*
 	 * Set when the current window-move was started with -C (container
 	 * drag mode).  When op_released, if drag_drop_target is set, the
 	 * two views are grouped into a container instead of completing a

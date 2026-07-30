@@ -239,7 +239,6 @@ cow_config_create(void)
 	config->icon_size	     = COW_CFG_DEFAULT_ICON_SIZE;
 	config->icon_image	     = xstrdup(COW_DATADIR "/icons/default.png");
 	config->snap_distance	     = COW_CFG_DEFAULT_SNAP_DISTANCE;
-
 	border_colour_set_uniform(&config->border_active, 0xFFFFFF);
 	border_colour_set_uniform(&config->border_inactive, 0x465457);
 	cow_colour_convert(config->icon_background, 0x465457);
@@ -313,6 +312,7 @@ cow_config_create(void)
 
 	wl_list_init(&config->keyboard_bindings);
 	wl_list_init(&config->mouse_bindings);
+	wl_list_init(&config->root_mouse_bindings);
 	wl_list_init(&config->decoration_bindings);
 	wl_list_init(&config->output_backgrounds);
 
@@ -372,6 +372,13 @@ cow_config_destroy(struct cow_config *config)
 
 	struct cow_mouse_binding_entry *mb, *mb_tmp;
 	wl_list_for_each_safe(mb, mb_tmp, &config->mouse_bindings, link)
+	{
+		wl_list_remove(&mb->link);
+		xfree(mb->key_string);
+		xfree(mb->action_string);
+		xfree(mb);
+	}
+	wl_list_for_each_safe(mb, mb_tmp, &config->root_mouse_bindings, link)
 	{
 		wl_list_remove(&mb->link);
 		xfree(mb->key_string);

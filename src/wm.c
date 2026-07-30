@@ -36,9 +36,11 @@
 #include "cow/keybinding.h"
 #include "cow/layer_shell.h"
 #include "cow/memory.h"
+#include "cow/menu.h"
 #include "cow/desk_ops.h"
 #include "cow/output.h"
 #include "cow/pan_frames.h"
+#include "cow/pick.h"
 #include "cow/pointer_op.h"
 #include "cow/rule.h"
 #include "cow/seat.h"
@@ -229,6 +231,9 @@ wl_seat_handle_capabilities(__unused void *data, __unused struct wl_seat *seat,
 	cow_wm.wl_seat_has_keyboard = (capabilities &
 					  WL_SEAT_CAPABILITY_KEYBOARD) != 0;
 
+	if (cow_wm.wl_seat_has_pointer && cow_wm.wl_pointer_raw == NULL)
+		pan_frames_init();
+
 	if (!cow_wm.wl_seat_has_pointer && cow_wm.wl_pointer_raw != NULL) {
 		/* Pointer capability removed — release the wl_pointer. */
 		if (cow_wm.wl_cursor_shape_dev != NULL) {
@@ -361,9 +366,19 @@ handle_wm_manage_start(__unused void *data,
 	manage_tick_outputs();
 	manage_configure_views();
 
+	if (cow_wm.menu_nav_request != 0) {
+		cow_keybindings_set_menu_nav_enabled(
+		    cow_wm.menu_nav_request > 0);
+		cow_wm.menu_nav_request = 0;
+	}
+	if (cow_menu_is_open())
+		cow_menu_process_input();
+
 	struct cow_seat *s;
 	wl_list_for_each(s, &cow_wm.seats, wm_link)
 		manage_process_seat(s);
+
+	cow_pick_run_deferred();
 
 	if (cow_wm.exec_pending && !cow_wm.state_restored) {
 		cow_wm.state_restored = true;
@@ -1185,6 +1200,7 @@ handle_wm_render_start(__unused void *data,
 	cow_stack_apply();
 	cow_geometry_window_render();
 	render_drag_ghost();
+	cow_menu_render_all();
 
 	river_window_manager_v1_render_finish(manager);
 	cow_wm.sequence = COW_WM_SEQUENCE_NONE;
@@ -1317,6 +1333,8 @@ handle_wm_seat(__unused void		    *data,
 bool
 cow_wm_init(void)
 {
+	struct wl_list saved_menus = cow_wm.menus;
+
 	memset(&cow_wm, 0, sizeof(cow_wm));
 
 	const char *restart_pid = getenv(COW_RESTART_ENV);
@@ -1330,6 +1348,11 @@ cow_wm_init(void)
 
 	cow_wm.raise_seq_counter	    = UINT64_MAX / 2;
 	cow_wm.outputs_changed_deadline_ms = -1;
+
+	cow_wm.menus = saved_menus;
+	wl_list_init(&cow_wm.open_menus);
+	wl_list_init(&cow_wm.menu_graveyard);
+
 	wl_list_init(&cow_wm.views);
 	wl_list_init(&cow_wm.outputs);
 	wl_list_init(&cow_wm.seats);
@@ -1337,8 +1360,9 @@ cow_wm_init(void)
 	wl_list_init(&cow_wm.new_views);
 	wl_list_init(&cow_wm.closed_views);
 	wl_list_init(&cow_wm.wl_outputs);
-	cow_wm.drag_drop_source = NULL;
-	cow_wm.drag_drop_target = NULL;
+	cow_wm.menu_context_view = NULL;
+	cow_wm.drag_drop_source	 = NULL;
+	cow_wm.drag_drop_target	 = NULL;
 
 	cow_wm.display = wl_display_connect(NULL);
 	if (cow_wm.display == NULL) {
@@ -1425,6 +1449,7 @@ fail:
 void
 cow_wm_fini(void)
 {
+	cow_menu_destroy_all();
 	cow_state_save();
 	cow_geometry_window_hide();
 
@@ -1542,6 +1567,9 @@ cow_wm_schedule_tick(struct event *tick_ev)
 		if (tick_ms < 0 || wait < tick_ms)
 			tick_ms = wait;
 	}
+
+	if (cow_menu_is_open() && (tick_ms < 0 || tick_ms > 33))
+		tick_ms = 33;
 
 	if (cow_wm.outputs_changed_deadline_ms >= 0) {
 		long delta = cow_wm.outputs_changed_deadline_ms -
