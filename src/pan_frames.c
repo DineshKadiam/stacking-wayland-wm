@@ -1144,6 +1144,15 @@ pan_frames_update_all(void)
 void
 pan_frames_destroy_output(struct cow_output *output)
 {
+	if (pointer_focus_background == output)
+		pointer_focus_background = NULL;
+	if (pan_cursor_output == output) {
+		pan_cursor_output = NULL;
+		pan_cursor_edge	  = -1;
+		if (!cursor_held)
+			cow_wm_reset_cursor_shape(decoration_cursor_serial);
+	}
+
 	for (int e = 0; e < 4; e++)
 		pan_frame_destroy(output, e);
 }
