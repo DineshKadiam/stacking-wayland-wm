@@ -70,6 +70,7 @@ struct cow_menu_popup {
 	/* Popup nesting */
 	struct cow_menu_popup *parent; /* NULL for the root popup */
 	struct cow_menu_popup *child;  /* currently open sub-menu, or NULL */
+	int child_item;		     /* item index which opened child */
 	bool pick_target_on_action;    /* pick target before child actions */
 
 	struct wl_list link; /* in cow_wm.open_menus or cow_wm.menu_graveyard */

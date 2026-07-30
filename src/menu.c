@@ -815,6 +815,7 @@ popup_alloc(struct cow_menu *def)
 	struct cow_menu_popup *p = xcalloc(1, sizeof(*p));
 	p->def			 = def;
 	p->selected		 = -1;
+	p->child_item		 = -1;
 	return (p);
 }
 
@@ -854,6 +855,8 @@ cow_menu_popup_close(struct cow_menu_popup *popup)
 	}
 	if (popup->parent != NULL && popup->parent->child == popup)
 		popup->parent->child = NULL;
+	if (popup->parent != NULL && popup->parent->child_item >= 0)
+		popup->parent->child_item = -1;
 	if (popup->parent != NULL) {
 		popup->parent->needs_redraw = true;
 		cow_wm.needs_manage_dirty   = true;
@@ -905,6 +908,7 @@ cow_menu_popup_open(struct cow_menu *menu, int x, int y,
 		if (parent->child != NULL)
 			cow_menu_popup_close(parent->child);
 		parent->child = p;
+		parent->child_item = parent->selected;
 		parent->needs_redraw = true;
 	} else {
 		cow_wm.menu_context_view = context_view;
@@ -1070,6 +1074,35 @@ item_selectable(const struct cow_menu_item *it)
 	return (it != NULL && it->type == COW_MENU_ITEM_NORMAL);
 }
 
+static bool
+popup_is_ancestor_of(const struct cow_menu_popup *ancestor,
+    const struct cow_menu_popup *popup)
+{
+	for (const struct cow_menu_popup *p = popup; p != NULL; p = p->parent) {
+		if (p == ancestor)
+			return (true);
+	}
+	return (false);
+}
+
+static void
+popup_close_child_if_unrelated(struct cow_menu_popup *p,
+    struct cow_menu_popup *over)
+{
+	if (p == NULL || p->needs_destroy || p->child == NULL)
+		return;
+	if (over == NULL)
+		return;
+	if (popup_is_ancestor_of(p->child, over))
+		return;
+	if (over == p && p->selected == p->child_item) {
+		struct cow_menu_item *it = item_at_index(p->def, p->selected);
+		if (it != NULL && it->is_popup)
+			return;
+	}
+	cow_menu_popup_close(p->child);
+}
+
 static void
 dispatch_action_with_context(const char *action, struct cow_view *view,
     bool pick_if_no_context)
@@ -1124,6 +1157,7 @@ dispatch_item(struct cow_menu_popup *p, struct cow_menu_item *it)
 		const struct cow_menu_style *st	 = effective_style();
 		struct cow_menu_item	    *iter;
 		int			     y = p->y + st->border_width;
+		int			     opener_idx = 0;
 		wl_list_for_each(iter, &p->def->items, link)
 		{
 			int rh = item_row_height(iter,
@@ -1131,12 +1165,14 @@ dispatch_item(struct cow_menu_popup *p, struct cow_menu_item *it)
 			if (iter == it)
 				break;
 			y += rh;
+			opener_idx++;
 		}
 		int x = p->x + p->width - 5;
 		struct cow_menu_popup *child =
 		    cow_menu_popup_open(sub, x, y, cow_wm.menu_context_view, p,
 			false);
 		if (child != NULL) {
+			p->child_item = opener_idx;
 			child->pick_target_on_action =
 			    p->pick_target_on_action || it->popup_pick_context;
 		}
@@ -1182,12 +1218,22 @@ cow_menu_process_input(void)
 
 	struct cow_menu_popup *over = have ? popup_under(px_x, px_y) : NULL;
 
-	if (pointer_moved) {
+	if (pointer_moved && over != NULL) {
+		struct cow_menu_popup *popups[POPUP_EXT_MAX];
+		int		       n = 0;
 		struct cow_menu_popup *p;
 		wl_list_for_each(p, &cow_wm.open_menus, link)
 		{
-			int want = (p == over) ? item_under(p, px_x, px_y) : -1;
-			if (p->child != NULL && over != p)
+			if (n < (int)nitems(popups))
+				popups[n++] = p;
+		}
+
+		for (int i = 0; i < n; i++) {
+			p = popups[i];
+			int want = (p == over) ? item_under(p, px_x, px_y) :
+						 -1;
+			if (p->child != NULL &&
+			    popup_is_ancestor_of(p->child, over))
 				want = p->selected;
 			if (want != p->selected) {
 				p->selected = want;
@@ -1195,6 +1241,9 @@ cow_menu_process_input(void)
 				cow_wm.needs_manage_dirty = true;
 			}
 		}
+
+		for (int i = 0; i < n; i++)
+			popup_close_child_if_unrelated(popups[i], over);
 	}
 
 	if (over != NULL && over->selected >= 0) {
