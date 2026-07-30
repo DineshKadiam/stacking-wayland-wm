@@ -67,6 +67,10 @@ windows together into tabs.
 
 A very crude video is [also available](https://youtu.be/tRdhfRfdPuI)
 
+### Old Screenshots
+
+See: https://codeberg.org/thomasadam/cow/wiki/Screenshots
+
 ## How do I build CoW?
 
 Because `cow` is a window manager reliant on `river`, then the binary for
@@ -128,6 +132,10 @@ cow to be used with wayland login managers.
 CoW has support for themes -- see [the themes directory](examples/themes) for
 more information about how to use these.  They're currently a feeble and
 incomplete attempt at converting [fvwm-themes to cow](https://fvwm-themes.sourceforge.net/windowdecors/)
+
+## Packages
+
+CoW is packaged by the following entries [found on the wiki](https://codeberg.org/thomasadam/cow/wiki/Packages)
 
 ## Contact and Support
 
