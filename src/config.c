@@ -24,6 +24,7 @@
 #include "cow/colour.h"
 #include "cow/compat.h"
 #include "cow/memory.h"
+#include "cow/menu.h"
 #include "cow/output.h"
 
 struct cow_config *cow_config = NULL;
@@ -239,6 +240,7 @@ cow_config_create(void)
 	config->icon_size	     = COW_CFG_DEFAULT_ICON_SIZE;
 	config->icon_image	     = xstrdup(COW_DATADIR "/icons/default.png");
 	config->snap_distance	     = COW_CFG_DEFAULT_SNAP_DISTANCE;
+	cow_menu_style_default(&config->menu_style);
 	border_colour_set_uniform(&config->border_active, 0xFFFFFF);
 	border_colour_set_uniform(&config->border_inactive, 0x465457);
 	cow_colour_convert(config->icon_background, 0x465457);

@@ -43,6 +43,7 @@ struct cmd_entry *cmd_table[] = {
 	&cmd_menu_destroy_entry,
 	&cmd_menu_key_entry,
 	&cmd_menu_show_entry,
+	&cmd_menu_style_entry,
 	&cmd_mouse_entry,
 	&cmd_nop_entry,
 	&cmd_move_entry,

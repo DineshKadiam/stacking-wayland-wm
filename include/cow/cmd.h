@@ -208,6 +208,7 @@ extern struct cmd_entry cmd_menu_clear_entry;
 extern struct cmd_entry cmd_menu_destroy_entry;
 extern struct cmd_entry cmd_menu_key_entry;
 extern struct cmd_entry cmd_menu_show_entry;
+extern struct cmd_entry cmd_menu_style_entry;
 extern struct cmd_entry cmd_set_entry;
 extern struct cmd_entry cmd_decor_entry;
 extern struct cmd_entry cmd_bind_entry;

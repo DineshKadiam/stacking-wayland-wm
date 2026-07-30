@@ -20,7 +20,10 @@
 #include <string.h>
 
 #include "cow/cmd.h"
+#include "cow/colour.h"
 #include "cow/compat.h"
+#include "cow/config.h"
+#include "cow/ipc.h"
 #include "cow/memory.h"
 #include "cow/menu.h"
 #include "cow/seat.h"
@@ -232,5 +235,164 @@ struct cmd_entry cmd_menu_key_entry = {
 	1,
 	"menu-key DIRECTION",
 	cmd_menu_key_exec,
+	0,
+};
+
+static void
+menu_style_refresh(void)
+{
+	if (cow_ipc.startup_mode)
+		return;
+
+	struct cow_menu_popup *p;
+	wl_list_for_each(p, &cow_wm.open_menus, link)
+	{
+		p->needs_redraw = true;
+	}
+	cow_wm.needs_manage_dirty = true;
+}
+
+static enum cmd_retval
+menu_style_set_colour(const char *key, const char *val, float *dst,
+    struct cmd_q *cmdq)
+{
+	if (!cow_colour_parse(val, dst)) {
+		cmdq_error(cmdq, "menu-style: %s: invalid colour value", key);
+		return (CMD_RETURN_ERROR);
+	}
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+menu_style_set_gradient(const char *key, const char *val,
+    struct cow_gradient *dst, struct cmd_q *cmdq)
+{
+	if (!cow_gradient_parse(dst, val)) {
+		cmdq_error(cmdq,
+		    "menu-style: %s: expected none|HGradient colour colour|"
+		    "VGradient colour colour",
+		    key);
+		return (CMD_RETURN_ERROR);
+	}
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+menu_style_set_int(const char *key, const char *val, int *dst, long long lo,
+    long long hi, struct cmd_q *cmdq)
+{
+	const char *errstr;
+	long long   v = strtonum(val, lo, hi, &errstr);
+
+	if (errstr != NULL) {
+		cmdq_error(cmdq, "menu-style: %s: bad value: %s", key, val);
+		return (CMD_RETURN_ERROR);
+	}
+	*dst = (int)v;
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+cmd_menu_style_exec(struct cmd *self, struct cmd_q *cmdq)
+{
+	struct args *args = self->args;
+
+	if (args->argc < 2) {
+		cmdq_error(cmdq, "usage: %s", self->entry->usage);
+		return (CMD_RETURN_ERROR);
+	}
+	if (cow_config == NULL)
+		return (CMD_RETURN_ERROR);
+
+	const char *key = args->argv[0];
+	char	   *val = cmd_argv_to_string(args->argc, args->argv, 1);
+	struct cow_menu_style *st = &cow_config->menu_style;
+	enum cmd_retval ret = CMD_RETURN_NORMAL;
+
+	struct {
+		const char *name;
+		float	   *ptr;
+	} colours[] = {
+		{ "bg", st->bg },
+		{ "fg", st->fg },
+		{ "title.bg", st->title_bg },
+		{ "title.fg", st->title_fg },
+		{ "separator", st->separator },
+		{ NULL, NULL },
+	};
+	for (int i = 0; colours[i].name != NULL; i++) {
+		if (strcmp(key, colours[i].name) == 0) {
+			ret = menu_style_set_colour(key, val, colours[i].ptr,
+			    cmdq);
+			goto out;
+		}
+	}
+
+	struct {
+		const char	    *name;
+		struct cow_gradient *ptr;
+	} gradients[] = {
+		{ "bg.gradient", &st->bg_gradient },
+		{ "title.bg.gradient", &st->title_bg_gradient },
+		{ NULL, NULL },
+	};
+	for (int i = 0; gradients[i].name != NULL; i++) {
+		if (strcmp(key, gradients[i].name) == 0) {
+			ret = menu_style_set_gradient(key, val,
+			    gradients[i].ptr, cmdq);
+			goto out;
+		}
+	}
+
+	struct {
+		const char *name;
+		int	   *ptr;
+		long long  lo;
+		long long  hi;
+	} ints[] = {
+		{ "border.width", &st->border_width, 0, 20 },
+		{ "padding.x", &st->padding_x, 0, 100 },
+		{ "padding.y", &st->padding_y, 0, 100 },
+		{ "title.underlines", &st->title_underlines, 0, 2 },
+		{ NULL, NULL, 0, 0 },
+	};
+	for (int i = 0; ints[i].name != NULL; i++) {
+		if (strcmp(key, ints[i].name) == 0) {
+			ret = menu_style_set_int(key, val, ints[i].ptr,
+			    ints[i].lo, ints[i].hi, cmdq);
+			goto out;
+		}
+	}
+
+	if (strcmp(key, "automatic.hotkeys") == 0) {
+		bool enabled;
+		if (!cmd_parse_bool(val, &enabled)) {
+			cmdq_error(cmdq,
+			    "menu-style: %s: expected boolean", key);
+			ret = CMD_RETURN_ERROR;
+			goto out;
+		}
+		st->automatic_hotkeys = enabled;
+		goto out;
+	}
+
+	cmdq_error(cmdq, "menu-style: unknown key: %s", key);
+	ret = CMD_RETURN_ERROR;
+
+out:
+	if (ret == CMD_RETURN_NORMAL) {
+		menu_style_refresh();
+	}
+	xfree(val);
+	return (ret);
+}
+
+struct cmd_entry cmd_menu_style_entry = {
+	"menu-style",
+	"",
+	2,
+	-1,
+	"menu-style KEY VALUE",
+	cmd_menu_style_exec,
 	0,
 };

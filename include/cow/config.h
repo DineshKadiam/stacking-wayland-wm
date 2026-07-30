@@ -21,6 +21,7 @@
 #include <wayland-client.h>
 
 #include "cow/colour.h"
+#include "cow/menu.h"
 #include "cow/vector.h"
 
 struct cow_output;
@@ -391,6 +392,9 @@ struct cow_config {
 	bool  has_output_bg_colour;
 
 	struct wl_list output_backgrounds;
+
+	/* Menu style overrides (set via 'menu-style') */
+	struct cow_menu_style menu_style;
 
 	/* Parsed binding lists */
 	struct wl_list keyboard_bindings;   /* cow_binding_entry.link */

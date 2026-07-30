@@ -64,7 +64,7 @@ cow_menu_style_default(struct cow_menu_style *s)
 	s->separator[3] = 1.0f;
 	s->bg_gradient.mode	       = COW_GRADIENT_NONE;
 	s->title_bg_gradient.mode      = COW_GRADIENT_NONE;
-	s->border_width		       = 2;
+	s->border_width		       = 0;
 	s->padding_x		       = 6;
 	s->padding_y		       = 2;
 	s->title_underlines	       = 2;
@@ -77,6 +77,8 @@ static bool		     g_default_style_inited;
 static const struct cow_menu_style *
 effective_style(void)
 {
+	if (cow_config != NULL)
+		return (&cow_config->menu_style);
 	if (!g_default_style_inited) {
 		cow_menu_style_default(&g_default_style);
 		g_default_style_inited = true;
