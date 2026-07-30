@@ -84,3 +84,35 @@ Evaluate an embedded `script { ... }` block.  The block may use
 invoked with the rest of its argv (with `#{expr}` interpolations
 expanded).  See the SCRIPTING section in cow(1) for full grammar
 and examples.
+
+## menu-add / menu-clear / menu-destroy / menu-show / menu-key
+
+Define and operate popup menus.
+
+* `menu-add NAME LABEL ACTION` -- append an item to menu `NAME`
+  (creating it on first reference).  `ACTION` of `title` makes a
+  non-selectable header; `-` (with `LABEL` also `-`) adds a
+  separator; `popup OTHER` links to a sub-menu; `popup-pick OTHER`
+  links to a sub-menu whose child actions pick a window first when
+  no window context exists; anything else is the cow command run when
+  the item is selected.
+* `menu-clear NAME` -- empty a menu without destroying it.
+* `menu-destroy NAME` -- remove a menu.
+* `menu-show NAME [-x N] [-y N]` -- pop up the menu, defaulting to
+  the current pointer.  An explicit command queue target becomes the
+  menu context for selected item actions.  Use `popup-pick OTHER`
+  for root-menu submenus that should stay visible before selecting a
+  window target.
+* `menu-key DIRECTION` -- drive the open menu's keyboard navigation;
+  `DIRECTION` is `up`, `down`, `left`, `right`, `select`, or
+  `close`; a single alphanumeric argument activates the matching
+  explicit or automatic hotkey.
+
+See the MENUS section in `cow(1)` for the full grammar, `menu-style`
+keys, and a worked example.
+
+## root-mouse
+
+`root-mouse KEY ACTION...` binds an unmodified mouse action on cow's output
+background surface only. Use this for root-window style menus; use `mouse`
+for normal River pointer bindings.

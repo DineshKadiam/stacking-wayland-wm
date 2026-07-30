@@ -551,6 +551,20 @@ mouse L+right  resize
 mouse L+middle window-move -C
 ```
 
+## root-mouse key action ...
+
+Bind an unmodified pointer button on cow's output background surface to a
+command. This is intended for root-window style menus and does not capture
+normal clicks on client windows.
+
+Example:
+
+```
+root-mouse 0+left menu-show RootMenu
+```
+
+See the _MENU_ section for more information.
+
 ## bind-decoration [-2] region command ...
 
 Bind a primary-button click on a window's decoration to a
@@ -1446,6 +1460,132 @@ decor to change aspects of how icons are controlled:
 |  *icon.title\_relief*
 :  _true_ | _false_.  Draw a 3D-relief panel behind the icon label.
 
+# MENUS
+
+*cow* supports named popup menus.  A menu is defined by appending
+items with *menu-add*, then opened with *menu-show*.  Items may be
+*cow* commands, titles, separators, or links to sub-menus.
+
+## Defining menus
+
+*menu-add* _NAME_ _LABEL_ _ACTION_
+	Append an item to menu _NAME_, creating the menu on first
+	reference.  Special _ACTION_ values:
+
+	- *title* -- _LABEL_ becomes a non-selectable title row.
+	- *-* (with _LABEL_ also *-*) -- adds a separator.
+	- *popup* _OTHER_ -- the item opens sub-menu _OTHER_.
+	- *popup-pick* _OTHER_ -- the item opens sub-menu _OTHER_; when
+	  no window context is known, the selected child action first
+	  picks a target window.
+	- anything else -- a cow command line run when the item is
+	  selected.
+
+*menu-clear* _NAME_
+	Empty the named menu without destroying it.
+
+*menu-destroy* _NAME_
+	Remove the named menu and close any open popup of it.
+
+## Showing menus
+
+*menu-show* _NAME_ [_-x N_] [_-y N_]
+	Open the menu as a popup.  Without explicit coordinates, the
+	menu is centred horizontally on the current pointer location, with
+	the pointer placed over the top/title row.  With *-x* and *-y*,
+	those coordinates are used directly.  The command queue's explicit
+	target window is captured as the menu's "context view" so
+	window-operation items target the right window even if focus drifts
+	during navigation.
+
+*menu-key* _DIRECTION_|_HOTKEY_
+	_DIRECTION_ is one of *up*, *down*, *left*, *right*, *select*, *close*;
+	a single alphanumeric _HOTKEY_ activates the matching item.  A no-op
+	when no menu is open, so the same keybinding can be left in place at
+	all times.
+
+Additionally, the *root-mouse* command can specify a binding to open a menu:
+
+```
+root-mouse 0+left "menu-show RootMenu"
+```
+
+## Styling
+
+*menu-style* _KEY_ _VALUE_
+
+Sets the style of a menu.  This can be used to set the colours of the
+background, foreground, whether a menu should use gradient, etc.
+
+The table below shows the possible values:
+
+[[ *Key*
+:< *Default*
+|  *bg*
+:  0xbebebe
+|  *bg.gradient*
+:  none
+|  *fg*
+:  near-black
+|  *title.bg*
+:  0xbebebe
+|  *title.bg.gradient*
+:  none
+|  *title.fg*
+:  near-black
+|  *separator*
+:  mid-grey (title underline colour)
+|  *border.width*
+:  2  (outer relief thickness)
+|  *padding.x*
+:  6  (horizontal item padding)
+|  *padding.y*
+:  2  (vertical item padding)
+|  *title.underlines*
+:  2
+|  *automatic.hotkeys*
+:  true
+
+Gradient values use the same syntax as decoration gradients:
+*none*, *HGradient* _COLOUR_ _COLOUR_, or
+*VGradient* _COLOUR_ _COLOUR_.
+
+For hotkeys, a literal *&* before a label character marks that character as the
+item hotkey and underlines it.  Use *&&* for a literal ampersand.
+
+When *automatic.hotkeys* is enabled, *cow* assigns unique alphanumeric hotkeys
+to selectable items that do not have an explicit *&* marker.
+
+Menus automatically use the *font_name* setting, used globally in *cow*.
+
+## Example
+
+```
+# A "send to desk" sub-menu and a window-ops menu that uses it.
+menu-add SendToDesk "Send to Desk" title
+menu-add SendToDesk "Desk 1"       "desk 1"
+menu-add SendToDesk "Desk 2"       "desk 2"
+
+menu-add WindowOps  "Window"        title
+menu-add WindowOps  "Move"          "window-move"
+menu-add WindowOps  "Maximise"      "window-maximize"
+menu-add WindowOps  -               -
+menu-add WindowOps  "Send To Desk"  "popup SendToDesk"
+menu-add WindowOps  "Close"         "winops -c"
+
+menu-add RootMenu "Window Ops" "popup-pick WindowOps"
+root-mouse 0+left "menu-show RootMenu"
+
+# Arrow + Enter + Esc navigation while a menu is open.
+bind 0+Up     menu-key up
+bind 0+Down   menu-key down
+bind 0+Left   menu-key left
+bind 0+Right  menu-key right
+bind 0+Return menu-key select
+bind 0+Escape menu-key close
+bind 0+m      menu-key m
+bind 0+c      menu-key c
+```
 # DESKTOP / OUTPUT COMMANDS
 
 This section details commands which affect desktops/pages often per-output.
