@@ -75,10 +75,15 @@ sent to *cow*:
 	Used to locate the default socket path. Must be set if
 	*COW\_IPC\_SOCKET* is not.
 
+*WAYLAND\_DISPLAY*
+	Used to qualify the default socket name so separate CoW instances in
+	the same runtime directory do not share a command socket.
+
 # FILES
 
-_$XDG\_RUNTIME\_DIR/cow-cmd.sock_
-	Default IPC command socket created by *cow*(1).
+_$XDG\_RUNTIME\_DIR/cow-$WAYLAND\_DISPLAY-cmd.sock_
+	Default IPC command socket created by *cow*(1). If *WAYLAND\_DISPLAY*
+	is unset, the fallback path is _$XDG\_RUNTIME\_DIR/cow-cmd.sock_.
 
 # EXAMPLES
 

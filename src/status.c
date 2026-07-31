@@ -52,7 +52,7 @@ void
 cow_status_init(void)
 {
 	char path[108]; /* sockaddr_un.sun_path size */
-	int  fd = cow_unix_listen("cow-status.sock", path, sizeof(path),
+	int  fd = cow_unix_listen("status", path, sizeof(path),
 	     /* backlog */ 4);
 	if (fd < 0)
 		return;

@@ -333,15 +333,16 @@ view, desk, or output to normal commands and to DSL scripts.
 
 CoW exposes two Unix sockets:
 
-- `cow-cmd.sock`: request/response command execution.
-- `cow-status.sock`: line-oriented JSON status stream.
+- `cow-$WAYLAND_DISPLAY-cmd.sock`: request/response command execution.
+- `cow-$WAYLAND_DISPLAY-status.sock`: line-oriented JSON status stream.
 
-The default paths live under `XDG_RUNTIME_DIR`.  `COW_IPC_SOCKET` and
-`COW_STATUS_SOCKET` can override them.
+The default paths live under `XDG_RUNTIME_DIR`; if `WAYLAND_DISPLAY` is unset,
+CoW falls back to `cow-cmd.sock` and `cow-status.sock`.  `COW_IPC_SOCKET` and
+`COW_STATUS_SOCKET` can override the client paths.
 
-`moocow` is the command-line client for `cow-cmd.sock`.  Companion programs such
-as `cowbar`, `cowpager`, `cowident`, `cowrearrange`, and `cowiconman` use the
-shared module helpers in `src/module.c` to connect to the sockets.
+`moocow` is the command-line client for the command socket.  Companion programs
+such as `cowbar`, `cowpager`, `cowident`, `cowrearrange`, and `cowiconman` use
+the shared module helpers in `src/module.c` to connect to the sockets.
 
 ```
  module

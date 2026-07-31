@@ -45,7 +45,7 @@ extern struct cow_ipc cow_ipc;
 
 /*
  * Initialize the IPC command socket.
- * Creates a Unix domain socket at $XDG_RUNTIME_DIR/cow-cmd.sock.
+ * Creates a Unix domain socket at CoW's per-display command path.
  */
 bool cow_ipc_init(void);
 

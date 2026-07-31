@@ -16,6 +16,7 @@
 #if !defined(COW_UTIL_H)
 #define COW_UTIL_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 /*
@@ -29,6 +30,14 @@
 long cow_mono_ms(void);
 
 /*
+ * Build the default per-display socket path inside $XDG_RUNTIME_DIR.
+ * If WAYLAND_DISPLAY is set, its basename is folded into the socket
+ * name so independent CoW instances in the same runtime directory do
+ * not steal each other's IPC/status sockets.
+ */
+bool cow_runtime_socket_path(char *, size_t, const char *, const char *);
+
+/*
  * Create, bind, and listen on an AF_UNIX SOCK_STREAM socket inside
  * $XDG_RUNTIME_DIR.
  *
@@ -36,7 +45,7 @@ long cow_mono_ms(void);
  * actually used into 'path_out' (NUL-terminated).  Returns -1 on any
  * failure; an error string is printed to stderr in that case.
  *
- *   name     basename to use within $XDG_RUNTIME_DIR (e.g. "cow.sock")
+ *   name     socket role used in the default filename (e.g. "cmd")
  *   path_out caller-supplied buffer to receive the full path on success
  *   path_cap size of path_out in bytes; must be >= sizeof(sockaddr_un.sun_path)
  *   backlog  listen() backlog (e.g. 16)

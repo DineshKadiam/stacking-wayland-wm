@@ -1871,11 +1871,15 @@ _~/.config/cow/cow.conf_
 _/etc/cow/cow.conf_
 	System-wide configuration (fifth search location).
 
-_$XDG\_RUNTIME\_DIR/cow-cmd.sock_
+_$XDG\_RUNTIME\_DIR/cow-$WAYLAND\_DISPLAY-cmd.sock_
 	IPC command socket. Accepts one command per connection; returns JSON.
+	If *WAYLAND\_DISPLAY* is unset, the fallback path is
+	_$XDG\_RUNTIME\_DIR/cow-cmd.sock_.
 
-_$XDG\_RUNTIME\_DIR/cow-status.sock_
+_$XDG\_RUNTIME\_DIR/cow-$WAYLAND\_DISPLAY-status.sock_
 	Status broadcast socket. Emits a JSON state snapshot on each change.
+	If *WAYLAND\_DISPLAY* is unset, the fallback path is
+	_$XDG\_RUNTIME\_DIR/cow-status.sock_.
 
 # SEE ALSO
 

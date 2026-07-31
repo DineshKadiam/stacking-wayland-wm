@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "cow/module.h"
+#include "cow/util.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -22,23 +23,6 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
-
-static bool
-runtime_path(char *buf, size_t bufsz, const char *prog, const char *name)
-{
-	const char *runtime = getenv("XDG_RUNTIME_DIR");
-
-	if (runtime == NULL) {
-		fprintf(stderr, "%s: XDG_RUNTIME_DIR not set\n", prog);
-		return false;
-	}
-	if (snprintf(buf, bufsz, "%s/%s", runtime, name) >= (int)bufsz) {
-		fprintf(stderr, "%s: socket path too long: %s/%s\n", prog,
-		    runtime, name);
-		return false;
-	}
-	return true;
-}
 
 bool
 cow_module_cmd_path(char *buf, size_t bufsz, const char *prog)
@@ -53,7 +37,7 @@ cow_module_cmd_path(char *buf, size_t bufsz, const char *prog)
 		}
 		return true;
 	}
-	return runtime_path(buf, bufsz, prog, "cow-cmd.sock");
+	return cow_runtime_socket_path(buf, bufsz, prog, "cmd");
 }
 
 bool
@@ -69,7 +53,7 @@ cow_module_status_path(char *buf, size_t bufsz, const char *prog)
 		}
 		return true;
 	}
-	return runtime_path(buf, bufsz, prog, "cow-status.sock");
+	return cow_runtime_socket_path(buf, bufsz, prog, "status");
 }
 
 static int

@@ -21,7 +21,7 @@ struct cow_output;
 struct cJSON;
 
 /*
- * Initialize the status socket at $XDG_RUNTIME_DIR/cow-status.sock.
+ * Initialize CoW's per-display status socket.
  */
 void cow_status_init(void);
 

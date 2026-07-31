@@ -53,7 +53,7 @@ cow_ipc_init(void)
 		cow_ipc.clients[i].fd = -1;
 
 	char path[108]; /* sockaddr_un.sun_path size */
-	int  fd = cow_unix_listen("cow-cmd.sock", path, sizeof(path),
+	int  fd = cow_unix_listen("cmd", path, sizeof(path),
 	     /* backlog */ 4);
 	if (fd < 0)
 		return false;

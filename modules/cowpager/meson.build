@@ -18,6 +18,7 @@ executable('cowpager',
     '../../src/memory.c',
     '../../src/module.c',
     '../../src/module_config.c',
+    '../../src/util.c',
     '../../vendor/cJSON.c',
     include_directories: [
         include_directories('../..'),
