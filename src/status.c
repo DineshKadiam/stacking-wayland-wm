@@ -195,6 +195,15 @@ status_add_theme(cJSON *root)
 		status_add_colour(theme, "background",
 		    cow_wm.current_output->bg_colour);
 	}
+	if (cow_config->has_output_bg_image &&
+	    cow_config->output_bg_image != NULL)
+		cJSON_AddStringToObject(theme, "background_image",
+		    cow_config->output_bg_image);
+	else if (cow_wm.current_output != NULL &&
+	    cow_wm.current_output->has_bg_image &&
+	    cow_wm.current_output->bg_image != NULL)
+		cJSON_AddStringToObject(theme, "background_image",
+		    cow_wm.current_output->bg_image);
 
 	const float *active_bg = cow_config->container.has_tab_active ?
 	    cow_config->container.tab_active :
@@ -238,6 +247,15 @@ cow_status_add_output_geometry(cJSON *out, const struct cow_output *output)
 	} else if (cow_config != NULL && cow_config->has_output_bg_colour) {
 		status_add_colour(out, "background",
 		    cow_config->output_bg_colour);
+	}
+	if (output->has_bg_image) {
+		if (output->bg_image != NULL)
+			cJSON_AddStringToObject(out, "background_image",
+			    output->bg_image);
+	} else if (cow_config != NULL && cow_config->has_output_bg_image &&
+	    cow_config->output_bg_image != NULL) {
+		cJSON_AddStringToObject(out, "background_image",
+		    cow_config->output_bg_image);
 	}
 }
 

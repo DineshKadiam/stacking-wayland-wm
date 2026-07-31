@@ -22,6 +22,8 @@
 #include "cow/colour.h"
 #include "cow/compat.h"
 #include "cow/config.h"
+#include "cow/draw.h"
+#include "cow/image.h"
 #include "cow/layer_shell.h"
 #include "cow/memory.h"
 #include "cow/shm.h"
@@ -240,6 +242,22 @@ static const struct zwlr_layer_surface_v1_listener background_layer_listener = {
 static void output_adopt_orphan_views(struct cow_output *);
 static void output_adopt_unnamed_orphans(struct cow_output *);
 static void output_apply_configured_background(struct cow_output *);
+
+static bool
+output_has_background(const struct cow_output *output)
+{
+	if (output == NULL)
+		return false;
+	if (output->has_bg_colour ||
+	    (cow_config != NULL && cow_config->has_output_bg_colour))
+		return true;
+	if (output->has_bg_image)
+		return output->bg_image != NULL;
+	if (cow_config == NULL)
+		return false;
+	return cow_config->has_output_bg_image &&
+	    cow_config->output_bg_image != NULL;
+}
 
 struct cow_output *
 cow_output_create(struct river_output_v1 *river_output)
@@ -513,7 +531,6 @@ output_apply_configured_background(struct cow_output *output)
 	if (output == NULL)
 		return;
 
-	bool had_colour = output->has_bg_colour;
 	output->has_bg_colour = false;
 	if (output->name != NULL && cow_config_get_output_background(cow_config,
 		output->name, output->bg_colour)) {
@@ -526,12 +543,27 @@ output_apply_configured_background(struct cow_output *output)
 			output->has_bg_colour = true;
 	}
 
-	if (had_colour && !output->has_bg_colour &&
-	    (cow_config == NULL || !cow_config->has_output_bg_colour)) {
+	const char *image = NULL;
+	output->has_bg_image = false;
+	if ((output->name != NULL && cow_config_get_output_background_image(
+		 cow_config, output->name, &image))) {
+		output->has_bg_image = true;
+	} else {
+		char number[32];
+		snprintf(number, sizeof(number), "@%d", output->number);
+		if (cow_config_get_output_background_image(cow_config, number,
+			&image))
+			output->has_bg_image = true;
+	}
+	xfree(output->bg_image);
+	output->bg_image = output->has_bg_image && image != NULL ?
+	    xstrdup(image) : NULL;
+
+	if (!output_has_background(output)) {
 		output_background_destroy_resources(output);
 		return;
 	}
-	output->bg_dirty      = true;
+	output->bg_dirty = true;
 }
 
 void
@@ -562,6 +594,7 @@ cow_output_destroy(struct cow_output *output)
 
 	cow_desk_set_fini(&output->desk_set);
 	xfree(output->name);
+	xfree(output->bg_image);
 	river_output_v1_destroy(output->river_output);
 	xfree(output);
 
@@ -575,11 +608,10 @@ cow_output_destroy(struct cow_output *output)
 void
 cow_output_prepare_background(struct cow_output *output)
 {
-	bool has_colour = output->has_bg_colour ||
-	    (cow_config != NULL && cow_config->has_output_bg_colour);
-
-	if (!has_colour)
+	if (!output_has_background(output)) {
+		output_background_destroy_resources(output);
 		return;
+	}
 	if (cow_wm.compositor == NULL || cow_wm.wl_layer_shell == NULL)
 		return;
 	if (output->width <= 0 || output->height <= 0)
@@ -629,10 +661,7 @@ cow_output_prepare_background(struct cow_output *output)
 void
 cow_output_render_background(struct cow_output *output)
 {
-	/* Use per-output colour if set, otherwise fall back to global */
-	bool has_colour = output->has_bg_colour ||
-	    (cow_config != NULL && cow_config->has_output_bg_colour);
-	if (!has_colour)
+	if (!output_has_background(output))
 		return;
 	if (output->bg_surface == NULL || output->bg_layer_surface == NULL ||
 	    !output->bg_configured)
@@ -662,18 +691,29 @@ cow_output_render_background(struct cow_output *output)
 				return;
 		}
 
-		/* Fill with background colour (per-output overrides global) */
-		const float *bg	       = output->has_bg_colour ?
-			   output->bg_colour :
-			   cow_config->output_bg_colour;
-		uint32_t     px	       = cow_colour_to_pixel(bg);
-		int	     stride_px = output->bg_buffer->stride / 4;
-		uint32_t    *data      = output->bg_buffer->data;
-		for (int y = 0; y < output->height; y++) {
-			for (int x = 0; x < output->width; x++) {
-				data[y * stride_px + x] = px;
-			}
-		}
+		const float *bg = NULL;
+		if (output->has_bg_colour)
+			bg = output->bg_colour;
+		else if (cow_config != NULL && cow_config->has_output_bg_colour)
+			bg = cow_config->output_bg_colour;
+
+		const char *image = NULL;
+		if (output->has_bg_image)
+			image = output->bg_image;
+		else if (cow_config != NULL && cow_config->has_output_bg_image)
+			image = cow_config->output_bg_image;
+
+		uint32_t px = bg != NULL ? cow_colour_to_pixel(bg) : 0;
+		struct cow_pixbuf p = {
+			.pixels = output->bg_buffer->data,
+			.stride_px = output->bg_buffer->stride / 4,
+			.width = output->width,
+			.height = output->height,
+		};
+		cow_draw_fill_rect(&p, 0, 0, output->width, output->height,
+		    px);
+		if (image != NULL)
+			cow_image_render_tiled(image, &p);
 		output->bg_dirty = false;
 	}
 

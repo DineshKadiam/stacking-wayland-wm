@@ -1346,7 +1346,8 @@ feel of a window.  All of these can be used with *decor -d*.
 
 *Button vector format:* _N_ _x1_*X*_y1_*@*_c1_ _x2_*X*_y2_*@*_c2_ *...* where _N_ is
 the number of points, coordinates are 0-100 (percentages of the button area),
-and *@*_c_ is a colour index (0 or 1).
+and *@*_c_ is a colour index from 0 to 4. Coordinates may include a signed
+pixel offset with a _p_ suffix, such as *100-5px50+1p@0*.
 
 # WINDOW CONTAINERS
 
@@ -1820,6 +1821,14 @@ behaviour of desktops and pages:
 |  *output.colour.background.*_output_
 :  hex colour (_0xRRGGBB_)
 :  Background colour for the named output or output number (*@N*).
+|  *output.image.background*
+:  path | _none_
+:  PNG or SVG background image for all outputs.  Images are tiled over the
+   background colour; transparent pixels leave the colour visible.
+|  *output.image.background.*_output_
+:  path | _none_
+:  PNG or SVG background image for the named output or output number (*@N*).
+   Use _none_ to suppress a global background image on that output.
 |  *reserved.top*
 :  integer (default: 0)
 :  Pixels reserved at the top of each output.

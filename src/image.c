@@ -162,6 +162,18 @@ render_png(const char *path, struct cow_pixbuf *dst, int x, int y, int w,
 }
 
 static void
+render_rgba_tiled(unsigned char *src, int iw, int ih, struct cow_pixbuf *dst)
+{
+	if (src == NULL || iw <= 0 || ih <= 0 || dst == NULL)
+		return;
+
+	for (int y = 0; y < dst->height; y += ih) {
+		for (int x = 0; x < dst->width; x += iw)
+			render_rgba_scaled(src, iw, ih, dst, x, y, iw, ih);
+	}
+}
+
+static void
 render_svg(const char *path, struct cow_pixbuf *dst, int x, int y, int w,
     int h)
 {
@@ -205,6 +217,53 @@ cow_image_render_rect(const char *path, struct cow_pixbuf *dst, int x, int y,
 	case COW_IMAGE_SVG:
 		render_svg(path, dst, x, y, w, h);
 		break;
+	default:
+		break;
+	}
+}
+
+void
+cow_image_render_tiled(const char *path, struct cow_pixbuf *dst)
+{
+	if (path == NULL || dst == NULL || dst->width <= 0 || dst->height <= 0)
+		return;
+
+	switch (image_type(path)) {
+	case COW_IMAGE_PNG: {
+		int iw, ih, comp;
+		unsigned char *src = stbi_load(path, &iw, &ih, &comp, 4);
+		if (src != NULL) {
+			render_rgba_tiled(src, iw, ih, dst);
+			stbi_image_free(src);
+		}
+		break;
+	}
+	case COW_IMAGE_SVG: {
+		NSVGimage *svg = nsvgParseFromFile(path, "px", 96.0f);
+		if (svg == NULL)
+			return;
+		NSVGrasterizer *rast = nsvgCreateRasterizer();
+		if (rast == NULL) {
+			nsvgDelete(svg);
+			return;
+		}
+
+		int iw = (int)ceilf(svg->width);
+		int ih = (int)ceilf(svg->height);
+		if (iw < 1)
+			iw = 1;
+		if (ih < 1)
+			ih = 1;
+
+		unsigned char *src = xcalloc((size_t)iw * ih, 4);
+		nsvgRasterize(rast, svg, 0, 0, 1.0f, src, iw, ih, iw * 4);
+		render_rgba_tiled(src, iw, ih, dst);
+
+		xfree(src);
+		nsvgDeleteRasterizer(rast);
+		nsvgDelete(svg);
+		break;
+	}
 	default:
 		break;
 	}

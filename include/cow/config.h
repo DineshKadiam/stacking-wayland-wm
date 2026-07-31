@@ -393,6 +393,8 @@ struct cow_config {
 	/* Output background colour (from outputs config) */
 	float output_bg_colour[4];
 	bool  has_output_bg_colour;
+	char *output_bg_image;
+	bool  has_output_bg_image;
 
 	struct wl_list output_backgrounds;
 
@@ -437,6 +439,10 @@ bool cow_config_get_output_background(struct cow_config *, const char *,
     float[4]);
 void cow_config_set_output_background(struct cow_config *, const char *,
     const float[4]);
+bool cow_config_get_output_background_image(struct cow_config *, const char *,
+    const char **);
+void cow_config_set_output_background_image(struct cow_config *, const char *,
+    const char *);
 
 /*
  * Find an action entry by name. Returns the command string, or NULL.

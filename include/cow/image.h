@@ -23,5 +23,6 @@
 bool cow_image_validate(const char *, char **);
 void cow_image_render_rect(const char *, struct cow_pixbuf *, int, int, int,
     int);
+void cow_image_render_tiled(const char *, struct cow_pixbuf *);
 
 #endif

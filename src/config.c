@@ -33,6 +33,9 @@ struct cow_output_background_config {
 	struct wl_list link;
 	char	      *name;
 	float	       colour[4];
+	bool	       has_colour;
+	char	      *image;
+	bool	       has_image;
 };
 
 bool
@@ -145,11 +148,36 @@ config_decor_detach(struct cow_config *config)
 	}
 }
 
+static bool
+parse_vector_coord(const char **p, int *percent, int *offset)
+{
+	char *end;
+
+	*percent = (int)strtol(*p, &end, 10);
+	if (end == *p)
+		return false;
+	*p = end;
+
+	*offset = 0;
+	if (**p == '+' || **p == '-') {
+		int sign = **p == '-' ? -1 : 1;
+		(*p)++;
+		long n = strtol(*p, &end, 10);
+		if (end == *p || *end != 'p')
+			return false;
+		*offset = (int)n * sign;
+		*p = end + 1;
+	}
+
+	return true;
+}
+
 /*
  * Parse a vector button definition string.
  * Format: "N x1xy1@c1 x2xy2@c2 ..." where N is num_points,
  * coordinates are percentages (0-100), and c is colour index (0-4).
- * Optional pixel offsets not yet supported in this parser.
+ * A coordinate may include a signed pixel offset, for example
+ * 100-5px50+1p@0.
  */
 bool
 cow_parse_vector_button_string(struct cow_vector_button *vb, const char *str)
@@ -181,15 +209,17 @@ cow_parse_vector_button_string(struct cow_vector_button *vb, const char *str)
 
 		int x = 0, y = 0, xoff = 0, yoff = 0, colour = -1;
 
-		/* Parse x coordinate */
-		x = (int)strtol(p, (char **)&p, 10);
+		if (!parse_vector_coord(&p, &x, &xoff))
+			return false;
 
 		/* Expect 'x' separator */
 		if (*p == 'x' || *p == 'X')
 			p++;
+		else
+			return false;
 
-		/* Parse y coordinate */
-		y = (int)strtol(p, (char **)&p, 10);
+		if (!parse_vector_coord(&p, &y, &yoff))
+			return false;
 
 		/* Optional '@' for colour */
 		if (*p == '@') {
@@ -402,8 +432,10 @@ cow_config_destroy(struct cow_config *config)
 	{
 		wl_list_remove(&ob->link);
 		xfree(ob->name);
+		xfree(ob->image);
 		xfree(ob);
 	}
+	xfree(config->output_bg_image);
 
 	xfree(config);
 }
@@ -460,6 +492,8 @@ cow_config_get_output_background(struct cow_config *config, const char *name,
 	{
 		if (strcmp(ob->name, name) != 0)
 			continue;
+		if (!ob->has_colour)
+			return false;
 		memcpy(colour, ob->colour, sizeof(float) * 4);
 		return true;
 	}
@@ -480,12 +514,60 @@ cow_config_set_output_background(struct cow_config *config, const char *name,
 		if (strcmp(ob->name, name) != 0)
 			continue;
 		memcpy(ob->colour, colour, sizeof(float) * 4);
+		ob->has_colour = true;
 		return;
 	}
 
 	ob = xcalloc(1, sizeof(*ob));
 	ob->name = xstrdup(name);
 	memcpy(ob->colour, colour, sizeof(float) * 4);
+	ob->has_colour = true;
+	wl_list_insert(&config->output_backgrounds, &ob->link);
+}
+
+bool
+cow_config_get_output_background_image(struct cow_config *config,
+    const char *name, const char **image)
+{
+	if (config == NULL || name == NULL || image == NULL)
+		return false;
+
+	struct cow_output_background_config *ob;
+	wl_list_for_each(ob, &config->output_backgrounds, link)
+	{
+		if (strcmp(ob->name, name) != 0)
+			continue;
+		if (!ob->has_image)
+			return false;
+		*image = ob->image;
+		return true;
+	}
+
+	return false;
+}
+
+void
+cow_config_set_output_background_image(struct cow_config *config,
+    const char *name, const char *image)
+{
+	if (config == NULL || name == NULL)
+		return;
+
+	struct cow_output_background_config *ob;
+	wl_list_for_each(ob, &config->output_backgrounds, link)
+	{
+		if (strcmp(ob->name, name) != 0)
+			continue;
+		xfree(ob->image);
+		ob->image = image != NULL ? xstrdup(image) : NULL;
+		ob->has_image = true;
+		return;
+	}
+
+	ob = xcalloc(1, sizeof(*ob));
+	ob->name = xstrdup(name);
+	ob->image = image != NULL ? xstrdup(image) : NULL;
+	ob->has_image = true;
 	wl_list_insert(&config->output_backgrounds, &ob->link);
 }
 

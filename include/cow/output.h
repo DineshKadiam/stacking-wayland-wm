@@ -85,6 +85,8 @@ struct cow_output {
 	/* Per-output background colour (overrides global if set) */
 	float bg_colour[4];
 	bool  has_bg_colour;
+	char *bg_image;
+	bool  has_bg_image;
 
 	struct cow_desk_set desk_set;
 	struct cow_desk	   *current_desk;

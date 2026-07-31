@@ -74,6 +74,8 @@ static struct cow_container_config *target_container(struct cmd_q *,
 static void set_colour_option(const char *, const char *, struct cmd_q *);
 static enum cmd_retval set_image_option(const char *, const char *,
     struct cmd_q *);
+static enum cmd_retval set_output_image(const char *, const char *,
+    struct cmd_q *);
 static bool set_gradient_option(const char *, const char *, struct cmd_q *);
 static bool set_output_colour(const char *, const char *, struct cmd_q *);
 static bool set_border_colour(const char *, const char *, struct cmd_q *);
@@ -957,7 +959,8 @@ has_suffix(const char *s, const char *suffix)
 static bool
 set_key_is_image(const char *key)
 {
-	return (has_suffix(key, "_image") || has_suffix(key, ".image"));
+	return (has_suffix(key, "_image") || has_suffix(key, ".image") ||
+	    strncmp(key, "output.image.background", 23) == 0);
 }
 
 static char *
@@ -1114,8 +1117,59 @@ set_border_image(const char *key, const char *val, struct cmd_q *cmdq)
 }
 
 static enum cmd_retval
+set_output_image(const char *key, const char *val, struct cmd_q *cmdq)
+{
+	char *path = set_image_resolve_path(val, cmdq);
+
+	if (path == NULL)
+		return (CMD_RETURN_ERROR);
+
+	const char *image = strcmp(path, "none") == 0 ? NULL : path;
+	if (strncmp(key, "output.image.background.", 24) == 0) {
+		const char *oname = key + 24;
+		if (!cow_ipc.startup_mode) {
+			struct cow_output *out = cow_output_find_by_spec(oname);
+			if (out != NULL) {
+				cow_config_set_output_background_image(
+				    cow_config, oname, image);
+				xfree(out->bg_image);
+				out->bg_image = image != NULL ?
+				    xstrdup(image) : NULL;
+				out->has_bg_image = true;
+				out->bg_dirty     = true;
+				refresh_visuals();
+				xfree(path);
+				return (CMD_RETURN_NORMAL);
+			}
+			cmdq_error(cmdq, "set: unknown output: %s", oname);
+			xfree(path);
+			return (CMD_RETURN_ERROR);
+		}
+		cow_config_set_output_background_image(cow_config, oname,
+		    image);
+		xfree(path);
+		return (CMD_RETURN_NORMAL);
+	}
+
+	if (strcmp(key, "output.image.background") != 0) {
+		cmdq_error(cmdq, "set: unknown key: %s", key);
+		xfree(path);
+		return (CMD_RETURN_ERROR);
+	}
+
+	xfree(cow_config->output_bg_image);
+	cow_config->output_bg_image = image != NULL ? xstrdup(image) : NULL;
+	cow_config->has_output_bg_image = true;
+	refresh_visuals();
+	xfree(path);
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
 set_image_option(const char *key, const char *val, struct cmd_q *cmdq)
 {
+	if (strncmp(key, "output.image.background", 23) == 0)
+		return (set_output_image(key, val, cmdq));
 	if (strncmp(key, "titlebar.button.", 16) == 0)
 		return (set_button_image(key, val, cmdq));
 	if (strcmp(key, "icon.image") == 0)
