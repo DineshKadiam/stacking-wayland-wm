@@ -499,6 +499,47 @@ seed_seat_pointer_from_background(void)
 	seat->has_pointer_position = true;
 }
 
+void
+cow_pan_cursor_reconcile_position(int x, int y)
+{
+	if (cursor_held)
+		return;
+
+	int dx, dy, cw, ch;
+	struct cow_view *view = view_for_global_decoration_point(x, y, &dx,
+	    &dy, &cw, &ch);
+	if (view == NULL) {
+		if (decoration_cursor_surface != NULL ||
+		    pan_cursor_output != NULL) {
+			decoration_cursor_surface = NULL;
+			pan_cursor_output	  = NULL;
+			pan_cursor_edge		  = -1;
+			cow_wm_reset_cursor_shape(decoration_cursor_serial);
+		}
+		return;
+	}
+
+	decoration_cursor_surface = view->decoration_surface;
+	cow_wm_set_cursor_shape(decoration_cursor_shape_at(view, dx, dy, cw,
+	    ch), decoration_cursor_serial);
+}
+
+static void
+raw_pointer_set_absolute(int x, int y)
+{
+	cow_wm.raw_pointer_x	= x;
+	cow_wm.raw_pointer_y	= y;
+	cow_wm.has_raw_pointer = true;
+}
+
+static void
+raw_pointer_set_cow_surface(int x, int y)
+{
+	raw_pointer_set_absolute(x, y);
+	if (decoration_cursor_surface != NULL || pan_cursor_output != NULL)
+		cow_pan_cursor_clear();
+}
+
 static void
 pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
     struct wl_surface *surf, wl_fixed_t sx, wl_fixed_t sy)
@@ -510,9 +551,8 @@ pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 	if (mp != NULL) {
 		cow_wm.pointer_focus_menu = mp;
 		pointer_focus_background = NULL;
-		cow_wm.raw_pointer_x	  = mp->x + wl_fixed_to_int(sx);
-		cow_wm.raw_pointer_y	  = mp->y + wl_fixed_to_int(sy);
-		cow_wm.has_raw_pointer	  = true;
+		raw_pointer_set_cow_surface(mp->x + wl_fixed_to_int(sx),
+		    mp->y + wl_fixed_to_int(sy));
 		cow_wm.needs_manage_dirty = true;
 		return;
 	}
@@ -521,11 +561,15 @@ pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 	if (bg_output != NULL) {
 		pointer_focus_background = bg_output;
 		cow_wm.pointer_focus_menu = NULL;
-		cow_wm.raw_pointer_x = bg_output->x + wl_fixed_to_int(sx);
-		cow_wm.raw_pointer_y = bg_output->y + wl_fixed_to_int(sy);
-		cow_wm.has_raw_pointer = true;
+		raw_pointer_set_cow_surface(bg_output->x + wl_fixed_to_int(sx),
+		    bg_output->y + wl_fixed_to_int(sy));
 		return;
 	}
+
+	if (cow_wm.pointer_focus_menu != NULL)
+		cow_wm.needs_manage_dirty = true;
+	cow_wm.pointer_focus_menu = NULL;
+	pointer_focus_background = NULL;
 
 	struct cow_output *output;
 	int		   edge = surface_to_output_edge(surf, &output);
@@ -606,6 +650,26 @@ pointer_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x,
 	(void)d;
 	(void)p;
 
+	if (cow_wm.pointer_focus_menu != NULL) {
+		raw_pointer_set_cow_surface(cow_wm.pointer_focus_menu->x +
+			wl_fixed_to_int(x),
+		    cow_wm.pointer_focus_menu->y + wl_fixed_to_int(y));
+		if (cow_menu_is_open())
+			cow_wm.needs_manage_dirty = true;
+		cow_pick_pointer_motion(t, x, y);
+		return;
+	}
+
+	if (pointer_focus_background != NULL) {
+		raw_pointer_set_cow_surface(pointer_focus_background->x +
+			wl_fixed_to_int(x),
+		    pointer_focus_background->y + wl_fixed_to_int(y));
+		if (cow_menu_is_open())
+			cow_wm.needs_manage_dirty = true;
+		cow_pick_pointer_motion(t, x, y);
+		return;
+	}
+
 	if (decoration_cursor_surface != NULL &&
 	    decoration_cursor_update(decoration_cursor_surface, 0, x, y))
 		return;
@@ -613,27 +677,8 @@ pointer_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x,
 	    pan_cursor_update(pan_cursor_output, pan_cursor_edge, 0, x, y))
 		return;
 
-	/*
-	 * wl_pointer.motion reports surface-local coordinates.  When
-	 * the pointer is focused on a menu popup, translate them to
-	 * screen-absolute by adding the popup's top-left.  Otherwise
-	 * record the values as-is; the menu input path won't use them
-	 * unless pointer_focus_menu is set.
-	 */
-	if (cow_wm.pointer_focus_menu != NULL) {
-		cow_wm.raw_pointer_x = cow_wm.pointer_focus_menu->x +
-		    wl_fixed_to_int(x);
-		cow_wm.raw_pointer_y = cow_wm.pointer_focus_menu->y +
-		    wl_fixed_to_int(y);
-	} else if (pointer_focus_background != NULL) {
-		cow_wm.raw_pointer_x = pointer_focus_background->x +
-		    wl_fixed_to_int(x);
-		cow_wm.raw_pointer_y = pointer_focus_background->y +
-		    wl_fixed_to_int(y);
-	} else {
-		cow_wm.raw_pointer_x = wl_fixed_to_int(x);
-		cow_wm.raw_pointer_y = wl_fixed_to_int(y);
-	}
+	cow_wm.raw_pointer_x   = wl_fixed_to_int(x);
+	cow_wm.raw_pointer_y   = wl_fixed_to_int(y);
 	cow_wm.has_raw_pointer = true;
 
 	if (cow_menu_is_open())

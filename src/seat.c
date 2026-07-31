@@ -191,6 +191,7 @@ seat_handle_pointer_position(void *data,
 	 * a manage cycle here -- the timeout already paces the
 	 * cadence at ~30 Hz.
 	 */
+	cow_pan_cursor_reconcile_position(x, y);
 }
 
 static const struct river_seat_v1_listener seat_listener = {
