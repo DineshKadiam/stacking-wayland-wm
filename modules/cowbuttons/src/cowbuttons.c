@@ -39,6 +39,7 @@
 #include "cow/memory.h"
 #include "cow/module.h"
 #include "cow/module_config.h"
+#include "cow/module_cursor.h"
 #include "cow/vector.h"
 #include "xdg-shell-client-protocol.h"
 
@@ -233,6 +234,7 @@ static struct xdg_surface   *xdg_surface;
 static struct xdg_toplevel  *xdg_toplevel;
 static struct wl_seat	    *seat;
 static struct wl_pointer    *pointer;
+static struct cow_module_cursor cursor;
 
 static struct config cfg = {
 	.cell_w = DEFAULT_CELL_W,
@@ -3092,9 +3094,10 @@ static const struct xdg_toplevel_listener xdg_toplevel_listener = {
 
 static void
 pointer_enter(__unused void *data, __unused struct wl_pointer *p,
-    __unused uint32_t serial, __unused struct wl_surface *s,
+    uint32_t serial, __unused struct wl_surface *s,
     wl_fixed_t sx, wl_fixed_t sy)
 {
+	cow_module_cursor_set_default(&cursor, serial);
 	ptr_x = wl_fixed_to_double(sx);
 	ptr_y = wl_fixed_to_double(sy);
 }
@@ -3163,7 +3166,9 @@ seat_capabilities(__unused void *data, struct wl_seat *s, uint32_t caps)
 	if ((caps & WL_SEAT_CAPABILITY_POINTER) && pointer == NULL) {
 		pointer = wl_seat_get_pointer(s);
 		wl_pointer_add_listener(pointer, &pointer_listener, NULL);
+		cow_module_cursor_set_pointer(&cursor, pointer);
 	} else if (!(caps & WL_SEAT_CAPABILITY_POINTER) && pointer != NULL) {
+		cow_module_cursor_clear_pointer(&cursor, pointer);
 		wl_pointer_destroy(pointer);
 		pointer = NULL;
 	}
@@ -3198,7 +3203,9 @@ reg_global(__unused void *data, struct wl_registry *reg, uint32_t name,
 		seat = wl_registry_bind(reg, name, &wl_seat_interface,
 		    version < WL_SEAT_VERSION ? version : WL_SEAT_VERSION);
 		wl_seat_add_listener(seat, &seat_listener, NULL);
-	}
+	} else
+		cow_module_cursor_handle_global(&cursor, reg, name, interface,
+		    version);
 }
 
 static void
@@ -3347,8 +3354,11 @@ main(int argc, char **argv)
 	event_base_free(base);
 	externals_stop_all();
 
-	if (pointer != NULL)
+	if (pointer != NULL) {
+		cow_module_cursor_clear_pointer(&cursor, pointer);
 		wl_pointer_destroy(pointer);
+	}
+	cow_module_cursor_fini(&cursor);
 	if (seat != NULL)
 		wl_seat_destroy(seat);
 	if (xdg_toplevel != NULL)

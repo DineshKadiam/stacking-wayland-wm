@@ -24,6 +24,7 @@ executable('cowident',
     ['src/cowident.c'] + ident_generated,
     '../../src/module.c',
     '../../src/util.c',
+    '../../src/module_cursor.c',
     '../../vendor/cJSON.c',
     include_directories: [
         include_directories('../..'),

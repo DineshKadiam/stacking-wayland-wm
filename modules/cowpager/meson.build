@@ -3,6 +3,8 @@
 # cowpager uses xdg-shell for a regular toplevel window so cow applies SSDs.
 pager_generated = wl_mod.scan_xml(
     wl_proto_dir / 'stable/xdg-shell/xdg-shell.xml',
+    wl_proto_dir / 'staging/cursor-shape/cursor-shape-v1.xml',
+    wl_proto_dir / 'unstable/tablet/tablet-unstable-v2.xml',
 )
 
 pager_deps = [
@@ -17,6 +19,7 @@ executable('cowpager',
     '../../src/colour.c',
     '../../src/memory.c',
     '../../src/module.c',
+    '../../src/module_cursor.c',
     '../../src/module_config.c',
     '../../src/util.c',
     '../../vendor/cJSON.c',

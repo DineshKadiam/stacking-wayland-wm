@@ -29,8 +29,8 @@
 #include <xkbcommon/xkbcommon.h>
 
 #include "cow/module.h"
+#include "cow/module_cursor.h"
 
-#include "cursor-shape-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-output-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
@@ -94,8 +94,7 @@ static struct wl_keyboard		 *keyboard;
 static struct zwlr_layer_shell_v1	 *layer_shell;
 static struct xdg_wm_base		 *xdg_wm_base;
 static struct zxdg_output_manager_v1	 *xdg_output_manager;
-static struct wp_cursor_shape_manager_v1 *cursor_shape_manager;
-static struct wp_cursor_shape_device_v1	 *cursor_shape_device;
+static struct cow_module_cursor		  cursor;
 
 /*
  * wl_cursor fallback: used only when the compositor does not advertise
@@ -590,11 +589,8 @@ cursor_apply(uint32_t serial)
 {
 	if (!pointer)
 		return;
-	if (cursor_shape_device) {
-		wp_cursor_shape_device_v1_set_shape(cursor_shape_device, serial,
-		    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CROSSHAIR);
+	if (cow_module_cursor_set_crosshair(&cursor, serial))
 		return;
-	}
 	if (!cursor_surface || !cursor_crosshair)
 		return;
 	struct wl_cursor_image *img = cursor_crosshair->images[0];
@@ -682,6 +678,8 @@ ptr_enter(void *data, struct wl_pointer *p, uint32_t serial,
 	 */
 	if (ptr_output != NULL && phase == PHASE_TARGETING)
 		cursor_apply(serial);
+	else
+		cow_module_cursor_set_default(&cursor, serial);
 	if (phase == PHASE_TARGETING)
 		draw_overlay_all();
 }
@@ -911,11 +909,11 @@ seat_caps(void *data, struct wl_seat *s, uint32_t caps)
 	if ((caps & WL_SEAT_CAPABILITY_POINTER) && !pointer) {
 		pointer = wl_seat_get_pointer(s);
 		wl_pointer_add_listener(pointer, &ptr_listener, NULL);
-		if (cursor_shape_manager && !cursor_shape_device) {
-			cursor_shape_device =
-			    wp_cursor_shape_manager_v1_get_pointer(
-				cursor_shape_manager, pointer);
-		}
+		cow_module_cursor_set_pointer(&cursor, pointer);
+	} else if (!(caps & WL_SEAT_CAPABILITY_POINTER) && pointer) {
+		cow_module_cursor_clear_pointer(&cursor, pointer);
+		wl_pointer_destroy(pointer);
+		pointer = NULL;
 	}
 	if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !keyboard) {
 		keyboard = wl_seat_get_keyboard(s);
@@ -987,15 +985,13 @@ reg_global(void *data, struct wl_registry *reg, uint32_t name,
 		    &xdg_wm_base_interface, 1);
 		xdg_wm_base_add_listener(xdg_wm_base, &xdg_wm_base_listener,
 		    NULL);
-	} else if (strcmp(iface, wp_cursor_shape_manager_v1_interface.name) ==
-	    0) {
-		cursor_shape_manager = wl_registry_bind(reg, name,
-		    &wp_cursor_shape_manager_v1_interface, 1);
 	} else if (strcmp(iface, zxdg_output_manager_v1_interface.name) == 0) {
 		xdg_output_manager = wl_registry_bind(reg, name,
 		    &zxdg_output_manager_v1_interface,
 		    version < 3 ? version : 3);
-	}
+	} else
+		cow_module_cursor_handle_global(&cursor, reg, name, iface,
+		    version);
 }
 
 static void
@@ -1428,13 +1424,10 @@ main(void)
 	}
 
 	/*
-	 * Set up the cursor.  cursor_shape_device is created lazily in
-	 * the seat-capabilities handler once we have a wl_pointer; the
-	 * wl_cursor fallback is initialised here so it's ready for the
-	 * first ptr_enter event whether the compositor advertises
-	 * wp_cursor_shape_v1 or not.
+	 * Set up the themed-cursor fallback only when the compositor does not
+	 * advertise wp_cursor_shape_v1.
 	 */
-	if (!cursor_shape_manager)
+	if (!cow_module_cursor_available(&cursor))
 		cursor_init_fallback();
 
 	/* Fetch font and views before drawing anything. */
@@ -1455,6 +1448,7 @@ main(void)
 
 	if (phase == PHASE_DONE) {
 		/* Cancelled. */
+		cow_module_cursor_fini(&cursor);
 		wl_display_disconnect(display);
 		return 0;
 	}
@@ -1468,6 +1462,7 @@ main(void)
 	popup_destroy();
 	wl_display_flush(display);
 
+	cow_module_cursor_fini(&cursor);
 	wl_display_disconnect(display);
 	return 0;
 }

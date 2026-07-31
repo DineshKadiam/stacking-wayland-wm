@@ -32,6 +32,7 @@
 
 #include "cow/compat.h"
 #include "cow/module.h"
+#include "cow/module_cursor.h"
 #include "xdg-shell-client-protocol.h"
 
 #define PROG "cowiconman"
@@ -148,6 +149,7 @@ static struct wl_shm	    *wl_shm;
 static struct xdg_wm_base   *xdg_wm_base;
 static struct wl_seat	    *seat;
 static struct wl_pointer    *pointer;
+static struct cow_module_cursor cursor;
 static struct wl_surface    *surface;
 static struct xdg_surface   *xdg_surface;
 static struct xdg_toplevel  *xdg_toplevel;
@@ -1666,9 +1668,10 @@ row_at(double x, double y)
 
 static void
 ptr_enter(__unused void *d, __unused struct wl_pointer *p,
-    __unused uint32_t serial, struct wl_surface *s, wl_fixed_t x,
+    uint32_t serial, struct wl_surface *s, wl_fixed_t x,
     wl_fixed_t y)
 {
+	cow_module_cursor_set_default(&cursor, serial);
 	if (s == popup_surface) {
 		popup_ptr_x = wl_fixed_to_double(x);
 		popup_ptr_y = wl_fixed_to_double(y);
@@ -1794,6 +1797,11 @@ seat_caps(__unused void *d, struct wl_seat *s, uint32_t caps)
 	if ((caps & WL_SEAT_CAPABILITY_POINTER) && pointer == NULL) {
 		pointer = wl_seat_get_pointer(s);
 		wl_pointer_add_listener(pointer, &ptr_listener, NULL);
+		cow_module_cursor_set_pointer(&cursor, pointer);
+	} else if (!(caps & WL_SEAT_CAPABILITY_POINTER) && pointer != NULL) {
+		cow_module_cursor_clear_pointer(&cursor, pointer);
+		wl_pointer_destroy(pointer);
+		pointer = NULL;
 	}
 }
 
@@ -1910,7 +1918,9 @@ reg_global(__unused void *d, struct wl_registry *reg, uint32_t name,
 			    &out_listener, NULL);
 			n_tracked++;
 		}
-	}
+	} else
+		cow_module_cursor_handle_global(&cursor, reg, name, iface,
+		    ver);
 }
 
 static void
@@ -2108,6 +2118,13 @@ main(int argc, char **argv)
 		xdg_surface_destroy(xdg_surface);
 	if (surface != NULL)
 		wl_surface_destroy(surface);
+	if (pointer != NULL) {
+		cow_module_cursor_clear_pointer(&cursor, pointer);
+		wl_pointer_destroy(pointer);
+	}
+	cow_module_cursor_fini(&cursor);
+	if (seat != NULL)
+		wl_seat_destroy(seat);
 	wl_display_disconnect(display);
 	return 0;
 }
