@@ -52,6 +52,23 @@ static int next_container_id;
 static void cow_view_icon_destroy(struct cow_view *);
 static void view_refit_maximized(struct cow_view *);
 
+static bool
+shade_uses_titlebar_axis(const struct cow_view *view, int direction)
+{
+	switch (view->cfg.titlebar.position) {
+	case COW_TITLEBAR_TOP:
+	case COW_TITLEBAR_BOTTOM:
+		return direction == COW_SHADE_NORTH ||
+		    direction == COW_SHADE_SOUTH;
+	case COW_TITLEBAR_LEFT:
+	case COW_TITLEBAR_RIGHT:
+		return direction == COW_SHADE_EAST ||
+		    direction == COW_SHADE_WEST;
+	default:
+		return false;
+	}
+}
+
 static int
 titlebar_button_vector_index(enum cow_view_cfg_option option)
 {
@@ -1885,9 +1902,13 @@ struct cow_box
 cow_view_frame_box_at(const struct cow_view *v, int x, int y)
 {
 	int frame_w, frame_h, content_x, content_y;
+	int cw = v->content_width;
+	int ch = v->content_height;
 
-	cow_titlebar_frame_geometry(v, v->content_width, v->content_height,
-	    &frame_w, &frame_h, &content_x, &content_y);
+	if (v->sd != COW_SHADE_NONE)
+		cow_view_shaded_content_size(v, v->sd, &cw, &ch);
+	cow_titlebar_frame_geometry(v, cw, ch, &frame_w, &frame_h,
+	    &content_x, &content_y);
 	return (struct cow_box) {
 		.x	= x - content_x,
 		.y	= y - content_y,
@@ -2091,6 +2112,17 @@ cow_view_shaded_content_size(const struct cow_view *view, int direction,
 		*ch = 0;
 		break;
 	}
+
+	if (!shade_uses_titlebar_axis(view, direction))
+		return;
+
+	struct cow_box tbr = cow_titlebar_squeezed_rect_for(view, sw, sh);
+	if (cow_titlebar_is_vertical(view->cfg.titlebar.position)) {
+		if (tbr.height > 0)
+			*ch = tbr.height;
+	} else if (tbr.width > 0) {
+		*cw = tbr.width;
+	}
 }
 
 static struct cow_box
@@ -2144,6 +2176,35 @@ view_place_for_shade_edge(struct cow_view *view, int direction,
 	default:
 		view->x = old_fb->x + content_x;
 		break;
+	}
+
+	if (shade_uses_titlebar_axis(view, direction)) {
+		int old_cw, old_ch;
+
+		if (view->sd != COW_SHADE_NONE) {
+			old_cw = view->shade_saved_width;
+			old_ch = view->shade_saved_height;
+		} else {
+			cow_view_shaded_content_size(view, direction, &old_cw,
+			    &old_ch);
+		}
+
+		struct cow_box old_tbr =
+		    cow_titlebar_squeezed_rect_for(view, old_cw, old_ch);
+		struct cow_box new_tbr =
+		    cow_titlebar_squeezed_rect_for(view, new_cw, new_ch);
+		int new_frame_x = view->x - content_x;
+		int new_frame_y = view->y - content_y;
+
+		if (cow_titlebar_is_vertical(view->cfg.titlebar.position)) {
+			int old_title_y = old_fb->y + old_tbr.y;
+			int new_title_y = new_frame_y + new_tbr.y;
+			view->y += old_title_y - new_title_y;
+		} else {
+			int old_title_x = old_fb->x + old_tbr.x;
+			int new_title_x = new_frame_x + new_tbr.x;
+			view->x += old_title_x - new_title_x;
+		}
 	}
 	cow_view_sync_vxy_from_global(view);
 }

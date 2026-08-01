@@ -828,44 +828,12 @@ cow_decoration_update(struct cow_view *view, bool active)
 	int bw	       = dec->border_width;
 	int tt	       = dec->title_thickness;
 
-	/* When shaded, use saved dimensions for frame size but zero content */
 	int  cw, ch;
 	bool shaded = (view->sd != COW_SHADE_NONE);
 
-	if (shaded) {
-		int sw = view->shade_saved_width;
-		int sh = view->shade_saved_height;
-
-		switch (view->sd) {
-		case COW_SHADE_NORTH:
-			cw = sw;
-			ch = 0;
-			break;
-		case COW_SHADE_SOUTH:
-			cw = sw;
-			ch = 0;
-			break;
-		case COW_SHADE_EAST:
-			cw = 0;
-			ch = sh;
-			break;
-		case COW_SHADE_WEST:
-			cw = 0;
-			ch = sh;
-			break;
-		case COW_SHADE_NW:
-		case COW_SHADE_NE:
-		case COW_SHADE_SW:
-		case COW_SHADE_SE:
-			cw = 0;
-			ch = 0;
-			break;
-		default:
-			cw = sw;
-			ch = 0;
-			break;
-		}
-	} else {
+	if (shaded)
+		cow_view_shaded_content_size(view, view->sd, &cw, &ch);
+	else {
 		cw = view->content_width;
 		ch = view->content_height;
 	}

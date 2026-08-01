@@ -159,6 +159,19 @@ snap_edges(struct cow_view *view, int *frame_left, int *frame_top,
 	}
 }
 
+static void
+pointer_op_frame_geometry(const struct cow_view *view, int *frame_w,
+    int *frame_h, int *content_x, int *content_y)
+{
+	int cw = view->content_width;
+	int ch = view->content_height;
+
+	if (view->sd != COW_SHADE_NONE)
+		cow_view_shaded_content_size(view, view->sd, &cw, &ch);
+	cow_titlebar_frame_geometry(view, cw, ch, frame_w, frame_h,
+	    content_x, content_y);
+}
+
 void
 cow_pointer_op_start_move(struct cow_seat *seat, struct cow_view *view)
 {
@@ -313,8 +326,8 @@ clamp_drag_to_screen(const struct cow_view *view, int *new_x, int *new_y)
 	int ow	    = view->output->width;
 	int oh	    = view->output->height;
 	int frame_w, frame_h, content_x, content_y;
-	cow_titlebar_frame_geometry(view, view->content_width,
-	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
+	pointer_op_frame_geometry(view, &frame_w, &frame_h, &content_x,
+	    &content_y);
 
 	struct cow_box nfb = cow_view_frame_box_at(view, *new_x, *new_y);
 	struct cow_box cfb = cow_view_frame_box(view);
@@ -567,9 +580,8 @@ cow_pointer_op_process(struct cow_seat *seat)
 			}
 		}
 		int frame_w, frame_h, content_x, content_y;
-		cow_titlebar_frame_geometry(view, view->content_width,
-		    view->content_height, &frame_w, &frame_h, &content_x,
-		    &content_y);
+		pointer_op_frame_geometry(view, &frame_w, &frame_h,
+		    &content_x, &content_y);
 
 		/*
 		 * Compute the view's new top-left from the cursor position

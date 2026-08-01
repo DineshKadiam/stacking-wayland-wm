@@ -209,6 +209,12 @@ apply_move(struct cow_view *view)
 static int
 move_content_width(const struct cow_view *view)
 {
+	if (view->sd != COW_SHADE_NONE) {
+		int cw, ch;
+
+		cow_view_shaded_content_size(view, view->sd, &cw, &ch);
+		return (cw);
+	}
 	return (view->pending_resize ? view->pending_width :
 	    view->content_width);
 }
@@ -216,6 +222,12 @@ move_content_width(const struct cow_view *view)
 static int
 move_content_height(const struct cow_view *view)
 {
+	if (view->sd != COW_SHADE_NONE) {
+		int cw, ch;
+
+		cow_view_shaded_content_size(view, view->sd, &cw, &ch);
+		return (ch);
+	}
 	return (view->pending_resize ? view->pending_height :
 	    view->content_height);
 }
