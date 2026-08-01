@@ -1022,6 +1022,10 @@ static struct cow_view *
 manage_focus_replacement_for_close(struct cow_seat *seat,
     struct cow_view *closing)
 {
+	if (closing->parent != NULL && closing->parent != closing &&
+	    manage_focus_replacement_candidate(closing->parent))
+		return (closing->parent);
+
 	if (seat->pointer_entered_view != NULL &&
 	    seat->pointer_entered_view != closing &&
 	    manage_focus_replacement_candidate(seat->pointer_entered_view))
