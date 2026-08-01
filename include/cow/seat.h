@@ -55,6 +55,7 @@ struct cow_seat {
 
 	/* The currently focused view (keyboard focus) */
 	struct cow_view *focused_view;
+	struct cow_view *previous_focused_view;
 	bool		 needs_refocus;
 
 	/* Pending sloppy focus (set on pointer_enter, applied in manage) */

@@ -837,6 +837,7 @@ manage_sloppy_focus(struct cow_seat *seat)
 		struct cow_view *view = seat->sloppy_focus_view;
 		river_seat_v1_focus_window(seat->river_seat,
 		    view->river_window);
+		seat->previous_focused_view = seat->focused_view;
 		seat->focused_view = view;
 		cow_wm.focused_view = view;
 		if (view->output != NULL)
@@ -1025,6 +1026,11 @@ manage_focus_replacement_for_close(struct cow_seat *seat,
 	if (closing->parent != NULL && closing->parent != closing &&
 	    manage_focus_replacement_candidate(closing->parent))
 		return (closing->parent);
+
+	if (seat->previous_focused_view != NULL &&
+	    seat->previous_focused_view != closing &&
+	    manage_focus_replacement_candidate(seat->previous_focused_view))
+		return (seat->previous_focused_view);
 
 	if (seat->pointer_entered_view != NULL &&
 	    seat->pointer_entered_view != closing &&
@@ -1276,6 +1282,8 @@ handle_wm_session_unlocked(__unused void    *data,
 		if (target != NULL) {
 			river_seat_v1_focus_window(seat->river_seat,
 			    target->river_window);
+			if (seat->focused_view != target)
+				seat->previous_focused_view = seat->focused_view;
 			seat->focused_view  = target;
 			cow_wm.focused_view = target;
 			if (target->output != NULL)
