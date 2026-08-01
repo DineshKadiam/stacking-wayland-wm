@@ -14,7 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,7 +25,6 @@
 
 #include "cow/cmd.h"
 #include "cow/cmd-filter.h"
-#include "cow/cmd_scan.h"
 #include "cow/compat.h"
 #include "cow/memory.h"
 #include "cow/output.h"
@@ -641,28 +639,5 @@ pick_session_seed_pointer(struct pick_session *s)
 static char *
 pick_command_string(struct args *args)
 {
-	char *cmd;
-
-	if (args->argc == 1 && args->argv[0][0] == '{')
-		cmd = xstrdup(args->argv[0]);
-	else
-		cmd = cmd_argv_to_command_string(args->argc, args->argv, 0);
-
-	if (args->argc != 1 || cmd[0] != '{')
-		return cmd;
-
-	size_t end;
-	if (cow_cmd_find_matching_brace(cmd, strlen(cmd), &end) !=
-	    COW_CMD_SCAN_COMPLETE)
-		return cmd;
-
-	for (size_t i = end + 1; cmd[i] != '\0'; i++) {
-		if (!isspace((unsigned char)cmd[i]))
-			return cmd;
-	}
-
-	char *body = xstrdup(cmd + 1);
-	body[end - 1] = '\0';
-	xfree(cmd);
-	return body;
+	return cmd_argv_to_command_string_or_body(args->argc, args->argv, 0);
 }

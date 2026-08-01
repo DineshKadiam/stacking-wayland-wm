@@ -22,6 +22,7 @@
 
 #include "cow/compat.h"
 #include "cow/cmd.h"
+#include "cow/cmd_scan.h"
 #include "cow/view.h"
 
 struct causelist cfg_causes;
@@ -230,6 +231,33 @@ cmd_argv_to_command_string(int argc, char **argv, int start)
 	}
 	*p = '\0';
 	return buf;
+}
+
+char *
+cmd_argv_to_command_string_or_body(int argc, char **argv, int start)
+{
+	char *cmd;
+	size_t end;
+
+	if (argc - start == 1 && argv[start][0] == '{')
+		cmd = xstrdup(argv[start]);
+	else
+		cmd = cmd_argv_to_command_string(argc, argv, start);
+
+	if (argc - start != 1 || cmd[0] != '{')
+		return cmd;
+	if (cow_cmd_find_matching_brace(cmd, strlen(cmd), &end) !=
+	    COW_CMD_SCAN_COMPLETE)
+		return cmd;
+	for (size_t i = end + 1; cmd[i] != '\0'; i++) {
+		if (!isspace((unsigned char)cmd[i]))
+			return cmd;
+	}
+
+	char *body = xstrdup(cmd + 1);
+	body[end - 1] = '\0';
+	xfree(cmd);
+	return body;
 }
 
 void

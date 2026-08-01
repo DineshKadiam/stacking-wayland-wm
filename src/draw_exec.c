@@ -15,7 +15,6 @@
  */
 #include "cow/draw_exec.h"
 
-#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -25,7 +24,6 @@
 
 #include "cow/cmd.h"
 #include "cow/cmd-filter.h"
-#include "cow/cmd_scan.h"
 #include "cow/compat.h"
 #include "cow/cow_box.h"
 #include "cow/memory.h"
@@ -71,7 +69,6 @@ static void draw_exec_draw(void);
 static void draw_exec_set_box_from_points(void);
 static void draw_exec_run_command(char *, struct cow_seat *,
     struct cow_output *);
-static char *draw_exec_command_string(const char *);
 static void draw_exec_clear_pending(void);
 
 bool
@@ -403,45 +400,10 @@ draw_exec_run_command(char *cmd_str, struct cow_seat *seat,
 	cmdq_free(cmdq);
 }
 
-static char *
-draw_exec_command_string(const char *cmd)
-{
-	char *copy = xstrdup(cmd);
-	size_t end;
-
-	if (copy[0] != '{')
-		return copy;
-	if (cow_cmd_find_matching_brace(copy, strlen(copy), &end) !=
-	    COW_CMD_SCAN_COMPLETE)
-		return copy;
-	for (size_t i = end + 1; copy[i] != '\0'; i++) {
-		if (!isspace((unsigned char)copy[i]))
-			return copy;
-	}
-
-	char *body = xstrdup(copy + 1);
-	body[end - 1] = '\0';
-	xfree(copy);
-	return body;
-}
-
 static void
 draw_exec_clear_pending(void)
 {
 	draw_exec.pending = false;
 	draw_exec.pending_expires = 0;
 	cmd_filter_free(&draw_exec.filter);
-}
-
-char *
-cow_draw_exec_make_command_string(int argc, char **argv)
-{
-	char *cmd;
-
-	if (argc == 1 && argv[0][0] == '{')
-		cmd = draw_exec_command_string(argv[0]);
-	else
-		cmd = cmd_argv_to_command_string(argc, argv, 0);
-
-	return cmd;
 }

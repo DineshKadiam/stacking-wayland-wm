@@ -69,7 +69,7 @@ cmd_draw_exec_exec(struct cmd *self, struct cmd_q *cmdq)
 		args_get(args, 'F')))
 		return CMD_RETURN_ERROR;
 
-	cmd_str = cow_draw_exec_make_command_string(args->argc, args->argv);
+	cmd_str = cmd_argv_to_command_string_or_body(args->argc, args->argv, 0);
 	if (!cow_draw_exec_begin(seat, cmd_str, &filter)) {
 		cmd_filter_free(&filter);
 		xfree(cmd_str);

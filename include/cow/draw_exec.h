@@ -28,6 +28,5 @@ void cow_draw_exec_finish(struct cow_seat *);
 void cow_draw_exec_cancel(void);
 bool cow_draw_exec_apply_pending(struct cow_view *);
 void cow_draw_exec_render(void);
-char *cow_draw_exec_make_command_string(int, char **);
 
 #endif /* COW_DRAW_EXEC_H */
