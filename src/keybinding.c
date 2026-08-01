@@ -395,8 +395,9 @@ action_exec_terminal(__unused void *arg)
  * Modifier and keysym string parsing
  * ================================================================ */
 
-static const char *
-parse_modifiers(const char *str, uint32_t *modifiers_out)
+static bool
+parse_modifiers(const char *str, uint32_t *modifiers_out,
+    const char **key_part_out)
 {
 	uint32_t    mods = 0;
 	const char *p	 = str;
@@ -412,6 +413,9 @@ parse_modifiers(const char *str, uint32_t *modifiers_out)
 		case 'A':
 			mods |= RIVER_SEAT_V1_MODIFIERS_MOD1;
 			break;
+		case 'M':
+			mods |= RIVER_SEAT_V1_MODIFIERS_MOD1;
+			break;
 		case 'C':
 			mods |= RIVER_SEAT_V1_MODIFIERS_CTRL;
 			break;
@@ -425,7 +429,7 @@ parse_modifiers(const char *str, uint32_t *modifiers_out)
 			    "cow: unknown modifier character '%c' in "
 			    "\"%s\"\n",
 			    *p, str);
-			break;
+			return false;
 		}
 		p++;
 	}
@@ -434,7 +438,8 @@ parse_modifiers(const char *str, uint32_t *modifiers_out)
 		p++;
 
 	*modifiers_out = mods;
-	return p;
+	*key_part_out = p;
+	return true;
 }
 
 static bool
@@ -442,7 +447,10 @@ parse_key_string(const char *str, xkb_keysym_t *keysym_out,
     uint32_t *modifiers_out)
 {
 	uint32_t    mods;
-	const char *key_part = parse_modifiers(str, &mods);
+	const char *key_part;
+
+	if (!parse_modifiers(str, &mods, &key_part))
+		return false;
 
 	xkb_keysym_t sym = xkb_keysym_from_name(key_part,
 	    XKB_KEYSYM_CASE_INSENSITIVE);
@@ -487,7 +495,10 @@ parse_mouse_string(const char *str, uint32_t *button_out,
     uint32_t *modifiers_out)
 {
 	uint32_t    mods;
-	const char *btn_part = parse_modifiers(str, &mods);
+	const char *btn_part;
+
+	if (!parse_modifiers(str, &mods, &btn_part))
+		return false;
 
 	uint32_t button = parse_button_name(btn_part);
 	if (button == 0) {

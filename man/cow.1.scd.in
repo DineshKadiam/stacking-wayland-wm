@@ -510,11 +510,14 @@ bind MODIFIERS-keycode command
 :  Control.
 |  *A*
 :  Alt (Mod1).
+|  *M*
+:  Meta (Mod1).
 |  *5*
 :  AltGr (Mod5).
 
 Modifiers are combined by concatenation: *LS* means Logo+Shift, *LCA* means
-Logo+Control+Alt. Use *0* to specify no modifier.
+Logo+Control+Alt, and *CM* means Control+Meta. Use *0* to specify no
+modifier.
 
 Key symbols and codes can be determined with *wev*(1).
 
