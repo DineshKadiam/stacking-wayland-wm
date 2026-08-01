@@ -97,6 +97,7 @@ do_reload(struct cmd_q *cmdq)
 		cmdq_error(cmdq, "quit -r: config load failed");
 		return;
 	}
+	cow_wm_cursor_hide_configure();
 
 	struct cow_seat *seat;
 	wl_list_for_each(seat, &cow_wm.seats, wm_link)

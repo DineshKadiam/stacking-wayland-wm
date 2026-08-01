@@ -547,6 +547,8 @@ pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 	(void)data;
 	(void)pointer;
 
+	cow_wm_note_cursor_focus(serial, true);
+
 	struct cow_menu_popup *mp = surface_to_menu_popup(surf);
 	if (mp != NULL) {
 		cow_wm.pointer_focus_menu = mp;
@@ -604,6 +606,8 @@ pointer_leave(void *data, struct wl_pointer *pointer, uint32_t serial,
 	(void)data;
 	(void)pointer;
 	(void)serial;
+
+	cow_wm_note_cursor_focus(0, false);
 
 	/* Leaving a menu popup surface: drop the focus pointer.  The
 	 * hover-update in cow_menu_process_input picks this up and

@@ -39,6 +39,8 @@ struct zwlr_layer_shell_v1;
 struct zwp_pointer_constraints_v1;
 struct wp_cursor_shape_manager_v1;
 struct wp_cursor_shape_device_v1;
+struct ext_idle_notifier_v1;
+struct ext_idle_notification_v1;
 struct wl_cursor_theme;
 struct river_xkb_bindings_v1;
 struct river_layer_shell_v1;
@@ -89,6 +91,11 @@ struct cow_wm {
 	struct wl_cursor_theme		  *wl_cursor_theme;
 	uint32_t			   wl_cursor_shape;
 	uint32_t			   wl_cursor_serial;
+	bool				   wl_pointer_has_focus;
+	bool				   wl_cursor_hidden;
+	struct ext_idle_notifier_v1	  *idle_notifier;
+	struct ext_idle_notification_v1  *idle_notification;
+	uint32_t			   idle_notifier_version;
 
 	/* Currently armed pan edge (at most one across all outputs). */
 	struct cow_output *pan_lock_output;
@@ -288,6 +295,10 @@ void cow_wm_request_manage_dirty(void);
 void cow_wm_ensure_cursor_shape_device(void);
 void cow_wm_set_cursor_shape(uint32_t, uint32_t);
 void cow_wm_reset_cursor_shape(uint32_t);
+void cow_wm_note_cursor_focus(uint32_t, bool);
+void cow_wm_set_cursor_hidden(bool);
+bool cow_wm_cursor_hidden(void);
+void cow_wm_cursor_hide_configure(void);
 
 /*
  * Request that the pointer be warped to (x, y) at the next manage

@@ -848,6 +848,12 @@ Window decoration keys are rejected by *set*; use *decor* for those.
 The specific keys/values for this command are detailed under relevant section in
 this man page.
 
+[[ *Key*
+:< *Description*
+|  *cursor.hide\_timeout* _milliseconds_
+:  Hide the pointer after the given period without input. A value of 0,
+   disables pointer hiding.  Default value is 0.
+
 # WINDOW COMMANDS
 
 The following detail commands which operate on windows directly.

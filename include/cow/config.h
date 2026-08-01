@@ -327,6 +327,9 @@ struct cow_config {
 	int repeat_delay_ms;
 	int repeat_interval_ms;
 
+	/* Pointer idle hiding.  Zero disables it. */
+	int cursor_hide_timeout;
+
 	/* Raise on focus: raise window when focused (default: on) */
 	bool raise_on_focus;
 

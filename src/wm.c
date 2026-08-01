@@ -55,6 +55,7 @@
 #include "cow/wm.h"
 
 #include "cursor-shape-v1-client-protocol.h"
+#include "ext-idle-notify-v1-client-protocol.h"
 
 #define COW_RESTART_ENV "COW_RESTARTING"
 #include "pointer-constraints-unstable-v1-client-protocol.h"
@@ -87,6 +88,7 @@ static void manage_destroy_removed(void);
 static void manage_tick_outputs(void);
 static void manage_configure_views(void);
 static void manage_process_seat(struct cow_seat *);
+static void manage_cursor_hide(struct cow_seat *);
 static void manage_apply_deferred_views(void);
 static void manage_apply_deferred_close(struct cow_view *);
 static void manage_apply_deferred_tiled_edges(struct cow_view *);
@@ -260,6 +262,26 @@ static const struct wl_seat_listener wl_seat_listener = {
 	.name	      = wl_seat_handle_name,
 };
 
+static void
+idle_notification_idled(__unused void *data,
+    __unused struct ext_idle_notification_v1 *notification)
+{
+	cow_wm_set_cursor_hidden(true);
+}
+
+static void
+idle_notification_resumed(__unused void *data,
+    __unused struct ext_idle_notification_v1 *notification)
+{
+	cow_wm_set_cursor_hidden(false);
+}
+
+static const struct ext_idle_notification_v1_listener
+idle_notification_listener = {
+	.idled = idle_notification_idled,
+	.resumed = idle_notification_resumed,
+};
+
 /*
  * Registry handler: bind river globals.
  */
@@ -302,6 +324,16 @@ registry_global(__unused void *data, struct wl_registry *registry,
 		    &wl_seat_interface, 5);
 		wl_seat_add_listener(cow_wm.wl_seat_raw, &wl_seat_listener,
 		    NULL);
+		if (cow_wm.running)
+			cow_wm_cursor_hide_configure();
+	} else if (strcmp(interface,
+		       ext_idle_notifier_v1_interface.name) == 0) {
+		cow_wm.idle_notifier_version = version < 2 ? version : 2;
+		cow_wm.idle_notifier = wl_registry_bind(registry, name,
+		    &ext_idle_notifier_v1_interface,
+		    cow_wm.idle_notifier_version);
+		if (cow_wm.running)
+			cow_wm_cursor_hide_configure();
 	} else if (strcmp(interface,
 		       zwp_pointer_constraints_v1_interface.name) == 0 &&
 	    version >= 1) {
@@ -863,6 +895,30 @@ manage_process_seat(struct cow_seat *seat)
 		drag_ghost_create(cow_wm.drag_drop_source);
 	manage_interacted_view(seat);
 	manage_sloppy_focus(seat);
+	manage_cursor_hide(seat);
+}
+
+static void
+manage_cursor_hide(struct cow_seat *seat)
+{
+	if (cow_wm.wl_cursor_hidden) {
+		if (!seat->cursor_hide_op_active && !seat->op_in_progress) {
+			river_seat_v1_op_start_pointer(seat->river_seat);
+			seat->cursor_hide_op_active = true;
+			seat->op_dx = 0;
+			seat->op_dy = 0;
+			seat->op_released = false;
+		}
+		return;
+	}
+
+	if (seat->cursor_hide_op_active) {
+		river_seat_v1_op_end(seat->river_seat);
+		seat->cursor_hide_op_active = false;
+		seat->op_dx = 0;
+		seat->op_dy = 0;
+		seat->op_released = false;
+	}
 }
 
 static void
@@ -1449,6 +1505,7 @@ cow_wm_init(void)
 	/* Initialise pan frames after globals are bound */
 	pan_frames_init();
 	cow_wm_ensure_cursor_shape_device();
+	cow_wm_cursor_hide_configure();
 
 	cow_wm.running	    = true;
 	cow_wm.exec_pending = true;
@@ -1508,6 +1565,10 @@ cow_wm_fini(void)
 		river_window_manager_v1_destroy(cow_wm.manager);
 	}
 	pan_frames_destroy_all();
+	if (cow_wm.idle_notification != NULL)
+		ext_idle_notification_v1_destroy(cow_wm.idle_notification);
+	if (cow_wm.idle_notifier != NULL)
+		ext_idle_notifier_v1_destroy(cow_wm.idle_notifier);
 
 	if (cow_wm.wl_cursor_shape_dev != NULL)
 		wp_cursor_shape_device_v1_destroy(
@@ -1858,12 +1919,27 @@ cow_wm_set_cursor_surface(uint32_t shape)
 }
 
 static void
+cow_wm_hide_cursor_surface(void)
+{
+	if (cow_wm.wl_pointer_raw == NULL)
+		return;
+
+	wl_pointer_set_cursor(cow_wm.wl_pointer_raw, cow_wm.wl_cursor_serial,
+	    NULL, 0, 0);
+}
+
+static void
 cow_wm_set_cursor_shape_internal(uint32_t shape, uint32_t serial, bool force)
 {
 	cow_wm_ensure_cursor_shape_device();
 	uint32_t old_serial = cow_wm.wl_cursor_serial;
 	if (serial != 0)
 		cow_wm.wl_cursor_serial = serial;
+	if (cow_wm.wl_cursor_hidden) {
+		cow_wm.wl_cursor_shape = shape;
+		cow_wm_hide_cursor_surface();
+		return;
+	}
 	if (!force && cow_wm.wl_cursor_shape == shape &&
 	    (serial == 0 || old_serial == cow_wm.wl_cursor_serial))
 		return;
@@ -1873,6 +1949,16 @@ cow_wm_set_cursor_shape_internal(uint32_t shape, uint32_t serial, bool force)
 		    cow_wm.wl_cursor_serial, shape);
 	cow_wm_set_cursor_surface(shape);
 	cow_wm.wl_cursor_shape = shape;
+}
+
+void
+cow_wm_note_cursor_focus(uint32_t serial, bool focused)
+{
+	cow_wm.wl_pointer_has_focus = focused;
+	if (serial != 0)
+		cow_wm.wl_cursor_serial = serial;
+	if (focused && cow_wm.wl_cursor_hidden)
+		cow_wm_hide_cursor_surface();
 }
 
 void
@@ -1886,6 +1972,60 @@ cow_wm_reset_cursor_shape(uint32_t serial)
 {
 	cow_wm_set_cursor_shape_internal(
 	    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT, serial, true);
+}
+
+void
+cow_wm_set_cursor_hidden(bool hidden)
+{
+	if (cow_wm.wl_cursor_hidden == hidden)
+		return;
+
+	cow_wm.wl_cursor_hidden = hidden;
+	if (hidden) {
+		cow_wm_hide_cursor_surface();
+	} else {
+		uint32_t shape = cow_wm.wl_cursor_shape != 0 ?
+		    cow_wm.wl_cursor_shape :
+		    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT;
+		cow_wm_set_cursor_shape_internal(shape, 0, true);
+	}
+	cow_wm_request_manage_dirty();
+}
+
+bool
+cow_wm_cursor_hidden(void)
+{
+	return cow_wm.wl_cursor_hidden;
+}
+
+void
+cow_wm_cursor_hide_configure(void)
+{
+	if (cow_wm.idle_notification != NULL) {
+		ext_idle_notification_v1_destroy(cow_wm.idle_notification);
+		cow_wm.idle_notification = NULL;
+	}
+
+	cow_wm_set_cursor_hidden(false);
+	if (cow_config == NULL || cow_config->cursor_hide_timeout == 0 ||
+	    cow_wm.idle_notifier == NULL || cow_wm.wl_seat_raw == NULL)
+		return;
+
+	if (cow_wm.idle_notifier_version >= 2) {
+		cow_wm.idle_notification =
+		    ext_idle_notifier_v1_get_input_idle_notification(
+			cow_wm.idle_notifier,
+			(uint32_t)cow_config->cursor_hide_timeout,
+			cow_wm.wl_seat_raw);
+	} else {
+		cow_wm.idle_notification =
+		    ext_idle_notifier_v1_get_idle_notification(
+			cow_wm.idle_notifier,
+			(uint32_t)cow_config->cursor_hide_timeout,
+			cow_wm.wl_seat_raw);
+	}
+	ext_idle_notification_v1_add_listener(cow_wm.idle_notification,
+	    &idle_notification_listener, NULL);
 }
 
 void

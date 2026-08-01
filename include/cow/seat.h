@@ -71,6 +71,7 @@ struct cow_seat {
 	/* Pointer operation state */
 	struct cow_pointer_op op;
 	bool		      op_in_progress;
+	bool		      cursor_hide_op_active;
 	int		      op_dx, op_dy;
 	bool		      op_released;
 

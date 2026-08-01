@@ -562,6 +562,9 @@ set_option_post_update(const struct cow_option_entry *opt)
 		pan_frames_update_all();
 	if ((opt->post & COW_OPTION_POST_REFRESH_VISUALS) != 0)
 		refresh_visuals();
+	if ((opt->post & COW_OPTION_POST_CURSOR_HIDE) != 0 &&
+	    !cow_ipc.startup_mode)
+		cow_wm_cursor_hide_configure();
 }
 
 static enum cmd_retval

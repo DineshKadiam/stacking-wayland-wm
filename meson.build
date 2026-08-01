@@ -317,6 +317,7 @@ generated = wl_mod.scan_xml(
     'protocol/pointer-constraints-unstable-v1.xml',
     'protocol/tablet-unstable-v2.xml',
     'protocol/cursor-shape-v1.xml',
+    wl_proto_dir / 'staging/ext-idle-notify/ext-idle-notify-v1.xml',
 )
 
 include_dirs = [

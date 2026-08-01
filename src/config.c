@@ -236,6 +236,7 @@ cow_config_create(void)
 	config->max_layer	     = COW_CFG_MAX_LAYER;
 	config->repeat_delay_ms	     = COW_CFG_DEFAULT_REPEAT_DELAY_MS;
 	config->repeat_interval_ms   = COW_CFG_DEFAULT_REPEAT_INTERVAL_MS;
+	config->cursor_hide_timeout  = 0;
 	config->icon_enabled	     = true;
 	config->icon_size	     = COW_CFG_DEFAULT_ICON_SIZE;
 	config->icon_image	     = xstrdup(COW_DATADIR "/icons/default.png");

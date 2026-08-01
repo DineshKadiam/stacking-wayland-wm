@@ -444,6 +444,18 @@ const struct cow_option_entry cow_options_table[] = {
 		.hi = 5000,
 	},
 	{
+		.name = "cursor.hide_timeout",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_GLOBAL,
+		.action = COW_OPTION_SCALAR_INT,
+		.config_offset = offsetof(struct cow_config,
+		    cursor_hide_timeout),
+		.view_offset = COW_OPTION_NO_OFFSET,
+		.lo = 0,
+		.hi = INT_MAX,
+		.post = COW_OPTION_POST_CURSOR_HIDE,
+	},
+	{
 		.name = "repeat_delay_ms",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_GLOBAL,

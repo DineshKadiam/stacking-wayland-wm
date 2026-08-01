@@ -165,6 +165,8 @@ seat_handle_op_delta(void *data, __unused struct river_seat_v1 *river_seat,
     int32_t dx, int32_t dy)
 {
 	struct cow_seat *seat = data;
+	if (seat->cursor_hide_op_active && (dx != 0 || dy != 0))
+		cow_wm_set_cursor_hidden(false);
 	seat->op_dx	      = dx;
 	seat->op_dy	      = dy;
 }
@@ -173,6 +175,8 @@ static void
 seat_handle_op_release(void *data, __unused struct river_seat_v1 *river_seat)
 {
 	struct cow_seat *seat = data;
+	if (seat->cursor_hide_op_active)
+		cow_wm_set_cursor_hidden(false);
 	seat->op_released     = true;
 }
 
