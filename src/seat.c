@@ -302,6 +302,25 @@ cow_seat_focus_view(struct cow_seat *seat, struct cow_view *view)
 	cow_status_emit();
 }
 
+void
+cow_seat_focus_view_no_raise(struct cow_seat *seat, struct cow_view *view)
+{
+	if (view == NULL || view->closed)
+		return;
+
+	river_seat_v1_focus_window(seat->river_seat, view->river_window);
+	if (seat->focused_view != view)
+		seat->previous_focused_view = seat->focused_view;
+	seat->focused_view  = view;
+	cow_wm.focused_view = view;
+	view->needs_raise   = false;
+
+	if (view->output != NULL)
+		cow_output_set_current(view->output);
+
+	cow_status_emit();
+}
+
 struct cow_seat *
 cow_seat_find(struct river_seat_v1 *river_seat)
 {

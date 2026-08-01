@@ -122,6 +122,7 @@ void cow_seat_destroy(struct cow_seat *);
  * Must be called during a manage sequence.
  */
 void cow_seat_focus_view(struct cow_seat *, struct cow_view *);
+void cow_seat_focus_view_no_raise(struct cow_seat *, struct cow_view *);
 
 /*
  * Find a seat by its river_seat_v1 pointer.

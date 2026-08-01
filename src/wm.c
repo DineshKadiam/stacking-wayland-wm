@@ -1055,7 +1055,7 @@ manage_prepare_focus_replacement(struct cow_view *closing)
 		if (replacement == NULL)
 			continue;
 
-		cow_seat_focus_view(seat, replacement);
+		cow_seat_focus_view_no_raise(seat, replacement);
 	}
 }
 
