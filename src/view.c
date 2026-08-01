@@ -30,6 +30,7 @@
 #include "cow/decoration.h"
 #include "cow/desk_ops.h"
 #include "cow/draw.h"
+#include "cow/draw_exec.h"
 #include "cow/gradient.h"
 #include "cow/image.h"
 #include "cow/keybinding.h"
@@ -1277,6 +1278,15 @@ view_compute_initial_placement(struct cow_view *view)
 
 	if (view->output == NULL)
 		return;
+
+	if (cow_draw_exec_apply_pending(view)) {
+		view_clamp_to_current_page(view);
+		if (view->pending_resize) {
+			view->pending_x = view->x;
+			view->pending_y = view->y;
+		}
+		return;
+	}
 
 	struct cow_seat *ps = cow_seat_first_with_pointer();
 	if (ps != NULL) {

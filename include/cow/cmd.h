@@ -217,6 +217,7 @@ extern struct cmd_entry cmd_mouse_entry;
 extern struct cmd_entry cmd_root_mouse_entry;
 extern struct cmd_entry cmd_nop_entry;
 extern struct cmd_entry cmd_rule_entry;
+extern struct cmd_entry cmd_draw_exec_entry;
 extern struct cmd_entry cmd_exec_entry;
 extern struct cmd_entry cmd_show_entry;
 extern struct cmd_entry cmd_quit_entry;

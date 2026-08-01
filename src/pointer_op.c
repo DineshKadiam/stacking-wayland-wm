@@ -20,6 +20,7 @@
 #include "cow/compat.h"
 #include "cow/config.h"
 #include "cow/desk_ops.h"
+#include "cow/draw_exec.h"
 #include "cow/geometry_window.h"
 #include "cow/memory.h"
 #include "cow/output.h"
@@ -275,6 +276,24 @@ cow_pointer_op_start_scroll(struct cow_seat *seat, struct cow_output *output,
 }
 
 void
+cow_pointer_op_start_draw_exec(struct cow_seat *seat)
+{
+	if (seat == NULL || seat->op_in_progress)
+		return;
+
+	seat->op.type	     = COW_POINTER_OP_DRAW_EXEC;
+	seat->op.view	     = NULL;
+	seat->op.start_x     = seat->has_pointer_position ? seat->pointer_x : 0;
+	seat->op.start_y     = seat->has_pointer_position ? seat->pointer_y : 0;
+	seat->op_in_progress = true;
+	seat->op_released    = false;
+	seat->op_dx	     = 0;
+	seat->op_dy	     = 0;
+
+	river_seat_v1_op_start_pointer(seat->river_seat);
+}
+
+void
 cow_pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
     uint32_t edges)
 {
@@ -513,6 +532,18 @@ cow_pointer_op_process(struct cow_seat *seat)
 			seat->op.type	       = COW_POINTER_OP_NONE;
 			seat->op.scroll_output = NULL;
 			cow_pan_cursor_hold_end();
+		}
+		return;
+	}
+
+	if (seat->op.type == COW_POINTER_OP_DRAW_EXEC) {
+		cow_draw_exec_update(seat);
+		if (seat->op_released) {
+			river_seat_v1_op_end(seat->river_seat);
+			seat->op_in_progress = false;
+			seat->op_released = false;
+			seat->op.type = COW_POINTER_OP_NONE;
+			cow_draw_exec_finish(seat);
 		}
 		return;
 	}
@@ -790,8 +821,8 @@ cow_pointer_op_process(struct cow_seat *seat)
 
 	case COW_POINTER_OP_NONE:
 	case COW_POINTER_OP_SCROLL_DRAG:
-		/* SCROLL_DRAG is handled in the early-return block at
-		 * the top of this function and never reaches here.
+	case COW_POINTER_OP_DRAW_EXEC:
+		/* View-less operations are handled above and never reach here.
 		 * Listed for completeness so -Wswitch stays clean. */
 		break;
 	}

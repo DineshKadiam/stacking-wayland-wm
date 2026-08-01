@@ -31,6 +31,7 @@
 #include "cow/command.h"
 #include "cow/config.h"
 #include "cow/event.h"
+#include "cow/draw_exec.h"
 #include "cow/geometry_window.h"
 #include "cow/ipc.h"
 #include "cow/keybinding.h"
@@ -1211,6 +1212,7 @@ handle_wm_render_start(__unused void *data,
 	render_views();
 	cow_stack_apply();
 	cow_geometry_window_render();
+	cow_draw_exec_render();
 	render_drag_ghost();
 	cow_menu_render_all();
 
@@ -1465,6 +1467,7 @@ cow_wm_fini(void)
 {
 	cow_menu_destroy_all();
 	cow_state_save();
+	cow_draw_exec_cancel();
 	cow_geometry_window_hide();
 
 	struct cow_view *view, *view_tmp;

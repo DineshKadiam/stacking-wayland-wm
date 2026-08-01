@@ -726,6 +726,23 @@ Defined rules can be seen with the *show* command.
 Execute a shell command. During configuration loading, *exec* commands are
 deferred until *cow* has fully connected to River.
 
+## draw-exec [-F expr] command ...
+
+Start an interactive pointer drag.  On button release, run _command_ and apply
+the drawn frame to the first newly mapped window which matches _expr_.  Without
+*-F*, the first newly mapped window consumes the frame.
+
+The command is parsed as a CoW command, so launching an application usually
+uses *exec*:
+
+```
+mouse M+left draw-exec exec foot
+mouse M+middle draw-exec -F 'self.app_id == "foot"' exec foot
+```
+
+If the command is a brace-delimited script block, the surrounding braces are
+removed before the block is evaluated.
+
 ## show [-F expr] [topic] [config key]
 
 Query window manager state. The response is a JSON object.
