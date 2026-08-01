@@ -475,6 +475,8 @@ titlebar_button_at(struct cow_view *view, int lx, int ly)
 	int r = l + (cow_titlebar_is_vertical(view->cfg.titlebar.position) ?
 			tbr.height :
 			tbr.width);
+	if (view->cfg.titlebar.position == COW_TITLEBAR_LEFT)
+		pos_coord = l + (r - 1 - pos_coord);
 
 	int pos = 0;
 	for (size_t i = 0; i < sizeof left_order / sizeof left_order[0]; i++) {
