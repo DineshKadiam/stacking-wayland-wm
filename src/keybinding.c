@@ -37,10 +37,6 @@
 #include "river-window-management-v1-client-protocol.h"
 #include "river-xkb-bindings-v1-client-protocol.h"
 
-/* ================================================================
- * xkb_binding_v1 event handlers
- * ================================================================ */
-
 static void
 xkb_binding_handle_pressed(void		 *data,
     __unused struct river_xkb_binding_v1 *river_binding)
@@ -101,10 +97,6 @@ static const struct river_xkb_binding_v1_listener xkb_binding_listener = {
 	.released    = xkb_binding_handle_released,
 	.stop_repeat = xkb_binding_handle_stop_repeat,
 };
-
-/* ================================================================
- * pointer_binding_v1 event handlers
- * ================================================================ */
 
 static void
 pointer_binding_handle_pressed(void	     *data,
@@ -391,10 +383,6 @@ action_exec_terminal(__unused void *arg)
 	cow_command_execute(term);
 }
 
-/* ================================================================
- * Modifier and keysym string parsing
- * ================================================================ */
-
 static bool
 parse_modifiers(const char *str, uint32_t *modifiers_out,
     const char **key_part_out)
@@ -411,8 +399,6 @@ parse_modifiers(const char *str, uint32_t *modifiers_out,
 			mods |= RIVER_SEAT_V1_MODIFIERS_SHIFT;
 			break;
 		case 'A':
-			mods |= RIVER_SEAT_V1_MODIFIERS_MOD1;
-			break;
 		case 'M':
 			mods |= RIVER_SEAT_V1_MODIFIERS_MOD1;
 			break;
@@ -511,10 +497,6 @@ parse_mouse_string(const char *str, uint32_t *button_out,
 	return true;
 }
 
-/* ================================================================
- * Action resolver
- * ================================================================ */
-
 bool
 cow_resolve_action(const char *action_str, cow_action_fn *fn_out,
     void **arg_out)
@@ -537,10 +519,6 @@ cow_resolve_action(const char *action_str, cow_action_fn *fn_out,
 	    action_str);
 	return false;
 }
-
-/* ================================================================
- * Config-driven binding registration
- * ================================================================ */
 
 static void
 register_config_keyboard_bindings(struct cow_seat *seat)

@@ -13,11 +13,6 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-/*
- * Command: draw-exec -- draw a frame before running a command.
- *
- * usage: draw-exec [-F expr] command ...
- */
 
 #include "cow/cmd.h"
 #include "cow/cmd-filter.h"
