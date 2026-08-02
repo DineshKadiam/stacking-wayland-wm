@@ -1841,6 +1841,17 @@ cow_view_set_maximized(struct cow_view *view, bool max)
 }
 
 void
+cow_view_set_pending_maximized_hint(struct cow_view *view, bool maximized)
+{
+	if (view == NULL)
+		return;
+
+	view->pending_maximized_hint = true;
+	view->pending_maximized_hint_value = maximized;
+	cow_wm_request_manage_dirty();
+}
+
+void
 cow_view_set_tiled_edges(struct cow_view *view, uint32_t edges)
 {
 	if (view == NULL)

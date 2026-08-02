@@ -313,6 +313,8 @@ struct cow_view {
 	uint32_t tiled_edges; /* river_window_v1 tiled edge hint */
 	bool pending_tiled_edges;
 	uint32_t pending_tiled_edges_value;
+	bool pending_maximized_hint;
+	bool pending_maximized_hint_value;
 	bool needs_raise; /* set during manage, applied in render */
 
 	/* Monotonic intra-layer z-order. */
@@ -429,6 +431,9 @@ void cow_view_save_geometry(struct cow_view *);
 
 /* Keep unified and per-axis maximized bits in sync. */
 void cow_view_set_maximized(struct cow_view *, bool);
+
+/* Set/clear the client's maximized state hint during the manage cycle. */
+void cow_view_set_pending_maximized_hint(struct cow_view *, bool);
 
 /* Set/clear the client's tiled edge hint. */
 void cow_view_set_tiled_edges(struct cow_view *, uint32_t);

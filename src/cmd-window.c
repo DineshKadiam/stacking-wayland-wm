@@ -70,8 +70,8 @@ static enum cmd_retval	    do_set_layer(struct cow_view *, const char *,
 static enum cmd_retval	    do_set_circulate_skip(struct cow_view *,
 	 const char *, struct cmd_q *);
 static void		    do_expand(struct cow_view *, enum expand_dir, bool);
-static void		    do_maximize(struct cow_view *, enum maximize_type,
-		    enum maximize_axis);
+static bool		    do_maximize(struct cow_view *, enum maximize_type,
+		    enum maximize_axis, struct cmd_q *);
 static void		    do_shade(struct cow_view *, const char *);
 static bool		    parse_tiled_edges(const char *, uint32_t *);
 static enum expand_dir	    resolve_direction(const char *);
@@ -278,14 +278,17 @@ cmd_window_maximize_exec(struct cmd *self, struct cmd_q *cmdq)
 	else
 		axis = MAX_AXIS_BOTH;
 
+	bool ok;
 	if (args_has(args, 'T'))
-		do_maximize(view, args_has(args, 'k') ? MAX_TOGGLE_KEEP :
-		    MAX_TOGGLE, axis);
+		ok = do_maximize(view, args_has(args, 'k') ? MAX_TOGGLE_KEEP :
+		    MAX_TOGGLE, axis, cmdq);
 	else if (args_has(args, 'u'))
-		do_maximize(view, UNMAXIMIZE, axis);
+		ok = do_maximize(view, UNMAXIMIZE, axis, cmdq);
 	else
-		do_maximize(view, args_has(args, 'k') ? MAXIMIZE_KEEP :
-		    MAXIMIZE, axis);
+		ok = do_maximize(view, args_has(args, 'k') ? MAXIMIZE_KEEP :
+		    MAXIMIZE, axis, cmdq);
+	if (!ok)
+		return (CMD_RETURN_ERROR);
 
 	cow_wm_request_manage_dirty();
 	view->dec.dirty = true;
@@ -466,12 +469,18 @@ maxaxis_to_restore(const struct cow_view *view, enum maximize_axis axis,
 	return *touch_h || *touch_v;
 }
 
-static void
+static bool
 do_maximize(struct cow_view *view, enum maximize_type mt,
-    enum maximize_axis axis)
+    enum maximize_axis axis, struct cmd_q *cmdq)
 {
-	if (view->output == NULL)
-		return;
+	if (view->output == NULL) {
+		cmdq_error(cmdq, "window-maximize: target window has no output");
+		return false;
+	}
+	if (view->river_window == NULL) {
+		cmdq_error(cmdq, "window-maximize: target window is not managed");
+		return false;
+	}
 
 	cow_view_clear_expanded_state(view);
 
@@ -508,15 +517,14 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 			view->maximized = view->maximized_h ||
 			    view->maximized_v;
 			if (!view->maximized) {
-				river_window_v1_inform_unmaximized(
-				    view->river_window);
+				cow_view_set_pending_maximized_hint(view, false);
 				view->icon_inverted_button = -1;
 			}
-			return;
+			return true;
 		}
 		/* Toggle with no restore state becomes maximize. */
 		if (mt == UNMAXIMIZE)
-			return;
+			return true;
 		if (mt == MAX_TOGGLE_KEEP)
 			mt = MAXIMIZE_KEEP;
 	}
@@ -566,11 +574,12 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 	if (axis == MAX_AXIS_BOTH || axis == MAX_AXIS_V)
 		view->maximized_v = true;
 	view->maximized = view->maximized_h || view->maximized_v;
-	river_window_v1_inform_maximized(view->river_window);
+	cow_view_set_pending_maximized_hint(view, true);
 
 	int mbi = cow_view_maximize_button_index(view);
 	if (mbi >= 0)
 		view->icon_inverted_button = mbi;
+	return true;
 }
 
 static uint32_t
@@ -760,7 +769,7 @@ do_expand(struct cow_view *view, enum expand_dir dir, bool toggle)
 		    new_h);
 	if (view->maximized) {
 		cow_view_set_maximized(view, false);
-		river_window_v1_inform_unmaximized(view->river_window);
+		cow_view_set_pending_maximized_hint(view, false);
 		view->icon_inverted_button = -1;
 		view->dec.dirty		   = true;
 	}

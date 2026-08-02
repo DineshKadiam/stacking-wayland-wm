@@ -90,6 +90,7 @@ static void manage_process_seat(struct cow_seat *);
 static void manage_apply_deferred_views(void);
 static void manage_apply_deferred_close(struct cow_view *);
 static void manage_apply_deferred_tiled_edges(struct cow_view *);
+static void manage_apply_deferred_maximized_hint(struct cow_view *);
 static void manage_apply_deferred_resize(struct cow_view *);
 static void manage_apply_deferred_position(struct cow_view *, bool);
 static void manage_apply_fullscreen_visibility(struct cow_view *);
@@ -872,6 +873,7 @@ manage_apply_deferred_views(void)
 	{
 		manage_apply_deferred_close(view);
 		manage_apply_deferred_tiled_edges(view);
+		manage_apply_deferred_maximized_hint(view);
 		manage_apply_deferred_resize(view);
 		manage_apply_fullscreen_visibility(view);
 	}
@@ -916,6 +918,21 @@ manage_apply_deferred_tiled_edges(struct cow_view *view)
 		    view->pending_tiled_edges_value);
 	view->tiled_edges = view->pending_tiled_edges_value;
 	view->pending_tiled_edges = false;
+}
+
+static void
+manage_apply_deferred_maximized_hint(struct cow_view *view)
+{
+	if (!view->pending_maximized_hint || view->closed)
+		return;
+
+	if (view->river_window != NULL) {
+		if (view->pending_maximized_hint_value)
+			river_window_v1_inform_maximized(view->river_window);
+		else
+			river_window_v1_inform_unmaximized(view->river_window);
+	}
+	view->pending_maximized_hint = false;
 }
 
 static void
