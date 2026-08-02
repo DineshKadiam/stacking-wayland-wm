@@ -141,6 +141,7 @@ struct popup_ext {
 };
 #define POPUP_EXT_MAX 16
 static struct popup_ext g_popup_ext[POPUP_EXT_MAX];
+static bool		g_hover_suppressed_until_pointer_moves;
 
 static struct popup_ext *
 ext_for(struct cow_menu_popup *p, bool create)
@@ -168,6 +169,15 @@ ext_release(struct cow_menu_popup *p)
 	struct popup_ext *e = ext_for(p, false);
 	if (e != NULL)
 		memset(e, 0, sizeof(*e));
+}
+
+static void
+hover_reset_all(void)
+{
+	for (int i = 0; i < POPUP_EXT_MAX; i++) {
+		g_popup_ext[i].hover_started_ms = 0;
+		g_popup_ext[i].hover_item	= -1;
+	}
 }
 
 static int
@@ -882,6 +892,8 @@ cow_menu_close_all(void)
 	cow_wm.menu_context_view = NULL;
 	cow_wm.menu_context_seat = NULL;
 	cow_wm.menu_nav_request	  = -1;
+	g_hover_suppressed_until_pointer_moves = false;
+	hover_reset_all();
 	cow_wm.needs_manage_dirty = true;
 }
 
@@ -911,6 +923,8 @@ cow_menu_popup_open(struct cow_menu *menu, int x, int y,
 		parent->child_item = parent->selected;
 		parent->needs_redraw = true;
 	} else {
+		g_hover_suppressed_until_pointer_moves = false;
+		hover_reset_all();
 		cow_wm.menu_context_view = context_view;
 		cow_wm.menu_context_seat = cow_wm.current_interaction_seat;
 	}
@@ -1215,6 +1229,8 @@ cow_menu_process_input(void)
 		last_px_x = px_x;
 		last_px_y = px_y;
 	}
+	if (pointer_moved)
+		g_hover_suppressed_until_pointer_moves = false;
 
 	struct cow_menu_popup *over = have ? popup_under(px_x, px_y) : NULL;
 
@@ -1246,7 +1262,8 @@ cow_menu_process_input(void)
 			popup_close_child_if_unrelated(popups[i], over);
 	}
 
-	if (over != NULL && over->selected >= 0) {
+	if (!g_hover_suppressed_until_pointer_moves && over != NULL &&
+	    over->selected >= 0) {
 		struct cow_menu_item *it  = item_at_index(over->def,
 		     over->selected);
 		struct popup_ext     *e	  = ext_for(over, true);
@@ -1346,6 +1363,9 @@ cow_menu_navigate(const char *direction)
 	struct cow_menu_popup *p = deepest_open();
 	if (p == NULL)
 		return;
+
+	g_hover_suppressed_until_pointer_moves = true;
+	hover_reset_all();
 
 	if (strcmp(direction, "up") == 0) {
 		nav_move(p, -1);
