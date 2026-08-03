@@ -103,10 +103,21 @@ cow_output_recompute_usable_area(struct cow_output *output)
 
 	output_apply_reserved_area(&output->usable_area);
 
-	return (old.x != output->usable_area.x ||
+	bool changed = (old.x != output->usable_area.x ||
 	    old.y != output->usable_area.y ||
 	    old.width != output->usable_area.width ||
 	    old.height != output->usable_area.height);
+	if (!changed)
+		return (false);
+
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (view->output == output)
+			cow_view_reflow_maximized(view);
+	}
+
+	return (true);
 }
 
 /*

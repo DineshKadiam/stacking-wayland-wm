@@ -2091,6 +2091,41 @@ cow_view_maximize(struct cow_view *view)
 }
 
 void
+cow_view_reflow_maximized(struct cow_view *view)
+{
+	if (view == NULL || !view->maximized || view->fullscreen ||
+	    view->output == NULL)
+		return;
+
+	struct cow_box *ua = &view->output->usable_area;
+	int frame_w, frame_h, content_x, content_y;
+	cow_titlebar_frame_geometry(view, view->content_width,
+	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
+
+	int x = view->x;
+	int y = view->y;
+	int w = view->content_width;
+	int h = view->content_height;
+	if (view->maximized_h) {
+		x = ua->x + content_x;
+		w = ua->width - (frame_w - view->content_width);
+	}
+	if (view->maximized_v) {
+		y = ua->y + content_y;
+		h = ua->height - (frame_h - view->content_height);
+	}
+	cow_clamp_dimensions(&w, &h);
+
+	if (x == view->x && y == view->y && w == view->content_width &&
+	    h == view->content_height)
+		return;
+
+	cow_view_set_pending_geometry(view, x, y, w, h);
+	if (view->container_member != NULL)
+		cow_view_sync_container_geometry(view, x, y, w, h);
+}
+
+void
 cow_view_unmaximize(struct cow_view *view)
 {
 	cow_view_clear_expanded_state(view);

@@ -493,6 +493,7 @@ struct cow_view *cow_view_walk(struct cow_view *, bool,
 int  cow_view_maximize_button_index(const struct cow_view *);
 void cow_view_maximize(struct cow_view *);
 void cow_view_unmaximize(struct cow_view *);
+void cow_view_reflow_maximized(struct cow_view *);
 
 /*
  * Shade/unshade a view.
