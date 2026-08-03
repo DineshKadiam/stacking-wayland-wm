@@ -408,7 +408,7 @@ do_centre(struct cow_view *view)
 static void
 do_screen(struct cow_view *view, const char *name, struct cmd_q *cmdq)
 {
-	struct cow_output *target = cow_output_find_by_name(name);
+	struct cow_output *target = cow_output_find_by_spec(name);
 	if (target == NULL) {
 		cmdq_error(cmdq, "move: unknown output: %s", name);
 		return;

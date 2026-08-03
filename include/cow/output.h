@@ -142,6 +142,7 @@ void cow_output_render_background(struct cow_output *);
 struct cow_output *cow_output_at(int, int);
 struct cow_output *cow_output_find(struct river_output_v1 *);
 struct cow_output *cow_output_find_by_name(const char *);
+struct cow_output *cow_output_find_by_spec(const char *);
 
 /* Bottom edge of the output union. */
 int cow_outputs_max_bottom(void);

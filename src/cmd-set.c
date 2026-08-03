@@ -1277,19 +1277,14 @@ set_output_colour(const char *key, const char *val, struct cmd_q *cmdq)
 			return (true);
 		}
 
-		struct cow_output *out;
-		wl_list_for_each(out, &cow_wm.outputs, wm_link)
-		{
-			if (out->name != NULL &&
-			    strcmp(out->name, oname) == 0) {
-				cow_config_set_output_background(cow_config,
-				    oname, c);
-				memcpy(out->bg_colour, c, sizeof(float) * 4);
-				out->has_bg_colour = true;
-				out->bg_dirty	   = true;
-				refresh_visuals();
-				return (true);
-			}
+		struct cow_output *out = cow_output_find_by_spec(oname);
+		if (out != NULL) {
+			cow_config_set_output_background(cow_config, oname, c);
+			memcpy(out->bg_colour, c, sizeof(float) * 4);
+			out->has_bg_colour = true;
+			out->bg_dirty	   = true;
+			refresh_visuals();
+			return (true);
 		}
 		cmdq_error(cmdq, "set: unknown output: %s", oname);
 		return (true);

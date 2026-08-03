@@ -476,13 +476,27 @@ cow_output_name_known(struct cow_output *output)
 static void
 output_apply_configured_background(struct cow_output *output)
 {
-	if (output == NULL || output->name == NULL)
-		return;
-	if (!cow_config_get_output_background(cow_config, output->name,
-		output->bg_colour))
+	if (output == NULL)
 		return;
 
-	output->has_bg_colour = true;
+	bool had_colour = output->has_bg_colour;
+	output->has_bg_colour = false;
+	if (output->name != NULL && cow_config_get_output_background(cow_config,
+		output->name, output->bg_colour)) {
+		output->has_bg_colour = true;
+	} else {
+		char number[32];
+		snprintf(number, sizeof(number), "@%d", output->number);
+		if (cow_config_get_output_background(cow_config, number,
+			output->bg_colour))
+			output->has_bg_colour = true;
+	}
+
+	if (had_colour && !output->has_bg_colour &&
+	    (cow_config == NULL || !cow_config->has_output_bg_colour)) {
+		output_background_destroy_resources(output);
+		return;
+	}
 	output->bg_dirty      = true;
 }
 
@@ -681,6 +695,29 @@ cow_output_find_by_name(const char *name)
 	return NULL;
 }
 
+struct cow_output *
+cow_output_find_by_spec(const char *spec)
+{
+	if (spec == NULL)
+		return NULL;
+
+	if (spec[0] == '@' && spec[1] >= '0' && spec[1] <= '9') {
+		const char *errstr;
+		long long   nr = strtonum(spec + 1, 1, INT_MAX, &errstr);
+		if (errstr == NULL) {
+			struct cow_output *output;
+			wl_list_for_each(output, &cow_wm.outputs, wm_link)
+			{
+				if ((long long)output->number == nr)
+					return output;
+			}
+		}
+		return NULL;
+	}
+
+	return cow_output_find_by_name(spec);
+}
+
 /*
  * Stable raster-scan compare for cow_outputs_renumber's qsort:
  *   primary key   = y  (smaller wins -> higher up the screen)
@@ -723,8 +760,10 @@ cow_outputs_renumber(void)
 		i++;
 	}
 	qsort(items, (size_t)n, sizeof(*items), renumber_cmp);
-	for (i = 0; i < n; i++)
+	for (i = 0; i < n; i++) {
 		items[i].output->number = i + 1;
+		output_apply_configured_background(items[i].output);
+	}
 	xfree(items);
 }
 

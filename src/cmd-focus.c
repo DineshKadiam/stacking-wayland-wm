@@ -528,7 +528,7 @@ do_screen(const char *name, struct cmd_q *cmdq)
 		return;
 	}
 
-	struct cow_output *target = cow_output_find_by_name(name);
+	struct cow_output *target = cow_output_find_by_spec(name);
 	if (target == NULL) {
 		cmdq_error(cmdq, "focus: unknown output: %s", name);
 		return;
