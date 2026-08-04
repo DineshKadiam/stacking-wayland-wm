@@ -85,7 +85,7 @@ invoked with the rest of its argv (with `#{expr}` interpolations
 expanded).  See the SCRIPTING section in cow(1) for full grammar
 and examples.
 
-## menu-add / menu-clear / menu-destroy / menu-show / menu-key
+## menu-add / menu-clear / menu-destroy / menu-show
 
 Define and operate popup menus.
 
@@ -103,10 +103,9 @@ Define and operate popup menus.
   menu context for selected item actions.  Use `popup-pick OTHER`
   for root-menu submenus that should stay visible before selecting a
   window target.
-* `menu-key DIRECTION` -- drive the open menu's keyboard navigation;
-  `DIRECTION` is `up`, `down`, `left`, `right`, `select`, or
-  `close`; a single alphanumeric argument activates the matching
-  explicit or automatic hotkey.
+
+An open menu takes keyboard focus and handles arrow keys, Enter, Escape,
+Backspace, and alphanumeric hotkeys directly.
 
 See the MENUS section in `cow(1)` for the full grammar, `menu-style`
 keys, and a worked example.

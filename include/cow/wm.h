@@ -144,19 +144,6 @@ struct cow_wm {
 	 */
 	struct cow_menu_popup *pointer_focus_menu;
 
-	/*
-	 * Pending menu-navigation keybinding state.  river only permits
-	 * binding enable/disable calls inside a manage sequence; the
-	 * menu code sets one of these flags from the open/close paths
-	 * (which may run from IPC outside any sequence) and the manage
-	 * hook flips the bindings then clears the flag.
-	 *
-	 *   0 = no action pending
-	 *   1 = enable (a menu just opened)
-	 *  -1 = disable (the last menu just closed)
-	 */
-	int menu_nav_request;
-
 	/* The "current" output and focused view */
 	struct cow_output *current_output;
 	struct cow_view	  *focused_view;

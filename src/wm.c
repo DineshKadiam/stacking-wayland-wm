@@ -395,11 +395,6 @@ handle_wm_manage_start(__unused void *data,
 	manage_tick_outputs();
 	manage_configure_views();
 
-	if (cow_wm.menu_nav_request != 0) {
-		cow_keybindings_set_menu_nav_enabled(
-		    cow_wm.menu_nav_request > 0);
-		cow_wm.menu_nav_request = 0;
-	}
 	if (cow_menu_is_open())
 		cow_menu_process_input();
 
@@ -1064,6 +1059,7 @@ manage_apply_dimension_bounds(struct cow_view *view)
 static void
 manage_apply_focus(void)
 {
+	cow_menu_apply_focus_restore();
 	manage_apply_pending_focus();
 	manage_apply_needs_focus();
 	manage_apply_seat_refocus();

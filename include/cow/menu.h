@@ -88,6 +88,8 @@ struct cow_menu {
 	uint32_t	       style_overrides;
 	struct wl_list       items; /* list of cow_menu_item */
 	struct wl_list       link;  /* in cow_wm.menus */
+	bool	       typeahead; /* letters search instead of activating hotkeys */
+	char	       typeahead_query[128];
 };
 
 struct cow_menu_popup {
@@ -157,6 +159,13 @@ struct cow_menu_popup *cow_menu_popup_open(struct cow_menu *menu, int x, int y,
     struct cow_view *context_view, struct cow_menu_popup *parent,
     bool centre_title_on_position);
 
+/* Open a root popup centred as a whole on the given position. */
+struct cow_menu_popup *cow_menu_popup_open_centered(struct cow_menu *, int,
+    int, struct cow_view *);
+
+/* Make alphanumeric menu navigation provide numbered/type-ahead selection. */
+void cow_menu_enable_typeahead(struct cow_menu *);
+
 /*
  * Close a single popup level (and recursively its child).
  */
@@ -166,6 +175,9 @@ void cow_menu_popup_close(struct cow_menu_popup *popup);
  * Close all open popups.
  */
 void cow_menu_close_all(void);
+
+/* Restore the window focus saved before the root menu took keyboard focus. */
+void cow_menu_apply_focus_restore(void);
 
 /*
  * Returns true if any menu popup is currently open.
@@ -184,12 +196,6 @@ bool cow_menu_process_input(void);
  * popup surfaces.
  */
 void cow_menu_render_all(void);
-
-/*
- * Keyboard navigation — called by the menu-key command.
- * direction is one of: "up", "down", "left", "right", "select", "close".
- */
-void cow_menu_navigate(const char *direction);
 
 /*
  * Re-render a single popup (e.g. after selection changes).

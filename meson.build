@@ -60,6 +60,7 @@ srcs = [
     'src/cmd-show.c',
     'src/cmd-string.c',
     'src/cmd-window.c',
+    'src/cmd-window-list.c',
     'src/cmd.c',
     'src/dsl-ast.c',
     'src/dsl-eval.c',

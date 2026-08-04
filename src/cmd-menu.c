@@ -214,30 +214,6 @@ struct cmd_entry cmd_menu_show_entry = {
 	0,
 };
 
-static enum cmd_retval
-cmd_menu_key_exec(struct cmd *self, struct cmd_q *cmdq)
-{
-	struct args *args = self->args;
-	if (args->argc < 1) {
-		cmdq_error(cmdq,
-		    "menu-key: usage: up|down|left|right|select|close");
-		return (CMD_RETURN_ERROR);
-	}
-	cow_menu_navigate(args->argv[0]);
-	cow_wm.needs_manage_dirty = true;
-	return (CMD_RETURN_NORMAL);
-}
-
-struct cmd_entry cmd_menu_key_entry = {
-	"menu-key",
-	"",
-	1,
-	1,
-	"menu-key DIRECTION",
-	cmd_menu_key_exec,
-	0,
-};
-
 static uint32_t
 menu_style_field(const char *key)
 {

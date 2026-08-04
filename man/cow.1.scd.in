@@ -1089,6 +1089,35 @@ Move keyboard focus.
 	in that layer.  Combine with *-n*/*-p* to walk only within
 	_N_.  Mutually exclusive with *-L*.
 
+## window-list [-w] [-F expr]
+
+Open a transient, centred list of managed windows.  Press *1* through *9*, or
+*0* for the tenth entry, to select immediately.  For longer lists use the arrow
+keys and Enter.  Typing letters performs an incremental, case-insensitive
+search over window titles and application IDs; Backspace removes the last
+search character.
+
+Selecting an entry closes the list, switches to its output, desk, and page,
+restores it if iconified, activates its container tab if necessary, and focuses
+it.
+
+*-F* _expr_
+	Only include windows matching the DSL expression.  *self* is bound to each
+	candidate window, as with *show -F* and *focus -F*.
+
+*-w*
+	Warp the pointer to the selected window.
+
+Examples:
+
+```
+bind L+w window-list
+bind LS+w "window-list -F 'self.current_output and self.current_desk'"
+```
+
+The popup takes keyboard focus while it is open, so no additional bindings are
+needed for these keys and normal keyboard input resumes when it closes.
+
 ## window-expand [-t target] [-d dir] [-T]
 
 Expand a window to fill available space between windows, or the whole monitor if
@@ -1541,11 +1570,9 @@ items with *menu-add*, then opened with *menu-show*.  Items may be
 	window-operation items target the right window even if focus drifts
 	during navigation.
 
-*menu-key* _DIRECTION_|_HOTKEY_
-	_DIRECTION_ is one of *up*, *down*, *left*, *right*, *select*, *close*;
-	a single alphanumeric _HOTKEY_ activates the matching item.  A no-op
-	when no menu is open, so the same keybinding can be left in place at
-	all times.
+Menus take keyboard focus while open.  Arrow keys navigate, Enter selects,
+Escape closes, and a menu item's alphanumeric hotkey activates it.  Backspace
+edits the search text in menus such as *window-list* which support type-ahead.
 
 Additionally, the *root-mouse* command can specify a binding to open a menu:
 
@@ -1677,15 +1704,7 @@ menu-add WindowOps  "Close"         "winops -c"
 menu-add RootMenu "Window Ops" "popup-pick WindowOps"
 root-mouse 0+left "menu-show RootMenu"
 
-# Arrow + Enter + Esc navigation while a menu is open.
-bind 0+Up     menu-key up
-bind 0+Down   menu-key down
-bind 0+Left   menu-key left
-bind 0+Right  menu-key right
-bind 0+Return menu-key select
-bind 0+Escape menu-key close
-bind 0+m      menu-key m
-bind 0+c      menu-key c
+# Arrow keys, Enter, Escape, and item hotkeys work while the menu is open.
 ```
 # DESKTOP / OUTPUT COMMANDS
 

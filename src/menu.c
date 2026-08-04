@@ -25,7 +25,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <time.h>
+#include <unistd.h>
+#include <xkbcommon/xkbcommon.h>
 
 #include "cow/border.h"
 #include "cow/cmd.h"
@@ -121,6 +124,147 @@ cow_menu_style_resolve(const struct cow_menu *menu, struct cow_menu_style *out)
 }
 
 static PangoFontDescription *g_font_desc;
+static struct wl_keyboard   *g_menu_keyboard;
+static struct xkb_keymap    *g_menu_keymap;
+static struct xkb_state     *g_menu_xkb_state;
+static bool		       g_menu_focus_requested;
+static bool		       g_menu_restore_pending;
+static struct cow_view      *g_menu_restore_view;
+
+static void menu_navigate(const char *);
+
+static void
+menu_keyboard_keymap(__unused void *data, __unused struct wl_keyboard *keyboard,
+    uint32_t format, int32_t fd, uint32_t size)
+{
+	if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) {
+		close(fd);
+		return;
+	}
+	char *map = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+	close(fd);
+	if (map == MAP_FAILED)
+		return;
+	struct xkb_context *ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+	if (ctx == NULL) {
+		munmap(map, size);
+		return;
+	}
+	struct xkb_keymap *keymap = xkb_keymap_new_from_string(ctx, map,
+	    XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
+	munmap(map, size);
+	xkb_context_unref(ctx);
+	if (keymap == NULL)
+		return;
+	if (g_menu_xkb_state != NULL)
+		xkb_state_unref(g_menu_xkb_state);
+	if (g_menu_keymap != NULL)
+		xkb_keymap_unref(g_menu_keymap);
+	g_menu_keymap = keymap;
+	g_menu_xkb_state = xkb_state_new(keymap);
+}
+
+static void
+menu_keyboard_enter(__unused void *data,
+    __unused struct wl_keyboard *keyboard, __unused uint32_t serial,
+    __unused struct wl_surface *surface, __unused struct wl_array *keys)
+{
+}
+
+static void
+menu_keyboard_leave(__unused void *data,
+    __unused struct wl_keyboard *keyboard, __unused uint32_t serial,
+    __unused struct wl_surface *surface)
+{
+}
+
+static void
+menu_keyboard_key(__unused void *data, __unused struct wl_keyboard *keyboard,
+    __unused uint32_t serial, __unused uint32_t time, uint32_t key,
+    uint32_t state)
+{
+	if (state != WL_KEYBOARD_KEY_STATE_PRESSED ||
+	    g_menu_xkb_state == NULL || !cow_menu_is_open())
+		return;
+	xkb_keysym_t sym = xkb_state_key_get_one_sym(g_menu_xkb_state, key + 8);
+	const char *direction = NULL;
+	switch (sym) {
+	case XKB_KEY_Up:
+		direction = "up";
+		break;
+	case XKB_KEY_Down:
+		direction = "down";
+		break;
+	case XKB_KEY_Left:
+		direction = "left";
+		break;
+	case XKB_KEY_Right:
+		direction = "right";
+		break;
+	case XKB_KEY_Return:
+	case XKB_KEY_KP_Enter:
+		direction = "select";
+		break;
+	case XKB_KEY_Escape:
+		direction = "close";
+		break;
+	case XKB_KEY_BackSpace:
+		direction = "backspace";
+		break;
+	default:
+		break;
+	}
+	if (direction != NULL) {
+		menu_navigate(direction);
+		return;
+	}
+	uint32_t ch = xkb_keysym_to_utf32(sym);
+	if (ch < 128 && isalnum((unsigned char)ch)) {
+		char text[2] = { (char)ch, '\0' };
+		menu_navigate(text);
+	}
+}
+
+static void
+menu_keyboard_modifiers(__unused void *data,
+    __unused struct wl_keyboard *keyboard, __unused uint32_t serial,
+    uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group)
+{
+	if (g_menu_xkb_state != NULL)
+		xkb_state_update_mask(g_menu_xkb_state, depressed, latched, locked,
+		    0, 0, group);
+}
+
+static void
+menu_keyboard_repeat_info(__unused void *data,
+    __unused struct wl_keyboard *keyboard, __unused int32_t rate,
+    __unused int32_t delay)
+{
+}
+
+static const struct wl_keyboard_listener menu_keyboard_listener = {
+	.keymap      = menu_keyboard_keymap,
+	.enter       = menu_keyboard_enter,
+	.leave       = menu_keyboard_leave,
+	.key         = menu_keyboard_key,
+	.modifiers   = menu_keyboard_modifiers,
+	.repeat_info = menu_keyboard_repeat_info,
+};
+
+static void
+menu_keyboard_destroy(void)
+{
+	if (g_menu_keyboard != NULL)
+		wl_keyboard_release(g_menu_keyboard);
+	if (g_menu_xkb_state != NULL)
+		xkb_state_unref(g_menu_xkb_state);
+	if (g_menu_keymap != NULL)
+		xkb_keymap_unref(g_menu_keymap);
+	g_menu_keyboard = NULL;
+	g_menu_xkb_state = NULL;
+	g_menu_keymap = NULL;
+	g_menu_focus_requested = false;
+}
 
 static PangoFontDescription *
 menu_font(void)
@@ -294,6 +438,8 @@ menu_auto_hotkey_for(const struct cow_menu *menu,
 	int explicit_key = label_explicit_hotkey(target->label);
 	if (explicit_key >= 0)
 		return (explicit_key);
+	if (menu->typeahead)
+		return (-1);
 
 	bool used[256] = { false };
 	struct cow_menu_item *it;
@@ -455,6 +601,7 @@ cow_menu_destroy_all(void)
 		    cow_menu_destroy(m);
 	}
 	cow_menu_close_all();
+	menu_keyboard_destroy();
 	if (g_font_desc != NULL) {
 		pango_font_description_free(g_font_desc);
 		g_font_desc = NULL;
@@ -476,6 +623,15 @@ cow_menu_item_add(struct cow_menu *menu, enum cow_menu_item_type type,
 	it->popup_pick_context	 = popup_pick_context;
 	wl_list_insert(menu->items.prev, &it->link);
 	return (it);
+}
+
+void
+cow_menu_enable_typeahead(struct cow_menu *menu)
+{
+	if (menu == NULL)
+		return;
+	menu->typeahead = true;
+	menu->typeahead_query[0] = '\0';
 }
 
 static int
@@ -831,6 +987,12 @@ popup_render(struct cow_menu_popup *p)
 			int  underline;
 			menu_label_resolve(p->def, it, label, sizeof(label),
 			    &underline);
+			if (p->def->typeahead &&
+			    p->def->typeahead_query[0] != '\0') {
+				snprintf(label, sizeof(label), "Search: %s",
+				    p->def->typeahead_query);
+				underline = -1;
+			}
 			render_text(cs, x + st->padding_x, y,
 			    innerw - st->padding_x * 2, rh - 2, label,
 			    underline,
@@ -988,10 +1150,25 @@ cow_menu_close_all(void)
 	}
 	cow_wm.menu_context_view = NULL;
 	cow_wm.menu_context_seat = NULL;
-	cow_wm.menu_nav_request	  = -1;
+	menu_keyboard_destroy();
+	g_menu_restore_pending = true;
 	g_hover_suppressed_until_pointer_moves = false;
 	hover_reset_all();
 	cow_wm.needs_manage_dirty = true;
+}
+
+void
+cow_menu_apply_focus_restore(void)
+{
+	if (!g_menu_restore_pending || cow_menu_is_open())
+		return;
+	g_menu_restore_pending = false;
+	struct cow_seat *seat = cow_seat_primary();
+	if (cow_wm.pending_focus == NULL && g_menu_restore_view != NULL &&
+	    !g_menu_restore_view->closed &&
+	    cow_wm.focused_view == g_menu_restore_view && seat != NULL)
+		cow_seat_focus_view_no_raise(seat, g_menu_restore_view);
+	g_menu_restore_view = NULL;
 }
 
 bool
@@ -1024,6 +1201,11 @@ cow_menu_popup_open(struct cow_menu *menu, int x, int y,
 		hover_reset_all();
 		cow_wm.menu_context_view = context_view;
 		cow_wm.menu_context_seat = cow_wm.current_interaction_seat;
+		if (cow_wm.menu_context_seat == NULL)
+			cow_wm.menu_context_seat = cow_seat_primary();
+		g_menu_restore_view = cow_wm.focused_view;
+		g_menu_restore_pending = false;
+		g_menu_focus_requested = false;
 	}
 
 	popup_layout(p);
@@ -1041,9 +1223,39 @@ cow_menu_popup_open(struct cow_menu *menu, int x, int y,
 
 	p->needs_create		  = true;
 	cow_wm.needs_manage_dirty = true;
-	if (parent == NULL)
-		cow_wm.menu_nav_request = 1;
 
+	return (p);
+}
+
+struct cow_menu_popup *
+cow_menu_popup_open_centered(struct cow_menu *menu, int cx, int cy,
+    struct cow_view *context_view)
+{
+	if (menu == NULL)
+		return (NULL);
+	struct cow_menu_popup *p = popup_alloc(menu);
+	g_hover_suppressed_until_pointer_moves = false;
+	hover_reset_all();
+	cow_wm.menu_context_view = context_view;
+	cow_wm.menu_context_seat = cow_wm.current_interaction_seat;
+	if (cow_wm.menu_context_seat == NULL)
+		cow_wm.menu_context_seat = cow_seat_primary();
+	g_menu_restore_view = cow_wm.focused_view;
+	g_menu_restore_pending = false;
+	g_menu_focus_requested = false;
+	menu->typeahead_query[0] = '\0';
+
+	popup_layout(p);
+	int x = cx - p->width / 2;
+	int y = cy - p->height / 2;
+	popup_fit_to_output(p, &x, &y, NULL);
+	p->x = x;
+	p->y = y;
+
+	wl_list_insert(cow_wm.open_menus.prev, &p->link);
+	(void)ext_for(p, true);
+	p->needs_create = true;
+	cow_wm.needs_manage_dirty = true;
 	return (p);
 }
 
@@ -1077,6 +1289,8 @@ popup_materialise(struct cow_menu_popup *p)
 	wl_surface_commit(p->surface);
 	p->buffer->busy = true;
 	p->committed	= true;
+	if (p->parent == NULL)
+		cow_wm_request_manage_dirty();
 }
 
 static void
@@ -1370,6 +1584,22 @@ cow_menu_process_input(void)
 	if (!cow_menu_is_open())
 		return (false);
 
+	struct cow_menu_popup *root = wl_container_of(cow_wm.open_menus.next,
+	    root, link);
+	if (!g_menu_focus_requested && root->shell_surface != NULL &&
+	    cow_wm.menu_context_seat != NULL) {
+		if (g_menu_keyboard == NULL && cow_wm.wl_seat_raw != NULL &&
+		    cow_wm.wl_seat_has_keyboard) {
+			g_menu_keyboard = wl_seat_get_keyboard(cow_wm.wl_seat_raw);
+			if (g_menu_keyboard != NULL)
+				wl_keyboard_add_listener(g_menu_keyboard,
+				    &menu_keyboard_listener, NULL);
+		}
+		river_seat_v1_focus_shell_surface(
+		    cow_wm.menu_context_seat->river_seat, root->shell_surface);
+		g_menu_focus_requested = true;
+	}
+
 	int		 px_x	 = 0;
 	int		 px_y	 = 0;
 	bool		 have	 = false;
@@ -1518,8 +1748,71 @@ nav_hotkey(struct cow_menu_popup *p, int key)
 	return (false);
 }
 
-void
-cow_menu_navigate(const char *direction)
+static bool
+label_contains_folded(const char *label, const char *query)
+{
+	if (label == NULL || query == NULL)
+		return (false);
+	if (*query == '\0')
+		return (true);
+	for (const char *start = label; *start != '\0'; start++) {
+		const char *s = start;
+		const char *q = query;
+		while (*s != '\0' && *q != '\0') {
+			if (*s == '&' && s[1] != '\0')
+				s++;
+			if (hotkey_fold((unsigned char)*s) !=
+			    hotkey_fold((unsigned char)*q))
+				break;
+			s++;
+			q++;
+		}
+		if (*q == '\0')
+			return (true);
+	}
+	return (false);
+}
+
+static void
+nav_typeahead_match(struct cow_menu_popup *p)
+{
+	int idx = 0;
+	struct cow_menu_item *it;
+	wl_list_for_each(it, &p->def->items, link)
+	{
+		if (item_selectable(it) &&
+		    label_contains_folded(it->label, p->def->typeahead_query)) {
+			p->selected = idx;
+			cow_menu_popup_redraw(p);
+			return;
+		}
+		idx++;
+	}
+	p->selected = -1;
+	cow_menu_popup_redraw(p);
+}
+
+static bool
+nav_number(struct cow_menu_popup *p, int key)
+{
+	int wanted = key == '0' ? 10 : key - '0';
+	int number = 0;
+	int idx = 0;
+	struct cow_menu_item *it;
+	wl_list_for_each(it, &p->def->items, link)
+	{
+		if (item_selectable(it) && ++number == wanted) {
+			p->selected = idx;
+			dispatch_item(p, it);
+			return (true);
+		}
+		idx++;
+	}
+	return (false);
+}
+
+static void
+menu_navigate(const char *direction)
 {
 	if (!cow_menu_is_open() || direction == NULL)
 		return;
@@ -1547,7 +1840,24 @@ cow_menu_navigate(const char *direction)
 			dispatch_item(p, it);
 	} else if (strcmp(direction, "close") == 0) {
 		cow_menu_close_all();
+	} else if (p->def->typeahead && strcmp(direction, "backspace") == 0) {
+		size_t len = strlen(p->def->typeahead_query);
+		if (len > 0)
+			p->def->typeahead_query[len - 1] = '\0';
+		nav_typeahead_match(p);
 	} else if (direction[0] != '\0' && direction[1] == '\0') {
-		(void)nav_hotkey(p, hotkey_fold((unsigned char)direction[0]));
+		int key = hotkey_fold((unsigned char)direction[0]);
+		if (p->def->typeahead && isdigit((unsigned char)key)) {
+			(void)nav_number(p, key);
+		} else if (p->def->typeahead && isalnum((unsigned char)key)) {
+			size_t len = strlen(p->def->typeahead_query);
+			if (len + 1 < sizeof(p->def->typeahead_query)) {
+				p->def->typeahead_query[len] = (char)key;
+				p->def->typeahead_query[len + 1] = '\0';
+			}
+			nav_typeahead_match(p);
+		} else {
+			(void)nav_hotkey(p, key);
+		}
 	}
 }
