@@ -1119,9 +1119,9 @@ it.
 	- *%l*: window layer
 	- *%%*: a literal percent sign
 
-	Without *-f*, the adaptive numbered title-and-application label is used.
-	Type-ahead searches the resulting formatted label, so omitted fields are
-	not included in searches.
+	Without *-f*, the default is *%o:%d %a - %T* (output, desk, application ID,
+	and raw window title).  Type-ahead searches the resulting formatted label,
+	so omitted fields are not included in searches.
 
 *-w*
 	Warp the pointer to the selected window.

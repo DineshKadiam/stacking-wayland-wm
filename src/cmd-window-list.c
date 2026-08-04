@@ -32,6 +32,7 @@
 #include "cow/wm.h"
 
 #define WINDOW_LIST_MENU "\037cow-window-list"
+#define WINDOW_LIST_DEFAULT_FORMAT "%o:%d %a - %T"
 
 static enum cmd_retval cmd_window_list_exec(struct cmd *, struct cmd_q *);
 
@@ -191,23 +192,6 @@ format_label(const char *format, const struct cow_view *view, int number)
 	return (ctx.buf);
 }
 
-/* Menu labels use '&' as markup, so quote literal ampersands in titles. */
-static char *
-escape_label(const char *src)
-{
-	if (src == NULL)
-		return (xstrdup(""));
-	size_t len = strlen(src);
-	char  *dst = xcalloc(len * 2 + 1, 1);
-	char  *d   = dst;
-	for (const char *s = src; *s != '\0'; s++) {
-		*d++ = *s;
-		if (*s == '&')
-			*d++ = '&';
-	}
-	return (dst);
-}
-
 static bool
 select_window(const char *id, bool warp, struct cmd_q *cmdq)
 {
@@ -243,14 +227,14 @@ static enum cmd_retval
 show_window_list(const char *filter_expr, const char *format, bool warp,
     struct cmd_q *cmdq)
 {
-	if (format != NULL) {
-		char *cause = NULL;
-		if (!cow_format_parse(format, "ntTaioOdDxywhl", true, NULL,
-			NULL, NULL, &cause)) {
-			cmdq_error(cmdq, "window-list: %s", cause);
-			xfree(cause);
-			return (CMD_RETURN_ERROR);
-		}
+	if (format == NULL)
+		format = WINDOW_LIST_DEFAULT_FORMAT;
+	char *cause = NULL;
+	if (!cow_format_parse(format, "ntTaioOdDxywhl", true, NULL, NULL, NULL,
+		&cause)) {
+		cmdq_error(cmdq, "window-list: %s", cause);
+		xfree(cause);
+		return (CMD_RETURN_ERROR);
 	}
 
 	struct cmd_filter filter;
@@ -284,38 +268,7 @@ show_window_list(const char *filter_expr, const char *format, bool warp,
 			continue;
 
 		number++;
-		char *label;
-		if (format != NULL) {
-			label = format_label(format, view, number);
-		} else {
-			char	   *title = cow_decoration_display_title(view);
-			const char *shown = title != NULL && title[0] != '\0' ?
-			    title :
-			    view->title != NULL && view->title[0] != '\0' ?
-			    view->title :
-			    view->app_id != NULL && view->app_id[0] != '\0' ?
-			    view->app_id :
-			    "(untitled)";
-			char	   *safe_title = escape_label(shown);
-			char	   *safe_app   = escape_label(view->app_id);
-			char	    prefix[32];
-			if (number < 10)
-				snprintf(prefix, sizeof(prefix), "&%d", number);
-			else if (number == 10)
-				strlcpy(prefix, "&0", sizeof(prefix));
-			else
-				snprintf(prefix, sizeof(prefix), "%d", number);
-
-			if (safe_app[0] != '\0' &&
-			    strcmp(shown, view->app_id) != 0)
-				xasprintf(&label, "%s  %s  [%s]", prefix,
-				    safe_title, safe_app);
-			else
-				xasprintf(&label, "%s  %s", prefix, safe_title);
-			xfree(safe_app);
-			xfree(safe_title);
-			xfree(title);
-		}
+		char *label = format_label(format, view, number);
 		char *action;
 		xasprintf(&action, "window-list -s %s%s", view->identifier,
 		    warp ? " -w" : "");
