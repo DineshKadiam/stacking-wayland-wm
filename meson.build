@@ -1,7 +1,7 @@
 project(
     'cow',
     'c',
-    license: 'GPL-3.0-or-later',
+    license: 'ISC',
     default_options: ['c_std=c99', 'warning_level=2', 'werror=false'],
     version: run_command('./tools/cow-version-str.sh',
         check: false
@@ -156,10 +156,6 @@ add_project_arguments(
 if hostsys == 'linux'
     add_project_arguments('-D_POSIX_C_SOURCE=200809L', language: 'c')
 endif
-
-# ----------------------------------------------------------------------
-# Feature probes -> include/cow/build_config.h
-# ----------------------------------------------------------------------
 
 # libbsd provides bsd/*.h on Linux (strlcpy, strtonum, fparseln, queue.h,
 # tree.h, libutil.h, etc.).  Optional: a BSD host provides these natively.
