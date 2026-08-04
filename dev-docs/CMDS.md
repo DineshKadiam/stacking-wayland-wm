@@ -73,6 +73,7 @@ windows, `-w` warps to the selection, and `-f format` controls each menu label.
 The format conversions expose the entry number (`%n`), displayed/raw title
 (`%t`/`%T`), app ID (`%a`), identifier (`%i`), output (`%o`/`%O`), desk
 (`%d`/`%D`), geometry (`%x`, `%y`, `%w`, `%h`), and layer (`%l`).
+`-S none|title|app|id|output|desk|location` controls stable list ordering.
 
 ## set
 

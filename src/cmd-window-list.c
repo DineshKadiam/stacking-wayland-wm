@@ -18,6 +18,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 #include "cow/cmd.h"
 #include "cow/cmd-filter.h"
@@ -38,12 +39,26 @@ static enum cmd_retval cmd_window_list_exec(struct cmd *, struct cmd_q *);
 
 struct cmd_entry cmd_window_list_entry = {
 	"window-list",
-	"F:f:s:w",
+	"F:S:f:s:w",
 	0,
 	0,
-	"window-list [-w] [-F expr] [-f format]",
+	"window-list [-w] [-F expr] [-f format] [-S sort]",
 	cmd_window_list_exec,
 	0,
+};
+
+enum window_list_sort {
+	WINDOW_LIST_SORT_NONE,
+	WINDOW_LIST_SORT_TITLE,
+	WINDOW_LIST_SORT_APP,
+	WINDOW_LIST_SORT_ID,
+	WINDOW_LIST_SORT_OUTPUT,
+	WINDOW_LIST_SORT_DESK,
+	WINDOW_LIST_SORT_LOCATION,
+};
+
+struct window_list_entry {
+	struct cow_view *view;
 };
 
 struct window_list_format_ctx {
@@ -113,8 +128,8 @@ window_list_display_title(const struct window_list_format_ctx *ctx)
 static void
 window_list_format_conversion(void *data, char conversion)
 {
-	struct window_list_format_ctx *ctx = data;
-	const struct cow_view *view = ctx->view;
+	struct window_list_format_ctx *ctx  = data;
+	const struct cow_view	      *view = ctx->view;
 
 	switch (conversion) {
 	case 'n': {
@@ -193,6 +208,94 @@ format_label(const char *format, const struct cow_view *view, int number)
 }
 
 static bool
+parse_sort(const char *value, enum window_list_sort *sort, struct cmd_q *cmdq)
+{
+	if (value == NULL || strcmp(value, "none") == 0)
+		*sort = WINDOW_LIST_SORT_NONE;
+	else if (strcmp(value, "title") == 0)
+		*sort = WINDOW_LIST_SORT_TITLE;
+	else if (strcmp(value, "app") == 0)
+		*sort = WINDOW_LIST_SORT_APP;
+	else if (strcmp(value, "id") == 0)
+		*sort = WINDOW_LIST_SORT_ID;
+	else if (strcmp(value, "output") == 0)
+		*sort = WINDOW_LIST_SORT_OUTPUT;
+	else if (strcmp(value, "desk") == 0)
+		*sort = WINDOW_LIST_SORT_DESK;
+	else if (strcmp(value, "location") == 0)
+		*sort = WINDOW_LIST_SORT_LOCATION;
+	else {
+		cmdq_error(cmdq, "window-list: invalid sort: %s", value);
+		return (false);
+	}
+	return (true);
+}
+
+static int
+compare_text(const char *a, const char *b)
+{
+	return (strcasecmp(a != NULL ? a : "", b != NULL ? b : ""));
+}
+
+static int
+compare_number(int a, int b)
+{
+	return (a > b) - (a < b);
+}
+
+static int
+compare_views(const struct cow_view *a, const struct cow_view *b,
+    enum window_list_sort sort)
+{
+	int cmp;
+
+	switch (sort) {
+	case WINDOW_LIST_SORT_TITLE:
+		return (compare_text(a->title, b->title));
+	case WINDOW_LIST_SORT_APP:
+		return (compare_text(a->app_id, b->app_id));
+	case WINDOW_LIST_SORT_ID:
+		return (compare_text(a->identifier, b->identifier));
+	case WINDOW_LIST_SORT_OUTPUT:
+		return (
+		    compare_number(a->output != NULL ? a->output->number : 0,
+			b->output != NULL ? b->output->number : 0));
+	case WINDOW_LIST_SORT_DESK:
+		return (compare_number(a->desk != NULL ? a->desk->nr : -1,
+		    b->desk != NULL ? b->desk->nr : -1));
+	case WINDOW_LIST_SORT_LOCATION:
+		cmp = compare_views(a, b, WINDOW_LIST_SORT_OUTPUT);
+		if (cmp == 0)
+			cmp = compare_views(a, b, WINDOW_LIST_SORT_DESK);
+		if (cmp == 0)
+			cmp = compare_views(a, b, WINDOW_LIST_SORT_APP);
+		if (cmp == 0)
+			cmp = compare_views(a, b, WINDOW_LIST_SORT_TITLE);
+		return (cmp);
+	case WINDOW_LIST_SORT_NONE:
+		return (0);
+	}
+	return (0);
+}
+
+static void
+sort_entries(struct window_list_entry *entries, size_t count,
+    enum window_list_sort sort)
+{
+	/* Insertion sort preserves CoW's order among equal keys. */
+	for (size_t i = 1; i < count; i++) {
+		struct window_list_entry entry = entries[i];
+		size_t			 j     = i;
+		while (j > 0 &&
+		    compare_views(entries[j - 1].view, entry.view, sort) > 0) {
+			entries[j] = entries[j - 1];
+			j--;
+		}
+		entries[j] = entry;
+	}
+}
+
+static bool
 select_window(const char *id, bool warp, struct cmd_q *cmdq)
 {
 	struct cow_view *view = cow_view_find_by_identifier(id);
@@ -224,9 +327,12 @@ select_window(const char *id, bool warp, struct cmd_q *cmdq)
 }
 
 static enum cmd_retval
-show_window_list(const char *filter_expr, const char *format, bool warp,
-    struct cmd_q *cmdq)
+show_window_list(const char *filter_expr, const char *format,
+    const char *sort_value, bool warp, struct cmd_q *cmdq)
 {
+	enum window_list_sort sort;
+	if (!parse_sort(sort_value, &sort, cmdq))
+		return (CMD_RETURN_ERROR);
 	if (format == NULL)
 		format = WINDOW_LIST_DEFAULT_FORMAT;
 	char *cause = NULL;
@@ -241,21 +347,9 @@ show_window_list(const char *filter_expr, const char *format, bool warp,
 	if (!cmd_filter_parse(&filter, cmdq, "window-list", "-F", filter_expr))
 		return (CMD_RETURN_ERROR);
 
-	struct cow_menu *old = cow_menu_find(WINDOW_LIST_MENU);
-	if (old != NULL)
-		cow_menu_destroy(old);
-	struct cow_menu *menu = cow_menu_create(WINDOW_LIST_MENU);
-	if (menu == NULL) {
-		cmd_filter_free(&filter);
-		cmdq_error(cmdq, "window-list: cannot create menu");
-		return (CMD_RETURN_ERROR);
-	}
-	cow_menu_enable_typeahead(menu);
-	cow_menu_item_add(menu, COW_MENU_ITEM_TITLE,
-	    "Window List (type to search)", NULL, false, false);
-
-	int		 number = 0;
-	struct cow_view *view;
+	struct window_list_entry *entries = NULL;
+	size_t			  count	  = 0;
+	struct cow_view		 *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
 		if (view->closed || !view->has_dimensions ||
@@ -267,8 +361,40 @@ show_window_list(const char *filter_expr, const char *format, bool warp,
 		if (!matches)
 			continue;
 
-		number++;
-		char *label = format_label(format, view, number);
+		entries = xrealloc(entries, count + 1, sizeof(*entries));
+		entries[count++].view = view;
+	}
+
+	bool filter_ok = cmd_filter_finish(&filter, cmdq);
+	cmd_filter_free(&filter);
+	if (!filter_ok) {
+		xfree(entries);
+		return (CMD_RETURN_ERROR);
+	}
+	if (count == 0) {
+		xfree(entries);
+		cmdq_error(cmdq, "window-list: no matching windows");
+		return (CMD_RETURN_ERROR);
+	}
+
+	sort_entries(entries, count, sort);
+
+	struct cow_menu *old = cow_menu_find(WINDOW_LIST_MENU);
+	if (old != NULL)
+		cow_menu_destroy(old);
+	struct cow_menu *menu = cow_menu_create(WINDOW_LIST_MENU);
+	if (menu == NULL) {
+		xfree(entries);
+		cmdq_error(cmdq, "window-list: cannot create menu");
+		return (CMD_RETURN_ERROR);
+	}
+	cow_menu_enable_typeahead(menu);
+	cow_menu_item_add(menu, COW_MENU_ITEM_TITLE,
+	    "Window List (type to search)", NULL, false, false);
+
+	for (size_t i = 0; i < count; i++) {
+		view	    = entries[i].view;
+		char *label = format_label(format, view, (int)i + 1);
 		char *action;
 		xasprintf(&action, "window-list -s %s%s", view->identifier,
 		    warp ? " -w" : "");
@@ -277,18 +403,7 @@ show_window_list(const char *filter_expr, const char *format, bool warp,
 		xfree(action);
 		xfree(label);
 	}
-
-	bool filter_ok = cmd_filter_finish(&filter, cmdq);
-	cmd_filter_free(&filter);
-	if (!filter_ok) {
-		cow_menu_destroy(menu);
-		return (CMD_RETURN_ERROR);
-	}
-	if (number == 0) {
-		cow_menu_destroy(menu);
-		cmdq_error(cmdq, "window-list: no matching windows");
-		return (CMD_RETURN_ERROR);
-	}
+	xfree(entries);
 
 	struct cow_output *output = cmd_ctx_target_output(cmdq);
 	if (output == NULL)
@@ -310,14 +425,15 @@ cmd_window_list_exec(struct cmd *self, struct cmd_q *cmdq)
 	bool	    warp = args_has(self->args, 'w');
 	if (id != NULL) {
 		if (args_get(self->args, 'F') != NULL ||
-		    args_get(self->args, 'f') != NULL) {
+		    args_get(self->args, 'f') != NULL ||
+		    args_get(self->args, 'S') != NULL) {
 			cmdq_error(cmdq,
-			    "window-list: -F and -f cannot be used with -s");
+			    "window-list: -F, -f, and -S cannot be used with -s");
 			return (CMD_RETURN_ERROR);
 		}
 		return (select_window(id, warp, cmdq) ? CMD_RETURN_NORMAL :
 							CMD_RETURN_ERROR);
 	}
 	return (show_window_list(args_get(self->args, 'F'),
-	    args_get(self->args, 'f'), warp, cmdq));
+	    args_get(self->args, 'f'), args_get(self->args, 'S'), warp, cmdq));
 }
