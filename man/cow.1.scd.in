@@ -957,11 +957,15 @@ Move a window. With no flags, begin an interactive move using the mouse.
 
 *-x* _X_
 	Set the window's X position. A leading _+_ or _-_ makes the value
-	relative to the current position.
+	relative to the current position. A value suffixed with *vw* is a
+	percentage of the current output's usable width; an absolute *vw*
+	position places the outer frame relative to the usable area's left edge.
 
 *-y* _Y_
 	Set the window's Y position. A leading _+_ or _-_ makes the value
-	relative to the current position.
+	relative to the current position. A value suffixed with *vh* is a
+	percentage of the current output's usable height; an absolute *vh*
+	position places the outer frame relative to the usable area's top edge.
 
 ## window-resize [-t target] [-gs] [-d dir] [-e edges] [-w width] [-h height]
 
@@ -988,10 +992,22 @@ mouse, from the bottom-right corner.
 	*se* (bottom-right) corner.
 
 *-w* _width_
-	Set the window width in pixels.
+	Set the client width in pixels. A value suffixed with *vw* sets the
+	outer frame width to that percentage of the current output's usable
+	width, accounting for borders and titlebar.
 
 *-h* _height_
-	Set the window height in pixels.
+	Set the client height in pixels. A value suffixed with *vh* sets the
+	outer frame height to that percentage of the current output's usable
+	height, accounting for borders and titlebar.
+
+Viewport units may contain decimals. For example, these bindings place the
+focused window in the left half and bottom-right quarter respectively:
+
+```
+bind L+Left  window-move -x 0vw -y 0vh \; window-resize -w 50vw -h 100vh
+bind L+3     window-move -x 50vw -y 50vh \; window-resize -w 50vw -h 50vh
+```
 
 ## window-tile [-t target] [-e edges] [-u]
 

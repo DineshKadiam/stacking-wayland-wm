@@ -180,6 +180,25 @@ struct cow_desk *cmd_require_target_desk(struct cmd_q *, const char *);
 bool cmd_parse_int(struct cmd_q *, const char *, const char *, const char *,
     long long, long long, long long *);
 
+enum cmd_length_unit {
+	CMD_LENGTH_PIXELS,
+	CMD_LENGTH_VW,
+	CMD_LENGTH_VH,
+};
+
+struct cmd_length {
+	double		     value;
+	enum cmd_length_unit unit;
+};
+
+/* Parse an integer pixel length or a decimal value suffixed vw/vh. */
+bool cmd_parse_length(struct cmd_q *, const char *, const char *, const char *,
+    long long, long long, struct cmd_length *);
+
+/* Resolve a parsed length against an output's usable area. */
+bool cmd_length_resolve(struct cmd_q *, const char *, const char *,
+    const struct cmd_length *, const struct cow_output *, int *);
+
 /* Lookup a flag and parse its integer value if present. */
 bool cmd_args_int(struct cmd_q *, const char *, struct args *, u_char,
     long long, long long, long long *);

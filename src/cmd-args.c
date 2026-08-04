@@ -20,6 +20,8 @@
  * patterns over and over; these functions consolidate the boilerplate.
  */
 
+#include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -80,6 +82,75 @@ cmd_parse_int(struct cmd_q *cmdq, const char *cmd_name, const char *field,
 		return false;
 	}
 	*out = v;
+	return true;
+}
+
+bool
+cmd_parse_length(struct cmd_q *cmdq, const char *cmd_name, const char *field,
+    const char *val, long long lo, long long hi, struct cmd_length *out)
+{
+	if (val == NULL) {
+		cmdq_error(cmdq, "%s: %s: missing value", cmd_name, field);
+		return false;
+	}
+
+	char  *end;
+	errno = 0;
+	double value = strtod(val, &end);
+	enum cmd_length_unit unit;
+
+	if (end != val && strcmp(end, "vw") == 0)
+		unit = CMD_LENGTH_VW;
+	else if (end != val && strcmp(end, "vh") == 0)
+		unit = CMD_LENGTH_VH;
+	else {
+		long long pixels;
+		if (!cmd_parse_int(cmdq, cmd_name, field, val, lo, hi,
+			&pixels))
+			return false;
+		out->value = (double)pixels;
+		out->unit  = CMD_LENGTH_PIXELS;
+		return true;
+	}
+
+	if (errno == ERANGE || value != value || value < (double)lo ||
+	    value > (double)hi) {
+		cmdq_error(cmdq, "%s: %s: bad value: %s", cmd_name, field,
+		    val);
+		return false;
+	}
+
+	out->value = value;
+	out->unit  = unit;
+	return true;
+}
+
+bool
+cmd_length_resolve(struct cmd_q *cmdq, const char *cmd_name,
+    const char *field, const struct cmd_length *length,
+    const struct cow_output *output, int *result)
+{
+	if (length->unit == CMD_LENGTH_PIXELS) {
+		*result = (int)length->value;
+		return true;
+	}
+	if (output == NULL) {
+		cmdq_error(cmdq, "%s: %s: window has no output", cmd_name,
+		    field);
+		return false;
+	}
+
+	int base = length->unit == CMD_LENGTH_VW ? output->usable_area.width :
+						      output->usable_area.height;
+	long double scaled = (long double)length->value * base / 100.0L;
+	if (scaled < INT_MIN || scaled > INT_MAX) {
+		cmdq_error(cmdq, "%s: %s: resolved value is out of range",
+		    cmd_name, field);
+		return false;
+	}
+
+	/* Round to the nearest physical pixel. */
+	*result = (int)(scaled < 0 ? scaled - 0.5L : scaled + 0.5L);
 	return true;
 }
 

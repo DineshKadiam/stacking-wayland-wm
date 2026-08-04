@@ -685,6 +685,7 @@ do_xy(struct cow_view *view, const char *xs, const char *ys, struct cmd_q *cmdq)
 {
 	int  x = 0, y = 0;
 	bool x_rel = false, y_rel = false;
+	struct cmd_length xl = { 0 }, yl = { 0 };
 
 	/*
 	 * A leading '+' or '-' makes the value relative to the current
@@ -692,30 +693,51 @@ do_xy(struct cow_view *view, const char *xs, const char *ys, struct cmd_q *cmdq)
 	 * relative-by-zero is a no-op that users never actually want --
 	 * in practice they have typed '-y -0' meaning '-y 0'.
 	 */
-	long long ll;
 	if (xs != NULL) {
-		if (!cmd_parse_int(cmdq, "move", "x", xs, -32768, 32767, &ll))
+		if (!cmd_parse_length(cmdq, "window-move", "x", xs, -32768,
+			32767, &xl))
 			return;
-		x     = (int)ll;
+		if (xl.unit == CMD_LENGTH_VH) {
+			cmdq_error(cmdq,
+			    "window-move: x: vh is not valid for an X position");
+			return;
+		}
+		if (!cmd_length_resolve(cmdq, "window-move", "x", &xl,
+			view->output, &x))
+			return;
 		x_rel = (xs[0] == '+' || xs[0] == '-') && x != 0;
 	}
 	if (ys != NULL) {
-		if (!cmd_parse_int(cmdq, "move", "y", ys, -32768, 32767, &ll))
+		if (!cmd_parse_length(cmdq, "window-move", "y", ys, -32768,
+			32767, &yl))
 			return;
-		y     = (int)ll;
+		if (yl.unit == CMD_LENGTH_VW) {
+			cmdq_error(cmdq,
+			    "window-move: y: vw is not valid for a Y position");
+			return;
+		}
+		if (!cmd_length_resolve(cmdq, "window-move", "y", &yl,
+			view->output, &y))
+			return;
 		y_rel = (ys[0] == '+' || ys[0] == '-') && y != 0;
 	}
 
 	unmax_if_needed(view);
+	int frame_w, frame_h, content_x, content_y;
+	move_frame_geometry(view, &frame_w, &frame_h, &content_x, &content_y);
 	if (xs != NULL) {
 		if (x_rel)
 			view->x += x;
+		else if (xl.unit == CMD_LENGTH_VW)
+			view->x = view->output->usable_area.x + x + content_x;
 		else
 			view->x = x;
 	}
 	if (ys != NULL) {
 		if (y_rel)
 			view->y += y;
+		else if (yl.unit == CMD_LENGTH_VH)
+			view->y = view->output->usable_area.y + y + content_y;
 		else
 			view->y = y;
 	}

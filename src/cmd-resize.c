@@ -23,6 +23,7 @@
 #include "cow/output.h"
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
+#include "cow/titlebar.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
@@ -201,19 +202,52 @@ do_set_size(struct cow_view *view, const char *ws, const char *hs,
 {
 	int	  w = view->content_width;
 	int	  h = view->content_height;
-	long long ll;
+	struct cmd_length wl = { 0 }, hl = { 0 };
+	int frame_w, frame_h, content_x, content_y;
+	cow_titlebar_frame_geometry(view, w, h, &frame_w, &frame_h,
+	    &content_x, &content_y);
+	int frame_extra_w = frame_w - w;
+	int frame_extra_h = frame_h - h;
 
 	if (ws != NULL) {
-		if (!cmd_parse_int(cmdq, "window-resize", "width", ws, 1, 32767,
-			&ll))
+		if (!cmd_parse_length(cmdq, "window-resize", "width", ws, 0,
+			32767, &wl))
 			return;
-		w = (int)ll;
+		if (wl.unit == CMD_LENGTH_VH) {
+			cmdq_error(cmdq,
+			    "window-resize: width: vh is not valid for width");
+			return;
+		}
+		if (!cmd_length_resolve(cmdq, "window-resize", "width", &wl,
+			view->output, &w))
+			return;
+		if (wl.unit == CMD_LENGTH_VW)
+			w -= frame_extra_w;
+		if (w < 1) {
+			cmdq_error(cmdq,
+			    "window-resize: width: value is too small for the frame");
+			return;
+		}
 	}
 	if (hs != NULL) {
-		if (!cmd_parse_int(cmdq, "window-resize", "height", hs, 1,
-			32767, &ll))
+		if (!cmd_parse_length(cmdq, "window-resize", "height", hs, 0,
+			32767, &hl))
 			return;
-		h = (int)ll;
+		if (hl.unit == CMD_LENGTH_VW) {
+			cmdq_error(cmdq,
+			    "window-resize: height: vw is not valid for height");
+			return;
+		}
+		if (!cmd_length_resolve(cmdq, "window-resize", "height", &hl,
+			view->output, &h))
+			return;
+		if (hl.unit == CMD_LENGTH_VH)
+			h -= frame_extra_h;
+		if (h < 1) {
+			cmdq_error(cmdq,
+			    "window-resize: height: value is too small for the frame");
+			return;
+		}
 	}
 
 	cow_clamp_dimensions(&w, &h);
