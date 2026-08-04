@@ -238,18 +238,44 @@ struct cmd_entry cmd_menu_key_entry = {
 	0,
 };
 
-static void
-menu_style_refresh(void)
+static uint32_t
+menu_style_field(const char *key)
 {
-	if (cow_ipc.startup_mode)
-		return;
+	if (strcmp(key, "bg") == 0)
+		return (COW_MENU_STYLE_BG);
+	if (strcmp(key, "fg") == 0)
+		return (COW_MENU_STYLE_FG);
+	if (strcmp(key, "title.bg") == 0)
+		return (COW_MENU_STYLE_TITLE_BG);
+	if (strcmp(key, "title.fg") == 0)
+		return (COW_MENU_STYLE_TITLE_FG);
+	if (strcmp(key, "separator") == 0)
+		return (COW_MENU_STYLE_SEPARATOR);
+	if (strcmp(key, "bg.gradient") == 0)
+		return (COW_MENU_STYLE_BG_GRADIENT);
+	if (strcmp(key, "title.bg.gradient") == 0)
+		return (COW_MENU_STYLE_TITLE_BG_GRADIENT);
+	if (strcmp(key, "border.width") == 0)
+		return (COW_MENU_STYLE_BORDER_WIDTH);
+	if (strcmp(key, "padding.x") == 0)
+		return (COW_MENU_STYLE_PADDING_X);
+	if (strcmp(key, "padding.y") == 0)
+		return (COW_MENU_STYLE_PADDING_Y);
+	if (strcmp(key, "title.underlines") == 0)
+		return (COW_MENU_STYLE_TITLE_UNDERLINES);
+	if (strcmp(key, "automatic.hotkeys") == 0)
+		return (COW_MENU_STYLE_AUTOMATIC_HOTKEYS);
+	if (strcmp(key, "selection.relief") == 0)
+		return (COW_MENU_STYLE_SELECTION_RELIEF);
+	return (0);
+}
 
-	struct cow_menu_popup *p;
-	wl_list_for_each(p, &cow_wm.open_menus, link)
-	{
-		p->needs_redraw = true;
-	}
-	cow_wm.needs_manage_dirty = true;
+static bool
+menu_style_field_changes_geometry(uint32_t field)
+{
+	return (field == COW_MENU_STYLE_BORDER_WIDTH ||
+	    field == COW_MENU_STYLE_PADDING_X ||
+	    field == COW_MENU_STYLE_PADDING_Y);
 }
 
 static enum cmd_retval
@@ -296,17 +322,51 @@ static enum cmd_retval
 cmd_menu_style_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	struct args *args = self->args;
+	const char  *menu_name = args_get(args, 'm');
+	bool	     reset = args_has(args, 'r');
 
-	if (args->argc < 2) {
+	if (reset && menu_name == NULL) {
+		cmdq_error(cmdq, "menu-style: -r requires -m NAME");
+		return (CMD_RETURN_ERROR);
+	}
+	if ((reset && args->argc != 1) || (!reset && args->argc < 2)) {
 		cmdq_error(cmdq, "usage: %s", self->entry->usage);
 		return (CMD_RETURN_ERROR);
 	}
 	if (cow_config == NULL)
 		return (CMD_RETURN_ERROR);
 
-	const char *key = args->argv[0];
-	char	   *val = cmd_argv_to_string(args->argc, args->argv, 1);
-	struct cow_menu_style *st = &cow_config->menu_style;
+	const char *key   = args->argv[0];
+	uint32_t    field = menu_style_field(key);
+	if (field == 0) {
+		cmdq_error(cmdq, "menu-style: unknown key: %s", key);
+		return (CMD_RETURN_ERROR);
+	}
+
+	struct cow_menu *menu = NULL;
+	if (menu_name != NULL)
+		menu = cow_menu_find(menu_name);
+	if (reset) {
+		if (menu == NULL)
+			menu = cow_menu_create(menu_name);
+		if (menu == NULL) {
+			cmdq_error(cmdq, "menu-style: cannot create menu \"%s\"",
+			    menu_name);
+			return (CMD_RETURN_ERROR);
+		}
+		menu->style_overrides &= ~field;
+		if (!cow_ipc.startup_mode)
+			cow_menu_style_refresh(menu,
+			    menu_style_field_changes_geometry(field));
+		return (CMD_RETURN_NORMAL);
+	}
+
+	char *val = cmd_argv_to_string(args->argc, args->argv, 1);
+	struct cow_menu_style named_style = { 0 };
+	if (menu != NULL)
+		named_style = menu->style;
+	struct cow_menu_style *st = menu_name != NULL ? &named_style :
+						      &cow_config->menu_style;
 	enum cmd_retval ret = CMD_RETURN_NORMAL;
 
 	struct {
@@ -376,12 +436,34 @@ cmd_menu_style_exec(struct cmd *self, struct cmd_q *cmdq)
 		goto out;
 	}
 
-	cmdq_error(cmdq, "menu-style: unknown key: %s", key);
-	ret = CMD_RETURN_ERROR;
+	if (strcmp(key, "selection.relief") == 0) {
+		if (strcmp(val, "none") == 0) {
+			st->selection_relief = COW_MENU_SELECTION_RELIEF_NONE;
+		} else if (strcmp(val, "raised") == 0) {
+			st->selection_relief = COW_MENU_SELECTION_RELIEF_RAISED;
+		} else {
+			cmdq_error(cmdq,
+			    "menu-style: %s: expected none|raised", key);
+			ret = CMD_RETURN_ERROR;
+		}
+		goto out;
+	}
 
 out:
 	if (ret == CMD_RETURN_NORMAL) {
-		menu_style_refresh();
+		if (menu_name != NULL && menu == NULL)
+			menu = cow_menu_create(menu_name);
+		if (menu_name != NULL && menu == NULL) {
+			cmdq_error(cmdq, "menu-style: cannot create menu \"%s\"",
+			    menu_name);
+			ret = CMD_RETURN_ERROR;
+		} else if (menu != NULL) {
+			menu->style = named_style;
+			menu->style_overrides |= field;
+		}
+		if (ret == CMD_RETURN_NORMAL && !cow_ipc.startup_mode)
+			cow_menu_style_refresh(menu,
+			    menu_style_field_changes_geometry(field));
 	}
 	xfree(val);
 	return (ret);
@@ -389,10 +471,10 @@ out:
 
 struct cmd_entry cmd_menu_style_entry = {
 	"menu-style",
-	"",
-	2,
+	"+m:r",
+	1,
 	-1,
-	"menu-style KEY VALUE",
+	"menu-style [-m NAME] KEY VALUE | menu-style -m NAME -r KEY",
 	cmd_menu_style_exec,
 	0,
 };

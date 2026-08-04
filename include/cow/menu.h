@@ -27,6 +27,43 @@ struct river_node_v1;
 struct cow_shm_buffer;
 struct cow_view;
 
+enum cow_menu_selection_relief {
+	COW_MENU_SELECTION_RELIEF_NONE,
+	COW_MENU_SELECTION_RELIEF_RAISED,
+};
+
+struct cow_menu_style {
+	float bg[4];	    /* background colour */
+	float fg[4];	    /* item text colour */
+	float title_bg[4];  /* title item background */
+	float title_fg[4];  /* title item text colour */
+	float separator[4]; /* separator line colour */
+	struct cow_gradient bg_gradient;
+	struct cow_gradient title_bg_gradient;
+	int   border_width; /* outer border thickness (px) */
+	int   padding_x;    /* horizontal padding within items (px) */
+	int   padding_y;    /* vertical padding above/below text (px) */
+	int   title_underlines;
+	bool  automatic_hotkeys;
+	enum cow_menu_selection_relief selection_relief;
+};
+
+enum cow_menu_style_field {
+	COW_MENU_STYLE_BG		 = 1u << 0,
+	COW_MENU_STYLE_FG		 = 1u << 1,
+	COW_MENU_STYLE_TITLE_BG		 = 1u << 2,
+	COW_MENU_STYLE_TITLE_FG		 = 1u << 3,
+	COW_MENU_STYLE_SEPARATOR	 = 1u << 4,
+	COW_MENU_STYLE_BG_GRADIENT	 = 1u << 5,
+	COW_MENU_STYLE_TITLE_BG_GRADIENT = 1u << 6,
+	COW_MENU_STYLE_BORDER_WIDTH	 = 1u << 7,
+	COW_MENU_STYLE_PADDING_X	 = 1u << 8,
+	COW_MENU_STYLE_PADDING_Y	 = 1u << 9,
+	COW_MENU_STYLE_TITLE_UNDERLINES	 = 1u << 10,
+	COW_MENU_STYLE_AUTOMATIC_HOTKEYS = 1u << 11,
+	COW_MENU_STYLE_SELECTION_RELIEF	 = 1u << 12,
+};
+
 enum cow_menu_item_type {
 	COW_MENU_ITEM_NORMAL,	 /* selectable item with an action */
 	COW_MENU_ITEM_SEPARATOR, /* horizontal rule, no action */
@@ -44,9 +81,11 @@ struct cow_menu_item {
 };
 
 struct cow_menu {
-	char	      *name;  /* unique identifier used in config */
-	struct wl_list items; /* list of cow_menu_item */
-	struct wl_list link;  /* in cow_wm.menus */
+	char		      *name;  /* unique identifier used in config */
+	struct cow_menu_style style; /* values for explicitly overridden fields */
+	uint32_t	       style_overrides;
+	struct wl_list       items; /* list of cow_menu_item */
+	struct wl_list       link;  /* in cow_wm.menus */
 };
 
 struct cow_menu_popup {
@@ -56,6 +95,7 @@ struct cow_menu_popup {
 	int		 height;   /* rendered height in pixels */
 	int		 item_h;   /* height of one item row */
 	int		 selected; /* highlighted item index (-1 = none) */
+	struct cow_menu_style style; /* resolved style snapshot */
 
 	/* Created from the render hook. */
 	struct wl_surface	      *surface;
@@ -65,6 +105,7 @@ struct cow_menu_popup {
 	bool			       committed; /* first commit done? */
 	bool needs_create;			  /* defer create to render */
 	bool needs_redraw;			  /* defer redraw to render */
+	bool needs_layout;			  /* style changed geometry */
 	bool needs_destroy;			  /* defer destroy to render */
 
 	/* Popup nesting */
@@ -74,21 +115,6 @@ struct cow_menu_popup {
 	bool pick_target_on_action;    /* pick target before child actions */
 
 	struct wl_list link; /* in cow_wm.open_menus or cow_wm.menu_graveyard */
-};
-
-struct cow_menu_style {
-	float bg[4];	    /* background colour */
-	float fg[4];	    /* item text colour */
-	float title_bg[4];  /* title item background */
-	float title_fg[4];  /* title item text colour */
-	float separator[4]; /* separator line colour */
-	struct cow_gradient bg_gradient;
-	struct cow_gradient title_bg_gradient;
-	int   border_width; /* outer border thickness (px) */
-	int   padding_x;    /* horizontal padding within items (px) */
-	int   padding_y;    /* vertical padding above/below text (px) */
-	int   title_underlines;
-	bool  automatic_hotkeys;
 };
 
 /*
@@ -170,5 +196,11 @@ void cow_menu_popup_redraw(struct cow_menu_popup *popup);
 
 /* Populate a cow_menu_style with the built-in menu defaults. */
 void cow_menu_style_default(struct cow_menu_style *);
+
+/* Resolve global style plus the named menu's explicit overrides. */
+void cow_menu_style_resolve(const struct cow_menu *, struct cow_menu_style *);
+
+/* Refresh open popups after a global or per-menu style change. */
+void cow_menu_style_refresh(struct cow_menu *, bool);
 
 #endif /* COW_MENU_H */

@@ -111,6 +111,16 @@ Define and operate popup menus.
 See the MENUS section in `cow(1)` for the full grammar, `menu-style`
 keys, and a worked example.
 
+`menu-style KEY VALUE` changes the global style.  `menu-style -m NAME KEY
+VALUE` stores a per-menu override for any style property, creating the menu on
+first reference.  `menu-style -m NAME -r KEY` removes one override.  Unset
+properties resolve from the global style; submenus do not inherit their
+parent's overrides.
+
+`selection.relief` accepts `raised` (the traditional two-pixel relief around
+the selected item, with the menu background retained inside it) or `none` for
+a flat highlight.
+
 ## root-mouse
 
 `root-mouse KEY ACTION...` binds an unmodified mouse action on cow's output

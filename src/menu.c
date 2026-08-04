@@ -69,13 +69,14 @@ cow_menu_style_default(struct cow_menu_style *s)
 	s->padding_y		       = 2;
 	s->title_underlines	       = 2;
 	s->automatic_hotkeys	       = true;
+	s->selection_relief	       = COW_MENU_SELECTION_RELIEF_RAISED;
 }
 
 static struct cow_menu_style g_default_style;
 static bool		     g_default_style_inited;
 
 static const struct cow_menu_style *
-effective_style(void)
+global_style(void)
 {
 	if (cow_config != NULL)
 		return (&cow_config->menu_style);
@@ -84,6 +85,37 @@ effective_style(void)
 		g_default_style_inited = true;
 	}
 	return (&g_default_style);
+}
+
+void
+cow_menu_style_resolve(const struct cow_menu *menu, struct cow_menu_style *out)
+{
+	if (out == NULL)
+		return;
+	*out = *global_style();
+	if (menu == NULL)
+		return;
+	uint32_t fields = menu->style_overrides;
+#define APPLY(field, member)                                                   \
+	do {                                                                     \
+		if ((fields & (field)) != 0)                                      \
+			memcpy(&out->member, &menu->style.member,                    \
+			    sizeof(out->member));                                    \
+	} while (0)
+	APPLY(COW_MENU_STYLE_BG, bg);
+	APPLY(COW_MENU_STYLE_FG, fg);
+	APPLY(COW_MENU_STYLE_TITLE_BG, title_bg);
+	APPLY(COW_MENU_STYLE_TITLE_FG, title_fg);
+	APPLY(COW_MENU_STYLE_SEPARATOR, separator);
+	APPLY(COW_MENU_STYLE_BG_GRADIENT, bg_gradient);
+	APPLY(COW_MENU_STYLE_TITLE_BG_GRADIENT, title_bg_gradient);
+	APPLY(COW_MENU_STYLE_BORDER_WIDTH, border_width);
+	APPLY(COW_MENU_STYLE_PADDING_X, padding_x);
+	APPLY(COW_MENU_STYLE_PADDING_Y, padding_y);
+	APPLY(COW_MENU_STYLE_TITLE_UNDERLINES, title_underlines);
+	APPLY(COW_MENU_STYLE_AUTOMATIC_HOTKEYS, automatic_hotkeys);
+	APPLY(COW_MENU_STYLE_SELECTION_RELIEF, selection_relief);
+#undef APPLY
 }
 
 static PangoFontDescription *g_font_desc;
@@ -120,12 +152,46 @@ px(const float c[4])
 	return (cow_colour_to_pixel(c));
 }
 
+static unsigned int
+pixel_brightness(uint32_t colour)
+{
+	return (2 * ((colour >> 16) & 0xff) +
+	    3 * ((colour >> 8) & 0xff) + (colour & 0xff));
+}
+
 static void
 menu_relief_colours(const float base[4], uint32_t *highlight, uint32_t *shadow)
 {
 	struct cow_colour_triple t;
 
 	cow_colour_make_triple(&t, base);
+	/*
+	 * The Motif colour algorithm favours contrast for extreme colours: its
+	 * "light" shade of a pale colour can be darker than the base, and its
+	 * "dark" shade of a dark colour can be lighter.  That is useful in some
+	 * contexts but makes a raised menu item look flat or sunken.  Preserve
+	 * the traditional shades when they point in the expected direction and
+	 * otherwise blend the offending edge towards white or black.
+	 */
+	unsigned int base_brightness = pixel_brightness(t.base);
+	if (pixel_brightness(t.lt) <= base_brightness) {
+		float lt[4] = {
+		    base[0] + (1.0f - base[0]) * 0.5f,
+		    base[1] + (1.0f - base[1]) * 0.5f,
+		    base[2] + (1.0f - base[2]) * 0.5f,
+		    base[3],
+		};
+		t.lt = cow_colour_to_pixel(lt);
+	}
+	if (pixel_brightness(t.dk) >= base_brightness) {
+		float dk[4] = {
+		    base[0] * 0.5f,
+		    base[1] * 0.5f,
+		    base[2] * 0.5f,
+		    base[3],
+		};
+		t.dk = cow_colour_to_pixel(dk);
+	}
 	if (highlight != NULL)
 		*highlight = t.lt;
 	if (shadow != NULL)
@@ -219,8 +285,9 @@ static int
 menu_auto_hotkey_for(const struct cow_menu *menu,
     const struct cow_menu_item *target)
 {
-	const struct cow_menu_style *st = effective_style();
-	if (menu == NULL || target == NULL || !st->automatic_hotkeys)
+	struct cow_menu_style style;
+	cow_menu_style_resolve(menu, &style);
+	if (menu == NULL || target == NULL || !style.automatic_hotkeys)
 		return (-1);
 	int explicit_key = label_explicit_hotkey(target->label);
 	if (explicit_key >= 0)
@@ -457,7 +524,7 @@ text_extents(const struct cow_menu *menu, const struct cow_menu_item *it,
 static void
 popup_layout(struct cow_menu_popup *p)
 {
-	const struct cow_menu_style *st = effective_style();
+	const struct cow_menu_style *st = &p->style;
 	const int ARROW_W = 14;
 
 	int		      max_label_w = 0;
@@ -703,7 +770,7 @@ popup_render(struct cow_menu_popup *p)
 	if (p == NULL || p->buffer == NULL || p->buffer->data == NULL)
 		return;
 
-	const struct cow_menu_style *st	 = effective_style();
+	const struct cow_menu_style *st	 = &p->style;
 	struct cow_pixbuf	     buf = {
 			   .pixels    = p->buffer->data,
 			   .stride_px = p->buffer->stride / 4,
@@ -776,9 +843,15 @@ popup_render(struct cow_menu_popup *p)
 			bool open_child = (hovered && it->is_popup &&
 			    p->child != NULL);
 			if (hovered) {
-				cow_draw_relieve_rect(&buf, x + 1, y,
-				    innerw - 2, rh, 2,
-				    hl_px, hl_px, sh_px, sh_px);
+				if (st->selection_relief ==
+				    COW_MENU_SELECTION_RELIEF_RAISED) {
+					cow_draw_relieve_rect(&buf, x + 1, y,
+					    innerw - 2, rh, 2,
+					    hl_px, hl_px, sh_px, sh_px);
+				} else {
+					cow_draw_fill_rect(&buf, x, y, innerw, rh,
+					    hl_px);
+				}
 			}
 
 			int label_w = innerw - st->padding_x * 2 - ARROW_GUTTER;
@@ -819,6 +892,24 @@ cow_menu_popup_redraw(struct cow_menu_popup *popup)
 	cow_wm.needs_manage_dirty = true;
 }
 
+void
+cow_menu_style_refresh(struct cow_menu *menu, bool geometry_changed)
+{
+	if (!cow_menu_is_open())
+		return;
+	struct cow_menu_popup *p;
+	wl_list_for_each(p, &cow_wm.open_menus, link)
+	{
+		if (menu == NULL || p->def == menu) {
+			cow_menu_style_resolve(p->def, &p->style);
+			p->needs_redraw = true;
+		}
+		if (geometry_changed)
+			p->needs_layout = true;
+	}
+	cow_wm.needs_manage_dirty = true;
+}
+
 static struct cow_menu_popup *
 popup_alloc(struct cow_menu *def)
 {
@@ -826,6 +917,7 @@ popup_alloc(struct cow_menu *def)
 	p->def			 = def;
 	p->selected		 = -1;
 	p->child_item		 = -1;
+	cow_menu_style_resolve(def, &p->style);
 	return (p);
 }
 
@@ -933,7 +1025,7 @@ cow_menu_popup_open(struct cow_menu *menu, int x, int y,
 
 	if (parent == NULL && centre_title_on_position) {
 		x -= p->width / 2;
-		y -= effective_style()->border_width + p->item_h / 2;
+		y -= p->style.border_width + p->item_h / 2;
 	}
 	popup_fit_to_output(p, &x, &y, parent);
 	p->x = x;
@@ -996,6 +1088,64 @@ popup_recommit(struct cow_menu_popup *p)
 	p->buffer->busy = true;
 }
 
+static void
+popup_apply_relayout(struct cow_menu_popup *p)
+{
+	if (p == NULL || !p->needs_layout)
+		return;
+	int old_width = p->width;
+	int old_height = p->height;
+	int old_item_h = p->item_h;
+	popup_layout(p);
+	if (p->buffer != NULL &&
+	    (p->buffer->width != p->width || p->buffer->height != p->height)) {
+		struct cow_shm_buffer *replacement =
+		    cow_shm_buffer_create(p->width, p->height);
+		if (replacement == NULL) {
+			p->width = old_width;
+			p->height = old_height;
+			p->item_h = old_item_h;
+			return;
+		}
+		cow_shm_buffer_destroy(p->buffer);
+		p->buffer = replacement;
+	}
+	p->needs_layout = false;
+	p->needs_redraw = true;
+}
+
+static void
+popup_refit_position(struct cow_menu_popup *p)
+{
+	if (p == NULL)
+		return;
+	if (p->parent == NULL) {
+		int x = p->x;
+		int y = p->y;
+		popup_fit_to_output(p, &x, &y, NULL);
+		p->x = x;
+		p->y = y;
+		return;
+	}
+	struct cow_menu_popup *parent = p->parent;
+	const struct cow_menu_style *st = &parent->style;
+	int y = parent->y + st->border_width;
+	int idx = 0;
+	struct cow_menu_item *it;
+	wl_list_for_each(it, &parent->def->items, link)
+	{
+		if (idx >= parent->child_item)
+			break;
+		y += item_row_height(it,
+		    parent->item_h - st->padding_y * 2, st);
+		idx++;
+	}
+	int x = parent->x + parent->width - 5;
+	popup_fit_to_output(p, &x, &y, parent);
+	p->x = x;
+	p->y = y;
+}
+
 void
 cow_menu_render_all(void)
 {
@@ -1012,6 +1162,14 @@ cow_menu_render_all(void)
 	if (!cow_menu_is_open())
 		return;
 	struct cow_menu_popup *p;
+	wl_list_for_each(p, &cow_wm.open_menus, link)
+	{
+		popup_apply_relayout(p);
+	}
+	wl_list_for_each(p, &cow_wm.open_menus, link)
+	{
+		popup_refit_position(p);
+	}
 	wl_list_for_each(p, &cow_wm.open_menus, link)
 	{
 		if (p->needs_create) {
@@ -1049,7 +1207,7 @@ popup_under(int px_x, int px_y)
 static int
 item_under(const struct cow_menu_popup *p, int px_x, int px_y)
 {
-	const struct cow_menu_style *st	    = effective_style();
+	const struct cow_menu_style *st	    = &p->style;
 	int			     x	    = p->x + st->border_width;
 	int			     innerw = p->width - st->border_width * 2;
 	if (px_x < x || px_x >= x + innerw)
@@ -1168,7 +1326,7 @@ dispatch_item(struct cow_menu_popup *p, struct cow_menu_item *it)
 		struct cow_menu *sub = cow_menu_find(it->action);
 		if (sub == NULL)
 			return;
-		const struct cow_menu_style *st	 = effective_style();
+		const struct cow_menu_style *st	 = &p->style;
 		struct cow_menu_item	    *iter;
 		int			     y = p->y + st->border_width;
 		int			     opener_idx = 0;
