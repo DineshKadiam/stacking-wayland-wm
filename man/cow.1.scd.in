@@ -1089,7 +1089,7 @@ Move keyboard focus.
 	in that layer.  Combine with *-n*/*-p* to walk only within
 	_N_.  Mutually exclusive with *-L*.
 
-## window-list [-w] [-F expr]
+## window-list [-w] [-F expr] [-f format]
 
 Open a transient, centred list of managed windows.  Press *1* through *9*, or
 *0* for the tenth entry, to select immediately.  For longer lists use the arrow
@@ -1105,6 +1105,24 @@ it.
 	Only include windows matching the DSL expression.  *self* is bound to each
 	candidate window, as with *show -F* and *focus -F*.
 
+*-f* _format_
+	Format each window label.  The following conversions are supported:
+
+	- *%n*: entry number (*0* is the shortcut for the tenth entry)
+	- *%t*: displayed title, including any *title.format* expansion
+	- *%T*: raw client title
+	- *%a*: application ID
+	- *%i*: window identifier
+	- *%o* / *%O*: output name / number
+	- *%d* / *%D*: desk number / name
+	- *%x*, *%y*, *%w*, *%h*: window position and content size
+	- *%l*: window layer
+	- *%%*: a literal percent sign
+
+	Without *-f*, the adaptive numbered title-and-application label is used.
+	Type-ahead searches the resulting formatted label, so omitted fields are
+	not included in searches.
+
 *-w*
 	Warp the pointer to the selected window.
 
@@ -1113,6 +1131,8 @@ Examples:
 ```
 bind L+w window-list
 bind LS+w "window-list -F 'self.current_output and self.current_desk'"
+bind L+a "window-list -f '%n  [%a] %t'"
+bind L+o "window-list -f '%n  %o:%d  %t'"
 ```
 
 The popup takes keyboard focus while it is open, so no additional bindings are

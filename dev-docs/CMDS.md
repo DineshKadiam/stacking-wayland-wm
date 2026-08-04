@@ -66,6 +66,14 @@ This shades a window in a given direction.
   focusable in `N`, or cycles within `N` when already there.
   Combined with `-n|-p`: traverses only within `N`.
 
+## window-list
+
+Open the transient keyboard window switcher.  `-F expr` filters candidate
+windows, `-w` warps to the selection, and `-f format` controls each menu label.
+The format conversions expose the entry number (`%n`), displayed/raw title
+(`%t`/`%T`), app ID (`%a`), identifier (`%i`), output (`%o`/`%O`), desk
+(`%d`/`%D`), geometry (`%x`, `%y`, `%w`, `%h`), and layer (`%l`).
+
 ## set
 
 Layer-related keys:
