@@ -25,6 +25,7 @@
 #include "cow/colour.h"
 #include "cow/config.h"
 #include "cow/font.h"
+#include "cow/format.h"
 #include "cow/memory.h"
 #include "cow/shm.h"
 #include "cow/titlebar.h"
@@ -60,10 +61,8 @@ get_titlebar_font(void)
 }
 
 static void
-append_str(char **buf, size_t *cap, size_t *len, const char *s)
+append_mem(char **buf, size_t *cap, size_t *len, const char *s, size_t slen)
 {
-	size_t slen = strlen(s);
-
 	if (*cap < *len + slen + 1) {
 		size_t ncap = *cap == 0 ? 64 : *cap;
 
@@ -78,11 +77,9 @@ append_str(char **buf, size_t *cap, size_t *len, const char *s)
 }
 
 static void
-append_char(char **buf, size_t *cap, size_t *len, char ch)
+append_str(char **buf, size_t *cap, size_t *len, const char *s)
 {
-	char s[2] = { ch, '\0' };
-
-	append_str(buf, cap, len, s);
+	append_mem(buf, cap, len, s, strlen(s));
 }
 
 static char *
@@ -123,6 +120,47 @@ short_identifier(const struct cow_view *view)
 	return (out);
 }
 
+struct title_format_ctx {
+	char		**buf;
+	size_t		 *cap;
+	size_t		 *len;
+	const char	 *title;
+	const char	 *short_id;
+	const char	 *id;
+	const char	 *app_id;
+};
+
+static void
+title_format_text(void *data, const char *text, size_t len)
+{
+	struct title_format_ctx *ctx = data;
+
+	append_mem(ctx->buf, ctx->cap, ctx->len, text, len);
+}
+
+static void
+title_format_conversion(void *data, char conversion)
+{
+	struct title_format_ctx *ctx = data;
+	const char		*value = "";
+
+	switch (conversion) {
+	case 'n':
+		value = ctx->title;
+		break;
+	case 't':
+		value = ctx->short_id;
+		break;
+	case 'I':
+		value = ctx->id;
+		break;
+	case 'c':
+		value = ctx->app_id;
+		break;
+	}
+	append_str(ctx->buf, ctx->cap, ctx->len, value);
+}
+
 static char *
 make_display_title(const struct cow_view *view)
 {
@@ -134,39 +172,18 @@ make_display_title(const struct cow_view *view)
 	char	   *sid = short_identifier(view);
 	char	   *out = NULL;
 	size_t	    cap = 0, len = 0;
+	struct title_format_ctx ctx = {
+		.buf = &out,
+		.cap = &cap,
+		.len = &len,
+		.title = title,
+		.short_id = sid,
+		.id = id,
+		.app_id = app_id,
+	};
 
-	for (const char *p = fmt; *p != '\0'; p++) {
-		if (*p != '%') {
-			append_char(&out, &cap, &len, *p);
-			continue;
-		}
-		p++;
-		switch (*p) {
-		case '\0':
-			append_char(&out, &cap, &len, '%');
-			p--;
-			break;
-		case '%':
-			append_char(&out, &cap, &len, '%');
-			break;
-		case 'n':
-			append_str(&out, &cap, &len, title);
-			break;
-		case 't':
-			append_str(&out, &cap, &len, sid);
-			break;
-		case 'I':
-			append_str(&out, &cap, &len, id);
-			break;
-		case 'c':
-			append_str(&out, &cap, &len, app_id);
-			break;
-		default:
-			append_char(&out, &cap, &len, '%');
-			append_char(&out, &cap, &len, *p);
-			break;
-		}
-	}
+	cow_format_parse(fmt, "ntIc", false, title_format_text,
+	    title_format_conversion, &ctx, NULL);
 	if (out == NULL)
 		out = xstrdup("");
 	xfree(sid);

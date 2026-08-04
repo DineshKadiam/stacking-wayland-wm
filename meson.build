@@ -74,6 +74,7 @@ srcs = [
     'src/decoration_hit.c',
     'src/desk.c',
     'src/desk_ops.c',
+    'src/format.c',
     'src/draw.c',
     'src/draw_exec.c',
     'src/event.c',
