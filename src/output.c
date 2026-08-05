@@ -32,6 +32,7 @@
 #include "cow/desk_ops.h"
 #include "cow/pan_frames.h"
 #include "cow/pick.h"
+#include "cow/pointer_input.h"
 #include "cow/seat.h"
 #include "cow/view.h"
 
@@ -578,6 +579,7 @@ cow_output_destroy(struct cow_output *output)
 	/* Detach views before freeing this output's desk set. */
 	output_migrate_views(output, output_find_migration_target(output));
 
+	cow_pointer_input_forget_output(output);
 	pan_frames_destroy_output(output);
 	cow_layer_shell_fini_output(output);
 	wl_list_remove(&output->wm_link);

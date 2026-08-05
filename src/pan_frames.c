@@ -22,7 +22,6 @@
 #include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/pan_frames.h"
-#include "cow/pointer_input.h"
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
 #include "cow/shm.h"
@@ -603,8 +602,6 @@ pan_frames_update_all(void)
 void
 pan_frames_destroy_output(struct cow_output *output)
 {
-	cow_pointer_input_forget_output(output);
-
 	for (int e = 0; e < 4; e++)
 		pan_frame_destroy(output, e);
 }
@@ -905,13 +902,6 @@ cow_output_pan_pointer_enter(void)
 	wl_list_for_each(output, &cow_wm.outputs, wm_link)
 	    output->pan_edge = -1;
 	cow_wm_request_manage_dirty();
-}
-
-void
-cow_pan_pointer_moved(int x, int y)
-{
-	(void)x;
-	(void)y;
 }
 
 /* Drag-mode arming: when a window is being moved, the cursor's
