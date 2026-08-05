@@ -19,6 +19,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "cow/module_protocol.h"
+
 #define COW_MODULE_SOCKET_PATH_MAX     4096
 #define COW_MODULE_RESPONSE_INITIAL    65536
 #define COW_MODULE_STATUS_LINE_MAX     131072

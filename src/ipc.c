@@ -80,6 +80,11 @@ cow_ipc_fini(void)
 			cow_ipc.clients[i].ev = NULL;
 		}
 		if (cow_ipc.clients[i].fd >= 0) {
+			cow_log_debug("command client disconnected "
+			    "(name=%s fd=%d reason=shutdown)",
+			    cow_ipc.clients[i].identified ?
+				cow_ipc.clients[i].name : "unidentified",
+			    cow_ipc.clients[i].fd);
 			close(cow_ipc.clients[i].fd);
 			cow_ipc.clients[i].fd = -1;
 		}
@@ -175,8 +180,11 @@ cow_ipc_dispatch(const char *line, int client_fd)
 	if (*line == '#' || *line == '\0' || *line == '\n')
 		return true;
 
-	cow_log_trace("IPC command: %.*s",
-	    (int)strcspn(line, "\r\n"), line);
+	struct cow_ipc_client *logging_client = ipc_find_client_fd(client_fd);
+	cow_log_trace("IPC command (client=%s fd=%d): %.*s",
+	    logging_client && logging_client->identified ? logging_client->name :
+		"internal",
+	    client_fd, (int)strcspn(line, "\r\n"), line);
 
 	/* Parse through the lswm/tmux command infrastructure */
 	struct cmd_list *cmdlist = NULL;
@@ -385,6 +393,7 @@ ipc_remove_client(struct cow_ipc_client *client)
 {
 	if (client == NULL || !client->active)
 		return;
+	int fd = client->fd;
 	if (client->ev != NULL) {
 		event_free(client->ev);
 		client->ev = NULL;
@@ -397,6 +406,11 @@ ipc_remove_client(struct cow_ipc_client *client)
 	client->active  = false;
 	if (cow_ipc.num_clients > 0)
 		cow_ipc.num_clients--;
+	cow_log_debug("command client disconnected (name=%s fd=%d clients=%d)",
+	    client->identified ? client->name : "unidentified", fd,
+	    cow_ipc.num_clients);
+	client->identified = false;
+	client->name[0] = '\0';
 }
 
 static void
@@ -420,6 +434,8 @@ ipc_accept_client(void)
 	client->buf_len	 = 0;
 	client->active	 = true;
 	client->responded = false;
+	client->identified = false;
+	client->name[0] = '\0';
 	client->ev	 = event_new(cow_event_base(), fd, EV_READ | EV_PERSIST,
 	     ipc_client_cb, client);
 	if (client->ev == NULL || event_add(client->ev, NULL) < 0) {
@@ -427,6 +443,8 @@ ipc_accept_client(void)
 		return;
 	}
 	cow_ipc.num_clients++;
+	cow_log_trace("command transport connected (fd=%d clients=%d)", fd,
+	    cow_ipc.num_clients);
 }
 
 static void
@@ -455,6 +473,23 @@ ipc_handle_client_data(struct cow_ipc_client *client)
 			break;
 
 		start[end] = '\0';
+		if (!client->identified) {
+			if (!cow_module_parse_hello(start, client->name,
+				sizeof(client->name))) {
+				cow_log_warn("rejecting unidentified command client "
+				    "(fd=%d)", client->fd);
+				cow_ipc_respond_error(client->fd,
+				    "client identification required");
+				ipc_remove_client(client);
+				return;
+			}
+			client->identified = true;
+			cow_log_debug("command client identified "
+			    "(name=%s fd=%d clients=%d)", client->name,
+			    client->fd, cow_ipc.num_clients);
+			start += end + 1;
+			continue;
+		}
 		cow_ipc_dispatch(start, client->fd);
 		start += end + 1;
 		/* Close after each command: moocow sends one command and

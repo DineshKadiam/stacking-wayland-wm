@@ -33,6 +33,7 @@
 #include "cow/desk_ops.h"
 #include "cow/event.h"
 #include "cow/memory.h"
+#include "cow/module_protocol.h"
 #include "cow/output.h"
 #include "cow/util.h"
 #include "cow/view.h"
@@ -40,15 +41,50 @@
 
 #define MAX_STATUS_CLIENTS 64
 
+struct status_client {
+	int fd;
+	bool active;
+	bool identified;
+	char name[COW_MODULE_CLIENT_NAME_MAX + 1];
+	char hello[sizeof(COW_MODULE_HELLO) + COW_MODULE_CLIENT_NAME_MAX + 1];
+	size_t hello_len;
+	struct event *ev;
+};
+
 static int    server_fd	  = -1;
 static struct event *server_ev = NULL;
 static char  *socket_path = NULL;
-static int    clients[MAX_STATUS_CLIENTS];
+static struct status_client clients[MAX_STATUS_CLIENTS];
 static int    nclients		= 0;
 static char  *last_snapshot	= NULL;
 static size_t last_snapshot_len = 0;
 
 static void status_accept_cb(evutil_socket_t, short, void *);
+static void status_client_cb(evutil_socket_t, short, void *);
+
+static void
+status_remove_client(struct status_client *client, const char *reason)
+{
+	if (client == NULL || !client->active)
+		return;
+	int fd = client->fd;
+	if (client->ev != NULL) {
+		event_free(client->ev);
+		client->ev = NULL;
+	}
+	close(fd);
+	client->fd = -1;
+	client->active = false;
+	if (nclients > 0)
+		nclients--;
+	cow_log_debug("status client disconnected "
+	    "(name=%s fd=%d clients=%d reason=%s)",
+	    client->identified ? client->name : "unidentified", fd, nclients,
+	    reason);
+	client->identified = false;
+	client->name[0] = '\0';
+	client->hello_len = 0;
+}
 
 void
 cow_status_init(void)
@@ -73,9 +109,9 @@ cow_status_init(void)
 void
 cow_status_fini(void)
 {
-	for (int i = 0; i < nclients; i++)
-		close(clients[i]);
-	nclients = 0;
+	for (int i = 0; i < MAX_STATUS_CLIENTS; i++)
+		if (clients[i].active)
+			status_remove_client(&clients[i], "shutdown");
 
 	xfree(last_snapshot);
 	last_snapshot	  = NULL;
@@ -108,24 +144,89 @@ status_accept(void)
 		    SOCK_NONBLOCK | SOCK_CLOEXEC);
 		if (fd < 0)
 			break;
-		if (nclients >= MAX_STATUS_CLIENTS) {
+		struct status_client *client = NULL;
+		for (int i = 0; i < MAX_STATUS_CLIENTS; i++) {
+			if (!clients[i].active) {
+				client = &clients[i];
+				break;
+			}
+		}
+		if (client == NULL) {
 			close(fd);
 			break;
 		}
-		/* Send the last snapshot immediately so the client does not
-		 * have to wait for the next state change to get initial data.
-		 * If the write fails (e.g. client went away between accept
-		 * and this call), drop the fd.
-		 */
-		if (last_snapshot != NULL) {
-			if (cow_write_all(fd, last_snapshot,
-				last_snapshot_len) < 0) {
-				close(fd);
-				continue;
-			}
+		client->fd = fd;
+		client->active = true;
+		client->identified = false;
+		client->name[0] = '\0';
+		client->hello_len = 0;
+		client->ev = event_new(cow_event_base(), fd,
+		    EV_READ | EV_PERSIST, status_client_cb, client);
+		nclients++;
+		if (client->ev == NULL || event_add(client->ev, NULL) < 0) {
+			status_remove_client(client, "event-error");
+			continue;
 		}
-		clients[nclients++] = fd;
+		cow_log_trace("status transport connected (fd=%d clients=%d)",
+		    fd, nclients);
 	}
+}
+
+static void
+status_client_cb(__unused evutil_socket_t fd, short events, void *data)
+{
+	struct status_client *client = data;
+	if ((events & EV_READ) == 0 || client == NULL || !client->active)
+		return;
+
+	if (client->identified) {
+		char byte;
+		ssize_t n = read(client->fd, &byte, sizeof(byte));
+		if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK ||
+			errno == EINTR))
+			return;
+		status_remove_client(client, n == 0 ? "closed" : "protocol-error");
+		return;
+	}
+
+	size_t available = sizeof(client->hello) - client->hello_len - 1;
+	if (available == 0) {
+		status_remove_client(client, "invalid-identification");
+		return;
+	}
+	ssize_t n = read(client->fd, client->hello + client->hello_len,
+	    available);
+	if (n <= 0) {
+		if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK ||
+			errno == EINTR))
+			return;
+		status_remove_client(client, n == 0 ? "closed" : "read-error");
+		return;
+	}
+	client->hello_len += (size_t)n;
+	client->hello[client->hello_len] = '\0';
+
+	char *newline = strchr(client->hello, '\n');
+	if (newline == NULL)
+		return;
+	if (newline[1] != '\0') {
+		status_remove_client(client, "protocol-error");
+		return;
+	}
+	*newline = '\0';
+	if (!cow_module_parse_hello(client->hello, client->name,
+		sizeof(client->name))) {
+		status_remove_client(client, "invalid-identification");
+		return;
+	}
+	client->identified = true;
+	cow_log_debug("status client identified (name=%s fd=%d clients=%d)",
+	    client->name, client->fd, nclients);
+
+	/* Send the current state only after the mandatory handshake. */
+	if (last_snapshot != NULL && cow_write_all(client->fd, last_snapshot,
+		last_snapshot_len) < 0)
+		status_remove_client(client, "initial-write-error");
 }
 
 static void
@@ -145,27 +246,26 @@ static void
 status_broadcast(const char *msg, size_t len)
 {
 	int i = 0;
-	while (i < nclients) {
-		ssize_t n = write(clients[i], msg, len);
+	while (i < MAX_STATUS_CLIENTS) {
+		struct status_client *client = &clients[i++];
+		if (!client->active || !client->identified)
+			continue;
+		ssize_t n = write(client->fd, msg, len);
 		if (n < 0) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK ||
 			    errno == EINTR) {
 				/* Socket full; skip this tick. */
-				i++;
 				continue;
 			}
 			/* Client disconnected */
-			close(clients[i]);
-			clients[i] = clients[--nclients];
+			status_remove_client(client, "write-error");
 			continue;
 		}
 		if ((size_t)n < len) {
 			/* Partial write; stream is desynced -- drop. */
-			close(clients[i]);
-			clients[i] = clients[--nclients];
+			status_remove_client(client, "partial-write");
 			continue;
 		}
-		i++;
 	}
 }
 

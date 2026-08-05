@@ -60,10 +60,17 @@ and message.  For example:
 ```
 
 The *info* level records normal lifecycle events such as configuration loads,
-outputs, seats, windows, desk and page changes, reloads, and shutdown.  *debug*
-adds focus, geometry, and transient state details.  *trace* is intended for
-high-volume diagnostics and includes commands received through IPC.  *warn*,
-*error*, and *fatal* report increasingly serious failures.
+outputs, usable-area changes, seats, windows, desk and page changes, reloads,
+and shutdown.  *debug* adds focus, pointer operations, output geometry,
+negotiated protocol versions, client connections, and transient state details.
+*trace* is intended for high-volume diagnostics and includes advertised Wayland
+globals, commands and their execution times, rule matching, and manage-cycle
+requests and timings.  *warn*, *error*, and *fatal* report increasingly serious
+failures.
+
+Trace output contains complete command strings and may therefore expose
+sensitive command arguments.  Enable it only while diagnosing a problem and
+handle trace files accordingly.
 
 Log files are opened in append mode.  Colour is enabled automatically only for
 terminal output; redirected output and explicit log files are plain text unless
@@ -2103,6 +2110,21 @@ regardless of either setting.
 *XDG\_RUNTIME\_DIR*
 	Directory in which the IPC command and status sockets are created.
 
+# IPC PROTOCOL
+
+Every command or status client must identify itself immediately after
+connecting by sending:
+
+```
+cow-client NAME
+```
+
+The line is terminated by a newline.  _NAME_ is 1 to 63 characters and may
+contain ASCII letters, digits, dots, hyphens, and underscores.  A command
+client then sends one command and receives its JSON response before the
+connection closes.  A status client sends no further input and receives an
+initial JSON snapshot followed by a snapshot after each state change.
+
 # FILES
 
 _~/cow.conf_
@@ -2118,12 +2140,14 @@ _/etc/cow/cow.conf_
 	System-wide configuration (fifth search location).
 
 _$XDG\_RUNTIME\_DIR/cow-$WAYLAND\_DISPLAY-cmd.sock_
-	IPC command socket. Accepts one command per connection; returns JSON.
+	IPC command socket. Requires the client-identification line, then accepts
+	one command per connection and returns JSON.
 	If *WAYLAND\_DISPLAY* is unset, the fallback path is
 	_$XDG\_RUNTIME\_DIR/cow-cmd.sock_.
 
 _$XDG\_RUNTIME\_DIR/cow-$WAYLAND\_DISPLAY-status.sock_
-	Status broadcast socket. Emits a JSON state snapshot on each change.
+	Status broadcast socket. Requires the client-identification line, then
+	emits a JSON state snapshot on each change.
 	If *WAYLAND\_DISPLAY* is unset, the fallback path is
 	_$XDG\_RUNTIME\_DIR/cow-status.sock_.
 

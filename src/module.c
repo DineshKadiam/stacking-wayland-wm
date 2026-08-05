@@ -24,6 +24,38 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+static bool
+send_identity(int fd, const char *prog)
+{
+	if (prog == NULL || *prog == '\0' ||
+	    strlen(prog) > COW_MODULE_CLIENT_NAME_MAX) {
+		errno = EINVAL;
+		return (false);
+	}
+
+	char hello[sizeof(COW_MODULE_HELLO) + COW_MODULE_CLIENT_NAME_MAX + 1];
+	int len = snprintf(hello, sizeof(hello), "%s%s\n", COW_MODULE_HELLO,
+	    prog);
+	if (len < 0 || (size_t)len >= sizeof(hello)) {
+		errno = EINVAL;
+		return (false);
+	}
+
+	size_t offset = 0;
+	while (offset < (size_t)len) {
+		ssize_t n = write(fd, hello + offset, (size_t)len - offset);
+		if (n < 0) {
+			if (errno == EINTR)
+				continue;
+			return (false);
+		}
+		if (n == 0)
+			return (false);
+		offset += (size_t)n;
+	}
+	return (true);
+}
+
 bool
 cow_module_cmd_path(char *buf, size_t bufsz, const char *prog)
 {
@@ -80,6 +112,12 @@ connect_path(const char *prog, const char *path, bool quiet_connect)
 		}
 		close(fd);
 		return -1;
+	}
+	if (!send_identity(fd, prog)) {
+		fprintf(stderr, "%s: cannot identify client: %s\n", prog,
+		    strerror(errno));
+		close(fd);
+		return (-1);
 	}
 	return fd;
 }

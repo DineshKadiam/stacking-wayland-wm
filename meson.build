@@ -89,6 +89,7 @@ srcs = [
     'src/layer_shell.c',
     'src/main.c',
     'src/memory.c',
+    'src/module_protocol.c',
     'src/output.c',
     'src/options-table.c',
     'src/pan_frames.c',
