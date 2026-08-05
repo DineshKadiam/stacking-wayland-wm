@@ -694,9 +694,11 @@ decoration_frame_hit(struct cow_view *view, int lx, int ly, int cw, int ch)
 
 	hit.bw = view->dec.border_width;
 	hit.tt = view->dec.title_thickness;
-	hit.cl = view->cfg.corner_length;
-	if (hit.cl < hit.bw)
-		hit.cl = hit.bw;
+	/* Keep corner_length usable inside the border.  Measuring it from
+	 * the outer frame edge makes most of the target unreachable when a
+	 * maximized frame is flush with an output edge.
+	 */
+	hit.cl = view->cfg.corner_length + hit.bw;
 
 	int content_x, content_y;
 	cow_titlebar_frame_geometry(view, cw, ch, &hit.frame_w,

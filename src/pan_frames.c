@@ -193,9 +193,10 @@ decoration_frame_hit(struct cow_view *view, int sx, int sy, int cw, int ch)
 
 	hit.bw = view->dec.border_width;
 	hit.tt = view->dec.title_thickness;
-	hit.cl = view->cfg.corner_length;
-	if (hit.cl < hit.bw)
-		hit.cl = hit.bw;
+	/* Match wm.c's click hit-test: corner_length extends inward from
+	 * the inner border edge so output-edge corners remain reachable.
+	 */
+	hit.cl = view->cfg.corner_length + hit.bw;
 
 	int content_x, content_y;
 	cow_titlebar_frame_geometry(view, cw, ch, &hit.frame_w,

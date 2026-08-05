@@ -275,6 +275,29 @@ cow_pointer_op_start_scroll(struct cow_seat *seat, struct cow_output *output,
 	river_seat_v1_op_start_pointer(seat->river_seat);
 }
 
+static void
+resize_clear_maximized_axes(struct cow_view *view, uint32_t edges)
+{
+	bool clear_h = view->maximized_h &&
+	    (edges & (COW_EDGE_LEFT | COW_EDGE_RIGHT)) != 0;
+	bool clear_v = view->maximized_v &&
+	    (edges & (COW_EDGE_TOP | COW_EDGE_BOTTOM)) != 0;
+
+	if (!clear_h && !clear_v)
+		return;
+	if (clear_h)
+		view->maximized_h = false;
+	if (clear_v)
+		view->maximized_v = false;
+	view->maximized = view->maximized_h || view->maximized_v;
+	if (!view->maximized) {
+		cow_view_set_pending_maximized_hint(view, false);
+		view->icon_inverted_button = -1;
+	}
+	view->dec.dirty = true;
+	cow_status_emit();
+}
+
 void
 cow_pointer_op_start_draw_exec(struct cow_seat *seat)
 {
@@ -307,6 +330,7 @@ cow_pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
 	    view->min_height == view->max_height;
 	if ((!wants_w || fixed_w) && (!wants_h || fixed_h))
 		return;
+	resize_clear_maximized_axes(view, edges);
 
 	seat->op.type	      = COW_POINTER_OP_RESIZE;
 	seat->op.view	      = view;
