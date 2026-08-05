@@ -88,6 +88,12 @@ struct cow_font *cow_decoration_titlebar_font(void);
 char *cow_decoration_display_title(const struct cow_view *);
 
 /*
+ * Return the corner-handle length after applying the same minimum used by
+ * the decoration renderer.
+ */
+int cow_decoration_corner_length(const struct cow_view *);
+
+/*
  * Return the resize edges at a point in decoration-surface coordinates.
  * The returned mask uses COW_EDGE_* values and is zero outside the frame's
  * resize regions, including over the titlebar.

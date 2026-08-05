@@ -882,11 +882,7 @@ cow_decoration_update(struct cow_view *view, bool active)
 		/* Render border: fill_border_base always runs for
 		 * per-edge active/inactive colors; FVWM/MWM add 3D
 		 * relief on top; NONE = flat fill only. */
-		int cl = (view->cfg.handles && view->cfg.corner_length > 0) ?
-		    view->cfg.corner_length :
-		    0;
-		if (cl > 0 && tt > 0 && cl < bw + tt)
-			cl = bw + tt;
+		int cl = cow_decoration_corner_length(view);
 		/*
 		 * When this view is a container drop target, override the
 		 * entire frame (borders + titlebar) with solid orange so the
