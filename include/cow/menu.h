@@ -179,6 +179,9 @@ void cow_menu_close_all(void);
 /* Restore the window focus saved before the root menu took keyboard focus. */
 void cow_menu_apply_focus_restore(void);
 
+/* Run an item action after the selected menu's surfaces have been removed. */
+void cow_menu_run_deferred_action(void);
+
 /*
  * Returns true if any menu popup is currently open.
  */

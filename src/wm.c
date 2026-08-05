@@ -394,6 +394,7 @@ handle_wm_manage_start(__unused void *data,
 	manage_destroy_removed();
 	manage_tick_outputs();
 	manage_configure_views();
+	cow_menu_run_deferred_action();
 
 	if (cow_menu_is_open())
 		cow_menu_process_input();

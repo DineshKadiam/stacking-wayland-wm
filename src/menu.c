@@ -130,6 +130,11 @@ static struct xkb_state     *g_menu_xkb_state;
 static bool		       g_menu_focus_requested;
 static bool		       g_menu_restore_pending;
 static struct cow_view      *g_menu_restore_view;
+static char		      *g_deferred_action;
+static char		      *g_deferred_context_id;
+static uint32_t		       g_deferred_seat_name;
+static bool		       g_deferred_pick_context;
+static bool		       g_deferred_action_ready;
 
 static void menu_navigate(const char *);
 
@@ -602,6 +607,11 @@ cow_menu_destroy_all(void)
 	}
 	cow_menu_close_all();
 	menu_keyboard_destroy();
+	xfree(g_deferred_action);
+	xfree(g_deferred_context_id);
+	g_deferred_action = NULL;
+	g_deferred_context_id = NULL;
+	g_deferred_action_ready = false;
 	if (g_font_desc != NULL) {
 		pango_font_description_free(g_font_desc);
 		g_font_desc = NULL;
@@ -1368,6 +1378,8 @@ popup_refit_position(struct cow_menu_popup *p)
 void
 cow_menu_render_all(void)
 {
+	bool destroyed = false;
+
 	/* Destroy popups whose close was deferred to the render hook. */
 	if (cow_wm.menu_graveyard.next != NULL) {
 		struct cow_menu_popup *gp, *gtmp;
@@ -1375,7 +1387,12 @@ cow_menu_render_all(void)
 		{
 			wl_list_remove(&gp->link);
 			popup_destroy(gp);
+			destroyed = true;
 		}
+	}
+	if (destroyed && g_deferred_action != NULL) {
+		g_deferred_action_ready = true;
+		cow_wm_request_manage_dirty();
 	}
 
 	if (!cow_menu_is_open())
@@ -1496,7 +1513,7 @@ popup_close_child_if_unrelated(struct cow_menu_popup *p,
 
 static void
 dispatch_action_with_context(const char *action, struct cow_view *view,
-    bool pick_if_no_context)
+    bool pick_if_no_context, struct cow_seat *menu_seat)
 {
 	if (action == NULL)
 		return;
@@ -1526,7 +1543,6 @@ dispatch_action_with_context(const char *action, struct cow_view *view,
 	if (view != NULL && !view->closed)
 		cmdq_set_default_target(cmdq, view, view->desk, view->output);
 	struct cow_seat *old_seat = cow_wm.current_interaction_seat;
-	struct cow_seat *menu_seat = cow_wm.menu_context_seat;
 	cow_wm.current_interaction_seat =
 	    (menu_seat != NULL && !menu_seat->removed) ? menu_seat : NULL;
 	cmdq_run(cmdq, cmdlist);
@@ -1534,6 +1550,42 @@ dispatch_action_with_context(const char *action, struct cow_view *view,
 	cmd_list_free(cmdlist);
 	cmdq_free(cmdq);
 	xfree(picked_action);
+}
+
+static struct cow_seat *
+seat_by_name(uint32_t name)
+{
+	struct cow_seat *seat;
+	wl_list_for_each(seat, &cow_wm.seats, wm_link)
+	{
+		if (!seat->removed && seat->wl_seat_name == name)
+			return (seat);
+	}
+	return (NULL);
+}
+
+void
+cow_menu_run_deferred_action(void)
+{
+	if (!g_deferred_action_ready || g_deferred_action == NULL)
+		return;
+
+	char *action = g_deferred_action;
+	char *context_id = g_deferred_context_id;
+	bool pick_context = g_deferred_pick_context;
+	uint32_t seat_name = g_deferred_seat_name;
+	g_deferred_action = NULL;
+	g_deferred_context_id = NULL;
+	g_deferred_action_ready = false;
+	g_deferred_pick_context = false;
+	g_deferred_seat_name = 0;
+
+	struct cow_view *context = context_id != NULL ?
+	    cow_view_find_by_identifier(context_id) : NULL;
+	dispatch_action_with_context(action, context, pick_context,
+	    seat_by_name(seat_name));
+	xfree(context_id);
+	xfree(action);
 }
 
 static void
@@ -1570,12 +1622,17 @@ dispatch_item(struct cow_menu_popup *p, struct cow_menu_item *it)
 		return;
 	}
 
-	char		*action_copy = xstrdup(it->action);
-	struct cow_view *context = cow_wm.menu_context_view;
-	bool pick_if_no_context	= p->pick_target_on_action;
+	xfree(g_deferred_action);
+	xfree(g_deferred_context_id);
+	g_deferred_action = xstrdup(it->action);
+	g_deferred_context_id = cow_wm.menu_context_view != NULL &&
+	    cow_wm.menu_context_view->identifier != NULL ?
+	    xstrdup(cow_wm.menu_context_view->identifier) : NULL;
+	g_deferred_pick_context = p->pick_target_on_action;
+	g_deferred_seat_name = cow_wm.menu_context_seat != NULL ?
+	    cow_wm.menu_context_seat->wl_seat_name : 0;
+	g_deferred_action_ready = false;
 	cow_menu_close_all();
-	dispatch_action_with_context(action_copy, context, pick_if_no_context);
-	xfree(action_copy);
 }
 
 bool
