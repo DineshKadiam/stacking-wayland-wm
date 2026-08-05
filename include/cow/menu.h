@@ -88,6 +88,7 @@ struct cow_menu {
 	uint32_t	       style_overrides;
 	struct wl_list       items; /* list of cow_menu_item */
 	struct wl_list       link;  /* in cow_wm.menus */
+	bool	       numbered;  /* digits select items by ordinal */
 	bool	       typeahead; /* letters search instead of activating hotkeys */
 	char	       typeahead_query[128];
 };
@@ -163,7 +164,10 @@ struct cow_menu_popup *cow_menu_popup_open(struct cow_menu *menu, int x, int y,
 struct cow_menu_popup *cow_menu_popup_open_centered(struct cow_menu *, int,
     int, struct cow_view *);
 
-/* Make alphanumeric menu navigation provide numbered/type-ahead selection. */
+/* Make digit keys select menu items by ordinal. */
+void cow_menu_enable_numbered_selection(struct cow_menu *);
+
+/* Make alphanumeric menu navigation provide type-ahead selection. */
 void cow_menu_enable_typeahead(struct cow_menu *);
 
 /*

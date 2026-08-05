@@ -636,6 +636,14 @@ cow_menu_item_add(struct cow_menu *menu, enum cow_menu_item_type type,
 }
 
 void
+cow_menu_enable_numbered_selection(struct cow_menu *menu)
+{
+	if (menu == NULL)
+		return;
+	menu->numbered = true;
+}
+
+void
 cow_menu_enable_typeahead(struct cow_menu *menu)
 {
 	if (menu == NULL)
@@ -1904,7 +1912,7 @@ menu_navigate(const char *direction)
 		nav_typeahead_match(p);
 	} else if (direction[0] != '\0' && direction[1] == '\0') {
 		int key = hotkey_fold((unsigned char)direction[0]);
-		if (p->def->typeahead && isdigit((unsigned char)key)) {
+		if (p->def->numbered && isdigit((unsigned char)key)) {
 			(void)nav_number(p, key);
 		} else if (p->def->typeahead && isalnum((unsigned char)key)) {
 			size_t len = strlen(p->def->typeahead_query);

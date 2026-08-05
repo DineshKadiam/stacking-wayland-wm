@@ -39,10 +39,10 @@ static enum cmd_retval cmd_window_list_exec(struct cmd *, struct cmd_q *);
 
 struct cmd_entry cmd_window_list_entry = {
 	"window-list",
-	"F:S:f:s:w",
+	"F:S:f:ns:w",
 	0,
 	0,
-	"window-list [-w] [-F expr] [-f format] [-S sort]",
+	"window-list [-n] [-w] [-F expr] [-f format] [-S sort]",
 	cmd_window_list_exec,
 	0,
 };
@@ -328,7 +328,7 @@ select_window(const char *id, bool warp, struct cmd_q *cmdq)
 
 static enum cmd_retval
 show_window_list(const char *filter_expr, const char *format,
-    const char *sort_value, bool warp, struct cmd_q *cmdq)
+    const char *sort_value, bool typeahead, bool warp, struct cmd_q *cmdq)
 {
 	enum window_list_sort sort;
 	if (!parse_sort(sort_value, &sort, cmdq))
@@ -388,9 +388,12 @@ show_window_list(const char *filter_expr, const char *format,
 		cmdq_error(cmdq, "window-list: cannot create menu");
 		return (CMD_RETURN_ERROR);
 	}
-	cow_menu_enable_typeahead(menu);
+	cow_menu_enable_numbered_selection(menu);
+	if (typeahead)
+		cow_menu_enable_typeahead(menu);
 	cow_menu_item_add(menu, COW_MENU_ITEM_TITLE,
-	    "Window List (type to search)", NULL, false, false);
+	    typeahead ? "Window List (type to search)" : "Window List", NULL,
+	    false, false);
 
 	for (size_t i = 0; i < count; i++) {
 		view	    = entries[i].view;
@@ -422,18 +425,22 @@ static enum cmd_retval
 cmd_window_list_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	const char *id	 = args_get(self->args, 's');
+	bool	    typeahead = !args_has(self->args, 'n');
 	bool	    warp = args_has(self->args, 'w');
 	if (id != NULL) {
 		if (args_get(self->args, 'F') != NULL ||
 		    args_get(self->args, 'f') != NULL ||
-		    args_get(self->args, 'S') != NULL) {
+		    args_get(self->args, 'S') != NULL ||
+		    args_has(self->args, 'n')) {
 			cmdq_error(cmdq,
-			    "window-list: -F, -f, and -S cannot be used with -s");
+			    "window-list: -F, -f, -n, and -S cannot be used "
+			    "with -s");
 			return (CMD_RETURN_ERROR);
 		}
 		return (select_window(id, warp, cmdq) ? CMD_RETURN_NORMAL :
 							CMD_RETURN_ERROR);
 	}
 	return (show_window_list(args_get(self->args, 'F'),
-	    args_get(self->args, 'f'), args_get(self->args, 'S'), warp, cmdq));
+	    args_get(self->args, 'f'), args_get(self->args, 'S'), typeahead,
+	    warp, cmdq));
 }

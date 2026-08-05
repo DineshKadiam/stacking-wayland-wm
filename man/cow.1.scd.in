@@ -1089,12 +1089,16 @@ Move keyboard focus.
 	in that layer.  Combine with *-n*/*-p* to walk only within
 	_N_.  Mutually exclusive with *-L*.
 
-## window-list [-w] [-F expr] [-f format] [-S sort]
+## window-list [-n] [-w] [-F expr] [-f format] [-S sort]
 
 Open a transient, centred list of managed windows.  Press *1* through *9*, or
 *0* for the tenth entry, to select immediately.  For longer lists use the arrow
 keys and Enter.  Typing letters performs an incremental, case-insensitive
 search over the displayed labels; Backspace removes the last search character.
+
+*-n*
+	Disable type-ahead searching.  Number keys continue to select the first ten
+	entries, and the arrow keys and Enter continue to navigate and select.
 
 Selecting an entry closes the list, switches to its output, desk, and page,
 restores it if iconified, activates its container tab if necessary, and focuses
@@ -1138,6 +1142,7 @@ bind LS+w "window-list -F 'self.current_output and self.current_desk'"
 bind L+a "window-list -f '%n  [%a] %t'"
 bind L+o "window-list -f '%n  %o:%d  %t'"
 bind L+s "window-list -S location"
+bind L+n "window-list -n"
 ```
 
 The popup takes keyboard focus while it is open, so no additional bindings are
