@@ -78,7 +78,9 @@ struct cow_wm {
 	struct wl_compositor *compositor;
 	struct wl_shm	     *shm;
 
-	/* Raw Wayland seat/pointer/constraints for pan frame input events */
+	/*
+	 * Raw Wayland input used by CoW-owned surfaces.
+	 */
 	struct zwlr_layer_shell_v1	  *wl_layer_shell;
 	struct wl_seat			  *wl_seat_raw;
 	bool				   wl_seat_has_pointer;

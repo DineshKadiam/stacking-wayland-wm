@@ -5,6 +5,7 @@
 #include <stdbool.h>
 
 struct cow_output;
+struct wl_surface;
 
 /*
  * Edge directions for the pan-frame machinery.  The integer values
@@ -51,10 +52,15 @@ void cow_output_pan_frame_tick(struct cow_output *);
  */
 void cow_output_pan_pointer_leave(int, int);
 void cow_output_pan_pointer_enter(void);
-void cow_pan_cursor_hold_start(void);
-void cow_pan_cursor_hold_end(void);
-void cow_pan_cursor_clear(void);
-void cow_pan_cursor_reconcile_position(int, int);
+
+/*
+ * Raw pointer-input hooks for the layer surfaces owned by this module.
+ */
+bool cow_pan_frame_for_surface(struct wl_surface *, struct cow_output **,
+    int *);
+bool cow_pan_frame_point(struct cow_output *, int, int, int, int *, int *);
+void cow_pan_frame_pointer_enter(struct cow_output *, int);
+void cow_pan_frame_pointer_leave(struct cow_output *, int);
 
 /*
  * Op-mode (drag) dwell arming.  Layer-surface pointer events don't

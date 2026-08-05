@@ -89,6 +89,7 @@ srcs = [
     'src/output.c',
     'src/options-table.c',
     'src/pan_frames.c',
+    'src/pointer_input.c',
     'src/pointer_op.c',
     'src/rule.c',
     'src/seat.c',

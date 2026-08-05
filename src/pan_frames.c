@@ -14,27 +14,21 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <string.h>
 #include <wayland-client.h>
 
 #include "cow/compat.h"
 #include "cow/config.h"
 #include "cow/desk_ops.h"
-#include "cow/ipc.h"
 #include "cow/memory.h"
-#include "cow/menu.h"
 #include "cow/output.h"
 #include "cow/pan_frames.h"
-#include "cow/pick.h"
+#include "cow/pointer_input.h"
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
 #include "cow/shm.h"
-#include "cow/titlebar.h"
 #include "cow/util.h"
 #include "cow/view.h"
 #include "cow/wm.h"
-#include "cursor-shape-v1-client-protocol.h"
-#include "pointer-constraints-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 
 /* Thickness of each pan frame surface in pixels. */
@@ -52,8 +46,6 @@ static const uint32_t pan_col_fill[5] = {
 	0xA3CC7000u, /* ~64% */
 	0xCCFF8800u, /* ~80% (matches PAN_COL_ORANGE) */
 };
-
-static struct cow_output *pointer_focus_background;
 
 /* Index helpers */
 /* Local short aliases for the public enum values used pervasively
@@ -85,18 +77,13 @@ static void pan_frame_set_level(struct cow_output *output, int edge, int level);
 static void pan_disarm(void);
 static void pan_fire(struct cow_output *output, int edge);
 
-static struct wl_surface *decoration_cursor_surface;
-static uint32_t		  decoration_cursor_serial;
-static struct cow_output *pan_cursor_output;
-static int		  pan_cursor_edge = -1;
-static bool		  cursor_held;
-
 /* Cooldown after a fire so the post-warp cursor doesn't re-arm. */
 #define PAN_GIVEUP_COOLDOWN_MS 200
 
 /* Map a wl_surface back to (output, edge) */
-static int
-surface_to_output_edge(struct wl_surface *surf, struct cow_output **out_output)
+bool
+cow_pan_frame_for_surface(struct wl_surface *surf,
+    struct cow_output **out_output, int *out_edge)
 {
 	struct cow_output *output;
 	wl_list_for_each(output, &cow_wm.outputs, wm_link)
@@ -104,11 +91,37 @@ surface_to_output_edge(struct wl_surface *surf, struct cow_output **out_output)
 		for (int e = 0; e < 4; e++) {
 			if (output->pan_surf[e] == surf) {
 				*out_output = output;
-				return e;
+				*out_edge = e;
+				return (true);
 			}
 		}
 	}
-	return -1;
+	return (false);
+}
+
+bool
+cow_pan_frame_point(struct cow_output *output, int edge, int sx, int sy,
+    int *gx, int *gy)
+{
+	if (output == NULL || edge < 0 || edge > 3)
+		return (false);
+
+	*gx = output->x + sx;
+	*gy = output->y + sy;
+	switch (edge) {
+	case PAN_BOTTOM:
+		*gy += output->height - PAN_FRAME_SIZE;
+		break;
+	case PAN_RIGHT:
+		*gx += output->width - PAN_FRAME_SIZE;
+		break;
+	case PAN_TOP:
+	case PAN_LEFT:
+		break;
+	default:
+		return (false);
+	}
+	return (true);
 }
 
 /* Dwell timer: cursor on a strip for this many ms fires the page
@@ -163,542 +176,30 @@ pan_arm_edge(struct cow_output *output, int edge)
 	cow_wm_request_manage_dirty();
 }
 
-static struct cow_view *
-view_for_decoration_surface(struct wl_surface *surface)
-{
-	struct cow_view *view;
-
-	wl_list_for_each(view, &cow_wm.views, wm_link)
-	{
-		if (!view->closed && view->decoration_surface == surface)
-			return (view);
-	}
-	return (NULL);
-}
-
-static uint32_t
-cursor_shape_for_edges(uint32_t edges)
-{
-	if (edges == (COW_EDGE_TOP | COW_EDGE_LEFT))
-		return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NW_RESIZE);
-	if (edges == (COW_EDGE_TOP | COW_EDGE_RIGHT))
-		return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NE_RESIZE);
-	if (edges == (COW_EDGE_BOTTOM | COW_EDGE_LEFT))
-		return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_SW_RESIZE);
-	if (edges == (COW_EDGE_BOTTOM | COW_EDGE_RIGHT))
-		return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_SE_RESIZE);
-	if (edges == COW_EDGE_TOP)
-		return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_N_RESIZE);
-	if (edges == COW_EDGE_BOTTOM)
-		return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_S_RESIZE);
-	if (edges == COW_EDGE_LEFT)
-		return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_W_RESIZE);
-	if (edges == COW_EDGE_RIGHT)
-		return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_E_RESIZE);
-	return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
-}
-
-static uint32_t
-decoration_cursor_shape_at(struct cow_view *view, int x, int y, int cw, int ch)
-{
-	uint32_t edges = cow_decoration_edges_at(view, x, y, cw, ch);
-	if (edges != 0)
-		return (cursor_shape_for_edges(edges));
-
-	int content_x, content_y, frame_w, frame_h;
-	cow_titlebar_frame_geometry(view, cw, ch, &frame_w, &frame_h,
-	    &content_x, &content_y);
-	if (cow_titlebar_hit_for(view, cw, ch, x - content_x, y - content_y))
-		return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_GRAB);
-
-	return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
-}
-
-static bool
-decoration_cursor_update(struct wl_surface *surface, uint32_t serial,
-    wl_fixed_t sx, wl_fixed_t sy)
-{
-	struct cow_view *view = view_for_decoration_surface(surface);
-	if (view == NULL)
-		return (false);
-
-	if (serial != 0)
-		decoration_cursor_serial = serial;
-
-	int x  = wl_fixed_to_int(sx);
-	int y  = wl_fixed_to_int(sy);
-	int cw = view->content_width;
-	int ch = view->content_height;
-	if (view->sd != COW_SHADE_NONE)
-		cow_view_shaded_content_size(view, view->sd, &cw, &ch);
-
-	uint32_t shape = decoration_cursor_shape_at(view, x, y, cw, ch);
-
-	cow_wm_set_cursor_shape(shape, decoration_cursor_serial);
-	return (true);
-}
-
-static bool
-pan_frame_point(struct cow_output *output, int edge, wl_fixed_t sx,
-    wl_fixed_t sy, int *gx, int *gy)
+void
+cow_pan_frame_pointer_enter(struct cow_output *output, int edge)
 {
 	if (output == NULL || edge < 0 || edge > 3)
-		return (false);
-
-	*gx = output->x + wl_fixed_to_int(sx);
-	*gy = output->y + wl_fixed_to_int(sy);
-	switch (edge) {
-	case PAN_BOTTOM:
-		*gy += output->height - PAN_FRAME_SIZE;
-		break;
-	case PAN_RIGHT:
-		*gx += output->width - PAN_FRAME_SIZE;
-		break;
-	case PAN_TOP:
-	case PAN_LEFT:
-		break;
-	default:
-		return (false);
-	}
-	return (true);
-}
-
-static struct cow_view *
-view_for_global_decoration_point(int gx, int gy, int *dx, int *dy, int *cw,
-    int *ch)
-{
-	struct cow_view *view, *best = NULL;
-	uint64_t	best_raise = 0;
-
-	wl_list_for_each(view, &cow_wm.views, wm_link)
-	{
-		if (view->closed || !view->use_ssd || view->output == NULL)
-			continue;
-		if (!cow_view_visible(view, view->output))
-			continue;
-
-		int vcw = view->content_width;
-		int vch = view->content_height;
-		if (view->sd != COW_SHADE_NONE)
-			cow_view_shaded_content_size(view, view->sd, &vcw, &vch);
-
-		int content_x, content_y, frame_w, frame_h;
-		cow_titlebar_frame_geometry(view, vcw, vch, &frame_w,
-		    &frame_h, &content_x, &content_y);
-		int fx = view->x - content_x;
-		int fy = view->y - content_y;
-		if (gx < fx || gx >= fx + frame_w || gy < fy ||
-		    gy >= fy + frame_h)
-			continue;
-
-		uint32_t shape = decoration_cursor_shape_at(view, gx - fx,
-		    gy - fy, vcw, vch);
-		if (shape == WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT)
-			continue;
-		if (best == NULL || view->raise_seq > best_raise) {
-			best	    = view;
-			best_raise  = view->raise_seq;
-			*dx	    = gx - fx;
-			*dy	    = gy - fy;
-			*cw	    = vcw;
-			*ch	    = vch;
-		}
-	}
-	return (best);
-}
-
-static bool
-pan_cursor_update(struct cow_output *output, int edge, uint32_t serial,
-    wl_fixed_t sx, wl_fixed_t sy)
-{
-	if (serial != 0)
-		decoration_cursor_serial = serial;
-
-	int gx, gy;
-	if (!pan_frame_point(output, edge, sx, sy, &gx, &gy))
-		return (false);
-
-	int dx, dy, cw, ch;
-	struct cow_view *view = view_for_global_decoration_point(gx, gy, &dx,
-	    &dy, &cw, &ch);
-	if (view == NULL) {
-		cow_wm_reset_cursor_shape(decoration_cursor_serial);
-		return (false);
-	}
-
-	cow_wm_set_cursor_shape(decoration_cursor_shape_at(view, dx, dy, cw,
-	    ch), decoration_cursor_serial);
-	return (true);
-}
-
-void
-cow_pan_cursor_hold_start(void)
-{
-	if (cow_wm.wl_cursor_shape !=
-	    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT)
-		cursor_held = true;
-}
-
-void
-cow_pan_cursor_hold_end(void)
-{
-	if (!cursor_held)
-		return;
-	cursor_held = false;
-	cow_wm_reset_cursor_shape(decoration_cursor_serial);
-}
-
-void
-cow_pan_cursor_clear(void)
-{
-	if (cursor_held)
 		return;
 
-	decoration_cursor_surface = NULL;
-	pan_cursor_output	  = NULL;
-	pan_cursor_edge		  = -1;
-	cow_wm_reset_cursor_shape(decoration_cursor_serial);
-}
-
-static struct cow_menu_popup *
-surface_to_menu_popup(struct wl_surface *surf)
-{
-	if (surf == NULL || cow_wm.open_menus.next == NULL)
-		return NULL;
-	struct cow_menu_popup *p;
-	wl_list_for_each(p, &cow_wm.open_menus, link)
-	{
-		if (p->surface == surf)
-			return p;
-	}
-	return NULL;
-}
-
-static struct cow_output *
-surface_to_output_background(struct wl_surface *surf)
-{
-	if (surf == NULL)
-		return NULL;
-	struct cow_output *output;
-	wl_list_for_each(output, &cow_wm.outputs, wm_link)
-	{
-		if (output->bg_surface == surf)
-			return output;
-	}
-	return NULL;
-}
-
-static bool
-dispatch_background_mouse_binding(const char *key)
-{
-	if (cow_config == NULL || key == NULL)
-		return false;
-
-	struct cow_mouse_binding_entry *entry;
-	wl_list_for_each(entry, &cow_config->root_mouse_bindings, link)
-	{
-		if (entry->key_string == NULL || entry->action_string == NULL)
-			continue;
-		if (strcmp(entry->key_string, key) != 0)
-			continue;
-		return cow_ipc_dispatch(entry->action_string, -1);
-	}
-	return false;
-}
-
-static void
-seed_seat_pointer_from_background(void)
-{
-	if (!cow_wm.has_raw_pointer)
-		return;
-
-	struct cow_seat *seat = cow_seat_primary();
-	if (seat == NULL)
-		return;
-
-	seat->pointer_x		   = cow_wm.raw_pointer_x;
-	seat->pointer_y		   = cow_wm.raw_pointer_y;
-	seat->has_pointer_position = true;
-}
-
-void
-cow_pan_cursor_reconcile_position(int x, int y)
-{
-	if (cursor_held)
-		return;
-
-	int dx, dy, cw, ch;
-	struct cow_view *view = view_for_global_decoration_point(x, y, &dx,
-	    &dy, &cw, &ch);
-	if (view == NULL) {
-		if (decoration_cursor_surface != NULL ||
-		    pan_cursor_output != NULL) {
-			decoration_cursor_surface = NULL;
-			pan_cursor_output	  = NULL;
-			pan_cursor_edge		  = -1;
-			cow_wm_reset_cursor_shape(decoration_cursor_serial);
-		}
-		return;
-	}
-
-	decoration_cursor_surface = view->decoration_surface;
-	cow_wm_set_cursor_shape(decoration_cursor_shape_at(view, dx, dy, cw,
-	    ch), decoration_cursor_serial);
-}
-
-static void
-raw_pointer_set_absolute(int x, int y)
-{
-	cow_wm.raw_pointer_x	= x;
-	cow_wm.raw_pointer_y	= y;
-	cow_wm.has_raw_pointer = true;
-}
-
-static void
-raw_pointer_set_cow_surface(int x, int y)
-{
-	raw_pointer_set_absolute(x, y);
-	if (decoration_cursor_surface != NULL || pan_cursor_output != NULL)
-		cow_pan_cursor_clear();
-}
-
-static void
-pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
-    struct wl_surface *surf, wl_fixed_t sx, wl_fixed_t sy)
-{
-	(void)data;
-	(void)pointer;
-
-	cow_wm_note_cursor_focus(serial, true);
-
-	struct cow_menu_popup *mp = surface_to_menu_popup(surf);
-	if (mp != NULL) {
-		cow_wm.pointer_focus_menu = mp;
-		pointer_focus_background = NULL;
-		raw_pointer_set_cow_surface(mp->x + wl_fixed_to_int(sx),
-		    mp->y + wl_fixed_to_int(sy));
-		cow_wm.needs_manage_dirty = true;
-		return;
-	}
-
-	struct cow_output *bg_output = surface_to_output_background(surf);
-	if (bg_output != NULL) {
-		pointer_focus_background = bg_output;
-		cow_wm.pointer_focus_menu = NULL;
-		raw_pointer_set_cow_surface(bg_output->x + wl_fixed_to_int(sx),
-		    bg_output->y + wl_fixed_to_int(sy));
-		return;
-	}
-
-	if (cow_wm.pointer_focus_menu != NULL)
-		cow_wm.needs_manage_dirty = true;
-	cow_wm.pointer_focus_menu = NULL;
-	pointer_focus_background = NULL;
-
-	struct cow_output *output;
-	int		   edge = surface_to_output_edge(surf, &output);
-	if (edge < 0) {
-		if (cow_pick_pointer_enter(surf, serial, sx, sy))
-			return;
-		if (decoration_cursor_update(surf, serial, sx, sy)) {
-			decoration_cursor_surface = surf;
-			return;
-		}
-		return;
-	}
-
-	pan_cursor_output = output;
-	pan_cursor_edge   = edge;
-	pan_cursor_update(output, edge, serial, sx, sy);
 	output->pan_entered[edge] = true;
-
 	long now = cow_mono_ms();
-	if (now < output->pan_giveup_until_ms)
+	if (now < output->pan_giveup_until_ms ||
+	    now < cow_wm.pan_global_cooldown_ms)
 		return;
-	if (now < cow_wm.pan_global_cooldown_ms)
-		return;
-
 	pan_arm_edge(output, edge);
 }
 
-static void
-pointer_leave(void *data, struct wl_pointer *pointer, uint32_t serial,
-    struct wl_surface *surf)
+void
+cow_pan_frame_pointer_leave(struct cow_output *output, int edge)
 {
-	(void)data;
-	(void)pointer;
-	(void)serial;
-
-	cow_wm_note_cursor_focus(0, false);
-
-	/* Leaving a menu popup surface: drop the focus pointer.  The
-	 * hover-update in cow_menu_process_input picks this up and
-	 * de-highlights items in popups that aren't under the pointer
-	 * any more. */
-	if (cow_wm.pointer_focus_menu != NULL &&
-	    cow_wm.pointer_focus_menu->surface == surf) {
-		cow_wm.pointer_focus_menu = NULL;
-		cow_wm.needs_manage_dirty = true;
-	}
-	if (pointer_focus_background != NULL &&
-	    pointer_focus_background->bg_surface == surf)
-		pointer_focus_background = NULL;
-
-	struct cow_output *output;
-	int		   edge = surface_to_output_edge(surf, &output);
-	if (edge < 0) {
-		if (cow_pick_pointer_leave(surf))
-			return;
-		if (decoration_cursor_surface == surf) {
-			decoration_cursor_surface = NULL;
-			if (!cursor_held)
-				cow_wm_reset_cursor_shape(
-				    decoration_cursor_serial);
-		}
+	if (output == NULL || edge < 0 || edge > 3)
 		return;
-	}
 
 	output->pan_entered[edge] = false;
-	if (pan_cursor_output == output && pan_cursor_edge == edge) {
-		pan_cursor_output = NULL;
-		pan_cursor_edge   = -1;
-		if (!cursor_held)
-			cow_wm_reset_cursor_shape(decoration_cursor_serial);
-	}
 	if (cow_wm.pan_lock_output == output && cow_wm.pan_lock_edge == edge)
 		pan_disarm();
 }
-
-static void
-pointer_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x,
-    wl_fixed_t y)
-{
-	(void)d;
-	(void)p;
-
-	if (cow_wm.pointer_focus_menu != NULL) {
-		raw_pointer_set_cow_surface(cow_wm.pointer_focus_menu->x +
-			wl_fixed_to_int(x),
-		    cow_wm.pointer_focus_menu->y + wl_fixed_to_int(y));
-		if (cow_menu_is_open())
-			cow_wm.needs_manage_dirty = true;
-		cow_pick_pointer_motion(t, x, y);
-		return;
-	}
-
-	if (pointer_focus_background != NULL) {
-		raw_pointer_set_cow_surface(pointer_focus_background->x +
-			wl_fixed_to_int(x),
-		    pointer_focus_background->y + wl_fixed_to_int(y));
-		if (cow_menu_is_open())
-			cow_wm.needs_manage_dirty = true;
-		cow_pick_pointer_motion(t, x, y);
-		return;
-	}
-
-	if (decoration_cursor_surface != NULL &&
-	    decoration_cursor_update(decoration_cursor_surface, 0, x, y))
-		return;
-	if (pan_cursor_output != NULL && pan_cursor_edge >= 0 &&
-	    pan_cursor_update(pan_cursor_output, pan_cursor_edge, 0, x, y))
-		return;
-
-	cow_wm.raw_pointer_x   = wl_fixed_to_int(x);
-	cow_wm.raw_pointer_y   = wl_fixed_to_int(y);
-	cow_wm.has_raw_pointer = true;
-
-	if (cow_menu_is_open())
-		cow_wm.needs_manage_dirty = true;
-
-	cow_pick_pointer_motion(t, x, y);
-}
-
-static void
-pointer_button(void *d, struct wl_pointer *p, uint32_t ser, uint32_t t,
-    uint32_t btn, uint32_t state)
-{
-	(void)d;
-	(void)p;
-	(void)t;
-
-	if (state == WL_POINTER_BUTTON_STATE_PRESSED &&
-	    (decoration_cursor_surface != NULL || pan_cursor_output != NULL))
-		cow_pan_cursor_hold_start();
-	else if (state == WL_POINTER_BUTTON_STATE_RELEASED)
-		cow_pan_cursor_hold_end();
-
-	if (state == WL_POINTER_BUTTON_STATE_PRESSED && cow_menu_is_open()) {
-		(void)btn;
-		struct cow_seat *s = cow_seat_primary();
-		if (s != NULL)
-			s->menu_click_pending = true;
-		cow_wm.needs_manage_dirty = true;
-	}
-	if (state == WL_POINTER_BUTTON_STATE_PRESSED && btn == BTN_LEFT &&
-	    pointer_focus_background != NULL && !cow_menu_is_open()) {
-		seed_seat_pointer_from_background();
-		if (dispatch_background_mouse_binding("0+left"))
-			cow_wm.needs_manage_dirty = true;
-	}
-
-	cow_pick_pointer_button(ser, btn, state);
-}
-
-static void
-pointer_axis(void *d, struct wl_pointer *p, uint32_t t, uint32_t a,
-    wl_fixed_t v)
-{
-	(void)d;
-	(void)p;
-	(void)t;
-	(void)a;
-	(void)v;
-}
-
-static void
-pointer_frame(void *d, struct wl_pointer *p)
-{
-	(void)d;
-	(void)p;
-}
-
-static void
-pointer_axis_source(void *d, struct wl_pointer *p, uint32_t s)
-{
-	(void)d;
-	(void)p;
-	(void)s;
-}
-
-static void
-pointer_axis_stop(void *d, struct wl_pointer *p, uint32_t t, uint32_t a)
-{
-	(void)d;
-	(void)p;
-	(void)t;
-	(void)a;
-}
-
-static void
-pointer_axis_discrete(void *d, struct wl_pointer *p, uint32_t a, int32_t v)
-{
-	(void)d;
-	(void)p;
-	(void)a;
-	(void)v;
-}
-
-static const struct wl_pointer_listener pointer_listener = {
-	.enter	       = pointer_enter,
-	.leave	       = pointer_leave,
-	.motion	       = pointer_motion,
-	.button	       = pointer_button,
-	.axis	       = pointer_axis,
-	.frame	       = pointer_frame,
-	.axis_source   = pointer_axis_source,
-	.axis_stop     = pointer_axis_stop,
-	.axis_discrete = pointer_axis_discrete,
-};
 
 static void
 pan_disarm(void)
@@ -1049,19 +550,6 @@ void
 pan_frames_init(void)
 {
 	cow_wm.pan_lock_edge = -1;
-
-	if (!cow_wm.wl_seat_raw)
-		return;
-
-	/* wl_seat_get_pointer on a seat without a pointer cap is a fatal
-	 * protocol error; only call it once the cap is advertised. */
-	if (cow_wm.wl_pointer_raw == NULL && cow_wm.wl_seat_has_pointer) {
-		cow_wm.wl_pointer_raw = wl_seat_get_pointer(cow_wm.wl_seat_raw);
-		if (cow_wm.wl_pointer_raw != NULL)
-			wl_pointer_add_listener(cow_wm.wl_pointer_raw,
-			    &pointer_listener, NULL);
-		cow_wm_ensure_cursor_shape_device();
-	}
 }
 
 void
@@ -1115,14 +603,7 @@ pan_frames_update_all(void)
 void
 pan_frames_destroy_output(struct cow_output *output)
 {
-	if (pointer_focus_background == output)
-		pointer_focus_background = NULL;
-	if (pan_cursor_output == output) {
-		pan_cursor_output = NULL;
-		pan_cursor_edge	  = -1;
-		if (!cursor_held)
-			cow_wm_reset_cursor_shape(decoration_cursor_serial);
-	}
+	cow_pointer_input_forget_output(output);
 
 	for (int e = 0; e < 4; e++)
 		pan_frame_destroy(output, e);

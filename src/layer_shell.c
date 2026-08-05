@@ -20,7 +20,7 @@
 #include "cow/compat.h"
 #include "cow/memory.h"
 #include "cow/output.h"
-#include "cow/pan_frames.h"
+#include "cow/pointer_input.h"
 #include "cow/seat.h"
 #include "cow/wm.h"
 
@@ -64,7 +64,7 @@ ls_seat_handle_focus_exclusive(void	      *data,
 {
 	struct cow_layer_shell_seat *lss = data;
 	lss->has_exclusive_focus	 = true;
-	cow_pan_cursor_clear();
+	cow_pointer_cursor_clear();
 }
 
 static void
@@ -73,7 +73,7 @@ ls_seat_handle_focus_non_exclusive(void	      *data,
 {
 	struct cow_layer_shell_seat *lss = data;
 	lss->has_exclusive_focus	 = false;
-	cow_pan_cursor_clear();
+	cow_pointer_cursor_clear();
 }
 
 static void

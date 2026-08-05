@@ -42,6 +42,7 @@
 #include "cow/output.h"
 #include "cow/pan_frames.h"
 #include "cow/pick.h"
+#include "cow/pointer_input.h"
 #include "cow/pointer_op.h"
 #include "cow/rule.h"
 #include "cow/seat.h"
@@ -225,8 +226,10 @@ wl_seat_handle_capabilities(__unused void *data, __unused struct wl_seat *seat,
 	cow_wm.wl_seat_has_keyboard = (capabilities &
 					  WL_SEAT_CAPABILITY_KEYBOARD) != 0;
 
-	if (cow_wm.wl_seat_has_pointer && cow_wm.wl_pointer_raw == NULL)
+	if (cow_wm.wl_seat_has_pointer && cow_wm.wl_pointer_raw == NULL) {
 		pan_frames_init();
+		cow_pointer_input_init();
+	}
 
 	if (!cow_wm.wl_seat_has_pointer && cow_wm.wl_pointer_raw != NULL) {
 		/* Pointer capability removed — release the wl_pointer. */
@@ -618,7 +621,7 @@ manage_titlebar_button_release(struct cow_seat *seat)
 	seat->op_released    = false;
 	seat->titlebar_press = COW_TITLEBAR_PRESS_NONE;
 	seat->pressed_view   = NULL;
-	cow_pan_cursor_hold_end();
+	cow_pointer_cursor_hold_end();
 }
 
 static void
@@ -763,7 +766,7 @@ manage_titlebar_button_press(struct cow_seat *seat, struct cow_view *view,
 	seat->titlebar_press	    = COW_TITLEBAR_PRESS_BUTTON;
 	seat->pressed_button_idx    = hit_btn;
 	seat->pressed_view	    = view;
-	cow_pan_cursor_hold_start();
+	cow_pointer_cursor_hold_start();
 	river_seat_v1_op_start_pointer(seat->river_seat);
 	seat->op_in_progress = true;
 	seat->op_released    = false;
@@ -1531,8 +1534,11 @@ cow_wm_init(void)
 		    (void)cow_output_recompute_usable_area(co);
 	}
 
-	/* Initialise pan frames after globals are bound */
+	/*
+	 * Initialise pan frames and raw pointer input after globals are bound.
+	 */
 	pan_frames_init();
+	cow_pointer_input_init();
 	cow_wm_ensure_cursor_shape_device();
 	cow_wm_cursor_hide_configure();
 
