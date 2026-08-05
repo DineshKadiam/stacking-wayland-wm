@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include "cow/cmd.h"
+#include "cow/log.h"
 #include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/view.h"
@@ -217,6 +218,17 @@ static void
 rule_run(struct cow_rule *rule, struct cow_view *view, struct cow_desk *desk,
     struct cow_output *output, const char *event_json)
 {
+	char actions[512];
+	cmd_list_print(rule->cmdlist, actions, sizeof(actions));
+	cow_log_trace("rule matched (name=%s event=%s scope=%s selector=%s "
+	    "output=%s desk=%s window=%s actions=%s)",
+	    rule->name ? rule->name : "unnamed", cow_rule_type_name(rule->type),
+	    rule->is_global ? "global" : "scoped",
+	    rule->match_spec ? rule->match_spec : "any",
+	    output && output->name ? output->name : "any",
+	    desk && desk->name ? desk->name : "any",
+	    view && view->identifier ? view->identifier : "none", actions);
+
 	struct cmd_q *cmdq = cmdq_new();
 	cmdq->client_fd	   = -1;
 	cmdq->in_rule	   = 1;
@@ -315,6 +327,12 @@ cow_rule_fire_json(enum cow_rule_type type, struct cow_view *view,
 		return;
 	if (!rules_initialised)
 		return; /* no rules registered */
+
+	cow_log_trace("rule event (event=%s output=%s desk=%s window=%s)",
+	    cow_rule_type_name(type),
+	    output && output->name ? output->name : "none",
+	    desk && desk->name ? desk->name : "none",
+	    view && view->identifier ? view->identifier : "none");
 
 	struct cow_rule *rule;
 

@@ -25,7 +25,15 @@
 #include <time.h>
 
 #include "cow/cmd.h"
+#include "cow/log.h"
 #include "cow/output.h"
+
+static long long
+command_elapsed_us(const struct timespec *start, const struct timespec *end)
+{
+	return (end->tv_sec - start->tv_sec) * 1000000LL +
+	    (end->tv_nsec - start->tv_nsec) / 1000;
+}
 
 /* Create new command queue. */
 struct cmd_q *
@@ -203,7 +211,19 @@ cmdq_continue(struct cmd_q *cmdq)
 				}
 			}
 
+			char command[512];
+			cmd_print(cmdq->cmd, command, sizeof(command));
+			cow_log_trace("command begin (queue=%p number=%u command=%s)",
+			    (void *)cmdq, cmdq->number, command);
+
+			struct timespec started, finished;
+			clock_gettime(CLOCK_MONOTONIC, &started);
 			retval = cmdq->cmd->entry->exec(cmdq->cmd, cmdq);
+			clock_gettime(CLOCK_MONOTONIC, &finished);
+			cow_log_trace("command end (queue=%p number=%u result=%d "
+			    "duration_us=%lld command=%s)", (void *)cmdq,
+			    cmdq->number, retval,
+			    command_elapsed_us(&started, &finished), command);
 
 			if (retval == CMD_RETURN_ERROR)
 				break;
