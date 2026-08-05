@@ -251,6 +251,8 @@ menu_style_field(const char *key)
 		return (COW_MENU_STYLE_TITLE_FG);
 	if (strcmp(key, "separator") == 0)
 		return (COW_MENU_STYLE_SEPARATOR);
+	if (strcmp(key, "border.colour") == 0)
+		return (COW_MENU_STYLE_BORDER_COLOUR);
 	if (strcmp(key, "bg.gradient") == 0)
 		return (COW_MENU_STYLE_BG_GRADIENT);
 	if (strcmp(key, "title.bg.gradient") == 0)
@@ -378,6 +380,7 @@ cmd_menu_style_exec(struct cmd *self, struct cmd_q *cmdq)
 		{ "title.bg", st->title_bg },
 		{ "title.fg", st->title_fg },
 		{ "separator", st->separator },
+		{ "border.colour", st->border },
 		{ NULL, NULL },
 	};
 	for (int i = 0; colours[i].name != NULL; i++) {

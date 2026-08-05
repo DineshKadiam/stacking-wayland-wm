@@ -1591,8 +1591,10 @@ The table below shows the possible values:
 :  near-black
 |  *separator*
 :  mid-grey (title underline colour)
+|  *border.colour*
+:  0x000000 (solid outer border colour)
 |  *border.width*
-:  2  (outer relief thickness)
+:  2  (outer border thickness)
 |  *padding.x*
 :  6  (horizontal item padding)
 |  *padding.y*
@@ -1610,6 +1612,8 @@ lighter top/left edge and darker bottom/right edge from the resolved *bg*
 colour.  This also applies to per-menu background overrides, including very
 light and very dark colours; no *selection.relief* setting is required to
 enable it.
+
+The outer menu border is a flat, solid *border.colour*.
 
 Gradient values use the same syntax as decoration gradients:
 *none*, *HGradient* _COLOUR_ _COLOUR_, or
@@ -1635,18 +1639,21 @@ menu-style -m Applications fg        0x182238
 menu-style -m Applications title.bg  0x435a82
 menu-style -m Applications title.fg  0xffffff
 menu-style -m Applications separator 0x8798b8
+menu-style -m Applications border.colour 0x293852
 
 menu-style -m WindowOps bg        0xe7d8d2
 menu-style -m WindowOps fg        0x321915
 menu-style -m WindowOps title.bg  0x8b3a2f
 menu-style -m WindowOps title.fg  0xffffff
 menu-style -m WindowOps separator 0xb78378
+menu-style -m WindowOps border.colour 0x57231d
 
 menu-style -m RootMenu bg        0xd7e4e2
 menu-style -m RootMenu fg        0x102b29
 menu-style -m RootMenu title.bg  0x0d988c
 menu-style -m RootMenu title.fg  0xffffff
 menu-style -m RootMenu separator 0x72aaa5
+menu-style -m RootMenu border.colour 0x084b46
 
 # Remove only RootMenu's foreground override.
 menu-style -m RootMenu -r fg

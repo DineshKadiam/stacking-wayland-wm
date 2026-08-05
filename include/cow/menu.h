@@ -38,6 +38,7 @@ struct cow_menu_style {
 	float title_bg[4];  /* title item background */
 	float title_fg[4];  /* title item text colour */
 	float separator[4]; /* separator line colour */
+	float border[4];    /* outer border colour */
 	struct cow_gradient bg_gradient;
 	struct cow_gradient title_bg_gradient;
 	int   border_width; /* outer border thickness (px) */
@@ -62,6 +63,7 @@ enum cow_menu_style_field {
 	COW_MENU_STYLE_TITLE_UNDERLINES	 = 1u << 10,
 	COW_MENU_STYLE_AUTOMATIC_HOTKEYS = 1u << 11,
 	COW_MENU_STYLE_SELECTION_RELIEF	 = 1u << 12,
+	COW_MENU_STYLE_BORDER_COLOUR	 = 1u << 13,
 };
 
 enum cow_menu_item_type {

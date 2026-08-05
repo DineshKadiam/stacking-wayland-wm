@@ -62,6 +62,7 @@ cow_menu_style_default(struct cow_menu_style *s)
 	s->separator[1] = 0.40f;
 	s->separator[2] = 0.40f;
 	s->separator[3] = 1.0f;
+	cow_colour_convert(s->border, 0x000000);
 	s->bg_gradient.mode	       = COW_GRADIENT_NONE;
 	s->title_bg_gradient.mode      = COW_GRADIENT_NONE;
 	s->border_width		       = 0;
@@ -107,6 +108,7 @@ cow_menu_style_resolve(const struct cow_menu *menu, struct cow_menu_style *out)
 	APPLY(COW_MENU_STYLE_TITLE_BG, title_bg);
 	APPLY(COW_MENU_STYLE_TITLE_FG, title_fg);
 	APPLY(COW_MENU_STYLE_SEPARATOR, separator);
+	APPLY(COW_MENU_STYLE_BORDER_COLOUR, border);
 	APPLY(COW_MENU_STYLE_BG_GRADIENT, bg_gradient);
 	APPLY(COW_MENU_STYLE_TITLE_BG_GRADIENT, title_bg_gradient);
 	APPLY(COW_MENU_STYLE_BORDER_WIDTH, border_width);
@@ -780,18 +782,21 @@ popup_render(struct cow_menu_popup *p)
 
 	uint32_t hl_px, sh_px;
 	menu_relief_colours(st->bg, &hl_px, &sh_px);
-	const uint32_t sep_px = px(st->separator);
+	const uint32_t sep_px    = px(st->separator);
+	const uint32_t border_px = px(st->border);
 
 	fill_style_rect(&buf, 0, 0, p->width, p->height, st->bg,
 	    &st->bg_gradient);
 
 	if (st->border_width > 0) {
-		cow_draw_relieve_rect(&buf, 0, 0, p->width, p->height, 1,
-		    hl_px, hl_px, hl_px, hl_px);
-	}
-	if (st->border_width > 1) {
-		cow_draw_relieve_rect(&buf, 1, 1, p->width - 2,
-		    p->height - 2, 1, sh_px, sh_px, sh_px, sh_px);
+		int bw = st->border_width;
+		cow_draw_fill_rect(&buf, 0, 0, p->width, bw, border_px);
+		cow_draw_fill_rect(&buf, 0, p->height - bw, p->width, bw,
+		    border_px);
+		cow_draw_fill_rect(&buf, 0, bw, bw, p->height - bw * 2,
+		    border_px);
+		cow_draw_fill_rect(&buf, p->width - bw, bw, bw,
+		    p->height - bw * 2, border_px);
 	}
 
 	int		 y	= st->border_width;
