@@ -112,6 +112,7 @@ struct cow_menu_popup {
 	bool needs_redraw;			  /* defer redraw to render */
 	bool needs_layout;			  /* style changed geometry */
 	bool needs_destroy;			  /* defer destroy to render */
+	bool keep_centered;			  /* preserve centre across relayout */
 
 	/* Popup nesting */
 	struct cow_menu_popup *parent; /* NULL for the root popup */
@@ -167,7 +168,7 @@ struct cow_menu_popup *cow_menu_popup_open_centered(struct cow_menu *, int,
 /* Make digit keys select menu items by ordinal. */
 void cow_menu_enable_numbered_selection(struct cow_menu *);
 
-/* Make alphanumeric menu navigation provide type-ahead selection. */
+/* Make alphanumeric menu navigation filter items by their labels. */
 void cow_menu_enable_typeahead(struct cow_menu *);
 
 /*

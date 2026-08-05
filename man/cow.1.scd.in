@@ -1094,7 +1094,9 @@ Move keyboard focus.
 Open a transient, centred list of managed windows.  Press *1* through *9*, or
 *0* for the tenth entry, to select immediately.  For longer lists use the arrow
 keys and Enter.  Typing letters performs an incremental, case-insensitive
-search over the displayed labels; Backspace removes the last search character.
+filter over the displayed labels; only matching windows remain visible and the
+first match is selected.  Backspace removes the last search character and
+expands the list again.
 
 *-n*
 	Disable type-ahead searching.  Number keys continue to select the first ten
@@ -1124,7 +1126,8 @@ it.
 
 	Without *-f*, the default is *%o:%d %a - %T* (output, desk, application ID,
 	and raw window title).  Type-ahead searches the resulting formatted label,
-	so omitted fields are not included in searches.
+	so omitted fields are not included in searches.  Filtered results retain the
+	configured sort order.
 
 *-S* _sort_
 	Sort windows by *title*, *app*, *id*, *output*, or *desk*.  *location*

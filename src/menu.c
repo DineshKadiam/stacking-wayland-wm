@@ -123,6 +123,8 @@ cow_menu_style_resolve(const struct cow_menu *menu, struct cow_menu_style *out)
 #undef APPLY
 }
 
+static bool label_contains_folded(const char *, const char *);
+
 static PangoFontDescription *g_font_desc;
 static struct wl_keyboard   *g_menu_keyboard;
 static struct xkb_keymap    *g_menu_keymap;
@@ -666,6 +668,17 @@ item_row_height(const struct cow_menu_item *it, int text_h,
 	}
 }
 
+static bool
+menu_item_visible(const struct cow_menu *menu, const struct cow_menu_item *it)
+{
+	if (menu == NULL || it == NULL || !menu->typeahead ||
+	    menu->typeahead_query[0] == '\0')
+		return (true);
+	if (it->type != COW_MENU_ITEM_NORMAL)
+		return (true);
+	return (label_contains_folded(it->label, menu->typeahead_query));
+}
+
 static void
 text_extents(const struct cow_menu *menu, const struct cow_menu_item *it,
     bool bold, int *w_out, int *h_out)
@@ -709,6 +722,8 @@ popup_layout(struct cow_menu_popup *p)
 	struct cow_menu_item *it;
 	wl_list_for_each(it, &p->def->items, link)
 	{
+		if (!menu_item_visible(p->def, it))
+			continue;
 		if (it->type == COW_MENU_ITEM_SEPARATOR)
 			continue;
 		int tw, th;
@@ -732,6 +747,8 @@ popup_layout(struct cow_menu_popup *p)
 	int height  = st->border_width * 2;
 	wl_list_for_each(it, &p->def->items, link)
 	{
+		if (!menu_item_visible(p->def, it))
+			continue;
 		height += item_row_height(it, max_text_h, st);
 	}
 
@@ -988,6 +1005,10 @@ popup_render(struct cow_menu_popup *p)
 	struct cow_menu_item *it;
 	wl_list_for_each(it, &p->def->items, link)
 	{
+		if (!menu_item_visible(p->def, it)) {
+			idx++;
+			continue;
+		}
 		int rh = item_row_height(it, p->item_h - st->padding_y * 2, st);
 
 		switch (it->type) {
@@ -1262,6 +1283,7 @@ cow_menu_popup_open_centered(struct cow_menu *menu, int cx, int cy,
 	g_menu_restore_pending = false;
 	g_menu_focus_requested = false;
 	menu->typeahead_query[0] = '\0';
+	p->keep_centered = true;
 
 	popup_layout(p);
 	int x = cx - p->width / 2;
@@ -1333,6 +1355,8 @@ popup_apply_relayout(struct cow_menu_popup *p)
 	int old_width = p->width;
 	int old_height = p->height;
 	int old_item_h = p->item_h;
+	int old_centre_x = p->x + old_width / 2;
+	int old_centre_y = p->y + old_height / 2;
 	popup_layout(p);
 	if (p->buffer != NULL &&
 	    (p->buffer->width != p->width || p->buffer->height != p->height)) {
@@ -1346,6 +1370,10 @@ popup_apply_relayout(struct cow_menu_popup *p)
 		}
 		cow_shm_buffer_destroy(p->buffer);
 		p->buffer = replacement;
+	}
+	if (p->keep_centered) {
+		p->x = old_centre_x - p->width / 2;
+		p->y = old_centre_y - p->height / 2;
 	}
 	p->needs_layout = false;
 	p->needs_redraw = true;
@@ -1373,8 +1401,9 @@ popup_refit_position(struct cow_menu_popup *p)
 	{
 		if (idx >= parent->child_item)
 			break;
-		y += item_row_height(it,
-		    parent->item_h - st->padding_y * 2, st);
+		if (menu_item_visible(parent->def, it))
+			y += item_row_height(it,
+			    parent->item_h - st->padding_y * 2, st);
 		idx++;
 	}
 	int x = parent->x + parent->width - 5;
@@ -1461,6 +1490,10 @@ item_under(const struct cow_menu_popup *p, int px_x, int px_y)
 	struct cow_menu_item *it;
 	wl_list_for_each(it, &p->def->items, link)
 	{
+		if (!menu_item_visible(p->def, it)) {
+			idx++;
+			continue;
+		}
 		int rh = item_row_height(it, p->item_h - st->padding_y * 2, st);
 		if (px_y >= y && px_y < y + rh)
 			return (idx);
@@ -1611,11 +1644,11 @@ dispatch_item(struct cow_menu_popup *p, struct cow_menu_item *it)
 		int			     opener_idx = 0;
 		wl_list_for_each(iter, &p->def->items, link)
 		{
-			int rh = item_row_height(iter,
-			    p->item_h - st->padding_y * 2, st);
 			if (iter == it)
 				break;
-			y += rh;
+			if (menu_item_visible(p->def, iter))
+				y += item_row_height(iter,
+				    p->item_h - st->padding_y * 2, st);
 			opener_idx++;
 		}
 		int x = p->x + p->width - 5;
@@ -1784,7 +1817,8 @@ nav_move(struct cow_menu_popup *p, int step)
 		else if (idx >= n)
 			idx = 0;
 		struct cow_menu_item *it = item_at_index(p->def, idx);
-		if (item_selectable(it) || (it != NULL && it->is_popup)) {
+		if (menu_item_visible(p->def, it) &&
+		    (item_selectable(it) || (it != NULL && it->is_popup))) {
 			p->selected = idx;
 			cow_menu_popup_redraw(p);
 			return;
@@ -1801,7 +1835,8 @@ nav_hotkey(struct cow_menu_popup *p, int key)
 	struct cow_menu_item *it;
 	wl_list_for_each(it, &p->def->items, link)
 	{
-		if ((item_selectable(it) || (it != NULL && it->is_popup)) &&
+		if (menu_item_visible(p->def, it) &&
+		    (item_selectable(it) || (it != NULL && it->is_popup)) &&
 		    menu_auto_hotkey_for(p->def, it) == key) {
 			p->selected = idx;
 			cow_menu_popup_redraw(p);
@@ -1845,15 +1880,16 @@ nav_typeahead_match(struct cow_menu_popup *p)
 	struct cow_menu_item *it;
 	wl_list_for_each(it, &p->def->items, link)
 	{
-		if (item_selectable(it) &&
-		    label_contains_folded(it->label, p->def->typeahead_query)) {
+		if (item_selectable(it) && menu_item_visible(p->def, it)) {
 			p->selected = idx;
+			p->needs_layout = true;
 			cow_menu_popup_redraw(p);
 			return;
 		}
 		idx++;
 	}
 	p->selected = -1;
+	p->needs_layout = true;
 	cow_menu_popup_redraw(p);
 }
 
@@ -1866,7 +1902,20 @@ nav_number(struct cow_menu_popup *p, int key)
 	struct cow_menu_item *it;
 	wl_list_for_each(it, &p->def->items, link)
 	{
-		if (item_selectable(it) && ++number == wanted) {
+		if (menu_item_visible(p->def, it) && item_selectable(it) &&
+		    label_explicit_hotkey(it->label) == key) {
+			p->selected = idx;
+			dispatch_item(p, it);
+			return (true);
+		}
+		idx++;
+	}
+
+	idx = 0;
+	wl_list_for_each(it, &p->def->items, link)
+	{
+		if (menu_item_visible(p->def, it) && item_selectable(it) &&
+		    ++number == wanted) {
 			p->selected = idx;
 			dispatch_item(p, it);
 			return (true);
