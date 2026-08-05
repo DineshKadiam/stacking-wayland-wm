@@ -49,6 +49,7 @@ bool cow_log_level_parse(const char *, enum cow_log_level *);
 bool cow_log_colour_parse(const char *, enum cow_log_colour *);
 int  cow_log_init(const char *, enum cow_log_level, enum cow_log_colour);
 void cow_log_fini(void);
+void cow_log_toggle_at(const char *, int, const char *, const char *);
 void cow_log_write(enum cow_log_level, const char *, int, const char *,
     const char *, ...) __attribute__((format(printf, 5, 6)));
 void cow_log_vwrite(enum cow_log_level, const char *, int, const char *,
@@ -66,5 +67,7 @@ void cow_log_vwrite(enum cow_log_level, const char *, int, const char *,
 	cow_log_write(COW_LOG_ERROR, __FILE__, __LINE__, __func__, __VA_ARGS__)
 #define cow_log_fatal(...) \
 	cow_log_write(COW_LOG_FATAL, __FILE__, __LINE__, __func__, __VA_ARGS__)
+#define cow_log_toggle(reason) \
+	cow_log_toggle_at(__FILE__, __LINE__, __func__, reason)
 
 #endif

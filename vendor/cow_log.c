@@ -26,20 +26,27 @@
  */
 #include "cow/log.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 
 static struct {
 	FILE		   *stream;
+	FILE		   *capture_stream;
+	char		   *path;
+	char		   *capture_path;
 	bool		    close_stream;
 	bool		    colour;
 	bool		    file_output;
+	bool		    capture_active;
+	bool		    capture_uses_primary;
 	enum cow_log_level level;
 } logger = {
 	.stream = NULL,
@@ -108,6 +115,7 @@ cow_log_init(const char *path, enum cow_log_level level,
 		(void)fcntl(fileno(logger.stream), F_SETFD, FD_CLOEXEC);
 		logger.close_stream = true;
 		logger.file_output  = true;
+		logger.path = strdup(path);
 	}
 
 	if (colour == COW_LOG_COLOUR_ALWAYS) {
@@ -124,34 +132,40 @@ cow_log_init(const char *path, enum cow_log_level level,
 void
 cow_log_fini(void)
 {
+	if (logger.capture_stream != NULL && !logger.capture_uses_primary)
+		fclose(logger.capture_stream);
 	if (logger.close_stream && logger.stream != NULL)
 		fclose(logger.stream);
+	free(logger.path);
+	free(logger.capture_path);
 	logger.stream	      = NULL;
+	logger.capture_stream = NULL;
+	logger.path           = NULL;
+	logger.capture_path   = NULL;
 	logger.close_stream = false;
 	logger.colour	      = false;
 	logger.file_output  = false;
+	logger.capture_active = false;
+	logger.capture_uses_primary = false;
 }
 
-void
-cow_log_vwrite(enum cow_log_level level, const char *file, int line,
+static void
+log_emit(FILE *stream, bool colour, bool file_output,
+    enum cow_log_level level, const char *file, int line,
     const char *function, const char *fmt, va_list ap)
 {
-	if (level < logger.level)
-		return;
-	FILE *stream = logger.stream != NULL ? logger.stream : stderr;
-
 	struct timeval tv;
 	struct tm      tm;
 	char	       timestamp[64];
 	gettimeofday(&tv, NULL);
 	localtime_r(&tv.tv_sec, &tm);
-	if (logger.file_output) {
+	if (file_output) {
 		strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &tm);
 	} else {
 		strftime(timestamp, sizeof(timestamp), "%H:%M:%S", &tm);
 	}
 
-	if (logger.colour) {
+	if (colour) {
 		fprintf(stream, "%s.%03ld %s%-5s\033[0m \033[90m[%s:%d %s]"
 		    "\033[0m ", timestamp, tv.tv_usec / 1000,
 		    level_colours[level], level_names[level], source_path(file),
@@ -166,6 +180,40 @@ cow_log_vwrite(enum cow_log_level level, const char *file, int line,
 	fflush(stream);
 }
 
+static void
+log_vwrite(enum cow_log_level level, const char *file, int line,
+    const char *function, const char *fmt, va_list ap, bool force)
+{
+	bool primary = force || level >= logger.level;
+	bool capture = logger.capture_active;
+	if (!primary)
+		return;
+
+	FILE *stream = logger.stream != NULL ? logger.stream : stderr;
+	if (primary || (capture && logger.capture_uses_primary)) {
+		va_list copy;
+		va_copy(copy, ap);
+		log_emit(stream, logger.colour, logger.file_output, level, file,
+		    line, function, fmt, copy);
+		va_end(copy);
+	}
+	if (capture && !logger.capture_uses_primary &&
+	    logger.capture_stream != NULL) {
+		va_list copy;
+		va_copy(copy, ap);
+		log_emit(logger.capture_stream, false, true, level, file, line,
+		    function, fmt, copy);
+		va_end(copy);
+	}
+}
+
+void
+cow_log_vwrite(enum cow_log_level level, const char *file, int line,
+    const char *function, const char *fmt, va_list ap)
+{
+	log_vwrite(level, file, line, function, fmt, ap, false);
+}
+
 void
 cow_log_write(enum cow_log_level level, const char *file, int line,
     const char *function, const char *fmt, ...)
@@ -175,4 +223,109 @@ cow_log_write(enum cow_log_level level, const char *file, int line,
 	va_start(ap, fmt);
 	cow_log_vwrite(level, file, line, function, fmt, ap);
 	va_end(ap);
+}
+
+static void
+log_write_forced(enum cow_log_level level, const char *file, int line,
+    const char *function, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	log_vwrite(level, file, line, function, fmt, ap, true);
+	va_end(ap);
+}
+
+void
+cow_log_toggle_at(const char *file, int line, const char *function,
+    const char *reason)
+{
+	if (logger.capture_active) {
+		log_write_forced(COW_LOG_INFO, file, line, function,
+		    "log capture disabled (path=%s %s)", logger.capture_path,
+		    reason);
+		if (logger.capture_stream != NULL &&
+		    !logger.capture_uses_primary)
+			fclose(logger.capture_stream);
+		logger.capture_stream = NULL;
+		free(logger.capture_path);
+		logger.capture_path = NULL;
+		logger.capture_active = false;
+		logger.capture_uses_primary = false;
+		return;
+	}
+
+	const char *base = getenv("XDG_DATA_HOME");
+	char default_base[4096];
+	if (base == NULL || *base == '\0') {
+		const char *home = getenv("HOME");
+		if (home == NULL || *home == '\0' || snprintf(default_base,
+			sizeof(default_base), "%s/.local/share", home) >=
+		    (int)sizeof(default_base)) {
+			log_write_forced(COW_LOG_ERROR, file, line, function,
+			    "cannot enable log capture: no usable data directory");
+			return;
+		}
+		base = default_base;
+	}
+
+	char directory[4096];
+	char path[4096];
+	if (snprintf(directory, sizeof(directory), "%s/cow", base) >=
+		(int)sizeof(directory) || snprintf(path, sizeof(path),
+		"%s/cow.log", directory) >= (int)sizeof(path)) {
+		log_write_forced(COW_LOG_ERROR, file, line, function,
+		    "cannot enable log capture: path too long");
+		return;
+	}
+
+	char partial[4096];
+	if (snprintf(partial, sizeof(partial), "%s", directory) >=
+	    (int)sizeof(partial))
+		return;
+	for (char *p = partial + 1; *p != '\0'; p++) {
+		if (*p != '/')
+			continue;
+		*p = '\0';
+		if (mkdir(partial, 0700) < 0 && errno != EEXIST) {
+			log_write_forced(COW_LOG_ERROR, file, line, function,
+			    "cannot create log directory %s: %s", partial,
+			    strerror(errno));
+			return;
+		}
+		*p = '/';
+	}
+	if (mkdir(partial, 0700) < 0 && errno != EEXIST) {
+		log_write_forced(COW_LOG_ERROR, file, line, function,
+		    "cannot create log directory %s: %s", partial,
+		    strerror(errno));
+		return;
+	}
+
+	logger.capture_path = strdup(path);
+	if (logger.capture_path == NULL) {
+		log_write_forced(COW_LOG_ERROR, file, line, function,
+		    "cannot enable log capture: %s", strerror(errno));
+		return;
+	}
+	if (logger.path != NULL && strcmp(logger.path, path) == 0) {
+		logger.capture_stream = logger.stream;
+		logger.capture_uses_primary = true;
+	} else {
+		logger.capture_stream = fopen(path, "a");
+		if (logger.capture_stream == NULL) {
+			log_write_forced(COW_LOG_ERROR, file, line, function,
+			    "cannot open capture log %s: %s", path,
+			    strerror(errno));
+			free(logger.capture_path);
+			logger.capture_path = NULL;
+			return;
+		}
+		(void)fcntl(fileno(logger.capture_stream), F_SETFD, FD_CLOEXEC);
+	}
+	logger.capture_active = true;
+	log_write_forced(COW_LOG_INFO, file, line, function,
+	    "log capture enabled (path=%s level=%s %s)", logger.capture_path,
+	    level_names[logger.level],
+	    reason);
 }

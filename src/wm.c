@@ -1642,7 +1642,10 @@ cow_wm_signal_cb(evutil_socket_t sig, __unused short events,
 {
 	if (sig == SIGUSR1)
 		cow_wm_restart_requested = true;
-	else
+	else if (sig == SIGUSR2) {
+		cow_log_toggle("signal=SIGUSR2");
+		return;
+	} else
 		cow_wm_shutdown_requested = true;
 	cow_wm.running = false;
 }
@@ -1768,6 +1771,7 @@ cow_wm_run(void)
 	struct event_base *base = cow_event_base();
 	struct event	  *wl_ev = NULL, *tick_ev = NULL, *sigint_ev = NULL;
 	struct event	  *sigterm_ev = NULL, *sigusr1_ev = NULL;
+	struct event	  *sigusr2_ev = NULL;
 
 	wl_ev = event_new(base, wl_display_get_fd(cow_wm.display),
 	    EV_READ | EV_PERSIST, cow_wm_wayland_cb, NULL);
@@ -1775,15 +1779,17 @@ cow_wm_run(void)
 	sigint_ev = evsignal_new(base, SIGINT, cow_wm_signal_cb, NULL);
 	sigterm_ev = evsignal_new(base, SIGTERM, cow_wm_signal_cb, NULL);
 	sigusr1_ev = evsignal_new(base, SIGUSR1, cow_wm_signal_cb, NULL);
+	sigusr2_ev = evsignal_new(base, SIGUSR2, cow_wm_signal_cb, NULL);
 
 	if (wl_ev == NULL || tick_ev == NULL || sigint_ev == NULL ||
-	    sigterm_ev == NULL || sigusr1_ev == NULL)
+	    sigterm_ev == NULL || sigusr1_ev == NULL || sigusr2_ev == NULL)
 		goto out;
 
 	event_add(wl_ev, NULL);
 	event_add(sigint_ev, NULL);
 	event_add(sigterm_ev, NULL);
 	event_add(sigusr1_ev, NULL);
+	event_add(sigusr2_ev, NULL);
 
 	while (cow_wm.running) {
 		if (!cow_wm_flush_display())
@@ -1808,6 +1814,8 @@ out:
 		event_free(sigterm_ev);
 	if (sigusr1_ev != NULL)
 		event_free(sigusr1_ev);
+	if (sigusr2_ev != NULL)
+		event_free(sigusr2_ev);
 }
 
 void

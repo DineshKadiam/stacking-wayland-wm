@@ -2094,6 +2094,15 @@ regardless of either setting.
 	re-execute *cow* itself via *execvp*(3) without tearing down the River
 	session.
 
+*SIGUSR2*
+	Toggle an additional log at
+	_$XDG\_DATA\_HOME/cow/cow.log_, falling back to
+	_~/.local/share/cow/cow.log_.  The normal configured log destination and
+	level remain active, and the additional log uses the same level.  Thus it
+	defaults to *info*; use *-l trace* or *COW\_LOG\_LEVEL=trace* for a full
+	trace.  CoW creates the directory when needed, and writes both the enabling
+	and disabling transitions to both destinations.
+
 *SIGPIPE*
 	Ignored.
 
