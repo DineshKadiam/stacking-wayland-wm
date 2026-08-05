@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "cow/status.h"
+#include "cow/log.h"
 
 #include <cJSON.h>
 #include <errno.h>
@@ -66,7 +67,7 @@ cow_status_init(void)
 		cow_status_fini();
 		return;
 	}
-	fprintf(stderr, "cow: status: listening on %s\n", socket_path);
+	cow_log_info("status socket listening on %s", socket_path);
 }
 
 void

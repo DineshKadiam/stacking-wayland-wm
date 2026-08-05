@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "cow/output.h"
+#include "cow/log.h"
 #include "cow/pan_frames.h"
 #include "cow/pointer_input.h"
 #include "cow/pointer_op.h"
@@ -44,7 +45,7 @@ static void
 seat_handle_removed(void *data, __unused struct river_seat_v1 *river_seat)
 {
 	struct cow_seat *seat = data;
-	fprintf(stderr, "cow: seat removed\n");
+	cow_log_info("seat removed");
 	seat->removed = true;
 }
 

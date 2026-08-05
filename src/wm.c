@@ -28,6 +28,7 @@
 #include <wayland-cursor.h>
 
 #include "cow/cmd.h"
+#include "cow/log.h"
 #include "cow/command.h"
 #include "cow/config.h"
 #include "cow/event.h"
@@ -365,9 +366,8 @@ static void
 handle_wm_unavailable(__unused void	    *data,
     __unused struct river_window_manager_v1 *manager)
 {
-	fprintf(stderr,
-	    "cow: window management unavailable "
-	    "(another WM is already running?)\n");
+	cow_log_error("window management unavailable "
+	    "(another WM is already running?)");
 	cow_wm.running = false;
 }
 
@@ -516,8 +516,7 @@ manage_titlebar_button_action(struct cow_view *view, int idx)
 	char		*cause	 = NULL;
 	if (cmd_string_parse(action, &cmdlist, NULL, 0, &cause) != 0) {
 		if (cause != NULL) {
-			fprintf(stderr, "cow: titlebar button command error: %s\n",
-			    cause);
+			cow_log_error("titlebar button command: %s", cause);
 			xfree(cause);
 		}
 		return;
@@ -1438,7 +1437,7 @@ cow_wm_init(void)
 
 	cow_wm.display = wl_display_connect(NULL);
 	if (cow_wm.display == NULL) {
-		fprintf(stderr, "cow: failed to connect to Wayland display\n");
+		cow_log_error("failed to connect to Wayland display");
 		return false;
 	}
 
@@ -1449,24 +1448,23 @@ cow_wm_init(void)
 	wl_display_roundtrip(cow_wm.display);
 
 	if (cow_wm.manager == NULL) {
-		fprintf(stderr,
-		    "cow: river_window_manager_v1 not available "
-		    "(is river running?)\n");
+		cow_log_error("river_window_manager_v1 not available "
+		    "(is river running?)");
 		goto fail;
 	}
 
 	if (cow_wm.xkb_bindings == NULL) {
-		fprintf(stderr, "cow: river_xkb_bindings_v1 not available\n");
+		cow_log_error("river_xkb_bindings_v1 not available");
 		goto fail;
 	}
 
 	if (cow_wm.compositor == NULL) {
-		fprintf(stderr, "cow: wl_compositor not available\n");
+		cow_log_error("wl_compositor not available");
 		goto fail;
 	}
 
 	if (cow_wm.shm == NULL) {
-		fprintf(stderr, "cow: wl_shm not available\n");
+		cow_log_error("wl_shm not available");
 		goto fail;
 	}
 
@@ -1497,13 +1495,13 @@ cow_wm_init(void)
 	cow_wm.exec_pending = true;
 
 	if (!cow_event_init()) {
-		fprintf(stderr, "cow: failed to initialise event loop\n");
+		cow_log_error("failed to initialise event loop");
 		goto fail;
 	}
 
 	/* Initialize IPC command socket */
 	if (!cow_ipc_init())
-		fprintf(stderr, "cow: warning: IPC init failed\n");
+		cow_log_warn("IPC initialisation failed");
 
 	/* Initialize status FIFO */
 	cow_status_init();
@@ -1628,8 +1626,8 @@ cow_wm_flush_display(void)
 		const struct wl_interface *iface = NULL;
 		int proto_err = wl_display_get_protocol_error(cow_wm.display,
 		    &iface, &id);
-		fprintf(stderr, "cow: protocol error %d on %s@%u\n",
-		    proto_err, iface ? iface->name : "unknown", id);
+		cow_log_error("Wayland protocol error %d on %s@%u", proto_err,
+		    iface ? iface->name : "unknown", id);
 	}
 	return false;
 }
@@ -2066,8 +2064,8 @@ cow_wm_restart(char **argv)
 	snprintf(restart_pid, sizeof restart_pid, "%ld", (long)getpid());
 	setenv(COW_RESTART_ENV, restart_pid, 1);
 
-	fprintf(stderr, "cow: restarting (%s)...\n", argv[0]);
+	cow_log_info("restarting (%s)", argv[0]);
 	execvp(argv[0], argv);
-	fprintf(stderr, "cow: restart failed: %s\n", strerror(errno));
+	cow_log_fatal("restart failed: %s", strerror(errno));
 	_exit(EXIT_FAILURE);
 }

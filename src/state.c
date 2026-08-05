@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "cow/state.h"
+#include "cow/log.h"
 
 #include <cJSON.h>
 #include <stdio.h>
@@ -169,13 +170,13 @@ cow_state_save(void)
 	cJSON_Delete(root);
 
 	if (json == NULL) {
-		fprintf(stderr, "cow: state save: cJSON_Print failed\n");
+		cow_log_error("state save: cJSON_Print failed");
 		return false;
 	}
 
 	FILE *f = fopen(path, "w");
 	if (f == NULL) {
-		fprintf(stderr, "cow: state save: cannot open %s\n", path);
+		cow_log_error("state save: cannot open %s", path);
 		cJSON_free(json);
 		return false;
 	}
@@ -184,7 +185,7 @@ cow_state_save(void)
 	fclose(f);
 	cJSON_free(json);
 
-	fprintf(stderr, "cow: state saved to %s\n", path);
+	cow_log_debug("state saved to %s", path);
 	return true;
 }
 
@@ -229,8 +230,7 @@ cow_state_restore(void)
 	size_t n_read = fread(buf, 1, size, f);
 	fclose(f);
 	if ((long)n_read != size) {
-		fprintf(stderr,
-		    "cow: state restore: short read (%zu of %ld bytes)\n",
+		cow_log_error("state restore: short read (%zu of %ld bytes)",
 		    n_read, size);
 		xfree(buf);
 		return false;
@@ -241,7 +241,7 @@ cow_state_restore(void)
 	xfree(buf);
 
 	if (root == NULL) {
-		fprintf(stderr, "cow: state restore: parse error\n");
+		cow_log_error("state restore: parse error");
 		return false;
 	}
 
@@ -581,7 +581,7 @@ cow_state_restore(void)
 	unlink(path);
 
 	if (restored)
-		fprintf(stderr, "cow: state restored from %s\n", path);
+		cow_log_info("state restored from %s", path);
 
 	return restored;
 }

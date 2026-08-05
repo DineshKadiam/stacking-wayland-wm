@@ -31,6 +31,7 @@
 #include <xkbcommon/xkbcommon.h>
 
 #include "cow/border.h"
+#include "cow/log.h"
 #include "cow/cmd.h"
 #include "cow/colour.h"
 #include "cow/config.h"
@@ -1611,7 +1612,7 @@ dispatch_action_with_context(const char *action, struct cow_view *view,
 	char		*cause	 = NULL;
 	if (cmd_string_parse(action, &cmdlist, NULL, 0, &cause) != 0) {
 		if (cause != NULL) {
-			fprintf(stderr, "cow: menu command error: %s\n", cause);
+			cow_log_error("menu command: %s", cause);
 			xfree(cause);
 		}
 		xfree(picked_action);

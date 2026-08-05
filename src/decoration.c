@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "cow/decoration.h"
+#include "cow/log.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -881,8 +882,7 @@ cow_decoration_update(struct cow_view *view, bool active)
 	if (dec->buffer == NULL) {
 		dec->buffer = cow_shm_buffer_create(frame_w, frame_h);
 		if (dec->buffer == NULL) {
-			fprintf(stderr,
-			    "cow: failed to create decoration buffer\n");
+			cow_log_error("failed to create decoration buffer");
 			return;
 		}
 	}

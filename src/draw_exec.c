@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "cow/draw_exec.h"
+#include "cow/log.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -376,7 +377,7 @@ draw_exec_run_command(char *cmd_str, struct cow_seat *seat,
 
 	if (cmd_string_parse(cmd_str, &cmdlist, NULL, 0, &cause) != 0) {
 		if (cause != NULL) {
-			fprintf(stderr, "cow: draw-exec: %s\n", cause);
+			cow_log_error("draw-exec: %s", cause);
 			xfree(cause);
 		}
 		return;

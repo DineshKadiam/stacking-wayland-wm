@@ -24,6 +24,7 @@
 #include <unistd.h>
 
 #include "cow/compat.h"
+#include "cow/log.h"
 #include "cow/command.h"
 
 /*
@@ -91,8 +92,7 @@ cow_command_execute_with_event(const char *cmd, const char *event_json)
 	 */
 	outer = fork();
 	if (outer < 0) {
-		fprintf(stderr, "cow_command_execute: fork: %s\n",
-		    strerror(errno));
+		cow_log_error("fork: %s", strerror(errno));
 		return;
 	}
 	if (outer == 0) {

@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "cow/font.h"
+#include "cow/log.h"
 
 #include <cairo/cairo.h>
 #include <stdbool.h>
@@ -78,9 +79,8 @@ cow_font_init(struct cow_font *font, const char *font_name)
 {
 	font->desc = pango_font_description_from_string(font_name);
 	if (font->desc == NULL) {
-		fprintf(stderr,
-		    "cow: invalid font description '%s'; "
-		    "falling back to 'monospace 10'\n",
+		cow_log_warn("invalid font description '%s'; "
+		    "falling back to 'monospace 10'",
 		    font_name ? font_name : "(null)");
 		font->desc = pango_font_description_from_string("monospace 10");
 	}

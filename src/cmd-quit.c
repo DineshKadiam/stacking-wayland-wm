@@ -23,6 +23,7 @@
 #include <stdio.h>
 
 #include "cow/cmd.h"
+#include "cow/log.h"
 #include "cow/config.h"
 #include "cow/ipc.h"
 #include "cow/keybinding.h"
@@ -58,7 +59,7 @@ cmd_quit_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_NORMAL);
 	}
 
-	fprintf(stderr, "cow: exit session\n");
+	cow_log_info("exiting session");
 	if (cow_wm.manager != NULL)
 		river_window_manager_v1_exit_session(cow_wm.manager);
 	cow_wm.running = false;
@@ -149,5 +150,5 @@ do_reload(struct cmd_q *cmdq)
 	}
 
 	cow_wm_request_manage_dirty();
-	fprintf(stderr, "cow: configuration reloaded from %s\n", path);
+	cow_log_info("configuration reloaded from %s", path);
 }

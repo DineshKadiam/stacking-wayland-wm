@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include "cow/compat.h"
+#include "cow/log.h"
 #include "cow/keybinding.h"
 #include "cow/cmd.h"
 #include "cow/command.h"
@@ -566,8 +567,7 @@ action_execute_cmd_string(void *arg)
 
 	if (cmd_string_parse(cmd_str, &cmdlist, NULL, 0, &cause) != 0) {
 		if (cause != NULL) {
-			fprintf(stderr, "cow: keybinding command error: %s\n",
-			    cause);
+			cow_log_error("keybinding command: %s", cause);
 			xfree(cause);
 		}
 		return;
@@ -590,7 +590,7 @@ action_execute_cmd_string(void *arg)
 	if (!ARRAY_EMPTY(&cfg_causes)) {
 		for (u_int i = 0; i < ARRAY_LENGTH(&cfg_causes); i++) {
 			char *c = ARRAY_ITEM(&cfg_causes, i);
-			fprintf(stderr, "cow: keybinding command: %s\n", c);
+			cow_log_error("keybinding command: %s", c);
 			xfree(c);
 		}
 		ARRAY_FREE(&cfg_causes);
@@ -639,9 +639,7 @@ parse_modifiers(const char *str, uint32_t *modifiers_out,
 		case '0':
 			break;
 		default:
-			fprintf(stderr,
-			    "cow: unknown modifier character '%c' in "
-			    "\"%s\"\n",
+			cow_log_error("unknown modifier character '%c' in \"%s\"",
 			    *p, str);
 			return false;
 		}
@@ -784,9 +782,8 @@ parse_key_string(const char *str, xkb_keysym_t *keysym_out,
 	xkb_keysym_t sym = xkb_keysym_from_name(key_part,
 	    XKB_KEYSYM_CASE_INSENSITIVE);
 	if (sym == XKB_KEY_NoSymbol) {
-		fprintf(stderr,
-		    "cow: unknown keysym \"%s\" in binding \"%s\"\n", key_part,
-		    str);
+		cow_log_error("unknown keysym \"%s\" in binding \"%s\"",
+		    key_part, str);
 		return false;
 	}
 
@@ -816,7 +813,7 @@ parse_button_name(const char *name)
 	if (!strcmp(name, "task"))
 		return BTN_TASK;
 
-	fprintf(stderr, "cow: unknown mouse button \"%s\"\n", name);
+	cow_log_error("unknown mouse button \"%s\"", name);
 	return 0;
 }
 
@@ -839,7 +836,7 @@ parse_mouse_string(const char *str, uint32_t *button_out,
 
 	uint32_t button = parse_button_name(btn_part);
 	if (button == 0) {
-		fprintf(stderr, "cow: invalid mouse binding \"%s\"\n", str);
+		cow_log_error("invalid mouse binding \"%s\"", str);
 		return false;
 	}
 
@@ -867,8 +864,7 @@ cow_resolve_action(const char *action_str, cow_action_fn *fn_out,
 	}
 
 	/* Unrecognized -- silently ignore (may be compositor-specific) */
-	fprintf(stderr, "cow: ignoring unimplemented action \"%s\"\n",
-	    action_str);
+	cow_log_warn("ignoring unimplemented action \"%s\"", action_str);
 	return false;
 }
 

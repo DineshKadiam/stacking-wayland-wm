@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "cow/view.h"
+#include "cow/log.h"
 
 #include <cJSON.h>
 #include <cairo/cairo.h>
@@ -699,7 +700,7 @@ window_handle_closed(void *data, __unused struct river_window_v1 *rw)
 {
 	struct cow_view *view = data;
 
-	fprintf(stderr, "cow: window closed (app_id=%s)\n",
+	cow_log_debug("window closed (app_id=%s)",
 	    view->app_id ? view->app_id : "(null)");
 	view->closed = true;
 }

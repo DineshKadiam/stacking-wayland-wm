@@ -25,6 +25,7 @@
 #include <event2/event.h>
 
 #include "cow/compat.h"
+#include "cow/log.h"
 #include "cow/cmd.h"
 #include "cow/cmd_scan.h"
 #include "cow/command.h"
@@ -66,8 +67,7 @@ cow_ipc_init(void)
 		cow_ipc_fini();
 		return false;
 	}
-	fprintf(stderr, "cow: ipc: listening on %s\n", cow_ipc.socket_path);
-	fflush(stderr);
+	cow_log_info("command socket listening on %s", cow_ipc.socket_path);
 	return true;
 }
 
@@ -134,7 +134,7 @@ void
 cow_ipc_respond_error(int fd, const char *msg)
 {
 	if (fd < 0) {
-		fprintf(stderr, "cow: ipc: error: %s\n", msg);
+		cow_log_error("IPC: %s", msg);
 		return;
 	}
 	cJSON *root = cJSON_CreateObject();
@@ -234,7 +234,7 @@ cow_ipc_load_config(const char *path)
 	cow_ipc.startup_mode = false;
 
 	if (!ok)
-		fprintf(stderr, "cow: cannot open config: %s\n", path);
+		cow_log_error("cannot open config: %s", path);
 
 	if (ok) {
 		/* Remember the path so that 'moocow quit -r' doesn't crash. */
@@ -247,7 +247,7 @@ cow_ipc_load_config(const char *path)
 	if (!ARRAY_EMPTY(&cfg_causes)) {
 		for (u_int i = 0; i < ARRAY_LENGTH(&cfg_causes); i++) {
 			char *c = ARRAY_ITEM(&cfg_causes, i);
-			fprintf(stderr, "cow: %s\n", c);
+			cow_log_error("config: %s", c);
 			xfree(c);
 		}
 		ARRAY_FREE(&cfg_causes);
@@ -351,8 +351,7 @@ cow_ipc_load_file(const char *path, int client_fd)
 	cmdq_continue(cmdq);
 	cmdq_free(cmdq);
 
-	fprintf(stderr, "cow: config loaded from %s (%zu lines)\n", path,
-	    lineno);
+	cow_log_info("config loaded from %s (%zu lines)", path, lineno);
 	return true;
 }
 

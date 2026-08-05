@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "cow/output.h"
+#include "cow/log.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -132,7 +133,8 @@ output_handle_removed(void *data, __unused struct river_output_v1 *river_output)
 {
 	struct cow_output *output = data;
 
-	fprintf(stderr, "cow: output removed\n");
+	cow_log_info("output removed (name=%s)",
+	    output->name ? output->name : "unknown");
 	output->removed = true;
 }
 

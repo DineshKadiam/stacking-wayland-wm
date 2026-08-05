@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "cow/shm.h"
+#include "cow/log.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -55,13 +56,12 @@ create_shm_file(size_t size)
 #endif
 
 	if (fd < 0) {
-		fprintf(stderr, "cow: failed to create shm file: %s\n",
-		    strerror(errno));
+		cow_log_error("failed to create shm file: %s", strerror(errno));
 		return -1;
 	}
 
 	if (ftruncate(fd, size) < 0) {
-		fprintf(stderr, "cow: ftruncate failed: %s\n", strerror(errno));
+		cow_log_error("ftruncate failed: %s", strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -87,7 +87,7 @@ cow_shm_buffer_create(int width, int height)
 	void *data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd,
 	    0);
 	if (data == MAP_FAILED) {
-		fprintf(stderr, "cow: mmap failed: %s\n", strerror(errno));
+		cow_log_error("mmap failed: %s", strerror(errno));
 		close(fd);
 		return NULL;
 	}

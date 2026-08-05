@@ -24,6 +24,7 @@
 #include <xkbcommon/xkbcommon.h>
 
 #include "cow/cmd.h"
+#include "cow/log.h"
 #include "cow/cmd-filter.h"
 #include "cow/compat.h"
 #include "cow/memory.h"
@@ -461,7 +462,7 @@ pick_command_run(struct deferred_pick_command *cmd)
 	char		*cause	 = NULL;
 	if (cmd_string_parse(cmd->cmd_str, &cmdlist, NULL, 0, &cause) != 0) {
 		if (cause != NULL) {
-			fprintf(stderr, "cow: pick-window: %s\n", cause);
+			cow_log_error("pick-window: %s", cause);
 			xfree(cause);
 		}
 		return;

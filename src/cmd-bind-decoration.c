@@ -18,6 +18,7 @@
 #include <time.h>
 
 #include "cow/cmd.h"
+#include "cow/log.h"
 #include "cow/config.h"
 #include "cow/memory.h"
 #include "cow/pointer_op.h"
@@ -148,8 +149,7 @@ run_cmd_string(struct cow_view *view, const char *cmd_str)
 	char		*cause	 = NULL;
 	if (cmd_string_parse(cmd_str, &cmdlist, NULL, 0, &cause) != 0) {
 		if (cause != NULL) {
-			fprintf(stderr,
-			    "cow: bind-decoration command error: %s\n", cause);
+			cow_log_error("bind-decoration command: %s", cause);
 			xfree(cause);
 		}
 		return false;
