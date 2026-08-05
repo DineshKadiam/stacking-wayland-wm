@@ -91,16 +91,6 @@ static struct cow_output *pan_cursor_output;
 static int		  pan_cursor_edge = -1;
 static bool		  cursor_held;
 
-struct dec_frame_hit {
-	int bw;
-	int tt;
-	int cl;
-	int frame_w;
-	int frame_h;
-	int fx;
-	int fy;
-};
-
 /* Cooldown after a fire so the post-warp cursor doesn't re-arm. */
 #define PAN_GIVEUP_COOLDOWN_MS 200
 
@@ -186,75 +176,6 @@ view_for_decoration_surface(struct wl_surface *surface)
 	return (NULL);
 }
 
-static struct dec_frame_hit
-decoration_frame_hit(struct cow_view *view, int sx, int sy, int cw, int ch)
-{
-	struct dec_frame_hit hit;
-
-	hit.bw = view->dec.border_width;
-	hit.tt = view->dec.title_thickness;
-	/* Match wm.c's click hit-test: corner_length extends inward from
-	 * the inner border edge so output-edge corners remain reachable.
-	 */
-	hit.cl = view->cfg.corner_length + hit.bw;
-
-	int content_x, content_y;
-	cow_titlebar_frame_geometry(view, cw, ch, &hit.frame_w,
-	    &hit.frame_h, &content_x, &content_y);
-	hit.fx = sx;
-	hit.fy = sy;
-	return (hit);
-}
-
-static bool
-decoration_in_border(const struct dec_frame_hit *hit)
-{
-	if (hit->fx < 0 || hit->fx >= hit->frame_w ||
-	    hit->fy < 0 || hit->fy >= hit->frame_h)
-		return (false);
-	return (hit->fx < hit->bw || hit->fx >= hit->frame_w - hit->bw ||
-	    hit->fy < hit->bw || hit->fy >= hit->frame_h - hit->bw);
-}
-
-static uint32_t
-decoration_corner_edges(struct cow_view *view, int sx, int sy, int cw, int ch)
-{
-	struct dec_frame_hit hit = decoration_frame_hit(view, sx, sy, cw, ch);
-
-	if (!decoration_in_border(&hit))
-		return (0);
-
-	int content_x, content_y, frame_w, frame_h;
-	cow_titlebar_frame_geometry(view, cw, ch, &frame_w, &frame_h,
-	    &content_x, &content_y);
-	if (cow_titlebar_hit_for(view, cw, ch, sx - content_x,
-		sy - content_y))
-		return (0);
-
-	bool near_top	= (hit.fy < hit.cl);
-	bool near_bot	= (hit.fy >= hit.frame_h - hit.cl);
-	bool near_left	= (hit.fx < hit.cl);
-	bool near_right = (hit.fx >= hit.frame_w - hit.cl);
-
-	if (near_top && near_left)
-		return (COW_EDGE_TOP | COW_EDGE_LEFT);
-	if (near_top && near_right)
-		return (COW_EDGE_TOP | COW_EDGE_RIGHT);
-	if (near_bot && near_left)
-		return (COW_EDGE_BOTTOM | COW_EDGE_LEFT);
-	if (near_bot && near_right)
-		return (COW_EDGE_BOTTOM | COW_EDGE_RIGHT);
-	if (hit.fy < hit.bw)
-		return (COW_EDGE_TOP);
-	if (hit.fy >= hit.frame_h - hit.bw)
-		return (COW_EDGE_BOTTOM);
-	if (hit.fx < hit.bw)
-		return (COW_EDGE_LEFT);
-	if (hit.fx >= hit.frame_w - hit.bw)
-		return (COW_EDGE_RIGHT);
-	return (0);
-}
-
 static uint32_t
 cursor_shape_for_edges(uint32_t edges)
 {
@@ -280,7 +201,7 @@ cursor_shape_for_edges(uint32_t edges)
 static uint32_t
 decoration_cursor_shape_at(struct cow_view *view, int x, int y, int cw, int ch)
 {
-	uint32_t edges = decoration_corner_edges(view, x, y, cw, ch);
+	uint32_t edges = cow_decoration_edges_at(view, x, y, cw, ch);
 	if (edges != 0)
 		return (cursor_shape_for_edges(edges));
 

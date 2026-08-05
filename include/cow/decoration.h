@@ -87,4 +87,11 @@ struct cow_font *cow_decoration_titlebar_font(void);
  */
 char *cow_decoration_display_title(const struct cow_view *);
 
+/*
+ * Return the resize edges at a point in decoration-surface coordinates.
+ * The returned mask uses COW_EDGE_* values and is zero outside the frame's
+ * resize regions, including over the titlebar.
+ */
+uint32_t cow_decoration_edges_at(struct cow_view *, int, int, int, int);
+
 #endif

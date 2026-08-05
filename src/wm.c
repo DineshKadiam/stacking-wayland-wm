@@ -68,16 +68,6 @@
 
 struct cow_wm cow_wm;
 
-struct dec_frame_hit {
-	int bw;
-	int tt;
-	int cl;
-	int frame_w;
-	int frame_h;
-	int fx;
-	int fy;
-};
-
 /* Forward declarations for protocol listeners */
 static void handle_wm_unavailable(void *, struct river_window_manager_v1 *);
 static void handle_wm_finished(void *, struct river_window_manager_v1 *);
@@ -124,9 +114,6 @@ static void manage_titlebar_button_action(struct cow_view *, int);
 static bool manage_titlebar_button_press(struct cow_seat *, struct cow_view *,
     int, int);
 static struct cow_view *manage_container_drag_target(struct cow_seat *);
-static struct dec_frame_hit decoration_frame_hit(struct cow_view *, int, int,
-    int, int);
-static bool decoration_in_border(const struct dec_frame_hit *);
 static enum cow_dec_region decoration_outer_region(struct cow_view *, int, int,
     int, int);
 
@@ -687,62 +674,18 @@ corner_region_from_edges(uint32_t edges)
 	return (COW_DEC_REGION_NONE);
 }
 
-static struct dec_frame_hit
-decoration_frame_hit(struct cow_view *view, int lx, int ly, int cw, int ch)
-{
-	struct dec_frame_hit hit;
-
-	hit.bw = view->dec.border_width;
-	hit.tt = view->dec.title_thickness;
-	/* Keep corner_length usable inside the border.  Measuring it from
-	 * the outer frame edge makes most of the target unreachable when a
-	 * maximized frame is flush with an output edge.
-	 */
-	hit.cl = view->cfg.corner_length + hit.bw;
-
-	int content_x, content_y;
-	cow_titlebar_frame_geometry(view, cw, ch, &hit.frame_w,
-	    &hit.frame_h, &content_x, &content_y);
-	hit.fx	    = lx + content_x;
-	hit.fy	    = ly + content_y;
-	return (hit);
-}
-
-static bool
-decoration_in_border(const struct dec_frame_hit *hit)
-{
-	if (hit->fx < 0 || hit->fx >= hit->frame_w ||
-	    hit->fy < 0 || hit->fy >= hit->frame_h)
-		return (false);
-	return (hit->fx < hit->bw || hit->fx >= hit->frame_w - hit->bw ||
-	    hit->fy < hit->bw || hit->fy >= hit->frame_h - hit->bw);
-}
-
 static uint32_t
 decoration_corner_edges(struct cow_view *view, int lx, int ly, int cw, int ch)
 {
-	struct dec_frame_hit hit = decoration_frame_hit(view, lx, ly, cw, ch);
-
-	if (!decoration_in_border(&hit))
+	int content_x, content_y, frame_w, frame_h;
+	cow_titlebar_frame_geometry(view, cw, ch, &frame_w, &frame_h,
+	    &content_x, &content_y);
+	uint32_t edges = cow_decoration_edges_at(view, lx + content_x,
+	    ly + content_y, cw, ch);
+	if ((edges & (COW_EDGE_TOP | COW_EDGE_BOTTOM)) == 0 ||
+	    (edges & (COW_EDGE_LEFT | COW_EDGE_RIGHT)) == 0)
 		return (0);
-
-	if (cow_titlebar_hit_for(view, cw, ch, lx, ly))
-		return (0);
-
-	bool near_top	= (hit.fy < hit.cl);
-	bool near_bot	= (hit.fy >= hit.frame_h - hit.cl);
-	bool near_left	= (hit.fx < hit.cl);
-	bool near_right = (hit.fx >= hit.frame_w - hit.cl);
-
-	if (near_top && near_left)
-		return (COW_EDGE_TOP | COW_EDGE_LEFT);
-	if (near_top && near_right)
-		return (COW_EDGE_TOP | COW_EDGE_RIGHT);
-	if (near_bot && near_left)
-		return (COW_EDGE_BOTTOM | COW_EDGE_LEFT);
-	if (near_bot && near_right)
-		return (COW_EDGE_BOTTOM | COW_EDGE_RIGHT);
-	return (0);
+	return (edges);
 }
 
 static bool
@@ -830,17 +773,18 @@ manage_titlebar_button_press(struct cow_seat *seat, struct cow_view *view,
 static enum cow_dec_region
 decoration_outer_region(struct cow_view *view, int lx, int ly, int cw, int ch)
 {
-	struct dec_frame_hit hit = decoration_frame_hit(view, lx, ly, cw, ch);
-
-	if (!decoration_in_border(&hit))
-		return (COW_DEC_REGION_NONE);
-	if (hit.fy < hit.bw)
+	int content_x, content_y, frame_w, frame_h;
+	cow_titlebar_frame_geometry(view, cw, ch, &frame_w, &frame_h,
+	    &content_x, &content_y);
+	uint32_t edges = cow_decoration_edges_at(view, lx + content_x,
+	    ly + content_y, cw, ch);
+	if (edges == COW_EDGE_TOP)
 		return (COW_DEC_REGION_N);
-	if (hit.fy >= hit.frame_h - hit.bw)
+	if (edges == COW_EDGE_BOTTOM)
 		return (COW_DEC_REGION_S);
-	if (hit.fx < hit.bw)
+	if (edges == COW_EDGE_LEFT)
 		return (COW_DEC_REGION_W);
-	if (hit.fx >= hit.frame_w - hit.bw)
+	if (edges == COW_EDGE_RIGHT)
 		return (COW_DEC_REGION_E);
 	return (COW_DEC_REGION_NONE);
 }
