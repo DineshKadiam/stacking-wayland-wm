@@ -184,6 +184,7 @@ wl_output_handle_name(void *data, __unused struct wl_output *wl_output,
 
 	xfree(entry->name);
 	entry->name = xstrdup(name);
+	cow_log_info("output discovered (name=%s)", name);
 
 	/* Try to match to an existing cow_output */
 	struct cow_output *out;

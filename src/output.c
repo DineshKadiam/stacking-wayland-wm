@@ -173,6 +173,8 @@ output_handle_position(void	    *data,
 	struct cow_output *output  = data;
 	output->x		   = x;
 	output->y		   = y;
+	cow_log_debug("output position changed (name=%s x=%d y=%d)",
+	    output->name ? output->name : "unknown", x, y);
 	if (!output->has_layer_usable_area)
 		(void)cow_output_recompute_usable_area(output);
 
@@ -188,6 +190,8 @@ output_handle_dimensions(void	    *data,
 	struct cow_output *output  = data;
 	output->width		   = width;
 	output->height		   = height;
+	cow_log_debug("output dimensions changed (name=%s width=%d height=%d)",
+	    output->name ? output->name : "unknown", width, height);
 	if (output->has_layer_usable_area) {
 		output->layer_usable_area.x	   = output->x;
 		output->layer_usable_area.y	   = output->y;

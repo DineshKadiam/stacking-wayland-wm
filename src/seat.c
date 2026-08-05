@@ -55,6 +55,7 @@ seat_handle_wl_seat(void *data, __unused struct river_seat_v1 *river_seat,
 {
 	struct cow_seat *seat = data;
 	seat->wl_seat_name    = name;
+	cow_log_info("seat discovered (global=%u)", name);
 }
 
 static void
@@ -314,6 +315,10 @@ cow_seat_focus_view(struct cow_seat *seat, struct cow_view *view)
 		return;
 
 	river_seat_v1_focus_window(seat->river_seat, view->river_window);
+	cow_log_debug("focus window (id=%s app_id=%s raise=%s)",
+	    view->identifier ? view->identifier : "unknown",
+	    view->app_id ? view->app_id : "unknown",
+	    cow_config->raise_on_focus ? "yes" : "no");
 	if (seat->focused_view != view)
 		seat->previous_focused_view = seat->focused_view;
 	seat->focused_view  = view;
@@ -334,6 +339,9 @@ cow_seat_focus_view_no_raise(struct cow_seat *seat, struct cow_view *view)
 		return;
 
 	river_seat_v1_focus_window(seat->river_seat, view->river_window);
+	cow_log_debug("focus window (id=%s app_id=%s raise=no)",
+	    view->identifier ? view->identifier : "unknown",
+	    view->app_id ? view->app_id : "unknown");
 	if (seat->focused_view != view)
 		seat->previous_focused_view = seat->focused_view;
 	seat->focused_view  = view;

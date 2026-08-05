@@ -175,6 +175,9 @@ cow_ipc_dispatch(const char *line, int client_fd)
 	if (*line == '#' || *line == '\0' || *line == '\n')
 		return true;
 
+	cow_log_trace("IPC command: %.*s",
+	    (int)strcspn(line, "\r\n"), line);
+
 	/* Parse through the lswm/tmux command infrastructure */
 	struct cmd_list *cmdlist = NULL;
 	char		*cause	 = NULL;

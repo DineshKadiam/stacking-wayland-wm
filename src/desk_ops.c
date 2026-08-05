@@ -18,6 +18,7 @@
 #include <stdbool.h>
 
 #include "cow/config.h"
+#include "cow/log.h"
 #include "cow/output.h"
 #include "cow/pan_frames.h"
 #include "cow/rule.h"
@@ -112,6 +113,10 @@ switch_output_desk(struct cow_output *output, uint8_t desk_nr)
 
 	if (target == output->current_desk)
 		return;
+
+	cow_log_info("switch desk (output=%s from=%u to=%u)",
+	    output->name ? output->name : "unknown", output->current_desk->nr,
+	    desk_nr);
 
 	/* Restore geometry for any collected windows before clearing */
 	if (output->collected_desks != 0) {
@@ -287,6 +292,9 @@ switch_output_page(struct cow_output *output, int new_vx, int new_vy)
 
 	int old_vx = desk->page_vx;
 	int old_vy = desk->page_vy;
+	cow_log_info("switch page (output=%s desk=%u from=%d,%d to=%d,%d)",
+	    output->name ? output->name : "unknown", desk->nr, old_vx, old_vy,
+	    new_vx, new_vy);
 
 	if (cow_config != NULL && cow_config->page_scroll_animate) {
 		desk->scroll_from_vx  = desk->page_vx;

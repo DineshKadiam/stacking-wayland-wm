@@ -50,6 +50,25 @@ bindings, etc.
 *-v*
 	Print version and exit.
 
+# LOGGING
+
+Log records contain a timestamp, severity, source file, line number, function,
+and message.  For example:
+
+```
+15:02:37.916 ERROR [src/wm.c:1542 cow_wm_init] failed to connect to Wayland display
+```
+
+The *info* level records normal lifecycle events such as configuration loads,
+outputs, seats, windows, desk and page changes, reloads, and shutdown.  *debug*
+adds focus, geometry, and transient state details.  *trace* is intended for
+high-volume diagnostics and includes commands received through IPC.  *warn*,
+*error*, and *fatal* report increasingly serious failures.
+
+Log files are opened in append mode.  Colour is enabled automatically only for
+terminal output; redirected output and explicit log files are plain text unless
+overridden with *-C always*.
+
 # OUTPUT MANAGEMENT
 
 Neither *cow* nor *River* manages outputs (screens/monitors) directly.

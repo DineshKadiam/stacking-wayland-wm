@@ -775,6 +775,11 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 	 * no-op them.
 	 */
 	if (first_dims && !view->on_map_fired) {
+		cow_log_info("window mapped (id=%s app_id=%s title=%s size=%dx%d%s)",
+		    view->identifier ? view->identifier : "unknown",
+		    view->app_id ? view->app_id : "unknown",
+		    view->title ? view->title : "", width, height,
+		    view->parent != NULL ? " parented" : "");
 		view->on_map_fired = true;
 		cow_decor_apply_runtime_active(view);
 		cow_rule_fire(COW_RULE_ON_MAP, view, view->desk,
