@@ -166,8 +166,12 @@ struct cow_wm {
 	struct wl_list new_views;    /* views created this sequence */
 	struct wl_list closed_views; /* views closed this sequence */
 
-	/* Deferred manage_dirty request from IPC context */
+	/* Deferred manage_dirty request and its most recent call site. */
 	bool needs_manage_dirty;
+	unsigned manage_dirty_requests;
+	const char *last_manage_request_file;
+	const char *last_manage_request_function;
+	int last_manage_request_line;
 
 	/* Debounced on-outputs-changed firing.  Each output add/remove
 	 * sets the deadline to now + COW_OUTPUTS_CHANGED_DEBOUNCE_MS.
@@ -272,11 +276,13 @@ void cow_wm_manage_dirty_now(void);
 void cow_drag_ghost_destroy(void);
 
 /*
- * Set cow_wm.needs_manage_dirty so the run loop will issue a
- * manage_dirty on its next pass.  Use this rather than poking the flag
- * directly so dirty triggers stay greppable and uniform.
+ * Set cow_wm.needs_manage_dirty so the run loop will issue a manage_dirty on
+ * its next pass.  The macro captures the call site for trace logging.  Use it
+ * rather than poking the flag directly so dirty triggers remain observable.
  */
-void cow_wm_request_manage_dirty(void);
+void cow_wm_request_manage_dirty_at(const char *, int, const char *);
+#define cow_wm_request_manage_dirty() \
+	cow_wm_request_manage_dirty_at(__FILE__, __LINE__, __func__)
 
 /*
  * Manage the default pointer shape used by River when no client surface

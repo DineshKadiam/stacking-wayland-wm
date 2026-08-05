@@ -22,6 +22,7 @@
 #include "cow/desk_ops.h"
 #include "cow/draw_exec.h"
 #include "cow/geometry_window.h"
+#include "cow/log.h"
 #include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/pan_frames.h"
@@ -34,6 +35,26 @@
 #include "cow/wm.h"
 
 #include "river-window-management-v1-client-protocol.h"
+
+static const char *
+pointer_op_type_name(enum cow_pointer_op_type type)
+{
+	switch (type) {
+	case COW_POINTER_OP_MOVE:
+		return ("move");
+	case COW_POINTER_OP_RESIZE:
+		return ("resize");
+	case COW_POINTER_OP_ICON_MOVE:
+		return ("icon-move");
+	case COW_POINTER_OP_SCROLL_DRAG:
+		return ("scroll-drag");
+	case COW_POINTER_OP_DRAW_EXEC:
+		return ("draw-exec");
+	case COW_POINTER_OP_NONE:
+	default:
+		return ("none");
+	}
+}
 
 /*
  * Snap a coordinate to nearby edges.  Checks usable area boundaries,
@@ -204,6 +225,10 @@ cow_pointer_op_start_move(struct cow_seat *seat, struct cow_view *view)
 	seat->op_dx	     = 0;
 	seat->op_dy	     = 0;
 	seat->op.unmax_done  = false;
+	cow_log_debug("pointer operation begin (type=move window=%s "
+	    "geometry=%d,%d %dx%d)",
+	    view->identifier ? view->identifier : "unknown", view->x, view->y,
+	    view->content_width, view->content_height);
 
 	/*
 	 * Titlebar-press visual feedback: while a move is in progress
@@ -247,6 +272,10 @@ cow_pointer_op_start_icon_move(struct cow_seat *seat, struct cow_view *view)
 	seat->op_released    = false;
 	seat->op_dx	     = 0;
 	seat->op_dy	     = 0;
+	cow_log_debug("pointer operation begin (type=icon-move window=%s "
+	    "position=%d,%d)",
+	    view->identifier ? view->identifier : "unknown", view->icon_x,
+	    view->icon_y);
 
 	river_seat_v1_op_start_pointer(seat->river_seat);
 }
@@ -272,6 +301,10 @@ cow_pointer_op_start_scroll(struct cow_seat *seat, struct cow_output *output,
 	seat->op_released	  = false;
 	seat->op_dx		  = 0;
 	seat->op_dy		  = 0;
+	cow_log_debug("pointer operation begin (type=scroll-drag output=%s "
+	    "viewport=%d,%d reverse=%s)",
+	    output->name ? output->name : "unknown", desk->page_vx,
+	    desk->page_vy, reverse ? "yes" : "no");
 
 	river_seat_v1_op_start_pointer(seat->river_seat);
 }
@@ -313,6 +346,8 @@ cow_pointer_op_start_draw_exec(struct cow_seat *seat)
 	seat->op_released    = false;
 	seat->op_dx	     = 0;
 	seat->op_dy	     = 0;
+	cow_log_debug("pointer operation begin (type=draw-exec position=%d,%d)",
+	    seat->op.start_x, seat->op.start_y);
 
 	river_seat_v1_op_start_pointer(seat->river_seat);
 }
@@ -344,6 +379,10 @@ cow_pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
 	seat->op_released     = false;
 	seat->op_dx	      = 0;
 	seat->op_dy	      = 0;
+	cow_log_debug("pointer operation begin (type=resize window=%s "
+	    "geometry=%d,%d %dx%d edges=0x%x)",
+	    view->identifier ? view->identifier : "unknown", view->x, view->y,
+	    view->content_width, view->content_height, edges);
 
 	cow_view_clear_expanded_state(view);
 	river_window_v1_inform_resize_start(view->river_window);
@@ -471,6 +510,20 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 	if (finished_type != COW_POINTER_OP_ICON_MOVE)
 		cow_view_update_output(view);
 
+	if (finished_type == COW_POINTER_OP_ICON_MOVE) {
+		cow_log_debug("pointer operation end (type=%s window=%s "
+		    "position=%d,%d moved=%s)",
+		    pointer_op_type_name(finished_type),
+		    view->identifier ? view->identifier : "unknown",
+		    view->icon_x, view->icon_y, icon_moved ? "yes" : "no");
+	} else {
+		cow_log_debug("pointer operation end (type=%s window=%s "
+		    "geometry=%d,%d %dx%d)",
+		    pointer_op_type_name(finished_type),
+		    view->identifier ? view->identifier : "unknown", view->x,
+		    view->y, view->content_width, view->content_height);
+	}
+
 	/* Restore titlebar visuals if this was a title drag */
 	if (seat->titlebar_press == COW_TITLEBAR_PRESS_TITLE &&
 	    seat->pressed_view != NULL && !seat->pressed_view->closed) {
@@ -555,6 +608,16 @@ cow_pointer_op_process(struct cow_seat *seat)
 			cow_page_scroll_to(out, new_vx, new_vy, false);
 		}
 		if (out == NULL || seat->op_released) {
+			if (out != NULL && out->current_desk != NULL) {
+				cow_log_debug("pointer operation end (type=scroll-drag "
+				    "output=%s viewport=%d,%d)",
+				    out->name ? out->name : "unknown",
+				    out->current_desk->page_vx,
+				    out->current_desk->page_vy);
+			} else {
+				cow_log_debug("pointer operation cancelled "
+				    "(type=scroll-drag output-removed=yes)");
+			}
 			river_seat_v1_op_end(seat->river_seat);
 			seat->op_in_progress   = false;
 			seat->op_released      = false;
@@ -568,6 +631,8 @@ cow_pointer_op_process(struct cow_seat *seat)
 	if (seat->op.type == COW_POINTER_OP_DRAW_EXEC) {
 		cow_draw_exec_update(seat);
 		if (seat->op_released) {
+			cow_log_debug("pointer operation end (type=draw-exec "
+			    "delta=%d,%d)", seat->op_dx, seat->op_dy);
 			river_seat_v1_op_end(seat->river_seat);
 			seat->op_in_progress = false;
 			seat->op_released = false;
@@ -579,6 +644,9 @@ cow_pointer_op_process(struct cow_seat *seat)
 
 	struct cow_view *view = seat->op.view;
 	if (view == NULL || view->closed) {
+		cow_log_debug("pointer operation cancelled (type=%s "
+		    "window-unavailable=yes)",
+		    pointer_op_type_name(seat->op.type));
 		if (cow_wm.drag_drop_target != NULL &&
 		    !cow_wm.drag_drop_target->closed)
 			cow_wm.drag_drop_target->dec.dirty = true;

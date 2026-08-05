@@ -18,6 +18,7 @@
 #include <stdio.h>
 
 #include "cow/compat.h"
+#include "cow/log.h"
 #include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/pointer_input.h"
@@ -45,6 +46,9 @@ ls_output_handle_non_exclusive_area(void *data,
 		.height = height,
 	};
 	output->has_layer_usable_area = true;
+	cow_log_debug("layer-shell usable area received (output=%s "
+	    "geometry=%d,%d %dx%d)",
+	    output->name ? output->name : "unknown", x, y, width, height);
 
 	if (cow_output_recompute_usable_area(output))
 		cow_wm_request_manage_dirty();

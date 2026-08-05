@@ -114,6 +114,19 @@ cow_output_recompute_usable_area(struct cow_output *output)
 	if (!changed)
 		return (false);
 
+	cow_log_info("usable area changed (output=%s source=%s "
+	    "old=%d,%d %dx%d new=%d,%d %dx%d "
+	    "reserved=top:%d,right:%d,bottom:%d,left:%d)",
+	    output->name ? output->name : "unknown",
+	    output->has_layer_usable_area ? "layer-shell" : "output",
+	    old.x, old.y, old.width, old.height, output->usable_area.x,
+	    output->usable_area.y, output->usable_area.width,
+	    output->usable_area.height,
+	    cow_config ? cow_config->reserved.top : 0,
+	    cow_config ? cow_config->reserved.right : 0,
+	    cow_config ? cow_config->reserved.bottom : 0,
+	    cow_config ? cow_config->reserved.left : 0);
+
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
