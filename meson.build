@@ -105,6 +105,7 @@ srcs = [
     'src/vector.c',
     'src/view.c',
     'src/wm.c',
+    'vendor/cow_log.c',
     'vendor/cJSON.c',
 ]
 

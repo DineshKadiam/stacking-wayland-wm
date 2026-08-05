@@ -20,6 +20,7 @@
  * server-side decorations and sheets (virtual desktops).
  */
 
+#include <errno.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,6 +31,7 @@
 #include "cow/command.h"
 #include "cow/config.h"
 #include "cow/ipc.h"
+#include "cow/log.h"
 #include "cow/memory.h"
 #include "cow/menu.h"
 #include "cow/wm.h"
@@ -38,18 +40,34 @@
 #define COW_VERSION "unknown"
 #endif
 
-static const char *usage = "usage: cow [-hsv] [-c config]\n";
+static const char *usage =
+    "usage: cow [-hsv] [-c config] [-l level] [-o file] "
+    "[-C auto|always|never]\n";
 
 int
 main(int argc, char *argv[])
 {
 	const char *config_path = NULL;
+	const char *log_path = getenv("COW_LOG_FILE");
+	const char *log_level_value = getenv("COW_LOG_LEVEL");
+	const char *log_colour_value = getenv("COW_LOG_COLOR");
+	enum cow_log_level log_level = COW_LOG_INFO;
+	enum cow_log_colour log_colour = COW_LOG_COLOUR_AUTO;
 	int	    ch;
 
-	while ((ch = getopt(argc, argv, "c:hsv")) != -1) {
+	while ((ch = getopt(argc, argv, "C:c:hl:o:sv")) != -1) {
 		switch (ch) {
+		case 'C':
+			log_colour_value = optarg;
+			break;
 		case 'c':
 			config_path = optarg;
+			break;
+		case 'l':
+			log_level_value = optarg;
+			break;
+		case 'o':
+			log_path = optarg;
 			break;
 		case 'v':
 			printf("cow %s\n", COW_VERSION);
@@ -59,6 +77,22 @@ main(int argc, char *argv[])
 			fputs(usage, ch == 'h' ? stdout : stderr);
 			return ch == 'h' ? EXIT_SUCCESS : EXIT_FAILURE;
 		}
+	}
+	if (log_level_value != NULL &&
+	    !cow_log_level_parse(log_level_value, &log_level)) {
+		fprintf(stderr, "cow: invalid log level: %s\n", log_level_value);
+		return (EXIT_FAILURE);
+	}
+	if (log_colour_value != NULL &&
+	    !cow_log_colour_parse(log_colour_value, &log_colour)) {
+		fprintf(stderr, "cow: invalid log colour mode: %s\n",
+		    log_colour_value);
+		return (EXIT_FAILURE);
+	}
+	if (cow_log_init(log_path, log_level, log_colour) < 0) {
+		fprintf(stderr, "cow: cannot open log %s: %s\n", log_path,
+		    strerror(errno));
+		return (EXIT_FAILURE);
 	}
 
 	/*
@@ -94,8 +128,7 @@ main(int argc, char *argv[])
 		config_path = cow_config_default_path();
 
 	if (config_path != NULL && !cow_ipc_load_config(config_path))
-		fprintf(stderr,
-		    "cow: warning: config load failed, using defaults\n");
+		cow_log_warn("config load failed, using defaults");
 
 	/*
 	 * Decoration-click defaults.  Each (region, clicks) pair is
@@ -116,10 +149,11 @@ main(int argc, char *argv[])
 
 	if (!cow_wm_init()) {
 		cow_config_destroy(cow_config);
+		cow_log_fini();
 		return EXIT_FAILURE;
 	}
 
-	fprintf(stderr, "cow: connected to river compositor\n");
+	cow_log_info("connected to river compositor");
 
 	cow_wm_run();
 
@@ -131,5 +165,6 @@ main(int argc, char *argv[])
 
 	cow_wm_fini();
 	cow_config_destroy(cow_config);
+	cow_log_fini();
 	return EXIT_SUCCESS;
 }

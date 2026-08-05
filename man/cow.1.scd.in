@@ -6,7 +6,7 @@ cow - Compositor On Wayland
 
 # SYNOPSIS
 
-*cow* [*-hv*] [*-c* _config_]
+*cow* [*-hv*] [*-c* _config_] [*-l* _level_] [*-o* _file_] [*-C* _auto|always|never_]
 
 # DESCRIPTION
 
@@ -29,6 +29,23 @@ bindings, etc.
 
 *-h*
 	Print usage and exit.
+
+*-l* _level_
+	Set the minimum logging level.  Valid levels are *trace*, *debug*, *info*,
+	*warn*, *error*, and *fatal*.  The default is *info*.  The
+	*COW_LOG_LEVEL* environment variable supplies the default when this option
+	is omitted.
+
+*-o* _file_
+	Append log messages to _file_ instead of standard error.  Specify *-* for
+	standard error.  The *COW_LOG_FILE* environment variable supplies the
+	default when this option is omitted.
+
+*-C* _auto|always|never_
+	Control ANSI colour in log output.  *auto*, the default, enables colour only
+	when logging to a terminal and *NO_COLOR* is unset.  Automatic mode never
+	colours a log file.  The *COW_LOG_COLOR* environment variable supplies the
+	default when this option is omitted.
 
 *-v*
 	Print version and exit.
