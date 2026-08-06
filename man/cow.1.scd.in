@@ -1612,11 +1612,12 @@ decor to change aspects of how icons are controlled:
    image.  Decoration profiles and rules can therefore select icons for
    individual applications.
 |  *icon.background*
-:  Iconified window icon box background colour.
+:  Iconified window icon box background colour (default: 0x828282).
 |  *icon.foreground*
 :  Iconified window label colour.
 |  *icon.title\_relief*
-:  _true_ | _false_.  Draw a 3D-relief panel behind the icon label.
+:  _true_ | _false_.  Draw a 3D-relief panel behind the icon label (default:
+   _true_).
 
 # MENUS
 

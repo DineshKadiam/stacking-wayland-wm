@@ -270,11 +270,12 @@ cow_config_create(void)
 	config->icon_enabled	     = true;
 	config->icon_size	     = COW_CFG_DEFAULT_ICON_SIZE;
 	config->icon_image	     = xstrdup("auto");
+	config->icon_title_relief = true;
 	config->snap_distance	     = COW_CFG_DEFAULT_SNAP_DISTANCE;
 	cow_menu_style_default(&config->menu_style);
 	border_colour_set_uniform(&config->border_active, 0xFFFFFF);
 	border_colour_set_uniform(&config->border_inactive, 0x465457);
-	cow_colour_convert(config->icon_background, 0x465457);
+	cow_colour_convert(config->icon_background, 0x828282);
 	cow_colour_convert(config->icon_foreground, 0xFFFFFF);
 
 	config->font_name	= xstrdup("monospace 10");

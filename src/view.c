@@ -226,9 +226,9 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 		dst->icon_enabled = true;
 		dst->icon_size	   = COW_CFG_DEFAULT_ICON_SIZE;
 		dst->border_style  = COW_BORDER_STYLE_FVWM;
-		cow_colour_convert(dst->icon_background, 0x465457);
+		cow_colour_convert(dst->icon_background, 0x828282);
 		cow_colour_convert(dst->icon_foreground, 0xFFFFFF);
-		dst->icon_title_relief = false;
+		dst->icon_title_relief = true;
 		return;
 	}
 	dst->border	     = cow_config->border;
@@ -2677,13 +2677,24 @@ icon_draw_label(struct cow_pixbuf *p, int icon_sz, const char *label,
 	pango_font_description_set_size(fd, 8 * PANGO_SCALE);
 	pango_layout_set_font_description(layout, fd);
 	pango_layout_set_text(layout, label, -1);
-	pango_layout_set_width(layout, p->width * PANGO_SCALE);
+	int inset = relief && border_style != COW_BORDER_STYLE_NONE ? 3 : 0;
+	int avail_w = p->width - 2 * inset;
+	int avail_h = text_area_h - 2 * inset;
+	if (avail_w <= 0 || avail_h <= 0)
+		goto out;
+	pango_layout_set_width(layout, avail_w * PANGO_SCALE);
 	pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
 	pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+	PangoRectangle ink;
+	pango_layout_get_pixel_extents(layout, &ink, NULL);
+	int text_x = inset + (avail_w - ink.width) / 2 - ink.x;
+	int text_y_offset = inset + (avail_h - ink.height) / 2 - ink.y;
 
+	cairo_move_to(cr, text_x, text_y_offset);
 	cairo_set_source_rgba(cr, fg[0], fg[1], fg[2], fg[3]);
 	pango_cairo_show_layout(cr, layout);
 
+out:
 	g_object_unref(layout);
 	pango_font_description_free(fd);
 	cairo_destroy(cr);
