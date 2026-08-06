@@ -483,7 +483,7 @@ The following details those commands which just operate on general settings.
 Note that the same command might also contain window/output settings, which will
 be also be added under the relevant section.
 
-## bind [-r] modifier+key action ...
+## bind [-r] [contexts:]modifier+key action ...
 
 Key bindings are specified as a modifier string immediately followed by *+* and
 a keysym name, or *-* and a numeric keycode:
@@ -491,7 +491,27 @@ a keysym name, or *-* and a numeric keycode:
 ```
 bind MODIFIERS+keysym  command
 bind MODIFIERS-keycode command
+bind CONTEXTS:MODIFIERS+keysym command
 ```
+
+Without a context prefix the binding is global.  A context-qualified binding is
+enabled only while the pointer is in one of its regions.  If the same key has
+both global and matching contextual bindings, the contextual binding wins;
+the global binding is the fallback.
+
+For overlapping contextual bindings, the most specific context wins.
+
+*Context characters:*
+
+- A: any context (equivalent to omitting the prefix).
+- R: output background (root).
+- W: application window content.
+- I: an iconified-window icon.
+- 0 through 9: the corresponding titlebar button.
+
+Multiple characters combine regions.  The context window becomes the command's
+default target, making window commands act on the window under that region
+rather than whichever window was previously focused.
 
 *-r*
 	Mark the binding as repeatable.  While the triggering key is held
@@ -529,15 +549,19 @@ bind LS+a         winops -c
 bind LCA+q        quit
 bind 0+F1         action-help
 bind -r L+Right   scroll -n           # hold Super+Right to keep paging
+bind R:L+Return   exec xterm          # only over the background
+bind I:0+Return   winops -i            # restore the icon under the pointer
+bind 0:L+Return   window-maximize     # over titlebar button 0
 ```
 
-## mouse key action ...
+## mouse [contexts:]key action ...
 
 Mouse bindings use the same modifier format as the *bind* command. The button
 name replaces the keysym:
 
 ```
 mouse MODIFIERS+button command
+mouse CONTEXTS:MODIFIERS+button command
 ```
 
 Button names: *left*, *right*, *middle*, *side*, *extra*, *forward*, *back*,
@@ -545,6 +569,24 @@ Button names: *left*, *right*, *middle*, *side*, *extra*, *forward*, *back*,
 
 Bind a pointer button combination to a command. The _key_ format is the same
 as for *bind*, but the key name is a button name (see *MOUSE BINDINGS*).
+The optional contexts and their precedence are the same as for *bind*.
+Contextual commands target the window under the pointer.
+A matching contextual mouse binding consumes the click before normal pointer
+interaction, so it overrides a *bind-decoration* action or titlebar-button
+action in that region.  Without a matching binding, the normal decoration or
+client click behaviour is unchanged.
+
+In addition to the contexts accepted by *bind*, mouse bindings accept these
+non-button SSD decoration contexts:
+
+- T: window titlebar, excluding its buttons.
+- [, ], -, _: left, right, top, or bottom frame border.
+- S: any frame side; equivalent to []-_.
+- <, ^, >, v: northwest, northeast, southeast, or southwest frame corner.
+- F: any frame corner; equivalent to <^>v.
+
+Multiple characters combine regions, so *TF:* applies to the titlebar or any
+frame corner.
 
 Example:
 
@@ -552,6 +594,10 @@ Example:
 mouse L+left   window-move
 mouse L+right  resize
 mouse L+middle window-move -C
+mouse T:0+left window-move
+mouse <:0+left window-resize -e nw
+mouse ]:0+left window-resize -e e
+mouse I:0+left winops -i
 ```
 
 ## root-mouse key action ...

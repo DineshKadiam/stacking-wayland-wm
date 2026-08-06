@@ -76,6 +76,9 @@ const char *cow_titlebar_position_name(enum cow_titlebar_position);
 bool cow_titlebar_hit(const struct cow_view *, int, int);
 bool cow_titlebar_hit_for(const struct cow_view *, int, int, int, int);
 
+/* Return the configured titlebar button at content-relative coordinates. */
+int cow_titlebar_button_at(const struct cow_view *, int, int);
+
 struct cow_titlebar_render_ctx {
 	uint32_t       *pixels;
 	int		stride_px;

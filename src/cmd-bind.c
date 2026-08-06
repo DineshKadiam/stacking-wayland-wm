@@ -16,7 +16,7 @@
 /*
  * Command: bind -- add a keyboard binding.
  *
- * usage: bind [-r] key action ...
+ * usage: bind [-r] [contexts:]key action ...
  *
  *   -r  mark the binding as repeatable: while the triggering key is
  *       held the action re-fires every set repeat_interval_ms after
@@ -49,15 +49,30 @@ struct cmd_entry cmd_bind_entry = {
 	"+r",
 	2,
 	-1,
-	"bind [-r] key action ...",
+	"bind [-r] [contexts:]key action ...",
 	cmd_bind_exec,
 	0,
 };
 
 static enum cmd_retval
-cmd_bind_exec(struct cmd *self, __unused struct cmd_q *cmdq)
+cmd_bind_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	struct args *args = self->args;
+	uint32_t context;
+	const char *key, *error;
+	if (!cow_binding_parse_context(args->argv[0], &context, &key,
+		&error)) {
+		cmdq_error(cmdq, "bind: invalid key specification %s: %s",
+		    args->argv[0], error != NULL ? error : "invalid context");
+		return (CMD_RETURN_ERROR);
+	}
+	if ((context & COW_BIND_CONTEXT_SSD_NONBUTTON) != 0) {
+		cmdq_error(cmdq,
+		    "bind: SSD titlebar, frame, and corner contexts are only "
+		    "supported by mouse bindings");
+		return (CMD_RETURN_ERROR);
+	}
+	(void)key;
 
 	struct cow_binding_entry *existing, *tmp;
 	wl_list_for_each_safe(existing, tmp, &cow_config->keyboard_bindings,
@@ -74,10 +89,10 @@ cmd_bind_exec(struct cmd *self, __unused struct cmd_q *cmdq)
 	struct cow_binding_entry *entry = xcalloc(1, sizeof(*entry));
 	entry->key_string		= xstrdup(args->argv[0]);
 	entry->action_string =
-	    cmd_argv_to_command_string(args->argc, args->argv, 1);
+	    cmd_argv_to_action_string(args->argc, args->argv, 1);
 	entry->repeatable    = args_has(args, 'r');
 
-	wl_list_insert(&cow_config->keyboard_bindings, &entry->link);
+	wl_list_insert(cow_config->keyboard_bindings.prev, &entry->link);
 
 	cow_rebind_all_seats();
 

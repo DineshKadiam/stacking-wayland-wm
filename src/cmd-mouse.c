@@ -16,7 +16,7 @@
 /*
  * Command: mouse -- add a pointer/mouse binding.
  *
- * usage: mouse key action
+ * usage: mouse [contexts:]key action
  */
 
 #include <stdlib.h>
@@ -36,7 +36,7 @@ struct cmd_entry cmd_mouse_entry = {
 	"",
 	2,
 	-1,
-	"mouse key action ...",
+	"mouse [contexts:]key action ...",
 	cmd_mouse_exec,
 	0,
 };
@@ -52,8 +52,7 @@ struct cmd_entry cmd_root_mouse_entry = {
 };
 
 static enum cmd_retval
-add_mouse_binding(struct cmd *self, struct wl_list *bindings, bool rebind,
-    bool ipc_dispatch)
+add_mouse_binding(struct cmd *self, struct wl_list *bindings, bool rebind)
 {
 	struct args *args = self->args;
 
@@ -70,10 +69,9 @@ add_mouse_binding(struct cmd *self, struct wl_list *bindings, bool rebind,
 
 	struct cow_mouse_binding_entry *entry = xcalloc(1, sizeof(*entry));
 	entry->key_string		      = xstrdup(args->argv[0]);
-	entry->action_string = ipc_dispatch && args->argc == 2 ?
-	    xstrdup(args->argv[1]) :
-	    cmd_argv_to_command_string(args->argc, args->argv, 1);
-	wl_list_insert(bindings, &entry->link);
+	entry->action_string =
+	    cmd_argv_to_action_string(args->argc, args->argv, 1);
+	wl_list_insert(bindings->prev, &entry->link);
 
 	if (rebind)
 		cow_rebind_all_seats();
@@ -82,9 +80,20 @@ add_mouse_binding(struct cmd *self, struct wl_list *bindings, bool rebind,
 }
 
 static enum cmd_retval
-cmd_mouse_exec(struct cmd *self, __unused struct cmd_q *cmdq)
+cmd_mouse_exec(struct cmd *self, struct cmd_q *cmdq)
 {
-	return add_mouse_binding(self, &cow_config->mouse_bindings, true, false);
+	uint32_t context;
+	const char *mouse, *error;
+	if (!cow_binding_parse_context(self->args->argv[0], &context,
+		&mouse, &error)) {
+		cmdq_error(cmdq, "mouse: invalid button specification %s: %s",
+		    self->args->argv[0],
+		    error != NULL ? error : "invalid context");
+		return (CMD_RETURN_ERROR);
+	}
+	(void)context;
+	(void)mouse;
+	return add_mouse_binding(self, &cow_config->mouse_bindings, true);
 }
 
 static enum cmd_retval
@@ -96,6 +105,5 @@ cmd_root_mouse_exec(struct cmd *self, struct cmd_q *cmdq)
 		cmdq_error(cmdq, "root-mouse: only 0+left is supported");
 		return (CMD_RETURN_ERROR);
 	}
-	return add_mouse_binding(self, &cow_config->root_mouse_bindings, false,
-	    true);
+	return add_mouse_binding(self, &cow_config->root_mouse_bindings, false);
 }

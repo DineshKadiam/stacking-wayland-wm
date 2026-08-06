@@ -32,6 +32,31 @@ struct cow_view;
  */
 typedef void (*cow_action_fn)(void *);
 
+/* Keyboard binding contexts.  GLOBAL is the unprefixed fallback. */
+#define COW_BIND_CONTEXT_ROOT       (1u << 0)
+#define COW_BIND_CONTEXT_WINDOW     (1u << 1)
+#define COW_BIND_CONTEXT_TITLE      (1u << 2)
+#define COW_BIND_CONTEXT_LEFT       (1u << 3)
+#define COW_BIND_CONTEXT_RIGHT      (1u << 4)
+#define COW_BIND_CONTEXT_TOP        (1u << 5)
+#define COW_BIND_CONTEXT_BOTTOM     (1u << 6)
+#define COW_BIND_CONTEXT_NW         (1u << 7)
+#define COW_BIND_CONTEXT_NE         (1u << 8)
+#define COW_BIND_CONTEXT_SE         (1u << 9)
+#define COW_BIND_CONTEXT_SW         (1u << 10)
+#define COW_BIND_CONTEXT_ICON       (1u << 11)
+#define COW_BIND_CONTEXT_BUTTON(n)  (1u << (12 + (n)))
+#define COW_BIND_CONTEXT_GLOBAL     (1u << 31)
+#define COW_BIND_CONTEXT_SIDES                                           \
+	(COW_BIND_CONTEXT_LEFT | COW_BIND_CONTEXT_RIGHT |                  \
+	    COW_BIND_CONTEXT_TOP | COW_BIND_CONTEXT_BOTTOM)
+#define COW_BIND_CONTEXT_CORNERS                                         \
+	(COW_BIND_CONTEXT_NW | COW_BIND_CONTEXT_NE | COW_BIND_CONTEXT_SE | \
+	    COW_BIND_CONTEXT_SW)
+#define COW_BIND_CONTEXT_SSD_NONBUTTON                                  \
+	(COW_BIND_CONTEXT_TITLE | COW_BIND_CONTEXT_SIDES |                 \
+	    COW_BIND_CONTEXT_CORNERS)
+
 /*
  * A key binding registered with river.
  *
@@ -53,6 +78,7 @@ struct cow_keybinding {
 
 	xkb_keysym_t keysym;
 	uint32_t     modifiers;
+	uint32_t     context_mask;
 
 	cow_action_fn action;
 	void	     *action_arg;
@@ -77,11 +103,14 @@ struct cow_pointer_binding {
 
 	uint32_t button;
 	uint32_t modifiers;
+	uint32_t context_mask;
 
 	cow_action_fn action;
 	void	     *action_arg;
 
 	struct cow_seat *seat;
+	struct cow_view *enabled_view;
+	struct cow_view *pending_view;
 	bool		 enabled;
 	bool		 pending;
 };
@@ -93,13 +122,21 @@ struct cow_pointer_binding {
  * repeat_interval_ms.
  */
 struct cow_keybinding *cow_keybinding_create(struct cow_seat *, xkb_keysym_t,
-    uint32_t, cow_action_fn, void *, bool repeatable);
+    uint32_t, uint32_t, cow_action_fn, void *, bool repeatable);
+
+/* Split optional CONTEXT: from a key or pointer-binding specification. */
+bool cow_binding_parse_context(const char *, uint32_t *, const char **,
+    const char **);
+
+/* Update the context under the pointer and schedule binding reconciliation. */
+void cow_keybinding_set_context(struct cow_seat *, uint32_t,
+    struct cow_view *);
 
 /*
  * Create a pointer binding for the given seat.
  */
 struct cow_pointer_binding *cow_pointer_binding_create(struct cow_seat *,
-    uint32_t, uint32_t, cow_action_fn, void *);
+    uint32_t, uint32_t, uint32_t, cow_action_fn, void *);
 
 /*
  * Enable all keybindings and pointer bindings for a seat.
@@ -114,6 +151,8 @@ void cow_seat_process_bindings(struct cow_seat *);
 
 void cow_seat_update_modifier_watch(struct cow_seat *);
 void cow_seat_handle_modifiers_update(struct cow_seat *, uint32_t, uint32_t);
+bool cow_seat_dispatch_pointer_binding(struct cow_seat *, uint32_t,
+    uint32_t, struct cow_view *);
 
 /*
  * Register the default set of keybindings for a seat.

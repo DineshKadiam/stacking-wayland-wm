@@ -281,6 +281,49 @@ cow_titlebar_hit(const struct cow_view *view, int lx, int ly)
 	    view->content_height, lx, ly);
 }
 
+int
+cow_titlebar_button_at(const struct cow_view *view, int lx, int ly)
+{
+	static const int left_order[] = { 1, 3, 5, 7, 9 };
+	static const int right_order[] = { 0, 2, 4, 6, 8 };
+	int tt = view->dec.title_thickness;
+
+	if (!cow_titlebar_hit(view, lx, ly))
+		return (-1);
+	struct cow_box tbr = cow_titlebar_squeezed_rect(view);
+	int frame_w, frame_h, content_x, content_y;
+	cow_titlebar_frame_geometry(view, view->content_width,
+	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
+	int pos_coord = cow_titlebar_is_vertical(view->cfg.titlebar.position) ?
+	    ly + content_y : lx + content_x;
+	int l = cow_titlebar_is_vertical(view->cfg.titlebar.position) ? tbr.y :
+							     tbr.x;
+	int r = l + (cow_titlebar_is_vertical(view->cfg.titlebar.position) ?
+		tbr.height : tbr.width);
+	if (view->cfg.titlebar.position == COW_TITLEBAR_LEFT)
+		pos_coord = l + (r - 1 - pos_coord);
+
+	int pos = 0;
+	for (size_t i = 0; i < nitems(left_order); i++) {
+		int idx = left_order[i];
+		if (!titlebar_button_visible(&view->cfg.titlebar, idx))
+			continue;
+		int x = l + pos++ * tt;
+		if (pos_coord >= x && pos_coord < x + tt)
+			return (idx);
+	}
+	pos = 0;
+	for (size_t i = 0; i < nitems(right_order); i++) {
+		int idx = right_order[i];
+		if (!titlebar_button_visible(&view->cfg.titlebar, idx))
+			continue;
+		int x = r - (++pos * tt);
+		if (pos_coord >= x && pos_coord < x + tt)
+			return (idx);
+	}
+	return (-1);
+}
+
 bool
 cow_titlebar_hit_for(const struct cow_view *view, int cw, int ch, int lx,
     int ly)

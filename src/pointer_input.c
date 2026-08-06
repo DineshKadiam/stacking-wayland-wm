@@ -23,6 +23,7 @@
 #include "cow/config.h"
 #include "cow/decoration.h"
 #include "cow/ipc.h"
+#include "cow/keybinding.h"
 #include "cow/menu.h"
 #include "cow/output.h"
 #include "cow/pan_frames.h"
@@ -93,6 +94,41 @@ decoration_cursor_shape_at(struct cow_view *view, int x, int y, int cw, int ch)
 	return (WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
 }
 
+static uint32_t
+decoration_binding_context_at(struct cow_view *view, int x, int y, int cw,
+    int ch)
+{
+	uint32_t edges = cow_decoration_edges_at(view, x, y, cw, ch);
+	if (edges == (COW_EDGE_TOP | COW_EDGE_LEFT))
+		return (COW_BIND_CONTEXT_NW);
+	if (edges == (COW_EDGE_TOP | COW_EDGE_RIGHT))
+		return (COW_BIND_CONTEXT_NE);
+	if (edges == (COW_EDGE_BOTTOM | COW_EDGE_RIGHT))
+		return (COW_BIND_CONTEXT_SE);
+	if (edges == (COW_EDGE_BOTTOM | COW_EDGE_LEFT))
+		return (COW_BIND_CONTEXT_SW);
+	if (edges == COW_EDGE_TOP)
+		return (COW_BIND_CONTEXT_TOP);
+	if (edges == COW_EDGE_BOTTOM)
+		return (COW_BIND_CONTEXT_BOTTOM);
+	if (edges == COW_EDGE_LEFT)
+		return (COW_BIND_CONTEXT_LEFT);
+	if (edges == COW_EDGE_RIGHT)
+		return (COW_BIND_CONTEXT_RIGHT);
+
+	int content_x, content_y, frame_w, frame_h;
+	cow_titlebar_frame_geometry(view, cw, ch, &frame_w, &frame_h,
+	    &content_x, &content_y);
+	int lx = x - content_x;
+	int ly = y - content_y;
+	if (cow_titlebar_hit_for(view, cw, ch, lx, ly)) {
+		int button = cow_titlebar_button_at(view, lx, ly);
+		return (button >= 0 ? COW_BIND_CONTEXT_BUTTON(button) :
+				      COW_BIND_CONTEXT_TITLE);
+	}
+	return (COW_BIND_CONTEXT_WINDOW);
+}
+
 static bool
 decoration_cursor_update(struct wl_surface *surface, uint32_t serial,
     wl_fixed_t sx, wl_fixed_t sy)
@@ -110,6 +146,8 @@ decoration_cursor_update(struct wl_surface *surface, uint32_t serial,
 	int ch = view->content_height;
 	if (view->sd != COW_SHADE_NONE)
 		cow_view_shaded_content_size(view, view->sd, &cw, &ch);
+	cow_keybinding_set_context(cow_seat_primary(),
+	    decoration_binding_context_at(view, x, y, cw, ch), view);
 
 	cow_wm_set_cursor_shape(decoration_cursor_shape_at(view, x, y, cw, ch),
 	    decoration_cursor_serial);
@@ -296,6 +334,8 @@ cow_pointer_cursor_reconcile_position(int x, int y)
 	}
 
 	decoration_cursor_surface = view->decoration_surface;
+	cow_keybinding_set_context(cow_seat_primary(),
+	    decoration_binding_context_at(view, dx, dy, cw, ch), view);
 	cow_wm_set_cursor_shape(decoration_cursor_shape_at(view, dx, dy, cw,
 	    ch), decoration_cursor_serial);
 }
@@ -354,7 +394,19 @@ pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 		cow_wm.pointer_focus_menu = NULL;
 		raw_pointer_set_cow_surface(background->x + wl_fixed_to_int(sx),
 		    background->y + wl_fixed_to_int(sy));
+		cow_keybinding_set_context(cow_seat_primary(),
+		    COW_BIND_CONTEXT_ROOT, NULL);
 		return;
+	}
+
+	struct cow_view *icon_view;
+	wl_list_for_each(icon_view, &cow_wm.views, wm_link)
+	{
+		if (!icon_view->closed && icon_view->icon_surface == surface) {
+			cow_keybinding_set_context(cow_seat_primary(),
+			    COW_BIND_CONTEXT_ICON, icon_view);
+			return;
+		}
 	}
 
 	if (cow_wm.pointer_focus_menu != NULL)
@@ -398,6 +450,11 @@ pointer_leave(void *data, struct wl_pointer *pointer, uint32_t serial,
 	if (pointer_focus_background != NULL &&
 	    pointer_focus_background->bg_surface == surface)
 		pointer_focus_background = NULL;
+	struct cow_seat *seat = cow_seat_primary();
+	if (seat != NULL && seat->binding_context == COW_BIND_CONTEXT_ICON &&
+	    seat->binding_context_view != NULL &&
+	    seat->binding_context_view->icon_surface == surface)
+		cow_keybinding_set_context(seat, 0, NULL);
 
 	struct cow_output *output;
 	int		   edge;
@@ -481,6 +538,18 @@ pointer_button(void *data, struct wl_pointer *pointer, uint32_t serial,
 		if (seat != NULL)
 			seat->menu_click_pending = true;
 		cow_wm.needs_manage_dirty = true;
+	}
+	struct cow_seat *seat = cow_seat_primary();
+	if (state == WL_POINTER_BUTTON_STATE_PRESSED && seat != NULL &&
+	    seat->binding_context == COW_BIND_CONTEXT_ICON &&
+	    seat->binding_context_view != NULL && !cow_menu_is_open()) {
+		struct cow_view *icon_view = seat->binding_context_view;
+		seat->consumed_icon_interaction = icon_view;
+		if (cow_seat_dispatch_pointer_binding(seat, button,
+			COW_BIND_CONTEXT_ICON, icon_view)) {
+			cow_wm.needs_manage_dirty = true;
+		} else if (seat->consumed_icon_interaction == icon_view)
+			seat->consumed_icon_interaction = NULL;
 	}
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED && button == BTN_LEFT &&
 	    pointer_focus_background != NULL && !cow_menu_is_open()) {

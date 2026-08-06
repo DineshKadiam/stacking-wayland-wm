@@ -27,6 +27,7 @@
 #include "cow/desk_ops.h"
 #include "cow/ipc.h"
 #include "cow/memory.h"
+#include "cow/menu.h"
 #include "cow/output.h"
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
@@ -103,13 +104,19 @@ pointer_binding_handle_pressed(void	     *data,
     __unused struct river_pointer_binding_v1 *river_binding)
 {
 	struct cow_pointer_binding *pb = data;
-	pb->pending		       = true;
+	pb->pending = true;
+	pb->pending_view =
+	    (pb->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0 ?
+	    NULL : pb->enabled_view;
 }
 
 static void
-pointer_binding_handle_released(__unused void *data,
+pointer_binding_handle_released(void *data,
     __unused struct river_pointer_binding_v1  *river_binding)
 {
+	struct cow_pointer_binding *pb = data;
+	if (!pb->pending)
+		pb->pending_view = NULL;
 }
 
 static const struct river_pointer_binding_v1_listener
@@ -120,12 +127,14 @@ static const struct river_pointer_binding_v1_listener
 
 struct cow_keybinding *
 cow_keybinding_create(struct cow_seat *seat, xkb_keysym_t keysym,
-    uint32_t modifiers, cow_action_fn action, void *action_arg, bool repeatable)
+    uint32_t modifiers, uint32_t context_mask, cow_action_fn action,
+    void *action_arg, bool repeatable)
 {
 	struct cow_keybinding *kb = xcalloc(1, sizeof(*kb));
 
 	kb->keysym	 = keysym;
 	kb->modifiers	 = modifiers;
+	kb->context_mask = context_mask;
 	kb->action	 = action;
 	kb->action_arg	 = action_arg;
 	kb->seat	 = seat;
@@ -151,14 +160,106 @@ cow_keybinding_create(struct cow_seat *seat, xkb_keysym_t keysym,
 	return kb;
 }
 
+static int
+context_specificity(uint32_t mask)
+{
+	int bits = 0;
+	for (uint32_t m = mask; m != 0; m >>= 1)
+		bits += (int)(m & 1u);
+	return (bits);
+}
+
+static bool
+binding_wanted(struct cow_seat *seat, struct cow_keybinding *target)
+{
+	struct cow_keybinding *best = NULL;
+	struct cow_keybinding *kb;
+	wl_list_for_each_reverse(kb, &seat->keybindings, link)
+	{
+		if (kb->keysym != target->keysym ||
+		    kb->modifiers != target->modifiers)
+			continue;
+		bool global = (kb->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0;
+		if (!global && (kb->context_mask & seat->binding_context) == 0)
+			continue;
+		if (best == NULL) {
+			best = kb;
+			continue;
+		}
+		bool best_global =
+		    (best->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0;
+		if (best_global && !global) {
+			best = kb;
+			continue;
+		}
+		if (best_global == global &&
+		    context_specificity(kb->context_mask) <=
+			context_specificity(best->context_mask))
+			best = kb;
+	}
+	return (best == target);
+}
+
+static bool
+pointer_binding_wanted(struct cow_seat *seat,
+    struct cow_pointer_binding *target)
+{
+	struct cow_pointer_binding *best = NULL;
+	struct cow_pointer_binding *pb;
+	wl_list_for_each_reverse(pb, &seat->pointer_bindings, link)
+	{
+		if (pb->button != target->button ||
+		    pb->modifiers != target->modifiers)
+			continue;
+		bool global =
+		    (pb->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0;
+		if (!global && (pb->context_mask & seat->binding_context) == 0)
+			continue;
+		if (best == NULL) {
+			best = pb;
+			continue;
+		}
+		bool best_global =
+		    (best->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0;
+		if (best_global && !global) {
+			best = pb;
+			continue;
+		}
+		if (best_global == global &&
+		    context_specificity(pb->context_mask) <=
+			context_specificity(best->context_mask))
+			best = pb;
+	}
+	return (best == target);
+}
+
+void
+cow_keybinding_set_context(struct cow_seat *seat, uint32_t context,
+    struct cow_view *view)
+{
+	if (seat == NULL)
+		return;
+	if (cow_menu_is_open())
+		return;
+	if (seat->binding_context == context &&
+	    seat->binding_context_view == view)
+		return;
+	seat->binding_context = context;
+	seat->binding_context_view = view;
+	seat->binding_context_dirty = true;
+	cow_wm_request_manage_dirty();
+}
+
 struct cow_pointer_binding *
 cow_pointer_binding_create(struct cow_seat *seat, uint32_t button,
-    uint32_t modifiers, cow_action_fn action, void *action_arg)
+    uint32_t modifiers, uint32_t context_mask, cow_action_fn action,
+    void *action_arg)
 {
 	struct cow_pointer_binding *pb = xcalloc(1, sizeof(*pb));
 
 	pb->button     = button;
 	pb->modifiers  = modifiers;
+	pb->context_mask = context_mask;
 	pb->action     = action;
 	pb->action_arg = action_arg;
 	pb->seat       = seat;
@@ -172,35 +273,106 @@ cow_pointer_binding_create(struct cow_seat *seat, uint32_t button,
 	    &pointer_binding_listener, pb);
 
 	wl_list_insert(&seat->pointer_bindings, &pb->link);
+	if (modifiers != RIVER_SEAT_V1_MODIFIERS_NONE) {
+		seat->modifier_watch_dirty = true;
+		cow_wm_request_manage_dirty();
+	}
 
 	return pb;
+}
+
+bool
+cow_seat_dispatch_pointer_binding(struct cow_seat *seat, uint32_t button,
+    uint32_t context, struct cow_view *view)
+{
+	if (seat == NULL)
+		return (false);
+
+	struct cow_pointer_binding *best = NULL;
+	struct cow_pointer_binding *pb;
+	wl_list_for_each_reverse(pb, &seat->pointer_bindings, link)
+	{
+		if (pb->button != button ||
+		    pb->modifiers != seat->active_modifiers)
+			continue;
+		bool global =
+		    (pb->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0;
+		if (!global && (pb->context_mask & context) == 0)
+			continue;
+		if (best == NULL) {
+			best = pb;
+			continue;
+		}
+		bool best_global =
+		    (best->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0;
+		if (best_global && !global) {
+			best = pb;
+			continue;
+		}
+		if (best_global == global &&
+		    context_specificity(pb->context_mask) <=
+			context_specificity(best->context_mask))
+			best = pb;
+	}
+	if (best == NULL)
+		return (false);
+
+	struct cow_seat *old_seat = cow_wm.current_interaction_seat;
+	cow_wm.current_interaction_seat = seat;
+	seat->binding_action_view =
+	    (best->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0 ? NULL : view;
+	if (best->action != NULL)
+		best->action(best->action_arg);
+	seat->binding_action_view = NULL;
+	cow_wm.current_interaction_seat = old_seat;
+	return (true);
 }
 
 void
 cow_seat_enable_all_bindings(struct cow_seat *seat)
 {
-	if (seat->bindings_enabled && !seat->modifier_watch_dirty)
+	if (seat->bindings_enabled && !seat->modifier_watch_dirty &&
+	    !seat->binding_context_dirty)
 		return;
 
 	struct cow_keybinding *kb;
 	wl_list_for_each(kb, &seat->keybindings, link)
 	{
-		if (!kb->enabled) {
+		bool wanted = binding_wanted(seat, kb);
+		if (wanted && !kb->enabled) {
 			river_xkb_binding_v1_enable(kb->river_binding);
 			kb->enabled = true;
+		} else if (!wanted && kb->enabled) {
+			river_xkb_binding_v1_disable(kb->river_binding);
+			kb->enabled = false;
+			kb->pending = false;
+			kb->held = false;
+			kb->first_repeat = false;
 		}
 	}
 
 	struct cow_pointer_binding *pb;
 	wl_list_for_each(pb, &seat->pointer_bindings, link)
 	{
-		if (!pb->enabled) {
+		bool wanted = pointer_binding_wanted(seat, pb);
+		if (wanted)
+			pb->enabled_view =
+			    (pb->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0 ?
+			    NULL : seat->binding_context_view;
+		if (wanted && !pb->enabled) {
 			river_pointer_binding_v1_enable(pb->river_binding);
 			pb->enabled = true;
+		} else if (!wanted && pb->enabled) {
+			river_pointer_binding_v1_disable(pb->river_binding);
+			pb->enabled = false;
+			pb->pending = false;
+			pb->enabled_view = NULL;
+			pb->pending_view = NULL;
 		}
 	}
 
 	seat->bindings_enabled = true;
+	seat->binding_context_dirty = false;
 	cow_seat_update_modifier_watch(seat);
 }
 
@@ -224,6 +396,9 @@ cow_seat_update_modifier_watch(struct cow_seat *seat)
 		if (kb->repeatable)
 			modifiers |= kb->modifiers;
 	}
+	struct cow_pointer_binding *pb;
+	wl_list_for_each(pb, &seat->pointer_bindings, link)
+		modifiers |= pb->modifiers;
 
 	if (modifiers != seat->watched_modifiers) {
 		river_xkb_bindings_seat_v1_modifiers_watch(seat->xkb_seat,
@@ -239,6 +414,7 @@ cow_seat_handle_modifiers_update(struct cow_seat *seat, __unused uint32_t old,
 {
 	if (seat == NULL)
 		return;
+	seat->active_modifiers = new;
 
 	struct cow_keybinding *kb;
 	wl_list_for_each(kb, &seat->keybindings, link)
@@ -305,8 +481,16 @@ cow_seat_process_bindings(struct cow_seat *seat)
 
 		if (fire_press || fire_repeat) {
 			kb->pending = false;
+			struct cow_seat *old_seat =
+			    cow_wm.current_interaction_seat;
+			cow_wm.current_interaction_seat = seat;
+			seat->binding_action_view =
+			    (kb->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0 ?
+			    NULL : seat->binding_context_view;
 			if (kb->action != NULL)
 				kb->action(kb->action_arg);
+			seat->binding_action_view = NULL;
+			cow_wm.current_interaction_seat = old_seat;
 			/*
 			 * Stamp the fire time AFTER the action runs so
 			 * the delay clock counts from the user-visible
@@ -326,8 +510,18 @@ cow_seat_process_bindings(struct cow_seat *seat)
 	{
 		if (pb->pending) {
 			pb->pending = false;
+			struct cow_view *target = pb->pending_view;
+			pb->pending_view = NULL;
+			struct cow_seat *old_seat =
+			    cow_wm.current_interaction_seat;
+			cow_wm.current_interaction_seat = seat;
+			seat->binding_action_view =
+			    (pb->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0 ?
+			    NULL : target;
 			if (pb->action != NULL)
 				pb->action(pb->action_arg);
+			seat->binding_action_view = NULL;
+			cow_wm.current_interaction_seat = old_seat;
 		}
 	}
 }
@@ -384,6 +578,11 @@ action_execute_cmd_string(void *arg)
 
 	struct cmd_q *cmdq = cmdq_new();
 	cmdq->client_fd	   = -1;
+	struct cow_seat *seat = cow_wm.current_interaction_seat;
+	if (seat != NULL && seat->binding_action_view != NULL) {
+		struct cow_view *view = seat->binding_action_view;
+		cmdq_set_default_target(cmdq, view, view->desk, view->output);
+	}
 	cmdq_run(cmdq, cmdlist);
 	cmd_list_free(cmdlist);
 
@@ -457,14 +656,129 @@ parse_modifiers(const char *str, uint32_t *modifiers_out,
 	return true;
 }
 
+bool
+cow_binding_parse_context(const char *spec, uint32_t *mask_out,
+    const char **key_out, const char **error_out)
+{
+	if (mask_out == NULL || key_out == NULL || spec == NULL)
+		return (false);
+	if (error_out != NULL)
+		*error_out = NULL;
+	const char *colon = strchr(spec, ':');
+	if (colon == NULL) {
+		*mask_out = COW_BIND_CONTEXT_GLOBAL;
+		*key_out = spec;
+		return (true);
+	}
+	if (colon == spec) {
+		if (error_out != NULL)
+			*error_out = "empty binding context";
+		return (false);
+	}
+
+	uint32_t mask = 0;
+	for (const char *p = spec; p < colon; p++) {
+		switch (*p) {
+		case 'A':
+			mask |= COW_BIND_CONTEXT_GLOBAL;
+			break;
+		case 'R':
+			mask |= COW_BIND_CONTEXT_ROOT;
+			break;
+		case 'W':
+			mask |= COW_BIND_CONTEXT_WINDOW;
+			break;
+		case 'T':
+			mask |= COW_BIND_CONTEXT_TITLE;
+			break;
+		case '[':
+			mask |= COW_BIND_CONTEXT_LEFT;
+			break;
+		case ']':
+			mask |= COW_BIND_CONTEXT_RIGHT;
+			break;
+		case '-':
+			mask |= COW_BIND_CONTEXT_TOP;
+			break;
+		case '_':
+			mask |= COW_BIND_CONTEXT_BOTTOM;
+			break;
+		case 'S':
+			mask |= COW_BIND_CONTEXT_SIDES;
+			break;
+		case '<':
+			mask |= COW_BIND_CONTEXT_NW;
+			break;
+		case '^':
+			mask |= COW_BIND_CONTEXT_NE;
+			break;
+		case '>':
+			mask |= COW_BIND_CONTEXT_SE;
+			break;
+		case 'v':
+			mask |= COW_BIND_CONTEXT_SW;
+			break;
+		case 'F':
+			mask |= COW_BIND_CONTEXT_CORNERS;
+			break;
+		case 'I':
+			mask |= COW_BIND_CONTEXT_ICON;
+			break;
+		case '0': case '1': case '2': case '3': case '4':
+		case '5': case '6': case '7': case '8': case '9':
+			mask |= COW_BIND_CONTEXT_BUTTON(*p - '0');
+			break;
+		case 'D':
+			if (error_out != NULL)
+				*error_out = "desktop application context D is not "
+				    "distinguishable on Wayland";
+			return (false);
+		case 'M':
+			if (error_out != NULL)
+				*error_out = "menus handle keyboard input directly";
+			return (false);
+		case 'P':
+			if (error_out != NULL)
+				*error_out = "interactive placement context P is not "
+				    "implemented";
+			return (false);
+		default:
+			if (error_out != NULL)
+				*error_out = "unknown binding context";
+			return (false);
+		}
+	}
+	if ((mask & COW_BIND_CONTEXT_GLOBAL) != 0 &&
+	    mask != COW_BIND_CONTEXT_GLOBAL) {
+		if (error_out != NULL)
+			*error_out = "context A cannot be combined with other contexts";
+		return (false);
+	}
+	if (colon[1] == '\0') {
+		if (error_out != NULL)
+			*error_out = "missing key after binding context";
+		return (false);
+	}
+	*mask_out = mask;
+	*key_out = colon + 1;
+	return (true);
+}
+
 static bool
 parse_key_string(const char *str, xkb_keysym_t *keysym_out,
-    uint32_t *modifiers_out)
+    uint32_t *modifiers_out, uint32_t *context_out)
 {
 	uint32_t    mods;
-	const char *key_part;
+	uint32_t    context;
+	const char *key_spec, *key_part, *error;
 
-	if (!parse_modifiers(str, &mods, &key_part))
+	if (!cow_binding_parse_context(str, &context, &key_spec, &error)) {
+		fprintf(stderr, "cow: invalid binding \"%s\": %s\n", str,
+		    error != NULL ? error : "invalid context");
+		return false;
+	}
+
+	if (!parse_modifiers(key_spec, &mods, &key_part))
 		return false;
 
 	xkb_keysym_t sym = xkb_keysym_from_name(key_part,
@@ -478,6 +792,7 @@ parse_key_string(const char *str, xkb_keysym_t *keysym_out,
 
 	*keysym_out    = sym;
 	*modifiers_out = mods;
+	*context_out   = context;
 	return true;
 }
 
@@ -507,12 +822,19 @@ parse_button_name(const char *name)
 
 static bool
 parse_mouse_string(const char *str, uint32_t *button_out,
-    uint32_t *modifiers_out)
+    uint32_t *modifiers_out, uint32_t *context_out)
 {
 	uint32_t    mods;
-	const char *btn_part;
+	uint32_t    context;
+	const char *mouse_spec, *btn_part, *error;
 
-	if (!parse_modifiers(str, &mods, &btn_part))
+	if (!cow_binding_parse_context(str, &context, &mouse_spec, &error)) {
+		fprintf(stderr, "cow: invalid mouse binding \"%s\": %s\n", str,
+		    error != NULL ? error : "invalid context");
+		return false;
+	}
+
+	if (!parse_modifiers(mouse_spec, &mods, &btn_part))
 		return false;
 
 	uint32_t button = parse_button_name(btn_part);
@@ -523,6 +845,7 @@ parse_mouse_string(const char *str, uint32_t *button_out,
 
 	*button_out    = button;
 	*modifiers_out = mods;
+	*context_out   = context;
 	return true;
 }
 
@@ -557,8 +880,10 @@ register_config_keyboard_bindings(struct cow_seat *seat)
 	{
 		xkb_keysym_t keysym;
 		uint32_t     modifiers;
+		uint32_t     context;
 
-		if (!parse_key_string(entry->key_string, &keysym, &modifiers))
+		if (!parse_key_string(entry->key_string, &keysym, &modifiers,
+			&context))
 			continue;
 
 		cow_action_fn fn;
@@ -566,7 +891,7 @@ register_config_keyboard_bindings(struct cow_seat *seat)
 		if (!cow_resolve_action(entry->action_string, &fn, &arg))
 			continue;
 
-		cow_keybinding_create(seat, keysym, modifiers, fn, arg,
+		cow_keybinding_create(seat, keysym, modifiers, context, fn, arg,
 		    entry->repeatable);
 	}
 }
@@ -579,8 +904,10 @@ register_config_mouse_bindings(struct cow_seat *seat)
 	{
 		uint32_t button;
 		uint32_t modifiers;
+		uint32_t context;
 
-		if (!parse_mouse_string(entry->key_string, &button, &modifiers))
+		if (!parse_mouse_string(entry->key_string, &button, &modifiers,
+			&context))
 			continue;
 
 		cow_action_fn fn;
@@ -588,7 +915,8 @@ register_config_mouse_bindings(struct cow_seat *seat)
 		if (!cow_resolve_action(entry->action_string, &fn, &arg))
 			continue;
 
-		cow_pointer_binding_create(seat, button, modifiers, fn, arg);
+		cow_pointer_binding_create(seat, button, modifiers, context, fn,
+		    arg);
 	}
 }
 
@@ -678,10 +1006,11 @@ register_default_bindings(struct cow_seat *seat)
 		void	     *arg = db->action ? NULL : xstrdup(db->cmd);
 
 		if (db->is_pointer)
-			cow_pointer_binding_create(seat, db->button, mods, fn,
-			    arg);
+			cow_pointer_binding_create(seat, db->button, mods,
+			    COW_BIND_CONTEXT_GLOBAL, fn, arg);
 		else
-			cow_keybinding_create(seat, db->key, mods, fn, arg,
+			cow_keybinding_create(seat, db->key, mods,
+			    COW_BIND_CONTEXT_GLOBAL, fn, arg,
 			    /* repeatable = */ false);
 	}
 
@@ -695,9 +1024,11 @@ register_default_bindings(struct cow_seat *seat)
 		xasprintf(&switch_cmd, "desk -d %d", i + 1);
 		xasprintf(&move_cmd, "window-move -k %d", i + 1);
 		cow_keybinding_create(seat, desk_syms[i], super,
+		    COW_BIND_CONTEXT_GLOBAL,
 		    action_execute_cmd_string, switch_cmd,
 		    /* repeatable = */ false);
 		cow_keybinding_create(seat, desk_syms[i], super_shift,
+		    COW_BIND_CONTEXT_GLOBAL,
 		    action_execute_cmd_string, move_cmd,
 		    /* repeatable = */ false);
 	}

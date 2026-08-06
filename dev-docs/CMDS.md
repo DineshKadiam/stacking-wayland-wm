@@ -77,6 +77,24 @@ The format conversions expose the entry number (`%n`), displayed/raw title
 Type-ahead filters the displayed labels while retaining that ordering; `-n`
 disables type-ahead without disabling numbered or arrow-key selection.
 
+## bind
+
+`bind [-r] [contexts:]modifier+key action ...` accepts optional FVWM-style
+pointer contexts.  Unprefixed bindings are global fallbacks.  Supported
+primitive contexts are `R`, `W`, `T`, `[`/`]`/`-`/`_`, `<`/`^`/`>`/`v`, `I`,
+and titlebar buttons `0`-`9`; `S` and `F` expand to all sides and corners.
+Only the most specific matching binding for a keysym/modifier pair is enabled
+in River, preventing non-matching bindings from swallowing client input.
+
+## mouse
+
+`mouse [contexts:]modifier+button action ...` accepts the same pointer
+contexts and uses the same contextual-over-global precedence as `bind`.
+Contextual actions receive the window under the pointer as their default
+target.  River consumes a matching pointer binding before ordinary surface
+interaction, so contextual `mouse` bindings override decoration and client
+click handling only in their matching regions.
+
 ## set
 
 Layer-related keys:

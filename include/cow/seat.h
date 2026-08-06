@@ -39,7 +39,12 @@ struct cow_seat {
 	struct wl_list keybindings;	 /* cow_keybinding.link */
 	struct wl_list pointer_bindings; /* cow_pointer_binding.link */
 	bool	       bindings_enabled;
+	uint32_t	binding_context;
+	struct cow_view *binding_context_view;
+	struct cow_view *binding_action_view;
+	bool		binding_context_dirty;
 	uint32_t       watched_modifiers;
+	uint32_t       active_modifiers;
 	bool	       modifier_watch_dirty;
 
 	/* Corresponding wl_seat global name */
@@ -54,6 +59,8 @@ struct cow_seat {
 
 	/* The window that was last interacted with */
 	struct cow_view *interacted_view;
+	struct cow_view *pending_icon_interaction;
+	struct cow_view *consumed_icon_interaction;
 
 	/* The currently focused view (keyboard focus) */
 	struct cow_view *focused_view;

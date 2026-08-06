@@ -233,6 +233,20 @@ cmd_argv_to_command_string(int argc, char **argv, int start)
 	return buf;
 }
 
+/*
+ * Build a command string used as a deferred action.  A single argument may
+ * itself contain the complete command (for example, "menu-show RootMenu"),
+ * while separate arguments must be quoted so that reparsing preserves their
+ * boundaries.
+ */
+char *
+cmd_argv_to_action_string(int argc, char **argv, int start)
+{
+	if (argc - start == 1)
+		return xstrdup(argv[start]);
+	return cmd_argv_to_command_string(argc, argv, start);
+}
+
 char *
 cmd_argv_to_command_string_or_body(int argc, char **argv, int start)
 {

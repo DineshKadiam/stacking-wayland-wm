@@ -89,7 +89,7 @@ cmd_bind_decoration_exec(struct cmd *self, struct cmd_q *cmdq)
 	struct cow_dec_binding_entry *entry = xcalloc(1, sizeof(*entry));
 	entry->region			    = region;
 	entry->clicks			    = clicks;
-	entry->action_string = cmd_argv_to_command_string(args->argc,
+	entry->action_string = cmd_argv_to_action_string(args->argc,
 	    args->argv, idx + 1);
 
 	wl_list_insert(&cow_config->decoration_bindings, &entry->link);

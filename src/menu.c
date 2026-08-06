@@ -36,6 +36,7 @@
 #include "cow/config.h"
 #include "cow/draw.h"
 #include "cow/ipc.h"
+#include "cow/keybinding.h"
 #include "cow/memory.h"
 #include "cow/menu.h"
 #include "cow/output.h"
@@ -137,8 +138,24 @@ static char		      *g_deferred_context_id;
 static uint32_t		       g_deferred_seat_name;
 static bool		       g_deferred_pick_context;
 static bool		       g_deferred_action_ready;
+static uint32_t		       g_menu_saved_binding_context;
+static struct cow_view      *g_menu_saved_binding_view;
 
 static void menu_navigate(const char *);
+
+static bool
+menu_view_is_live(const struct cow_view *target)
+{
+	if (target == NULL)
+		return (false);
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (view == target)
+			return (true);
+	}
+	return (false);
+}
 
 static void
 menu_keyboard_keymap(__unused void *data, __unused struct wl_keyboard *keyboard,
@@ -1187,10 +1204,20 @@ cow_menu_close_all(void)
 		    wl_container_of(cow_wm.open_menus.next, p, link);
 		cow_menu_popup_close(p);
 	}
+	struct cow_seat *menu_seat = cow_wm.menu_context_seat;
 	cow_wm.menu_context_view = NULL;
 	cow_wm.menu_context_seat = NULL;
 	menu_keyboard_destroy();
 	g_menu_restore_pending = true;
+	bool binding_view_live = g_menu_saved_binding_view == NULL ||
+	    menu_view_is_live(g_menu_saved_binding_view);
+	if (menu_seat != NULL)
+		cow_keybinding_set_context(menu_seat,
+		    binding_view_live ?
+			g_menu_saved_binding_context : 0,
+		    binding_view_live ?
+			g_menu_saved_binding_view : NULL);
+	g_menu_saved_binding_view = NULL;
 	g_hover_suppressed_until_pointer_moves = false;
 	hover_reset_all();
 	cow_wm.needs_manage_dirty = true;
@@ -1203,7 +1230,8 @@ cow_menu_apply_focus_restore(void)
 		return;
 	g_menu_restore_pending = false;
 	struct cow_seat *seat = cow_seat_primary();
-	if (cow_wm.pending_focus == NULL && g_menu_restore_view != NULL &&
+	if (cow_wm.pending_focus == NULL &&
+	    menu_view_is_live(g_menu_restore_view) &&
 	    !g_menu_restore_view->closed &&
 	    cow_wm.focused_view == g_menu_restore_view && seat != NULL)
 		cow_seat_focus_view_no_raise(seat, g_menu_restore_view);
@@ -1242,6 +1270,14 @@ cow_menu_popup_open(struct cow_menu *menu, int x, int y,
 		cow_wm.menu_context_seat = cow_wm.current_interaction_seat;
 		if (cow_wm.menu_context_seat == NULL)
 			cow_wm.menu_context_seat = cow_seat_primary();
+		if (cow_wm.menu_context_seat != NULL) {
+			g_menu_saved_binding_context =
+			    cow_wm.menu_context_seat->binding_context;
+			g_menu_saved_binding_view =
+			    cow_wm.menu_context_seat->binding_context_view;
+			cow_keybinding_set_context(cow_wm.menu_context_seat, 0,
+			    NULL);
+		}
 		g_menu_restore_view = cow_wm.focused_view;
 		g_menu_restore_pending = false;
 		g_menu_focus_requested = false;
@@ -1279,6 +1315,13 @@ cow_menu_popup_open_centered(struct cow_menu *menu, int cx, int cy,
 	cow_wm.menu_context_seat = cow_wm.current_interaction_seat;
 	if (cow_wm.menu_context_seat == NULL)
 		cow_wm.menu_context_seat = cow_seat_primary();
+	if (cow_wm.menu_context_seat != NULL) {
+		g_menu_saved_binding_context =
+		    cow_wm.menu_context_seat->binding_context;
+		g_menu_saved_binding_view =
+		    cow_wm.menu_context_seat->binding_context_view;
+		cow_keybinding_set_context(cow_wm.menu_context_seat, 0, NULL);
+	}
 	g_menu_restore_view = cow_wm.focused_view;
 	g_menu_restore_pending = false;
 	g_menu_focus_requested = false;

@@ -63,6 +63,7 @@ seat_handle_pointer_enter(void *data, __unused struct river_seat_v1 *river_seat,
 	struct cow_seat *seat	   = data;
 	struct cow_view *view	   = cow_view_find(river_window);
 	seat->pointer_entered_view = view;
+	cow_keybinding_set_context(seat, COW_BIND_CONTEXT_WINDOW, view);
 
 	/* Cancel any pending edge scroll — pointer is on a window */
 	cow_output_pan_pointer_enter();
@@ -128,6 +129,11 @@ seat_handle_shell_surface_interaction(void *data,
     struct river_shell_surface_v1	   *shell_surface)
 {
 	struct cow_seat *seat = data;
+	if (seat->consumed_icon_interaction != NULL &&
+	    seat->consumed_icon_interaction->icon_shell == shell_surface) {
+		seat->consumed_icon_interaction = NULL;
+		return;
+	}
 
 	/* Menu popup click?  Walk open menus and flag the click for
 	 * cow_menu_process_input() on the next manage cycle. */
@@ -148,14 +154,16 @@ seat_handle_shell_surface_interaction(void *data,
 		return;
 	}
 
-	/* Check if the clicked shell surface is an icon for an
-	 * iconified view.  If so, deiconify it. */
+	/* Defer the default icon action until the following manage sequence.
+	 * The icon's wl_pointer.button event may match a local contextual
+	 * binding and cancel it before then.
+	 */
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
 		if (view->icon_shell == shell_surface &&
 		    cow_view_is_iconified(view)) {
-			cow_pointer_op_start_icon_move(seat, view);
+			seat->pending_icon_interaction = view;
 			return;
 		}
 	}
@@ -251,6 +259,7 @@ cow_seat_create(struct river_seat_v1 *river_seat)
 	seat->op_released	   = false;
 	seat->has_pointer_position = false;
 	seat->bindings_enabled	   = false;
+	seat->binding_context_dirty = true;
 	seat->modifier_watch_dirty = true;
 	seat->titlebar_press	   = COW_TITLEBAR_PRESS_NONE;
 	seat->pressed_button_idx   = -1;
@@ -397,6 +406,10 @@ cow_seat_forget_view(struct cow_seat *seat, struct cow_view *view)
 		seat->pointer_entered_view = NULL;
 	if (seat->interacted_view == view)
 		seat->interacted_view = NULL;
+	if (seat->pending_icon_interaction == view)
+		seat->pending_icon_interaction = NULL;
+	if (seat->consumed_icon_interaction == view)
+		seat->consumed_icon_interaction = NULL;
 	if (seat->sloppy_focus_view == view)
 		seat->sloppy_focus_view = NULL;
 	if (seat->last_click_view == view)
@@ -405,4 +418,20 @@ cow_seat_forget_view(struct cow_seat *seat, struct cow_view *view)
 		seat->pressed_view = NULL;
 	if (seat->op.view == view)
 		seat->op.view = NULL;
+	if (seat->binding_context_view == view) {
+		seat->binding_context_view = NULL;
+		seat->binding_context = 0;
+		seat->binding_context_dirty = true;
+		cow_wm_request_manage_dirty();
+	}
+	if (seat->binding_action_view == view)
+		seat->binding_action_view = NULL;
+	struct cow_pointer_binding *pb;
+	wl_list_for_each(pb, &seat->pointer_bindings, link)
+	{
+		if (pb->enabled_view == view)
+			pb->enabled_view = NULL;
+		if (pb->pending_view == view)
+			pb->pending_view = NULL;
+	}
 }
