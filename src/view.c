@@ -1336,7 +1336,9 @@ view_compute_initial_placement(struct cow_view *view)
  * off-page window may have a large negative or positive y/x that
  * lands inside a physically adjacent monitor.  Park hidden views one
  * pixel below the bounding box of all outputs (always off-screen on
- * Wayland) so River doesn't migrate them.  vx/vy stay correct.
+ * Wayland) so River doesn't migrate them.  Account for the decoration
+ * offset so the entire outer frame, not only the client content, is parked
+ * below the outputs.  vx/vy stay correct.
  */
 static void
 view_apply_node_position(struct cow_view *view)
@@ -1344,8 +1346,9 @@ view_apply_node_position(struct cow_view *view)
 	int render_x = view->x;
 	int render_y = view->y;
 	if (view->output != NULL && !cow_view_visible(view, view->output)) {
+		struct cow_box frame = cow_view_frame_box_at(view, 0, 0);
 		render_x = 0;
-		render_y = cow_outputs_max_bottom() + 1;
+		render_y = cow_outputs_max_bottom() + 1 - frame.y;
 	}
 	river_node_v1_set_position(view->node, render_x, render_y);
 
@@ -1424,6 +1427,7 @@ static void
 view_apply_show_hide(struct cow_view *view)
 {
 	if (view->output == NULL || !cow_view_visible(view, view->output)) {
+		cow_decoration_hide(view);
 		river_window_v1_hide(view->river_window);
 		return;
 	}
@@ -1664,7 +1668,7 @@ cow_view_page_col(const struct cow_view *view)
 	    cow_config->page_cols <= 1)
 		return 0;
 
-	return view_floor_div(view->vx, view->output->usable_area.width);
+	return view_floor_div(view->vx, cow_page_width(view->output));
 }
 
 int
@@ -1674,7 +1678,7 @@ cow_view_page_row(const struct cow_view *view)
 	    cow_config->page_rows <= 1)
 		return 0;
 
-	return view_floor_div(view->vy, view->output->usable_area.height);
+	return view_floor_div(view->vy, cow_page_height(view->output));
 }
 
 bool
@@ -1709,8 +1713,8 @@ cow_view_current_page(const struct cow_view *view)
 	    (cow_config->page_cols <= 1 && cow_config->page_rows <= 1))
 		return true;
 
-	int w = view->output->usable_area.width;
-	int h = view->output->usable_area.height;
+	int w = cow_page_width(view->output);
+	int h = cow_page_height(view->output);
 	if (w <= 0 || h <= 0)
 		return true;
 

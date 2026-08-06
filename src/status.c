@@ -29,6 +29,7 @@
 
 #include "cow/compat.h"
 #include "cow/config.h"
+#include "cow/desk_ops.h"
 #include "cow/event.h"
 #include "cow/memory.h"
 #include "cow/output.h"
@@ -298,8 +299,8 @@ cow_status_add_output_desks(cJSON *out, const struct cow_output *output)
 void
 cow_status_add_output_pages(cJSON *out, const struct cow_output *output)
 {
-	int pw	  = output->usable_area.width;
-	int ph	  = output->usable_area.height;
+	int pw	  = cow_page_width(output);
+	int ph	  = cow_page_height(output);
 	int pcols = cow_config ? cow_config->page_cols : COW_CFG_DEFAULT_PAGE_COLS;
 	int prows = cow_config ? cow_config->page_rows : COW_CFG_DEFAULT_PAGE_ROWS;
 	int pcol  = (pw > 0 && pcols > 1) ? output->current_desk->page_vx / pw :

@@ -420,8 +420,8 @@ edge_is_scrollable(struct cow_output *output, int edge)
 	int		 cur_col, cur_row;
 	struct cow_desk *desk = output->current_desk;
 	if (desk != NULL && desk->scrolling) {
-		int w	= output->usable_area.width;
-		int h	= output->usable_area.height;
+		int w	= cow_page_width(output);
+		int h	= cow_page_height(output);
 		cur_col = (w > 0) ? desk->scroll_to_vx / w : 0;
 		cur_row = (h > 0) ? desk->scroll_to_vy / h : 0;
 	} else {

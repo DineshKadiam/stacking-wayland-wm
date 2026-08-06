@@ -45,8 +45,8 @@ view_visible_in_page(const struct cow_view *view,
 		return true;
 
 	struct cow_desk *desk = output->current_desk;
-	int		 w    = output->usable_area.width;
-	int		 h    = output->usable_area.height;
+	int		 w    = cow_page_width(output);
+	int		 h    = cow_page_height(output);
 	int		 vpx  = desk->page_vx;
 	int		 vpy  = desk->page_vy;
 
@@ -59,9 +59,11 @@ view_visible_in_page(const struct cow_view *view,
 	int frame_w, frame_h, content_x, content_y;
 	cow_titlebar_frame_geometry(view, view->content_width,
 	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
+	int fx = view->vx - content_x;
+	int fy = view->vy - content_y;
 
 	bool page_sized = frame_w >= w && frame_h >= h &&
-	    view->vx % w == 0 && view->vy % h == 0;
+	    fx % w == 0 && fy % h == 0;
 
 	if (view->fullscreen || view->maximized || page_sized)
 		return origin_visible;
@@ -71,8 +73,6 @@ view_visible_in_page(const struct cow_view *view,
 
 	if (cow_config->edge_scroll && aligned)
 		return origin_visible;
-	int fx = view->vx - content_x;
-	int fy = view->vy - content_y;
 	return !(fx + frame_w <= vpx || fx >= vpx + w ||
 	    fy + frame_h <= vpy || fy >= vpy + h);
 }
@@ -248,7 +248,7 @@ cow_page_col(const struct cow_output *output)
 {
 	if (output == NULL || cow_config == NULL || cow_config->page_cols <= 1)
 		return 0;
-	int w = output->usable_area.width;
+	int w = cow_page_width(output);
 	if (w <= 0)
 		return 0;
 	return output->current_desk->page_vx / w;
@@ -259,10 +259,22 @@ cow_page_row(const struct cow_output *output)
 {
 	if (output == NULL || cow_config == NULL || cow_config->page_rows <= 1)
 		return 0;
-	int h = output->usable_area.height;
+	int h = cow_page_height(output);
 	if (h <= 0)
 		return 0;
 	return output->current_desk->page_vy / h;
+}
+
+int
+cow_page_width(const struct cow_output *output)
+{
+	return output != NULL ? output->width : 0;
+}
+
+int
+cow_page_height(const struct cow_output *output)
+{
+	return output != NULL ? output->height : 0;
 }
 
 /* Switch a single output to the given page (internal helper). */
@@ -319,8 +331,8 @@ cow_page_switch(struct cow_output *output, int col, int row)
 
 	int cols = cow_config->page_cols;
 	int rows = cow_config->page_rows;
-	int w	 = output->usable_area.width;
-	int h	 = output->usable_area.height;
+	int w	 = cow_page_width(output);
+	int h	 = cow_page_height(output);
 
 	if (w <= 0 || h <= 0)
 		return;
@@ -343,8 +355,8 @@ cow_page_switch(struct cow_output *output, int col, int row)
 		struct cow_output *o;
 		wl_list_for_each(o, &cow_wm.outputs, wm_link)
 		{
-			int ow = o->usable_area.width;
-			int oh = o->usable_area.height;
+			int ow = cow_page_width(o);
+			int oh = cow_page_height(o);
 			if (ow <= 0 || oh <= 0)
 				continue;
 			/* Scale page coordinates to this output's size */
@@ -371,8 +383,8 @@ cow_page_scroll_to(struct cow_output *output, int new_vx, int new_vy, bool wrap)
 
 	int cols = cow_config->page_cols;
 	int rows = cow_config->page_rows;
-	int w	 = output->usable_area.width;
-	int h	 = output->usable_area.height;
+	int w	 = cow_page_width(output);
+	int h	 = cow_page_height(output);
 	if (w <= 0 || h <= 0)
 		return;
 
@@ -425,8 +437,8 @@ cow_view_move_to_page(struct cow_view *view, int col, int row)
 	if (view == NULL || view->output == NULL || cow_config == NULL)
 		return;
 
-	int w = view->output->usable_area.width;
-	int h = view->output->usable_area.height;
+	int w = cow_page_width(view->output);
+	int h = cow_page_height(view->output);
 	if (w <= 0 || h <= 0)
 		return;
 
@@ -460,8 +472,8 @@ cow_page_clamp_views(struct cow_output *output)
 	if (output == NULL || cow_config == NULL)
 		return;
 
-	int w	 = output->usable_area.width;
-	int h	 = output->usable_area.height;
+	int w	 = cow_page_width(output);
+	int h	 = cow_page_height(output);
 	int cols = cow_config->page_cols;
 	int rows = cow_config->page_rows;
 	if (w <= 0 || h <= 0)

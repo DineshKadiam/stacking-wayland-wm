@@ -136,8 +136,8 @@ cmd_scroll_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_NORMAL);
 	}
 
-	int w = output->usable_area.width;
-	int h = output->usable_area.height;
+	int w = cow_page_width(output);
+	int h = cow_page_height(output);
 	if (w <= 0 || h <= 0)
 		return (CMD_RETURN_NORMAL);
 

@@ -34,6 +34,8 @@ void cow_page_switch(struct cow_output *, int, int);
 
 int cow_page_col(const struct cow_output *);
 int cow_page_row(const struct cow_output *);
+int cow_page_width(const struct cow_output *);
+int cow_page_height(const struct cow_output *);
 
 /* Move a view to page (col, row). */
 void cow_view_move_to_page(struct cow_view *, int, int);

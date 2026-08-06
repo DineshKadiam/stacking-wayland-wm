@@ -1803,6 +1803,10 @@ This section details commands which affect desktops/pages often per-output.
 
 Pan the virtual page viewport for the current desk.
 
+Each page has the logical width and height of its output.  Reserved and
+layer-shell areas affect window placement and maximization, but do not change
+page dimensions or scroll distances.
+
 Pages can be scrolled in either full pages, or part increments.  Additionally,
 it's possible to in-effect, "drag" the viewport with the mouse to any position.
 

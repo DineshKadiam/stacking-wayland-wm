@@ -1278,5 +1278,20 @@ commit:
 		river_decoration_v1_sync_next_commit(view->decoration);
 		wl_surface_commit(view->decoration_surface);
 		dec->buffer->busy = true;
+		dec->mapped = true;
 	}
+}
+
+void
+cow_decoration_hide(struct cow_view *view)
+{
+	if (view == NULL || view->decoration_surface == NULL ||
+	    !view->dec.mapped)
+		return;
+
+	wl_surface_attach(view->decoration_surface, NULL, 0, 0);
+	if (view->decoration != NULL)
+		river_decoration_v1_sync_next_commit(view->decoration);
+	wl_surface_commit(view->decoration_surface);
+	view->dec.mapped = false;
 }

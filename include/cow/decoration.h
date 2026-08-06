@@ -47,6 +47,7 @@ struct cow_view_decoration {
 
 	/* Cached generation state */
 	bool dirty;
+	bool mapped;
 	bool last_active;
 	int  last_content_width;
 	int  last_content_height;
@@ -71,6 +72,11 @@ void cow_decoration_fini(struct cow_view_decoration *);
  * `active` selects active or inactive border/titlebar colors.
  */
 void cow_decoration_update(struct cow_view *, bool);
+
+/*
+ * Unmap the decoration surface while its window is hidden.
+ */
+void cow_decoration_hide(struct cow_view *);
 
 /*
  * Return the shared titlebar font (lazily initialised from

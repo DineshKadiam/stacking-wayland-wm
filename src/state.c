@@ -70,12 +70,12 @@ cow_state_save(void)
 		{
 			cJSON *dp = cJSON_CreateObject();
 			cJSON_AddNumberToObject(dp, "page_col",
-			    output->usable_area.width > 0 ?
-				dk->page_vx / output->usable_area.width :
+			    cow_page_width(output) > 0 ?
+				dk->page_vx / cow_page_width(output) :
 				0);
 			cJSON_AddNumberToObject(dp, "page_row",
-			    output->usable_area.height > 0 ?
-				dk->page_vy / output->usable_area.height :
+			    cow_page_height(output) > 0 ?
+				dk->page_vy / cow_page_height(output) :
 				0);
 			cJSON_AddItemToArray(desk_pages, dp);
 
@@ -307,8 +307,8 @@ cow_state_restore(void)
 			cJSON *desk_pages = cJSON_GetObjectItem(out_obj,
 			    "desk_pages");
 			if (cJSON_IsArray(desk_pages)) {
-				int    w = output->usable_area.width;
-				int    h = output->usable_area.height;
+				int    w = cow_page_width(output);
+				int    h = cow_page_height(output);
 				int    i = 0;
 				cJSON *dp;
 				cJSON_ArrayForEach(dp, desk_pages)
