@@ -930,7 +930,9 @@ Operate on a window.
 
 *-S*
 	Toggle page-sticky: window appears on all pages of the current
-	desk. Combine *-s* and *-S* for fully sticky (all desks and pages).
+	desk. When enabled for a window on another page, the window is first
+	moved to the current page while retaining its within-page position.
+	Combine *-s* and *-S* for fully sticky (all desks and pages).
 
 *-i*
 	Toggle the window's iconified (minimised) state.

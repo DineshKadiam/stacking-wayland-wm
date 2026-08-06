@@ -137,11 +137,7 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (args_has(args, 'S')) {
 		bool currently = (view->flags & COW_VIEW_STICKY_PAGE_FLAG) != 0;
 		bool target    = cmdq->in_rule ? true : !currently;
-		if (target != currently) {
-			view->flags ^= COW_VIEW_STICKY_PAGE_FLAG;
-			view->dec.dirty = true;
-			cow_wm_request_manage_dirty();
-		}
+		cow_view_set_page_sticky(view, target);
 	}
 
 	if (args_has(args, 'i')) {

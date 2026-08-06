@@ -1723,6 +1723,35 @@ cow_view_current_page(const struct cow_view *view)
 	    cow_view_page_row(view) == view_floor_div(desk->page_vy, h);
 }
 
+void
+cow_view_set_page_sticky(struct cow_view *view, bool sticky)
+{
+	if (view == NULL)
+		return;
+
+	bool currently = (view->flags & COW_VIEW_STICKY_PAGE_FLAG) != 0;
+	if (currently == sticky)
+		return;
+
+	/*
+	 * A page-sticky window tracks subsequent viewport movement.  Anchor it
+	 * to the current page first so an off-page target does not retain an
+	 * off-page virtual position while bypassing page visibility checks.
+	 */
+	if (sticky && view->output != NULL &&
+	    view->output->current_desk != NULL) {
+		cow_view_move_to_page(view, cow_page_col(view->output),
+		    cow_page_row(view->output));
+	}
+
+	if (sticky)
+		view->flags |= COW_VIEW_STICKY_PAGE_FLAG;
+	else
+		view->flags &= ~COW_VIEW_STICKY_PAGE_FLAG;
+	view->dec.dirty = true;
+	cow_wm_request_manage_dirty();
+}
+
 bool
 cow_view_circulatable(const struct cow_view *v)
 {
