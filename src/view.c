@@ -2735,11 +2735,21 @@ cow_view_icon_render(struct cow_view *view)
 	int icon_h = view->icon_height;
 	if (icon_w <= 0 || icon_h <= 0)
 		return;
+	bool needs_draw = view->icon_surface == NULL ||
+	    view->icon_shell == NULL || view->icon_node == NULL ||
+	    view->icon_buffer == NULL ||
+	    view->icon_buffer->width != icon_w ||
+	    view->icon_buffer->height != icon_h;
 
 	if (!icon_ensure_surface(view))
 		return;
 	if (!icon_ensure_buffer(view, icon_w, icon_h))
 		return;
+	if (!needs_draw) {
+		river_node_v1_set_position(view->icon_node, view->icon_x,
+		    view->icon_y);
+		return;
+	}
 
 	struct cow_pixbuf p = {
 		.pixels	   = view->icon_buffer->data,
