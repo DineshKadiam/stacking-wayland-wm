@@ -137,6 +137,16 @@ do_show_windows(int fd, struct cmd_filter *filter, struct cmd_q *cmdq)
 		cJSON_AddNumberToObject(w, "vy", view->vy);
 		cJSON_AddNumberToObject(w, "width", view->content_width);
 		cJSON_AddNumberToObject(w, "height", view->content_height);
+		cJSON_AddNumberToObject(w, "icon_x", view->icon_x);
+		cJSON_AddNumberToObject(w, "icon_y", view->icon_y);
+		cJSON_AddNumberToObject(w, "icon_vx",
+		    view->icon_x - (view->output ? view->output->x : 0) +
+		    (view->desk ? view->desk->page_vx : 0));
+		cJSON_AddNumberToObject(w, "icon_vy",
+		    view->icon_y - (view->output ? view->output->y : 0) +
+		    (view->desk ? view->desk->page_vy : 0));
+		cJSON_AddNumberToObject(w, "icon_width", view->icon_width);
+		cJSON_AddNumberToObject(w, "icon_height", view->icon_height);
 		cJSON_AddNumberToObject(w, "page_col",
 		    cow_view_page_col(view));
 		cJSON_AddNumberToObject(w, "page_row",

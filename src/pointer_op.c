@@ -491,6 +491,8 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 		cow_view_deiconify(view);
 		return;
 	}
+	if (finished_type == COW_POINTER_OP_ICON_MOVE)
+		cow_status_emit();
 
 	/* Fire lifecycle rules for the completed op.  Skipped if the
 	 * view was destroyed during the op (caller has already returned

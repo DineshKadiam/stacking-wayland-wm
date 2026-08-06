@@ -49,6 +49,7 @@
 
 #include "cow/attrs.h"
 #include "cow/colour.h"
+#include "cow/image.h"
 #include "cow/module.h"
 #include "cow/module_config.h"
 #include "cow/module_cursor.h"
@@ -69,10 +70,13 @@
 typedef struct {
 	int  desk;
 	int  vx, vy, w, h;
+	int  icon_vx, icon_vy, icon_w, icon_h;
 	int  focused;
+	int  iconified;
 	char id[128];
 	char output[64];
 	char app_id[64];
+	char icon[1024];
 } pwin_t;
 
 typedef struct {
@@ -144,6 +148,8 @@ struct pager_config {
 	int monitor_labels;
 	int label_highlight;
 	int desktop_scale;
+	int window_icons;
+	int window_icon_size;
 	float background[4];
 	float desk_bg[4];
 	float page_bg[4];
@@ -217,6 +223,14 @@ static int    opt_desk_last;
 static int    initial_size_done;
 static struct pager_config cfg;
 
+struct pager_icon_cache {
+	char *path;
+	int size;
+	uint32_t *pixels;
+	struct pager_icon_cache *next;
+};
+static struct pager_icon_cache *icon_cache;
+
 /*
  * Drag-an-overlay-plate handles.  The page-grid drawing publishes one
  * record per monitor name plate it renders; press-based hit-testing
@@ -285,6 +299,8 @@ pager_config_init(struct pager_config *pc)
 	pc->monitor_labels = 1;
 	pc->label_highlight = 1;
 	pc->desktop_scale = 32;
+	pc->window_icons = 1;
+	pc->window_icon_size = 16;
 	config_colour(pc->background, 0xffffff);
 	memcpy(pc->desk_bg, pc->background, sizeof(pc->desk_bg));
 	memcpy(pc->page_bg, pc->background, sizeof(pc->page_bg));
@@ -1160,6 +1176,122 @@ stroke_page_grid_lines(cairo_t *cr, double sx, double sy, double sw,
 }
 
 static void
+icon_cache_clear(void)
+{
+	while (icon_cache != NULL) {
+		struct pager_icon_cache *entry = icon_cache;
+		icon_cache = entry->next;
+		free(entry->path);
+		free(entry->pixels);
+		free(entry);
+	}
+}
+
+static struct pager_icon_cache *
+icon_cache_get(const char *path, int size)
+{
+	for (struct pager_icon_cache *entry = icon_cache; entry != NULL;
+	    entry = entry->next) {
+		if (entry->size == size && strcmp(entry->path, path) == 0)
+			return entry;
+	}
+
+	struct pager_icon_cache *entry = calloc(1, sizeof(*entry));
+	if (entry == NULL)
+		return NULL;
+	entry->path = strdup(path);
+	entry->pixels = calloc((size_t)size * size, sizeof(*entry->pixels));
+	if (entry->path == NULL || entry->pixels == NULL) {
+		free(entry->path);
+		free(entry->pixels);
+		free(entry);
+		return NULL;
+	}
+	entry->size = size;
+	struct cow_pixbuf pixbuf = {
+		.pixels = entry->pixels,
+		.stride_px = size,
+		.width = size,
+		.height = size,
+	};
+	if (!cow_image_render_rect(path, &pixbuf, 0, 0, size, size) &&
+	    strcmp(path, COW_DATADIR "/icons/default.png") != 0)
+		(void)cow_image_render_rect(COW_DATADIR "/icons/default.png",
+		    &pixbuf, 0, 0, size, size);
+	entry->next = icon_cache;
+	icon_cache = entry;
+	return entry;
+}
+
+static void
+blend_cached_icon(struct cow_pixbuf *dst, int x, int y,
+    const struct pager_icon_cache *icon)
+{
+	for (int sy = 0; sy < icon->size; sy++) {
+		int dy = y + sy;
+		if (dy < 0 || dy >= dst->height)
+			continue;
+		for (int sx = 0; sx < icon->size; sx++) {
+			int dx = x + sx;
+			if (dx < 0 || dx >= dst->width)
+				continue;
+			uint32_t src = icon->pixels[sy * icon->size + sx];
+			uint32_t sa = src >> 24;
+			if (sa == 0)
+				continue;
+			uint32_t *dp = &dst->pixels[dy * dst->stride_px + dx];
+			uint32_t d = *dp;
+			uint32_t inv = 255 - sa;
+			uint32_t a = sa + ((d >> 24) & 0xff) * inv / 255;
+			uint32_t r = ((src >> 16) & 0xff) +
+			    ((d >> 16) & 0xff) * inv / 255;
+			uint32_t g = ((src >> 8) & 0xff) +
+			    ((d >> 8) & 0xff) * inv / 255;
+			uint32_t b = (src & 0xff) + (d & 0xff) * inv / 255;
+			*dp = (a << 24) | (r << 16) | (g << 8) | b;
+		}
+	}
+}
+
+static void
+draw_icon_at(cairo_t *cr, const char *path, double cx, double cy, int size)
+{
+	if (path == NULL || *path == '\0' || size < 3)
+		return;
+
+	int ix = (int)(cx - size / 2.0);
+	int iy = (int)(cy - size / 2.0);
+	struct pager_icon_cache *icon = icon_cache_get(path, size);
+	if (icon == NULL)
+		return;
+
+	cairo_surface_t *surface = cairo_get_target(cr);
+	cairo_surface_flush(surface);
+	struct cow_pixbuf pixbuf = {
+		.pixels = (uint32_t *)cairo_image_surface_get_data(surface),
+		.stride_px = cairo_image_surface_get_stride(surface) / 4,
+		.width = cairo_image_surface_get_width(surface),
+		.height = cairo_image_surface_get_height(surface),
+	};
+	blend_cached_icon(&pixbuf, ix, iy, icon);
+	cairo_surface_mark_dirty(surface);
+}
+
+static void
+draw_window_icon(cairo_t *cr, const char *path, double x, double y, double w,
+    double h)
+{
+	if (!cfg.window_icons || path == NULL || *path == '\0' || w < 7 || h < 7)
+		return;
+
+	int available = (int)(w < h ? w : h) - 4;
+	int size = cfg.window_icon_size;
+	if (size > available)
+		size = available;
+	draw_icon_at(cr, path, x + w / 2.0, y + h / 2.0, size);
+}
+
+static void
 fill_output_backgrounds(cairo_t *cr, const state_t *st, const canvas_t *cv,
     double cell_x, double cell_y, double cw, double ch)
 {
@@ -1216,6 +1348,12 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 
 	double cw = (double)sw / pcols;
 	double ch = (double)sh / prows;
+	struct window_icon_rec {
+		const char *path;
+		double x, y, w, h;
+		int iconified;
+	} icons[MAX_WINS];
+	int n_icons = 0;
 
 	/*
 	 * Fill page-cell backgrounds.  A cell is "current" if any
@@ -1333,15 +1471,21 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 			continue;
 		int desk_w = pcols * wow;
 		int desk_h = prows * woh;
-		if (w->vx < 0 || w->vx >= desk_w)
+		int vx = w->iconified ? w->icon_vx : w->vx;
+		int vy = w->iconified ? w->icon_vy : w->vy;
+		int width = w->iconified ? w->icon_w : w->w;
+		int height = w->iconified ? w->icon_w : w->h;
+		if (vx < 0 || vx >= desk_w)
 			continue;
-		if (w->vy < 0 || w->vy >= desk_h)
+		if (vy < 0 || vy >= desk_h)
 			continue;
 
-		double wx = sx + (canvas_page_x(cv, wo, w->vx) / cv->w) * cw;
-		double wy = sy + (canvas_page_y(cv, wo, w->vy) / cv->h) * ch;
-		double ww = ((double)w->w / wow) * (cw * wo->output_w / cv->w);
-		double wh = ((double)w->h / woh) * (ch * wo->output_h / cv->h);
+		double wx = sx + (canvas_page_x(cv, wo, vx) / cv->w) * cw;
+		double wy = sy + (canvas_page_y(cv, wo, vy) / cv->h) * ch;
+		double ww = ((double)width / wow) *
+		    (cw * wo->output_w / cv->w);
+		double wh = ((double)height / woh) *
+		    (ch * wo->output_h / cv->h);
 
 		if (ww < 3)
 			ww = 3;
@@ -1361,6 +1505,31 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		} else {
 			window_colour(w->id, &r, &g, &b);
 		}
+		if (w->iconified) {
+			if (cfg.window_icons && w->icon[0] != '\0' &&
+			    n_icons < MAX_WINS) {
+				icons[n_icons].path = w->icon;
+				icons[n_icons].x = wx;
+				icons[n_icons].y = wy;
+				icons[n_icons].w = ww;
+				icons[n_icons].h = wh;
+				icons[n_icons].iconified = 1;
+				n_icons++;
+			} else {
+				double marker = 7.0;
+				double mx = wx + (ww - marker) / 2.0;
+				double my = wy + (wh - marker) / 2.0;
+				cairo_set_source_rgba(cr, r, g, b, 1.0);
+				cairo_rectangle(cr, mx, my, marker, marker);
+				cairo_fill(cr);
+				cairo_set_source_rgba(cr, 0.08, 0.08, 0.10, 1.0);
+				cairo_set_line_width(cr, 1.0);
+				cairo_rectangle(cr, mx + 0.5, my + 0.5,
+				    marker - 1.0, marker - 1.0);
+				cairo_stroke(cr);
+			}
+			continue;
+		}
 		cairo_set_source_rgba(cr, r, g, b, 1.0);
 		cairo_rectangle(cr, wx, wy, ww, wh);
 		cairo_fill(cr);
@@ -1378,6 +1547,16 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		cairo_set_dash(cr, NULL, 0, 0);
 		cairo_rectangle(cr, wx + 0.5, wy + 0.5, ww - 1, wh - 1);
 		cairo_stroke(cr);
+		if (cfg.window_icons && w->icon[0] != '\0' &&
+		    n_icons < MAX_WINS) {
+			icons[n_icons].path = w->icon;
+			icons[n_icons].x = wx;
+			icons[n_icons].y = wy;
+			icons[n_icons].w = ww;
+			icons[n_icons].h = wh;
+			icons[n_icons].iconified = 0;
+			n_icons++;
+		}
 	}
 
 	/*
@@ -1525,6 +1704,21 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		    ch);
 		/* Reset to solid for any subsequent strokes. */
 		cairo_set_dash(cr, NULL, 0, 0);
+	}
+
+	/* Icons are the final pager overlay so viewport tinting and page
+	 * gridlines cannot obscure their pixels.
+	 */
+	for (int i = 0; i < n_icons; i++) {
+		if (icons[i].iconified) {
+			draw_icon_at(cr, icons[i].path,
+			    icons[i].x + icons[i].w / 2.0,
+			    icons[i].y + icons[i].h / 2.0,
+			    cfg.window_icon_size);
+		} else {
+			draw_window_icon(cr, icons[i].path, icons[i].x,
+			    icons[i].y, icons[i].w, icons[i].h);
+		}
 	}
 }
 
@@ -1990,25 +2184,38 @@ hit_test_window(const state_t *st, double x, double y,
 			continue;
 		int desk_w = pcols * wow;
 		int desk_h = prows * woh;
-		if (w->vx < 0 || w->vx >= desk_w)
+		int vx = w->iconified ? w->icon_vx : w->vx;
+		int vy = w->iconified ? w->icon_vy : w->vy;
+		int width = w->iconified ? w->icon_w : w->w;
+		int height = w->iconified ? w->icon_w : w->h;
+		if (vx < 0 || vx >= desk_w)
 			continue;
-		if (w->vy < 0 || w->vy >= desk_h)
+		if (vy < 0 || vy >= desk_h)
 			continue;
 
-		double wx_ = sx + (canvas_page_x(&cv, wo, w->vx) / cv.w) * cell_w;
-		double wy_ = sy + (canvas_page_y(&cv, wo, w->vy) / cv.h) * cell_h;
-		double ww  = ((double)w->w / cv.w) * cell_w;
-		double wh  = ((double)w->h / cv.h) * cell_h;
+		double wx_ = sx + (canvas_page_x(&cv, wo, vx) / cv.w) * cell_w;
+		double wy_ = sy + (canvas_page_y(&cv, wo, vy) / cv.h) * cell_h;
+		double ww = ((double)width / wow) *
+		    (cell_w * wo->output_w / cv.w);
+		double wh = ((double)height / woh) *
+		    (cell_h * wo->output_h / cv.h);
 		if (ww < 3)
 			ww = 3;
 		if (wh < 3)
 			wh = 3;
+		if (w->iconified) {
+			double size = cfg.window_icons ? cfg.window_icon_size : 7;
+			wx_ += (ww - size) / 2.0;
+			wy_ += (wh - size) / 2.0;
+			ww = size;
+			wh = size;
+		}
 		if (opt_verbose) {
 			fprintf(stderr,
 			    "cowpager:   win id=%s desk=%d out=%s vx=%d "
 			    "vy=%d w=%d h=%d -> rect [%.0f,%.0f %.0fx%.0f] "
 			    "click=(%.0f,%.0f)\n",
-			    w->id, w->desk, w->output, w->vx, w->vy, w->w, w->h,
+			    w->id, w->desk, w->output, vx, vy, width, height,
 			    wx_, wy_, ww, wh, x, y);
 		}
 		if (x >= wx_ && x < wx_ + ww && y >= wy_ && y < wy_ + wh) {
@@ -2983,12 +3190,18 @@ fetch_windows(void)
 		GS("id", id, 128)
 		GS("output", output, 64)
 		GS("app_id", app_id, 64)
+		GS("icon", icon, sizeof(pw->icon))
 		GN("desk", desk)
 		GN("vx", vx)
 		GN("vy", vy)
 		GN("width", w)
 		GN("height", h)
+		GN("icon_vx", icon_vx)
+		GN("icon_vy", icon_vy)
+		GN("icon_width", icon_w)
+		GN("icon_height", icon_h)
 		pw->focused = cJSON_IsTrue(cJSON_GetObjectItem(w, "focused"));
+		pw->iconified = cJSON_IsTrue(cJSON_GetObjectItem(w, "iconified"));
 #undef GN
 #undef GS
 	}
@@ -3194,6 +3407,19 @@ load_pager_option(char **fields, int n, const char **why)
 			return false;
 		}
 		cfg.desktop_scale = v;
+	} else if (strcmp(fields[0], "window-icons") == 0) {
+		if (n != 2 || !cow_module_config_parse_bool(fields[1], &b)) {
+			*why = "bad window-icons";
+			return false;
+		}
+		cfg.window_icons = b ? 1 : 0;
+	} else if (strcmp(fields[0], "window-icon-size") == 0) {
+		if (n != 2 || !cow_module_config_parse_int(fields[1], &v) ||
+		    v < 1 || v > 256) {
+			*why = "bad window-icon-size";
+			return false;
+		}
+		cfg.window_icon_size = v;
 	} else if (strcmp(fields[0], "style") == 0) {
 		return load_pager_style(fields, n, why);
 	} else {
@@ -3550,6 +3776,7 @@ main(int argc, char *argv[])
 	if (seat != NULL)
 		wl_seat_destroy(seat);
 	wl_display_disconnect(display);
+	icon_cache_clear();
 	pager_selections_free();
 
 	return 0;

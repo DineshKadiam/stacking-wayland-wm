@@ -12,11 +12,13 @@ pager_deps = [
     dependency('cairo'),
     dependency('threads'),
     dependency('libevent'),
+    m_dep,
 ]
 
 executable('cowpager',
     ['src/cowpager.c'] + pager_generated,
     '../../src/colour.c',
+    '../../src/image.c',
     '../../src/memory.c',
     '../../src/module.c',
     '../../src/module_cursor.c',

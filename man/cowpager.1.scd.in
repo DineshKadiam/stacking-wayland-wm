@@ -104,6 +104,8 @@ desktop-labels true
 monitor-labels true
 label-highlight true
 desktop-scale 32
+window-icons true
+window-icon-size 16
 ```
 
 *monitors* selects the outputs shown by this pager.  Use a single output
@@ -114,6 +116,12 @@ monitors in the given order.
 so *desks 0 3* shows desks 0, 1, 2, and 3.  It is mutually exclusive
 with *current-only true*: setting *desks* clears current-only mode, and
 setting *current-only true* clears the desk range.
+
+*window-icons* controls whether application icons are drawn in window
+miniatures (default: _true_).  *window-icon-size* sets their maximum square size
+in pixels (default: _16_).  An icon is centred in its window miniature and
+automatically reduced further when the miniature is too small for the configured
+size.
 
 Supported colour roles:
 
@@ -159,8 +167,11 @@ cow-assigned *number* when the name would overflow the slot.
 
 ## PAGE GRID AND VIEWPORTS
 
-Window miniatures are placed on the grid.  Windows are coloured by their id.
-The focused window is drawn in yellowi by default.
+Window miniatures are placed on the grid and coloured by their id.  When CoW
+has resolved an application icon, cowpager centres it inside the corresponding
+miniature.  The same effective *icon.image* is used for desktop icons and the
+pager, so decoration profiles and rules can override or disable the image for
+particular windows.  The focused window is drawn in yellow by default.
 
 Without *-m*, the page grid is scaled to the bounding box of all shown
 outputs.  Window miniatures and viewport rectangles are placed using
