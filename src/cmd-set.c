@@ -397,6 +397,8 @@ cmd_set_normalize_decor_value(const char *key, const char *value,
 {
 	if (!set_key_is_image(key))
 		return xstrdup(value);
+	if (strcmp(key, "icon.image") == 0 && strcmp(value, "auto") == 0)
+		return xstrdup(value);
 	return set_image_resolve_path(value, cmdq);
 }
 
@@ -1031,6 +1033,12 @@ set_icon_image(const char *key, const char *val, struct cmd_q *cmdq)
 
 	if (strcmp(key, "icon.image") != 0)
 		return (CMD_RETURN_ERROR);
+	if (strcmp(val, "auto") == 0) {
+		xfree(*slot);
+		*slot = xstrdup("auto");
+		finish_visual_update(COW_VIEW_CFG_ICON_IMAGE, cfg);
+		return (CMD_RETURN_NORMAL);
+	}
 	return (set_image_value(slot, COW_VIEW_CFG_ICON_IMAGE, val, cfg, cmdq));
 }
 

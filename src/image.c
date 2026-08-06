@@ -148,7 +148,7 @@ render_rgba_scaled(unsigned char *src, int iw, int ih, struct cow_pixbuf *dst,
 	}
 }
 
-static void
+static bool
 render_png(const char *path, struct cow_pixbuf *dst, int x, int y, int w,
     int h)
 {
@@ -156,9 +156,21 @@ render_png(const char *path, struct cow_pixbuf *dst, int x, int y, int w,
 	unsigned char *src = stbi_load(path, &iw, &ih, &comp, 4);
 
 	if (src == NULL)
-		return;
+		return false;
+	bool visible = false;
+	for (int i = 0; i < iw * ih; i++) {
+		if (src[i * 4 + 3] != 0) {
+			visible = true;
+			break;
+		}
+	}
+	if (!visible) {
+		stbi_image_free(src);
+		return false;
+	}
 	render_rgba_scaled(src, iw, ih, dst, x, y, w, h);
 	stbi_image_free(src);
+	return true;
 }
 
 static void
@@ -173,18 +185,18 @@ render_rgba_tiled(unsigned char *src, int iw, int ih, struct cow_pixbuf *dst)
 	}
 }
 
-static void
+static bool
 render_svg(const char *path, struct cow_pixbuf *dst, int x, int y, int w,
     int h)
 {
 	NSVGimage *svg = nsvgParseFromFile(path, "px", 96.0f);
 
 	if (svg == NULL)
-		return;
+		return false;
 	NSVGrasterizer *rast = nsvgCreateRasterizer();
 	if (rast == NULL) {
 		nsvgDelete(svg);
-		return;
+		return false;
 	}
 
 	int rw = (int)ceilf(svg->width);
@@ -196,29 +208,36 @@ render_svg(const char *path, struct cow_pixbuf *dst, int x, int y, int w,
 
 	unsigned char *src = xcalloc((size_t)rw * rh, 4);
 	nsvgRasterize(rast, svg, 0, 0, 1.0f, src, rw, rh, rw * 4);
-	render_rgba_scaled(src, rw, rh, dst, x, y, w, h);
+	bool visible = false;
+	for (int i = 0; i < rw * rh; i++) {
+		if (src[i * 4 + 3] != 0) {
+			visible = true;
+			break;
+		}
+	}
+	if (visible)
+		render_rgba_scaled(src, rw, rh, dst, x, y, w, h);
 
 	xfree(src);
 	nsvgDeleteRasterizer(rast);
 	nsvgDelete(svg);
+	return visible;
 }
 
-void
+bool
 cow_image_render_rect(const char *path, struct cow_pixbuf *dst, int x, int y,
     int w, int h)
 {
-	if (path == NULL || w <= 0 || h <= 0)
-		return;
+	if (path == NULL || dst == NULL || w <= 0 || h <= 0)
+		return false;
 
 	switch (image_type(path)) {
 	case COW_IMAGE_PNG:
-		render_png(path, dst, x, y, w, h);
-		break;
+		return render_png(path, dst, x, y, w, h);
 	case COW_IMAGE_SVG:
-		render_svg(path, dst, x, y, w, h);
-		break;
+		return render_svg(path, dst, x, y, w, h);
 	default:
-		break;
+		return false;
 	}
 }
 

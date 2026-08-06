@@ -25,6 +25,7 @@ hostsys = host_machine.system()
 conf = configuration_data()
 
 srcs = [
+    'src/app_icon.c',
     'src/arguments.c',
     'src/border.c',
     'src/cmd-args.c',

@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cow/app_icon.h"
 #include "cow/colour.h"
 #include "cow/cmd.h"
 #include "cow/compat.h"
@@ -808,6 +809,13 @@ window_handle_app_id(void *data, __unused struct river_window_v1 *rw,
 
 	xfree(view->app_id);
 	view->app_id = app_id ? xstrdup(app_id) : NULL;
+	xfree(view->application_icon);
+	view->application_icon = cow_app_icon_resolve(view->app_id,
+	    view->cfg.icon_size);
+	if (cow_view_is_iconified(view))
+		cow_view_icon_refresh(view);
+	cow_status_emit();
+	cow_wm_request_manage_dirty();
 }
 
 static void
@@ -1098,6 +1106,7 @@ cow_view_destroy(struct cow_view *view)
 
 	xfree(view->identifier);
 	xfree(view->app_id);
+	xfree(view->application_icon);
 	xfree(view->title);
 	cow_view_clear_orphan(view);
 	cow_view_cfg_fini(&view->cfg);
@@ -2606,7 +2615,22 @@ icon_draw_image(struct cow_pixbuf *p, int icon_sz, const char *path)
 
 	if (size <= 0)
 		return;
-	cow_image_render_rect(path, p, box_x + pad, pad, size, size);
+	if (!cow_image_render_rect(path, p, box_x + pad, pad, size, size) &&
+	    strcmp(path, COW_DATADIR "/icons/default.png") != 0)
+		(void)cow_image_render_rect(COW_DATADIR "/icons/default.png", p,
+		    box_x + pad, pad, size, size);
+}
+
+const char *
+cow_view_icon_image(const struct cow_view *view)
+{
+	if (view == NULL || view->cfg.icon_image == NULL)
+		return NULL;
+	if (strcmp(view->cfg.icon_image, "auto") != 0)
+		return view->cfg.icon_image;
+	if (view->application_icon != NULL)
+		return view->application_icon;
+	return COW_DATADIR "/icons/default.png";
 }
 
 /* Render the icon's app_id label into the strip below the icon box. */
@@ -2734,7 +2758,7 @@ cow_view_icon_render(struct cow_view *view)
 
 	icon_draw_box(&p, icon_sz, bc_t.base, bc_t.lt, bc_t.dk,
 	    view->cfg.border_style);
-	icon_draw_image(&p, icon_sz, view->cfg.icon_image);
+	icon_draw_image(&p, icon_sz, cow_view_icon_image(view));
 	icon_draw_label(&p, icon_sz, view->app_id ? view->app_id : "?",
 	    view->cfg.icon_foreground, &bc_t, view->cfg.border_style,
 	    view->cfg.icon_title_relief);
@@ -3317,6 +3341,9 @@ cow_view_json_add_identity(struct cJSON *obj, const struct cow_view *view)
 	    view->identifier ? view->identifier : "");
 	cJSON_AddStringToObject(obj, "app_id",
 	    view->app_id ? view->app_id : "");
+	const char *icon = cow_view_icon_image(view);
+	if (icon != NULL)
+		cJSON_AddStringToObject(obj, "icon", icon);
 	cJSON_AddStringToObject(obj, "title", view->title ? view->title : "");
 	char *display_title = cow_decoration_display_title(view);
 	cJSON_AddStringToObject(obj, "display_title",

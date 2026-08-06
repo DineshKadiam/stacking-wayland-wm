@@ -234,6 +234,9 @@ struct cow_view_cfg {
 	bool icon_title_relief;
 };
 
+/* Effective application/override image used by icons and module clients. */
+const char *cow_view_icon_image(const struct cow_view *);
+
 /* Initialise/free/update a visual snapshot. */
 void cow_view_cfg_init_from_global(struct cow_view_cfg *);
 void cow_view_cfg_apply_global(struct cow_view_cfg *);
@@ -262,6 +265,7 @@ struct cow_view {
 	char *
 	    identifier; /* unique window ID, persists across WM reconnections */
 	char		*app_id;
+	char		*application_icon;
 	char		*title;
 	struct cow_view *parent;
 
