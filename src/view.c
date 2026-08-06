@@ -2539,9 +2539,12 @@ icon_ensure_surface(struct cow_view *view)
 		if (view->icon_shell == NULL)
 			return false;
 	}
-	if (view->icon_node == NULL)
+	if (view->icon_node == NULL) {
 		view->icon_node = river_shell_surface_v1_get_node(
 		    view->icon_shell);
+		if (view->icon_node != NULL)
+			cow_stack_mark_dirty();
+	}
 	return true;
 }
 
@@ -2760,6 +2763,7 @@ cow_view_icon_destroy(struct cow_view *view)
 	if (view->icon_node != NULL) {
 		river_node_v1_destroy(view->icon_node);
 		view->icon_node = NULL;
+		cow_stack_mark_dirty();
 	}
 	if (view->icon_shell != NULL) {
 		river_shell_surface_v1_destroy(view->icon_shell);
