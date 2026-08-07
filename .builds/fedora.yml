@@ -2,25 +2,19 @@ submitter:
   git.sr.ht:
     enabled: false
 
-image: fedora/latest
+image: fedora/44
 packages:
-  - bison 
-  - cairo
+  - bison
+  - cairo-devel.x86_64
   - flex
   - gcc
-  - libbsd
-  - libbsd-devel
-  - libevdev-devel
-  - libevent-devel
-  - libinput-devel
-  - libwayland-client
-  - libxkbcommon
-  - libxkbcommon-devel
+  - libbsd-devel.x86_64
+  - libevent-devel.x86_64
+  - libxkbcommon-devel.x86_64
   - meson
-  - pango
-  - pango-devel
+  - pango-devel.x86_64
   - scdoc
-  - wayland-devel
+  - wayland-devel.x86_64
   - wayland-protocols-devel
 sources:
   - https://codeberg.org/thomasadam/cow.git
