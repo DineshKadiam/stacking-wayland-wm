@@ -210,7 +210,7 @@ writes one line per layer transition.  *jq* makes parsing trivial
 (*jq .current <<<"$COW_EVENT"*).  Other rule events without
 structured payload leave *COW_EVENT* unset; the variable is only
 visible inside the *exec*'d shell and never affects cow itself or
-other concurrent rule fires.
+other concurrent rules.
 
 # SCRIPTING
 
@@ -255,10 +255,7 @@ _COMMAND_ [_ARGS_ ...]
 	Invoke any registered cow command.  Each argument is either
 	a raw text chunk (passed verbatim) or an interpolation of
 	the form *#{*_EXPR_*}* which is replaced with the
-	stringified result before the command runs.  Commands enqueue
-	on the same queue as the *script* invocation itself, so
-	their side effects interleave with the rest of cow's command
-	stream.
+	stringified result before the command runs.
 
 ## Expressions
 
@@ -465,8 +462,8 @@ like this:
 
 ```
 rule -g -T on-restart -n cleanup \
-	exec killall waybar \; \
-	exec killall conky \; \
+	exec killall waybar \\; \
+	exec killall conky \\; \
 	exec killall pasystray
 ```
 
@@ -479,9 +476,9 @@ This may be subject to change in the future.
 
 # GLOBAL COMMANDS
 
-The following details those commands which just operate on general settings.
+The following details those commands which operate globally within *cow*.
 Note that the same command might also contain window/output settings, which will
-be also be added under the relevant section.
+be also be added under the relevant section in this man page.
 
 ## bind [-r] [contexts:]modifier+key action ...
 
@@ -528,10 +525,8 @@ rather than whichever window was previously focused.
 :  Shift.
 |  *C*
 :  Control.
-|  *A*
-:  Alt (Mod1).
-|  *M*
-:  Meta (Mod1).
+|  *A* / *M*
+:  Alt (Mod1).  *M* (for meta) is a synonym.
 |  *5*
 :  AltGr (Mod5).
 
@@ -550,7 +545,7 @@ bind LCA+q        quit
 bind 0+F1         action-help
 bind -r L+Right   scroll -n           # hold Super+Right to keep paging
 bind R:L+Return   exec xterm          # only over the background
-bind I:0+Return   winops -i            # restore the icon under the pointer
+bind I:0+Return   winops -i           # restore the icon under the pointer
 bind 0:L+Return   window-maximize     # over titlebar button 0
 ```
 
@@ -584,6 +579,7 @@ non-button SSD decoration contexts:
 - S: any frame side; equivalent to []-_.
 - <, ^, >, v: northwest, northeast, southeast, or southwest frame corner.
 - F: any frame corner; equivalent to <^>v.
+- R: "root window" (output background)
 
 Multiple characters combine regions, so *TF:* applies to the titlebar or any
 frame corner.
@@ -598,21 +594,13 @@ mouse T:0+left window-move
 mouse <:0+left window-resize -e nw
 mouse ]:0+left window-resize -e e
 mouse I:0+left winops -i
+mouse R:0+left menu-show RootMenu
 ```
 
-## root-mouse key action ...
-
-Bind an unmodified pointer button on cow's output background surface to a
-command. This is intended for root-window style menus and does not capture
-normal clicks on client windows.
-
-Example:
-
-```
-root-mouse 0+left menu-show RootMenu
-```
-
-See the _MENU_ section for more information.
+The *R* context applies to cow's output background surface and does not capture
+clicks on client windows.  It supports the same buttons and modifiers as other
+mouse contexts and is useful for root-window style menus.  See the _MENU_
+section for more information.
 
 ## bind-decoration [-2] region command ...
 
@@ -652,7 +640,7 @@ shorthands and the long form:
 |  *titlebar*
 :  _title_
 
-The defaults bindings are:
+The default bindings are:
 
 [[ *Region*
 :[ *Clicks*
@@ -702,8 +690,8 @@ bind-decoration SE       window-resize -e se \; focus -n
 Apply rules (groups of commands) to certain conditions (events).
 
 A rule has a _name_ (via `-n`) which must be specified.  Note that rules are
-globally stored, so any conflicting names will mean that rule is replaced.  It
-also has a _type_ (via `-T`) which specifies when to run the rule.  Multiple
+globally stored, so any conflicting names will mean that rule will be rejected.
+It also has a _type_ (via `-T`) which specifies when to run the rule.  Multiple
 rules can be defined against the same _type_ as long as their names are
 distinct.
 
@@ -889,10 +877,12 @@ window target.
 ## set [-v] key value
 
 Set a configuration option at runtime. *-v* prints the resulting value.
-Window decoration keys are rejected by *set*; use *decor* for those.
 
-The specific keys/values for this command are detailed under relevant section in
-this man page.
+The specific keys/values for this command are detailed under relevant section
+in this man page.
+
+However, there are global settings which don'r fit into other command settings.
+These are listed below:
 
 [[ *Key*
 :< *Description*
@@ -902,7 +892,7 @@ this man page.
 
 # WINDOW COMMANDS
 
-The following detail commands which operate on windows directly.
+The following details commands which operate on windows directly.
 
 ## winops [-Icilrs] [-C on|off|toggle] [-L layer] [-t target]
 
@@ -1146,13 +1136,13 @@ filter over the displayed labels; only matching windows remain visible and the
 first match is selected.  Backspace removes the last search character and
 expands the list again.
 
-*-n*
-	Disable type-ahead searching.  Number keys continue to select the first ten
-	entries, and the arrow keys and Enter continue to navigate and select.
-
 Selecting an entry closes the list, switches to its output, desk, and page,
 restores it if iconified, activates its container tab if necessary, and focuses
 it.
+
+*-n*
+	Disable type-ahead searching.  Number keys continue to select the first ten
+	entries, and the arrow keys and Enter continue to navigate and select.
 
 *-F* _expr_
 	Only include windows matching the DSL expression.  *self* is bound to each
@@ -1204,8 +1194,8 @@ needed for these keys and normal keyboard input resumes when it closes.
 Expand a window to fill available space between windows, or the whole monitor if
 the window is the only window on that monitor.
 
-Use *window-maximize -k* after expanding if the current geometry should become
-maximized state.
+Use *window-maximize -k* after expanding to retain the original window position
+so that it can be unmaximized.
 
 *-t* _target_
 	Target window.
@@ -1661,10 +1651,11 @@ Menus take keyboard focus while open.  Arrow keys navigate, Enter selects,
 Escape closes, and a menu item's alphanumeric hotkey activates it.  Backspace
 edits the search text in menus such as *window-list* which support type-ahead.
 
-Additionally, the *root-mouse* command can specify a binding to open a menu:
+The *mouse* command can bind a menu to cow's output background with the *R*
+context:
 
 ```
-root-mouse 0+left "menu-show RootMenu"
+mouse R:0+left "menu-show RootMenu"
 ```
 
 ## Styling
@@ -1789,7 +1780,7 @@ menu-add WindowOps  "Send To Desk"  "popup SendToDesk"
 menu-add WindowOps  "Close"         "winops -c"
 
 menu-add RootMenu "Window Ops" "popup-pick WindowOps"
-root-mouse 0+left "menu-show RootMenu"
+mouse R:0+left "menu-show RootMenu"
 
 # Arrow keys, Enter, Escape, and item hotkeys work while the menu is open.
 ```
