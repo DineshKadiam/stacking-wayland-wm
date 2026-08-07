@@ -2,7 +2,7 @@ submitter:
   git.sr.ht:
     enabled: false
 
-image: fedora/rawhide
+image: fedora/latest
 packages:
   - bison 
   - cairo
