@@ -43,6 +43,10 @@ struct cow_seat {
 	struct cow_view *binding_context_view;
 	struct cow_view *binding_action_view;
 	bool		binding_context_dirty;
+	bool		binding_context_suspended;
+	bool		binding_context_deferred;
+	uint32_t	binding_context_deferred_value;
+	struct cow_view *binding_context_deferred_view;
 	uint32_t       watched_modifiers;
 	uint32_t       active_modifiers;
 	bool	       modifier_watch_dirty;

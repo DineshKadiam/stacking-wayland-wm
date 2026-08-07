@@ -133,6 +133,13 @@ void cow_keybinding_set_context(struct cow_seat *, uint32_t,
     struct cow_view *);
 
 /*
+ * Keep bindings disabled while recording context changes for later.
+ */
+void cow_keybinding_suspend_context(struct cow_seat *);
+void cow_keybinding_resume_context(struct cow_seat *, uint32_t,
+    struct cow_view *);
+
+/*
  * Create a pointer binding for the given seat.
  */
 struct cow_pointer_binding *cow_pointer_binding_create(struct cow_seat *,

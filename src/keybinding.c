@@ -28,7 +28,6 @@
 #include "cow/desk_ops.h"
 #include "cow/ipc.h"
 #include "cow/memory.h"
-#include "cow/menu.h"
 #include "cow/output.h"
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
@@ -240,8 +239,12 @@ cow_keybinding_set_context(struct cow_seat *seat, uint32_t context,
 {
 	if (seat == NULL)
 		return;
-	if (cow_menu_is_open())
+	if (seat->binding_context_suspended) {
+		seat->binding_context_deferred = true;
+		seat->binding_context_deferred_value = context;
+		seat->binding_context_deferred_view = view;
 		return;
+	}
 	if (seat->binding_context == context &&
 	    seat->binding_context_view == view)
 		return;
@@ -249,6 +252,38 @@ cow_keybinding_set_context(struct cow_seat *seat, uint32_t context,
 	seat->binding_context_view = view;
 	seat->binding_context_dirty = true;
 	cow_wm_request_manage_dirty();
+}
+
+void
+cow_keybinding_suspend_context(struct cow_seat *seat)
+{
+	if (seat == NULL)
+		return;
+
+	seat->binding_context_suspended = false;
+	seat->binding_context_deferred = false;
+	seat->binding_context_deferred_value = 0;
+	seat->binding_context_deferred_view = NULL;
+	cow_keybinding_set_context(seat, 0, NULL);
+	seat->binding_context_suspended = true;
+}
+
+void
+cow_keybinding_resume_context(struct cow_seat *seat, uint32_t context,
+    struct cow_view *view)
+{
+	if (seat == NULL)
+		return;
+
+	seat->binding_context_suspended = false;
+	if (seat->binding_context_deferred) {
+		context = seat->binding_context_deferred_value;
+		view = seat->binding_context_deferred_view;
+	}
+	seat->binding_context_deferred = false;
+	seat->binding_context_deferred_value = 0;
+	seat->binding_context_deferred_view = NULL;
+	cow_keybinding_set_context(seat, context, view);
 }
 
 struct cow_pointer_binding *

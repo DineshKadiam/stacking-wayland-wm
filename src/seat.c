@@ -433,6 +433,10 @@ cow_seat_forget_view(struct cow_seat *seat, struct cow_view *view)
 		seat->binding_context_dirty = true;
 		cow_wm_request_manage_dirty();
 	}
+	if (seat->binding_context_deferred_view == view) {
+		seat->binding_context_deferred_value = 0;
+		seat->binding_context_deferred_view = NULL;
+	}
 	if (seat->binding_action_view == view)
 		seat->binding_action_view = NULL;
 	struct cow_pointer_binding *pb;
