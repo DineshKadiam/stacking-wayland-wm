@@ -29,7 +29,6 @@
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_mouse_exec(struct cmd *, struct cmd_q *);
-static enum cmd_retval cmd_root_mouse_exec(struct cmd *, struct cmd_q *);
 
 struct cmd_entry cmd_mouse_entry = {
 	"mouse",
@@ -41,20 +40,11 @@ struct cmd_entry cmd_mouse_entry = {
 	0,
 };
 
-struct cmd_entry cmd_root_mouse_entry = {
-	"root-mouse",
-	"",
-	2,
-	-1,
-	"root-mouse key action ...",
-	cmd_root_mouse_exec,
-	0,
-};
-
 static enum cmd_retval
-add_mouse_binding(struct cmd *self, struct wl_list *bindings, bool rebind)
+add_mouse_binding(struct cmd *self)
 {
 	struct args *args = self->args;
+	struct wl_list *bindings = &cow_config->mouse_bindings;
 
 	struct cow_mouse_binding_entry *existing, *tmp;
 	wl_list_for_each_safe(existing, tmp, bindings, link)
@@ -73,8 +63,7 @@ add_mouse_binding(struct cmd *self, struct wl_list *bindings, bool rebind)
 	    cmd_argv_to_action_string(args->argc, args->argv, 1);
 	wl_list_insert(bindings->prev, &entry->link);
 
-	if (rebind)
-		cow_rebind_all_seats();
+	cow_rebind_all_seats();
 
 	return (CMD_RETURN_NORMAL);
 }
@@ -93,17 +82,5 @@ cmd_mouse_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 	(void)context;
 	(void)mouse;
-	return add_mouse_binding(self, &cow_config->mouse_bindings, true);
-}
-
-static enum cmd_retval
-cmd_root_mouse_exec(struct cmd *self, struct cmd_q *cmdq)
-{
-	struct args *args = self->args;
-
-	if (strcmp(args->argv[0], "0+left") != 0) {
-		cmdq_error(cmdq, "root-mouse: only 0+left is supported");
-		return (CMD_RETURN_ERROR);
-	}
-	return add_mouse_binding(self, &cow_config->root_mouse_bindings, false);
+	return add_mouse_binding(self);
 }

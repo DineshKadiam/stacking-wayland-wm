@@ -20,9 +20,7 @@
 #include <wayland-client.h>
 
 #include "cow/compat.h"
-#include "cow/config.h"
 #include "cow/decoration.h"
-#include "cow/ipc.h"
 #include "cow/keybinding.h"
 #include "cow/menu.h"
 #include "cow/output.h"
@@ -280,24 +278,6 @@ surface_to_output_background(struct wl_surface *surface)
 	return (NULL);
 }
 
-static bool
-dispatch_background_mouse_binding(const char *key)
-{
-	if (cow_config == NULL || key == NULL)
-		return (false);
-
-	struct cow_mouse_binding_entry *entry;
-	wl_list_for_each(entry, &cow_config->root_mouse_bindings, link)
-	{
-		if (entry->key_string == NULL || entry->action_string == NULL)
-			continue;
-		if (strcmp(entry->key_string, key) != 0)
-			continue;
-		return (cow_ipc_dispatch(entry->action_string, -1));
-	}
-	return (false);
-}
-
 static void
 seed_seat_pointer_from_background(void)
 {
@@ -551,10 +531,11 @@ pointer_button(void *data, struct wl_pointer *pointer, uint32_t serial,
 		} else if (seat->consumed_icon_interaction == icon_view)
 			seat->consumed_icon_interaction = NULL;
 	}
-	if (state == WL_POINTER_BUTTON_STATE_PRESSED && button == BTN_LEFT &&
+	if (state == WL_POINTER_BUTTON_STATE_PRESSED && seat != NULL &&
 	    pointer_focus_background != NULL && !cow_menu_is_open()) {
 		seed_seat_pointer_from_background();
-		if (dispatch_background_mouse_binding("0+left"))
+		if (cow_seat_dispatch_pointer_binding(seat, button,
+			COW_BIND_CONTEXT_ROOT, NULL))
 			cow_wm.needs_manage_dirty = true;
 	}
 

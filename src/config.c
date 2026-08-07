@@ -346,7 +346,6 @@ cow_config_create(void)
 
 	wl_list_init(&config->keyboard_bindings);
 	wl_list_init(&config->mouse_bindings);
-	wl_list_init(&config->root_mouse_bindings);
 	wl_list_init(&config->decoration_bindings);
 	wl_list_init(&config->output_backgrounds);
 
@@ -412,14 +411,6 @@ cow_config_destroy(struct cow_config *config)
 		xfree(mb->action_string);
 		xfree(mb);
 	}
-	wl_list_for_each_safe(mb, mb_tmp, &config->root_mouse_bindings, link)
-	{
-		wl_list_remove(&mb->link);
-		xfree(mb->key_string);
-		xfree(mb->action_string);
-		xfree(mb);
-	}
-
 	struct cow_dec_binding_entry *db, *db_tmp;
 	wl_list_for_each_safe(db, db_tmp, &config->decoration_bindings, link)
 	{

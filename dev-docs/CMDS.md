@@ -149,8 +149,6 @@ parent's overrides.
 the selected item, with the menu background retained inside it) or `none` for
 a flat highlight.
 
-## root-mouse
-
-`root-mouse KEY ACTION...` binds an unmodified mouse action on cow's output
-background surface only. Use this for root-window style menus; use `mouse`
-for normal River pointer bindings.
+The `R` context on `mouse` binds cow's output background surface.  For example,
+`mouse R:0+left menu-show RootMenu` implements a root-window style menu without
+affecting clicks on client windows.
