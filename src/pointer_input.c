@@ -421,6 +421,7 @@ pointer_leave(void *data, struct wl_pointer *pointer, uint32_t serial,
 	(void)serial;
 
 	cow_wm_note_cursor_focus(0, false);
+	struct cow_seat *seat = cow_seat_primary();
 
 	if (cow_wm.pointer_focus_menu != NULL &&
 	    cow_wm.pointer_focus_menu->surface == surface) {
@@ -428,9 +429,11 @@ pointer_leave(void *data, struct wl_pointer *pointer, uint32_t serial,
 		cow_wm.needs_manage_dirty = true;
 	}
 	if (pointer_focus_background != NULL &&
-	    pointer_focus_background->bg_surface == surface)
+	    pointer_focus_background->bg_surface == surface) {
 		pointer_focus_background = NULL;
-	struct cow_seat *seat = cow_seat_primary();
+		cow_keybinding_clear_context(seat, COW_BIND_CONTEXT_ROOT,
+		    NULL);
+	}
 	if (seat != NULL && seat->binding_context == COW_BIND_CONTEXT_ICON &&
 	    seat->binding_context_view != NULL &&
 	    seat->binding_context_view->icon_surface == surface)

@@ -255,6 +255,25 @@ cow_keybinding_set_context(struct cow_seat *seat, uint32_t context,
 }
 
 void
+cow_keybinding_clear_context(struct cow_seat *seat, uint32_t context,
+    struct cow_view *view)
+{
+	if (seat == NULL)
+		return;
+
+	if (seat->binding_context_suspended) {
+		if (!seat->binding_context_deferred ||
+		    (seat->binding_context_deferred_value == context &&
+			seat->binding_context_deferred_view == view))
+			cow_keybinding_set_context(seat, 0, NULL);
+		return;
+	}
+	if (seat->binding_context == context &&
+	    seat->binding_context_view == view)
+		cow_keybinding_set_context(seat, 0, NULL);
+}
+
+void
 cow_keybinding_suspend_context(struct cow_seat *seat)
 {
 	if (seat == NULL)

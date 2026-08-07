@@ -131,6 +131,8 @@ bool cow_binding_parse_context(const char *, uint32_t *, const char **,
 /* Update the context under the pointer and schedule binding reconciliation. */
 void cow_keybinding_set_context(struct cow_seat *, uint32_t,
     struct cow_view *);
+void cow_keybinding_clear_context(struct cow_seat *, uint32_t,
+    struct cow_view *);
 
 /*
  * Keep bindings disabled while recording context changes for later.
