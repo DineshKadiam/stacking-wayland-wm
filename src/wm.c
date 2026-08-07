@@ -281,24 +281,12 @@ idle_notification_listener = {
  * Registry handler: bind river globals.
  */
 static void
-log_bound_global(const char *interface, uint32_t name, uint32_t advertised,
-    uint32_t bound)
-{
-	cow_log_debug("bound Wayland global (interface=%s name=%u "
-	    "advertised_version=%u bound_version=%u)", interface, name,
-	    advertised, bound);
-}
-
-static void
 registry_global(__unused void *data, struct wl_registry *registry,
     uint32_t name, const char *interface, uint32_t version)
 {
-	cow_log_trace("Wayland global advertised (interface=%s name=%u "
-	    "version=%u)", interface, name, version);
 	if (strcmp(interface, river_window_manager_v1_interface.name) == 0) {
 		cow_wm.manager = wl_registry_bind(registry, name,
 		    &river_window_manager_v1_interface, 4);
-		log_bound_global(interface, name, version, 4);
 		river_window_manager_v1_add_listener(cow_wm.manager,
 		    &wm_listener, NULL);
 	} else if (strcmp(interface, river_xkb_bindings_v1_interface.name) ==
@@ -307,12 +295,10 @@ registry_global(__unused void *data, struct wl_registry *registry,
 		cow_wm.xkb_bindings = wl_registry_bind(registry, name,
 		    &river_xkb_bindings_v1_interface, bind_version);
 		cow_wm.xkb_bindings_version = bind_version;
-		log_bound_global(interface, name, version, bind_version);
 	} else if (strcmp(interface, river_layer_shell_v1_interface.name) ==
 	    0) {
 		cow_wm.layer_shell = wl_registry_bind(registry, name,
 		    &river_layer_shell_v1_interface, 1);
-		log_bound_global(interface, name, version, 1);
 		struct cow_output *output;
 		wl_list_for_each(output, &cow_wm.outputs, wm_link)
 			cow_layer_shell_init_output(output);
@@ -322,21 +308,17 @@ registry_global(__unused void *data, struct wl_registry *registry,
 	} else if (strcmp(interface, "wl_compositor") == 0) {
 		cow_wm.compositor = wl_registry_bind(registry, name,
 		    &wl_compositor_interface, 6);
-		log_bound_global(interface, name, version, 6);
 	} else if (strcmp(interface, "wl_shm") == 0) {
 		cow_wm.shm = wl_registry_bind(registry, name, &wl_shm_interface,
 		    1);
-		log_bound_global(interface, name, version, 1);
 	} else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0 &&
 	    version >= 1) {
 		cow_wm.wl_layer_shell = wl_registry_bind(registry, name,
 		    &zwlr_layer_shell_v1_interface, 1);
-		log_bound_global(interface, name, version, 1);
 	} else if (strcmp(interface, wl_seat_interface.name) == 0 &&
 	    version >= 5) {
 		cow_wm.wl_seat_raw = wl_registry_bind(registry, name,
 		    &wl_seat_interface, 5);
-		log_bound_global(interface, name, version, 5);
 		wl_seat_add_listener(cow_wm.wl_seat_raw, &wl_seat_listener,
 		    NULL);
 		if (cow_wm.running)
@@ -347,8 +329,6 @@ registry_global(__unused void *data, struct wl_registry *registry,
 		cow_wm.idle_notifier = wl_registry_bind(registry, name,
 		    &ext_idle_notifier_v1_interface,
 		    cow_wm.idle_notifier_version);
-		log_bound_global(interface, name, version,
-		    cow_wm.idle_notifier_version);
 		if (cow_wm.running)
 			cow_wm_cursor_hide_configure();
 	} else if (strcmp(interface,
@@ -356,18 +336,15 @@ registry_global(__unused void *data, struct wl_registry *registry,
 	    version >= 1) {
 		cow_wm.wl_pointer_constraints = wl_registry_bind(registry, name,
 		    &zwp_pointer_constraints_v1_interface, 1);
-		log_bound_global(interface, name, version, 1);
 	} else if (strcmp(interface,
 		       wp_cursor_shape_manager_v1_interface.name) == 0 &&
 	    version >= 1) {
 		cow_wm.wl_cursor_shape_mgr = wl_registry_bind(registry, name,
 		    &wp_cursor_shape_manager_v1_interface, 1);
-		log_bound_global(interface, name, version, 1);
 	} else if (strcmp(interface, "wl_output") == 0 && version >= 4) {
 		struct cow_wl_output_entry *entry = xcalloc(1, sizeof(*entry));
 		entry->wl_output   = wl_registry_bind(registry, name,
 		      &wl_output_interface, 4);
-		log_bound_global(interface, name, version, 4);
 		entry->global_name = name;
 		wl_output_add_listener(entry->wl_output, &wl_output_listener,
 		    entry);
@@ -377,9 +354,8 @@ registry_global(__unused void *data, struct wl_registry *registry,
 
 static void
 registry_global_remove(__unused void *data,
-    __unused struct wl_registry *registry, uint32_t name)
+    __unused struct wl_registry *registry, __unused uint32_t name)
 {
-	cow_log_debug("Wayland global removed (name=%u)", name);
 }
 
 static const struct wl_registry_listener registry_listener = {

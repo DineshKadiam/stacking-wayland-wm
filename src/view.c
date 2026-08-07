@@ -700,7 +700,7 @@ window_handle_closed(void *data, __unused struct river_window_v1 *rw)
 {
 	struct cow_view *view = data;
 
-	cow_log_debug("window closed (app_id=%s)",
+	cow_log_info("window closed (app_id=%s)",
 	    view->app_id ? view->app_id : "(null)");
 	view->closed = true;
 }

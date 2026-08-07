@@ -103,7 +103,7 @@ cow_status_init(void)
 		cow_status_fini();
 		return;
 	}
-	cow_log_info("status socket listening on %s", socket_path);
+	cow_log_debug("status socket listening on %s", socket_path);
 }
 
 void

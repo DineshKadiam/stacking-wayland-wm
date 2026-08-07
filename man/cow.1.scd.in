@@ -59,14 +59,30 @@ and message.  For example:
 15:02:37.916 ERROR [src/wm.c:1542 cow_wm_init] failed to connect to Wayland display
 ```
 
-The *info* level records normal lifecycle events such as configuration loads,
-outputs, usable-area changes, seats, windows, desk and page changes, reloads,
-and shutdown.  *debug* adds focus, pointer operations, output geometry,
-negotiated protocol versions, client connections, and transient state details.
-*trace* is intended for high-volume diagnostics and includes advertised Wayland
-globals, commands and their execution times, rule matching, and manage-cycle
-requests and timings.  *warn*, *error*, and *fatal* report increasingly serious
-failures.
+The selected level includes messages at that level and every more severe
+level:
+
+[[ *Level*
+:< *Purpose*
+|  *trace*
+:  High-volume diagnostics: commands and their execution times, rule matching,
+   and manage-cycle requests and timings.
+|  *debug*
+:  Routine *cow* activity: window mapping, seats, desk and page changes,
+   usable-area and output geometry, focus, pointer operations, sockets, client
+   connections, and transient state details.
+|  *info* (default)
+:  Concise lifecycle information: configuration and state loads, the compositor
+   connection, output topology, window opening and closing, desk and page
+   switches, reloads, restarts, and shutdown.
+|  *warn*
+:  Recoverable problems.
+|  *error*
+:  Operation failures which do not necessarily terminate *cow*.
+|  *fatal*
+:  Unrecoverable failures before termination.
+
+Raw Wayland protocol traffic is left to *WAYLAND_DEBUG* and River's logging.
 
 Trace output contains complete command strings and may therefore expose
 sensitive command arguments.  Enable it only while diagnosing a problem and

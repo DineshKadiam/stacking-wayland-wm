@@ -45,7 +45,7 @@ static void
 seat_handle_removed(void *data, __unused struct river_seat_v1 *river_seat)
 {
 	struct cow_seat *seat = data;
-	cow_log_info("seat removed");
+	cow_log_debug("seat removed");
 	seat->removed = true;
 }
 
@@ -55,7 +55,7 @@ seat_handle_wl_seat(void *data, __unused struct river_seat_v1 *river_seat,
 {
 	struct cow_seat *seat = data;
 	seat->wl_seat_name    = name;
-	cow_log_info("seat discovered (global=%u)", name);
+	cow_log_debug("seat discovered (global=%u)", name);
 }
 
 static void

@@ -114,7 +114,7 @@ cow_output_recompute_usable_area(struct cow_output *output)
 	if (!changed)
 		return (false);
 
-	cow_log_info("usable area changed (output=%s source=%s "
+	cow_log_debug("usable area changed (output=%s source=%s "
 	    "old=%d,%d %dx%d new=%d,%d %dx%d "
 	    "reserved=top:%d,right:%d,bottom:%d,left:%d)",
 	    output->name ? output->name : "unknown",

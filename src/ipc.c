@@ -67,7 +67,7 @@ cow_ipc_init(void)
 		cow_ipc_fini();
 		return false;
 	}
-	cow_log_info("command socket listening on %s", cow_ipc.socket_path);
+	cow_log_debug("command socket listening on %s", cow_ipc.socket_path);
 	return true;
 }
 
