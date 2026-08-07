@@ -505,6 +505,8 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 			cow_rule_fire(COW_RULE_ON_RESIZE, view, view->desk,
 			    view->output);
 	}
+	if (finished_type == COW_POINTER_OP_MOVE)
+		cow_status_emit();
 }
 
 void
@@ -672,6 +674,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 			int new_y = ft + content_y;
 
 			clamp_drag_to_screen(view, &new_x, &new_y);
+			bool position_changed = new_x != view->x || new_y != view->y;
 
 			view->x = new_x;
 			view->y = new_y;
@@ -699,6 +702,8 @@ cow_pointer_op_process(struct cow_seat *seat)
 			}
 			cow_view_sync_vxy_from_global(view);
 			cow_view_sync_container_pos(view);
+			if (position_changed)
+				cow_status_emit();
 			if (!seat->container_drag &&
 			    cow_config->geometry_window !=
 				COW_GEOMETRY_WINDOW_NONE &&
