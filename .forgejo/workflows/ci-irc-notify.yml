@@ -1,0 +1,184 @@
+name: CI IRC Notifications
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+env:
+  IRC_SERVER:  "irc.libera.chat:6697"
+  IRC_CHANNEL: "#cow-wayland"
+  IRC_NICK:    "cow-notify"
+
+jobs:
+  notify_failure:
+    name: SourceHut failure IRC notification
+    runs-on: codeberg-tiny
+    # A same-repository pull request also produces a push event. Only use the
+    # pull_request_target event for forks, where there is no push in this repo.
+    if: >-
+      ${{ forgejo.event_name == 'push' ||
+          forgejo.event.pull_request.head.repo.full_name != forgejo.repository }}
+    timeout-minutes: 125
+    steps:
+      - name: Wait for yojo build statuses
+        id: builds
+        shell: bash
+        env:
+          API_TOKEN: ${{ forgejo.token }}
+          PR_NUMBER: ${{ forgejo.event.pull_request.number }}
+          PR_SHA:    ${{ forgejo.event.pull_request.head.sha }}
+          PR_URL:    ${{ forgejo.event.pull_request.html_url }}
+        run: |
+          set -u
+
+          sha="${PR_SHA:-$FORGEJO_SHA}"
+          api="${FORGEJO_SERVER_URL}/api/v1/repos/${FORGEJO_REPOSITORY}/commits/${sha}/status"
+          previous_contexts=
+          stable_polls=0
+          statuses='[]'
+          complete=false
+
+          # yojo creates the statuses at the beginning of a build, but it does
+          # not expose the number of jobs it selected. Wait for the set of
+          # contexts to remain unchanged before treating it as complete.
+          for attempt in $(seq 1 720); do
+            if ! response=$(curl -fsS \
+                -H "Authorization: token ${API_TOKEN}" \
+                -H 'Accept: application/json' \
+                "$api"); then
+              echo "Unable to read commit statuses; retrying"
+              sleep 10
+              continue
+            fi
+
+            statuses=$(printf '%s' "$response" | jq -c '
+              (.statuses // [])
+              | map(select((.context // "") | startswith("builds.sr.ht/")))
+              | sort_by([.context, .updated_at // ""])
+              | group_by(.context)
+              | map(last)
+              | sort_by(.context)
+            ')
+            count=$(printf '%s' "$statuses" | jq 'length')
+
+            if [ "$count" -eq 0 ]; then
+              # Do not keep a runner occupied when yojo did not submit builds
+              # for this event.
+              if [ "$attempt" -ge 18 ]; then
+                echo 'No builds.sr.ht statuses appeared'
+                printf 'failed=false\n' >> "$FORGEJO_OUTPUT"
+                exit 0
+              fi
+              sleep 10
+              continue
+            fi
+
+            contexts=$(printf '%s' "$statuses" |
+              jq -r 'map(.context) | join("\n")')
+            if [ "$contexts" = "$previous_contexts" ]; then
+              stable_polls=$((stable_polls + 1))
+            else
+              previous_contexts=$contexts
+              stable_polls=0
+            fi
+
+            pending=$(printf '%s' "$statuses" |
+              jq 'any(.status == "pending")')
+            if [ "$pending" = false ] && [ "$stable_polls" -ge 6 ]; then
+              complete=true
+              break
+            fi
+
+            sleep 10
+          done
+
+          if [ "$complete" != true ]; then
+            echo 'Timed out waiting for builds.sr.ht statuses to finish'
+            printf 'failed=false\n' >> "$FORGEJO_OUTPUT"
+            exit 0
+          fi
+
+          failed=$(printf '%s' "$statuses" | jq -c '
+            map(select(.status == "failure" or .status == "error"))
+          ')
+          failed_count=$(printf '%s' "$failed" | jq 'length')
+          if [ "$failed_count" -eq 0 ]; then
+            echo 'All builds.sr.ht jobs succeeded'
+            printf 'failed=false\n' >> "$FORGEJO_OUTPUT"
+            exit 0
+          fi
+
+          failed_contexts=$(printf '%s' "$failed" | jq -r '
+            map(.context | sub("^builds\\.sr\\.ht/"; "")) | join(", ")
+          ')
+          pr_number=${PR_NUMBER:-}
+          url=${PR_URL:-}
+
+          # A same-repository PR is handled by its push event, which contains
+          # no pull-request metadata. Resolve an open PR whose head is this
+          # commit so the notification can identify and link to it.
+          if [ -z "$url" ]; then
+            for page in $(seq 1 10); do
+              if ! pulls=$(curl -fsS \
+                  -H "Authorization: token ${API_TOKEN}" \
+                  -H 'Accept: application/json' \
+                  "${FORGEJO_SERVER_URL}/api/v1/repos/${FORGEJO_REPOSITORY}/pulls?state=open&limit=50&page=${page}"); then
+                break
+              fi
+
+              match=$(printf '%s' "$pulls" | jq -c --arg sha "$sha" '
+                first(.[] | select(.head.sha == $sha)) // empty
+              ')
+              if [ -n "$match" ]; then
+                pr_number=$(printf '%s' "$match" | jq -r '.number')
+                url=$(printf '%s' "$match" | jq -r '.html_url')
+                break
+              fi
+
+              [ "$(printf '%s' "$pulls" | jq 'length')" -lt 50 ] && break
+            done
+          fi
+
+          if [ -n "$url" ]; then
+            subject="PR #${pr_number}"
+          else
+            subject="commit ${sha:0:8}"
+            url="${FORGEJO_SERVER_URL}/${FORGEJO_REPOSITORY}/commit/${sha}"
+          fi
+
+          printf 'failed=true\n' >> "$FORGEJO_OUTPUT"
+          printf 'contexts=%s\n' "$failed_contexts" >> "$FORGEJO_OUTPUT"
+          printf 'subject=%s\n' "$subject" >> "$FORGEJO_OUTPUT"
+          printf 'url=%s\n' "$url" >> "$FORGEJO_OUTPUT"
+
+      - name: Compose IRC message
+        if: ${{ steps.builds.outputs.failed == 'true' }}
+        id: compose
+        shell: bash
+        env:
+          CONTEXTS: ${{ steps.builds.outputs.contexts }}
+          SUBJECT:  ${{ steps.builds.outputs.subject }}
+          URL:      ${{ steps.builds.outputs.url }}
+        run: |
+          BOLD=$'\x02'; RESET=$'\x0F'; RED=$'\x0304'; YELLOW=$'\x0308'
+          printf 'message=CI: [%sfailed%s] %s%s%s for %s \xe2\x80\x94 %s%s%s\n' \
+            "$RED" "$RESET" "$BOLD" "$YELLOW" "$CONTEXTS" "$SUBJECT" \
+            "$BOLD" "$URL" "$RESET" \
+            >> "$FORGEJO_OUTPUT"
+
+      - name: Send IRC notification
+        if: ${{ steps.builds.outputs.failed == 'true' }}
+        shell: bash
+        env:
+          PLUGIN_IRC_SERVER:  ${{ env.IRC_SERVER }}
+          PLUGIN_IRC_CHANNEL: ${{ env.IRC_CHANNEL }}
+          PLUGIN_IRC_NICK:    ${{ env.IRC_NICK }}
+          PLUGIN_IRC_MSG:     ${{ steps.compose.outputs.message }}
+        run: |
+          curl -fsSL https://get.miconoco.de/notify-irc/notify-irc -o /tmp/notify-irc
+          chmod +x /tmp/notify-irc
+          /tmp/notify-irc
+        continue-on-error: true
