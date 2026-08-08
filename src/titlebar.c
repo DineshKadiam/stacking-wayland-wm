@@ -358,7 +358,7 @@ cow_titlebar_hit_for(const struct cow_view *view, int cw, int ch, int lx,
  */
 static void
 draw_fvwm_relief(uint32_t *pixels, int stride, int rx, int ry, int rw, int rh,
-    uint32_t px_lt, uint32_t px_dk, bool sunken)
+    uint32_t px_lt, uint32_t px_dk, bool sunken, enum cow_titlebar_position position)
 {
 	/*
 	 * FVWM-style 2px bevel.  Note that the corner ownership rule
@@ -382,21 +382,45 @@ draw_fvwm_relief(uint32_t *pixels, int stride, int rx, int ry, int rw, int rh,
 	for (int r = 0; r < 2 && r < rw / 2 && r < rh / 2; r++) {
 		int y1 = ry + r + 1;
 
-		if (r > 0)
-			cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + r,
-			    ul);
-		cow_draw_vline(&p, rx + r, y1, ry + rh - 1 - r, ul);
-		cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + rh - 1 - r,
-		    br);
-		cow_draw_vline(&p, rx + rw - 1 - r, y1, ry + rh - 1 - r,
-		    br);
+		switch(position) {
+			case COW_TITLEBAR_LEFT:
+				if (r > 0)
+					cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + r,
+						ul);
+				cow_draw_vline(&p, rx + r, y1, ry + rh - 1 - r, br);
+				cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + rh - 1 - r,
+					br);
+				cow_draw_vline(&p, rx + rw - 1 - r, y1, ry + rh - 1 - r,
+					ul);
+				break;
+			case COW_TITLEBAR_RIGHT:
+				if (r > 0)
+					cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + r,
+						br);
+				cow_draw_vline(&p, rx + r, y1, ry + rh - 1 - r, ul);
+				cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + rh - 1 - r,
+					ul);
+				cow_draw_vline(&p, rx + rw - 1 - r, y1, ry + rh - 1 - r,
+					br);
+				break;
+			default:
+				if (r > 0)
+					cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + r,
+						ul);
+				cow_draw_vline(&p, rx + r, y1, ry + rh - 1 - r, ul);
+				cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + rh - 1 - r,
+					br);
+				cow_draw_vline(&p, rx + rw - 1 - r, y1, ry + rh - 1 - r,
+					br);
+				break;
+		}
 	}
 }
 
 static void
 draw_titlebar_relief(uint32_t *pixels, int stride, int rx, int ry, int rw,
     int rh, uint32_t px_lt, uint32_t px_dk, bool sunken,
-    enum cow_border_style style)
+    enum cow_border_style style, enum cow_titlebar_position position)
 {
 	if (style == COW_BORDER_STYLE_NONE)
 		return;
@@ -409,14 +433,29 @@ draw_titlebar_relief(uint32_t *pixels, int stride, int rx, int ry, int rw,
 		};
 		uint32_t ul = sunken ? px_dk : px_lt;
 		uint32_t br = sunken ? px_lt : px_dk;
-		cow_draw_hline(&p, rx + 1, rx + rw - 1, ry, ul);
-		cow_draw_vline(&p, rx, ry + 1, ry + rh - 1, ul);
-		cow_draw_hline(&p, rx, rx + rw - 2, ry + rh - 1, br);
-		cow_draw_vline(&p, rx + rw - 1, ry + 1, ry + rh - 1, br);
+		switch (position) {
+			case COW_TITLEBAR_LEFT:
+				cow_draw_hline(&p, rx + 1, rx + rw - 1, ry, ul);
+				cow_draw_vline(&p, rx, ry + 1, ry + rh - 1, br);
+				cow_draw_hline(&p, rx, rx + rw - 2, ry + rh - 1, br);
+				cow_draw_vline(&p, rx + rw - 1, ry + 1, ry + rh - 1, ul);
+				break;
+			case COW_TITLEBAR_RIGHT:
+				cow_draw_hline(&p, rx + 1, rx + rw - 1, ry, br);
+				cow_draw_vline(&p, rx, ry + 1, ry + rh - 1, ul);
+				cow_draw_hline(&p, rx, rx + rw - 2, ry + rh - 1, ul);
+				cow_draw_vline(&p, rx + rw - 1, ry + 1, ry + rh - 1, br);
+				break;
+			default:
+				cow_draw_hline(&p, rx + 1, rx + rw - 1, ry, ul);
+				cow_draw_vline(&p, rx, ry + 1, ry + rh - 1, ul);
+				cow_draw_hline(&p, rx, rx + rw - 2, ry + rh - 1, br);
+				cow_draw_vline(&p, rx + rw - 1, ry + 1, ry + rh - 1, br);
+		}
 		return;
 	}
 	draw_fvwm_relief(pixels, stride, rx, ry, rw, rh, px_lt, px_dk,
-	    sunken);
+	    sunken, position);
 }
 
 static void
@@ -444,7 +483,7 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 	int			       n_tabs = ctx->n_tabs;
 	int			       active_tab = ctx->active_tab;
 	bool			       drop_target = ctx->drop_target;
-
+	enum cow_titlebar_position position = ctx->tb_cfg->position;
 	int align;
 	if (active) {
 		align = tb_cfg->active_title_justify;
@@ -628,7 +667,7 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 		// if not sunken, and not flat, we can draw a border
 		if (btn_sunken || (active && (tb_cfg->buttons[btn_idx].active_relief != COW_RELIEF_FLAT)) || (!active && (tb_cfg->buttons[btn_idx].inactive_relief != COW_RELIEF_FLAT))) {
 			draw_titlebar_relief(pixels, stride_px, bx, by, btn_s, btn_s,
-		    px_lt, px_dk, btn_sunken, border_style);
+		    px_lt, px_dk, btn_sunken, border_style, position);
 		}
 
 
@@ -733,7 +772,7 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 		// if not sunken, and not flat, we can draw a border
 		if (btn_sunken || (active && (tb_cfg->buttons[btn_idx].active_relief != COW_RELIEF_FLAT)) || (!active && (tb_cfg->buttons[btn_idx].inactive_relief != COW_RELIEF_FLAT))) {
 			draw_titlebar_relief(pixels, stride_px, bx, by, btn_s, btn_s,
-		    px_lt, px_dk, btn_sunken, border_style);
+		    px_lt, px_dk, btn_sunken, border_style, position);
 		}
 
 
@@ -968,7 +1007,7 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 			    cc->tab_sunken_inactive;
 			draw_titlebar_relief(pixels, stride_px, tx, tb_y, tw,
 			    tb_h, tab_bv_lt, tab_bv_dk, sunken,
-			    border_style);
+			    border_style, position);
 
 			/* Tab label text */
 			const char *lbl = tab_titles[ti];
@@ -1000,7 +1039,7 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 			// If the mode is non-flat
 				draw_titlebar_relief(pixels, stride_px, title_x, tb_y,
 					title_w, tb_h, px_lt, px_dk, title_pressed,
-					border_style);
+					border_style, position);
 			}
 		}
 	}
