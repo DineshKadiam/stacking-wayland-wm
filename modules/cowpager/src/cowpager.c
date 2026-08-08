@@ -901,18 +901,34 @@ output_in_canvas(const canvas_t *cv, const pout_t *out)
 	return out != NULL;
 }
 
+/*
+ * Convert an output-local virtual-desktop coordinate to the combined
+ * output canvas. Each virtual page repeats the complete output layout;
+ * coordinates within a page retain their owning output's offset.
+ */
+static double
+canvas_page_axis(int position, int output_size, int canvas_size,
+    int output_offset)
+{
+	if (output_size < 1)
+		output_size = 1;
+	double page = floor((double)position / output_size);
+	double local = position - page * output_size;
+	return page * canvas_size + output_offset + local;
+}
+
 static double
 canvas_page_x(const canvas_t *cv, const pout_t *out, int vx)
 {
-	int ow = out->output_w > 0 ? out->output_w : 1;
-	return ((double)vx / ow) * cv->w + (out->output_x - cv->x);
+	return canvas_page_axis(vx, out->output_w, cv->w,
+	    out->output_x - cv->x);
 }
 
 static double
 canvas_page_y(const canvas_t *cv, const pout_t *out, int vy)
 {
-	int oh = out->output_h > 0 ? out->output_h : 1;
-	return ((double)vy / oh) * cv->h + (out->output_y - cv->y);
+	return canvas_page_axis(vy, out->output_h, cv->h,
+	    out->output_y - cv->y);
 }
 
 static const pout_t *
