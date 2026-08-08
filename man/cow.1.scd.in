@@ -1676,7 +1676,7 @@ items with *menu-add*, then opened with *menu-show*.  Items may be
 
 ## Defining menus
 
-*menu-add* _NAME_ _LABEL_ _ACTION_
+*menu-add* [*-i* _ICON_] _NAME_ _LABEL_ _ACTION_
 	Append an item to menu _NAME_, creating the menu on first
 	reference.  Special _ACTION_ values:
 
@@ -1688,6 +1688,12 @@ items with *menu-add*, then opened with *menu-show*.  Items may be
 	  picks a target window.
 	- anything else -- a cow command line run when the item is
 	  selected.
+
+	*-i* adds a PNG or SVG icon to a selectable item.  Absolute paths and
+	paths beginning with *~/*, *$HOME/*, or *${HOME}/* are used directly.
+	Other names are searched for in *icon.path*.  Titles and separators
+	cannot have icons.  If an icon cannot be found or read, *cow* logs a
+	warning and retains the item without an icon.
 
 *menu-clear* _NAME_
 	Empty the named menu without destroying it.
@@ -1763,6 +1769,15 @@ The table below shows the possible values:
 :  6  (horizontal item padding)
 |  *padding.y*
 :  2  (vertical item padding)
+|  *icon.size*
+:  16 (menu item icon width and height in pixels; 0 hides icons)
+|  *icon.gap*
+:  4 (space between an icon and its label)
+|  *icon.path*
+:  _$XDG_CONFIG_HOME/cow/icons_ or _$HOME/.config/cow/icons_.  A
+   colon-separated search path used by *menu-add -i*.  A leading *~/*,
+   *$HOME/*, or *${HOME}/* in each entry is expanded when the setting is read;
+   other relative entries use the directory containing the configuration file.
 |  *title.underlines*
 :  2
 |  *automatic.hotkeys*
@@ -1797,6 +1812,9 @@ relief, but use different colour palettes:
 ```
 menu-style bg 0xbebebe
 menu-style fg 0x000000
+menu-style icon.size 16
+menu-style icon.gap 4
+menu-style icon.path ~/.config/cow/icons
 
 menu-style -m Applications bg        0xd8e0ef
 menu-style -m Applications fg        0x182238
@@ -1826,19 +1844,24 @@ menu-style -m RootMenu -r fg
 ## Example
 
 ```
+# Relative icon names are searched below this directory.  This is already
+# the default and is shown here to make the lookup explicit.
+menu-style icon.path ~/.config/cow/icons
+
 # A "send to desk" sub-menu and a window-ops menu that uses it.
 menu-add SendToDesk "Send to Desk" title
 menu-add SendToDesk "Desk 1"       "desk 1"
 menu-add SendToDesk "Desk 2"       "desk 2"
 
 menu-add WindowOps  "Window"        title
-menu-add WindowOps  "Move"          "window-move"
+menu-add -i move.svg WindowOps "Move" "window-move"
 menu-add WindowOps  "Maximise"      "window-maximize"
 menu-add WindowOps  -               -
 menu-add WindowOps  "Send To Desk"  "popup SendToDesk"
 menu-add WindowOps  "Close"         "winops -c"
 
-menu-add RootMenu "Window Ops" "popup-pick WindowOps"
+menu-add -i windows.svg RootMenu "Window Ops" "popup-pick WindowOps"
+menu-add -i terminal.svg RootMenu "Terminal" "exec xterm"
 mouse R:0+left "menu-show RootMenu"
 
 # Arrow keys, Enter, Escape, and item hotkeys work while the menu is open.
