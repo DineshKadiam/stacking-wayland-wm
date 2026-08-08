@@ -367,6 +367,12 @@ const struct cow_option_entry cow_options_table[] = {
 		.action = COW_OPTION_TITLEBAR_INACTIVE_TITLE_JUSTIFY,
 	},
 	{
+		.name = "titlebar.button_style",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_MIXED,
+		.action = COW_OPTION_TITLEBAR_BUTTON_STYLE,
+	},
+	{
 		.name = "titlebar.inactive_relief",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_MIXED,

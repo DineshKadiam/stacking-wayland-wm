@@ -277,10 +277,12 @@ struct cow_titlebar_config {
 
 	/* Squeezed titlebar (CTWM SqueezeTitle). */
 	struct cow_titlebar_squeeze squeeze;
+	
 	int active_relief;
 	int inactive_relief;
 	int active_title_justify;
 	int inactive_title_justify;
+	enum cow_border_style button_style;
 
 };
 

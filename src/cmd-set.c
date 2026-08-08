@@ -85,6 +85,7 @@ static enum cmd_retval set_titlebar_active_relief(const char *, struct cmd_q *);
 static enum cmd_retval set_titlebar_inactive_relief(const char *, struct cmd_q *);
 static enum cmd_retval set_titlebar_active_title_justify(const char *, struct cmd_q *);
 static enum cmd_retval set_titlebar_inactive_title_justify(const char *, struct cmd_q *);
+static enum cmd_retval set_titlebar_button_style(const char *, struct cmd_q *);
 static bool set_titlebar_colour(const char *, const char *, struct cmd_q *);
 static bool set_container_tab_colour(const char *, const char *, struct cmd_q *);
 static void set_border_style_option(const char *, struct cmd_q *);
@@ -544,7 +545,8 @@ set_option_is_decor(const struct cow_option_entry *opt, const char *key)
 	    strcmp(key, "titlebar.active_relief") == 0 ||
 	    strcmp(key, "titlebar.inactive_relief") == 0 ||
 	    strcmp(key, "titlebar.active_title_justify") == 0 ||
-	    strcmp(key, "titlebar.inactive_title_justify") == 0)
+	    strcmp(key, "titlebar.inactive_title_justify") == 0 ||
+	    strcmp(key, "titlebar.button_style") == 0)
 		return (true);
 	if (strcmp(key, "border.active") == 0 ||
 	    strcmp(key, "border.inactive") == 0 ||
@@ -754,6 +756,8 @@ set_option_exec(const struct cow_option_entry *opt, const char *key, const char 
 		return (set_titlebar_active_title_justify(val, cmdq));
 	case COW_OPTION_TITLEBAR_INACTIVE_TITLE_JUSTIFY:
 		return (set_titlebar_inactive_title_justify(val, cmdq));
+	case COW_OPTION_TITLEBAR_BUTTON_STYLE:
+		return (set_titlebar_button_style(val, cmdq));
 	case COW_OPTION_TITLEBAR_POSITION:
 		return (set_titlebar_position(val, cmdq));
 	case COW_OPTION_TITLEBAR_SQUEEZE:
@@ -965,6 +969,29 @@ set_titlebar_inactive_title_justify(const char *val, struct cmd_q *cmdq)
 	finish_visual_update(COW_VIEW_CFG_TITLEBAR_INACTIVE_TITLE_JUSTIFY, cfg);
 	return (CMD_RETURN_NORMAL);
 }
+
+static enum cmd_retval
+set_titlebar_button_style(const char *val, struct cmd_q *cmdq)
+{
+	enum cow_border_style v = COW_BORDER_STYLE_FVWM;
+	if (strcmp(val, "fvwm") == 0) {
+		v = COW_BORDER_STYLE_FVWM;
+	} else if (strcmp(val, "mwm") == 0) {
+		v = COW_BORDER_STYLE_MWM;
+	} else if (strcmp(val, "none") == 0) {
+		v = COW_BORDER_STYLE_NONE;
+	} else {
+		cmdq_error(cmdq, "set: bad button style %s", val);
+		return (CMD_RETURN_ERROR);
+	}
+
+	struct cow_view_cfg	    *cfg;
+	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
+	tb->button_style = v;
+	finish_visual_update(COW_VIEW_CFG_TITLEBAR_BUTTON_STYLE, cfg);
+	return (CMD_RETURN_NORMAL);
+}
+
 
 static enum cmd_retval
 set_titlebar_inactive_relief(const char *val, struct cmd_q *cmdq)

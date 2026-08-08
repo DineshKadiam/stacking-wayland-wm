@@ -1492,6 +1492,11 @@ feel of a window.  All of these can be used with *decor -d*.
 :  _left_ | _centre_ | _center_ | _right_
 :  Alignment of the title text when the window is unfocused. Default:
    _centre_.
+|  *titlebar.button\_style*
+:  _inherit_ | _fvwm_ | _mwm_ | _none_
+:  Rendering style for the title area and its buttons. _inherit_ uses
+   *border.style*, preserving the traditional coupled appearance. _none_
+   draws the title area and buttons without relief. Default: _inherit_.
 |  *titlebar.button.N.vector*
 :  vector string
 :  Geometry of titlebar button _N_, where _N_ is 0 through 9. Odd

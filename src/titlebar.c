@@ -426,7 +426,7 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 	int			       stride_px = ctx->stride_px;
 	int			       frame_w = ctx->frame_w;
 	int			       border_width = ctx->border_width;
-	enum cow_border_style	       border_style = ctx->border_style;
+	
 	struct cow_box		       tb_rect = ctx->tb_rect;
 	const char		      *title = ctx->title;
 	bool			       active = ctx->active;
@@ -451,6 +451,7 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 	} else {
 		align = tb_cfg->inactive_title_justify;
 	}
+	enum cow_border_style border_style = tb_cfg->button_style;
 	
 	if (tb_rect.height <= 0 || tb_rect.width <= 0 ||
 	    frame_w <= 2 * border_width)
