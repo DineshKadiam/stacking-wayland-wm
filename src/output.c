@@ -133,6 +133,8 @@ cow_output_recompute_usable_area(struct cow_output *output)
 		if (view->output == output)
 			cow_view_reflow_maximized(view);
 	}
+	cow_view_invalidate_auto_icon_positions(output);
+	cow_view_layout_icons_on_output(output);
 
 	return (true);
 }

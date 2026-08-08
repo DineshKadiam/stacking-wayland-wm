@@ -348,6 +348,7 @@ cow_config_create(void)
 	wl_list_init(&config->mouse_bindings);
 	wl_list_init(&config->decoration_bindings);
 	wl_list_init(&config->output_backgrounds);
+	cow_icon_placement_config_init(config);
 
 	return config;
 }
@@ -393,6 +394,7 @@ cow_config_destroy(struct cow_config *config)
 		return;
 
 	config_decor_free(config);
+	cow_icon_placement_config_fini(config);
 
 	struct cow_binding_entry *kb, *kb_tmp;
 	wl_list_for_each_safe(kb, kb_tmp, &config->keyboard_bindings, link)

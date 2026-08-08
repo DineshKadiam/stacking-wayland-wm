@@ -41,6 +41,7 @@ srcs = [
     'src/cmd-filter.c',
     'src/cmd-focus.c',
     'src/cmd-icon.c',
+    'src/cmd-icon-placement.c',
     'src/cmd-include.c',
     'src/cmd-list-commands.c',
     'src/cmd-list.c',
@@ -83,6 +84,7 @@ srcs = [
     'src/geometry_window.c',
     'src/gradient.c',
     'src/image.c',
+    'src/icon_placement.c',
     'src/ipc.c',
     'src/json_util.c',
     'src/keybinding.c',
@@ -348,6 +350,15 @@ executable('moocow',
     include_directories: include_dirs,
     install: true,
 )
+
+icon_placement_test = executable('test-icon-placement',
+    'tests/icon-placement.c',
+    'src/icon_placement.c',
+    'src/memory.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('icon-placement', icon_placement_test)
 
 subdir('cowbar')
 subdir('modules/cowbuttons')

@@ -35,6 +35,7 @@
 #include "cow/draw_exec.h"
 #include "cow/gradient.h"
 #include "cow/image.h"
+#include "cow/icon_placement.h"
 #include "cow/keybinding.h"
 #include "cow/memory.h"
 #include "cow/output.h"
@@ -2487,10 +2488,46 @@ cow_view_exit_fullscreen(struct cow_view *view)
  * Iconify (minimize) support
  * ================================================================ */
 
-/*
- * Compute icon positions for all iconified views on an output.
- * Icons are laid out in a row at the bottom of the usable area.
- */
+static void
+icon_occupied_add(struct cow_icon_rect **occupied, size_t *count, int x, int y,
+    int width, int height)
+{
+	*occupied = xrealloc(*occupied, *count + 1, sizeof(**occupied));
+	(*occupied)[*count] = (struct cow_icon_rect) { x, y, width, height };
+	(*count)++;
+}
+
+static bool
+icon_position_available(const struct cow_box *area,
+    const struct cow_icon_rect *occupied, size_t occupied_count, int x, int y,
+    int width, int height)
+{
+	if (x < area->x || y < area->y ||
+	    (int64_t)x + width > (int64_t)area->x + area->width ||
+	    (int64_t)y + height > (int64_t)area->y + area->height)
+		return false;
+	for (size_t i = 0; i < occupied_count; i++) {
+		const struct cow_icon_rect *o = &occupied[i];
+		if ((int64_t)x < (int64_t)o->x + o->width &&
+		    (int64_t)x + width > o->x &&
+		    (int64_t)y < (int64_t)o->y + o->height &&
+		    (int64_t)y + height > o->y)
+			return false;
+	}
+	return true;
+}
+
+void
+cow_view_invalidate_auto_icon_positions(struct cow_output *output)
+{
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link) {
+		if (view->output == output && !view->icon_manual_position)
+			view->icon_auto_position_valid = false;
+	}
+}
+
+/* Compute collision-free automatic icon positions on an output. */
 void
 cow_view_layout_icons_on_output(struct cow_output *output)
 {
@@ -2501,12 +2538,19 @@ cow_view_layout_icons_on_output(struct cow_output *output)
 				   COW_CFG_DEFAULT_ICON_SIZE;
 	int icon_h  = icon_sz + 20; /* extra height for text below */
 	int icon_w  = icon_sz;
-	int gap	    = 8;
-	int x	    = output->usable_area.x + gap;
-	int y = output->usable_area.y + output->usable_area.height - icon_h -
-	    gap;
+	struct cow_icon_placement placement;
+	if (cow_config != NULL)
+		cow_icon_placement_resolve(cow_config, output, &placement);
+	else
+		cow_icon_placement_default(&placement);
+	struct cow_box box;
+	if (!cow_icon_box_resolve(&placement.box, &output->usable_area, &box))
+		box = output->usable_area;
+	struct cow_icon_rect *occupied = NULL;
+	size_t occupied_count = 0;
 
 	struct cow_view *view;
+	/* Size every icon first and reserve manually positioned icons. */
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
 		if (!cow_view_is_iconified(view) || view->closed)
@@ -2519,18 +2563,62 @@ cow_view_layout_icons_on_output(struct cow_output *output)
 		view->icon_width = icon_w;
 		view->icon_height = icon_h;
 		if (view->icon_manual_position)
-			continue;
-
-		view->icon_x	  = x;
-		view->icon_y	  = y;
-
-		x += icon_w + gap;
-		if (x + icon_w >
-		    output->usable_area.x + output->usable_area.width) {
-			x = output->usable_area.x + gap;
-			y -= icon_h + gap;
+			icon_occupied_add(&occupied, &occupied_count,
+			    view->icon_x, view->icon_y, icon_w, icon_h);
+	}
+	if (!placement.compact) {
+		wl_list_for_each(view, &cow_wm.views, wm_link) {
+			if (!cow_view_is_iconified(view) || view->closed ||
+			    !view->cfg.icon_enabled || view->output != output ||
+			    view->icon_manual_position ||
+			    !view->icon_auto_position_valid)
+				continue;
+			if (!icon_position_available(&output->usable_area, occupied,
+				occupied_count, view->icon_x, view->icon_y, icon_w,
+				icon_h)) {
+				view->icon_auto_position_valid = false;
+				continue;
+			}
+			icon_occupied_add(&occupied, &occupied_count, view->icon_x,
+			    view->icon_y, icon_w, icon_h);
 		}
 	}
+
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (!cow_view_is_iconified(view) || view->closed ||
+		    !view->cfg.icon_enabled || view->output != output ||
+		    view->icon_manual_position ||
+		    (!placement.compact && view->icon_auto_position_valid))
+			continue;
+		int x, y;
+		bool found = cow_icon_placement_find(&placement, &box, icon_w, icon_h,
+		    occupied, occupied_count, &x, &y);
+		if (!found && (box.x != output->usable_area.x ||
+		    box.y != output->usable_area.y ||
+		    box.width != output->usable_area.width ||
+		    box.height != output->usable_area.height))
+			found = cow_icon_placement_find(&placement, &output->usable_area,
+			    icon_w, icon_h, occupied, occupied_count, &x, &y);
+		if (!found) {
+			x = placement.primary == COW_ICON_DIR_LEFT ||
+			    placement.secondary == COW_ICON_DIR_LEFT ?
+			    output->usable_area.x + output->usable_area.width - icon_w :
+			    output->usable_area.x;
+			y = placement.primary == COW_ICON_DIR_UP ||
+			    placement.secondary == COW_ICON_DIR_UP ?
+			    output->usable_area.y + output->usable_area.height - icon_h :
+			    output->usable_area.y;
+			cow_log_warn("icon placement exhausted (output=%s)",
+			    output->name ? output->name : "unknown");
+		}
+		view->icon_x = x;
+		view->icon_y = y;
+		view->icon_auto_position_valid = true;
+		icon_occupied_add(&occupied, &occupied_count, x, y, icon_w,
+		    icon_h);
+	}
+	xfree(occupied);
 }
 
 /*
@@ -2867,6 +2955,8 @@ cow_view_deiconify(struct cow_view *view)
 		return;
 
 	view->flags &= ~COW_VIEW_ICONIFIED_FLAG;
+	if (!view->icon_manual_position)
+		view->icon_auto_position_valid = false;
 
 	/* Destroy the icon surface */
 	cow_view_icon_destroy(view);

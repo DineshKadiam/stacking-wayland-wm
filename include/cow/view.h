@@ -393,6 +393,7 @@ struct cow_view {
 	int			       icon_x, icon_y;
 	int			       icon_width, icon_height;
 	bool			       icon_manual_position;
+	bool			       icon_auto_position_valid;
 
 	/* Container membership, if any. */
 	struct cow_container_member *container_member;
@@ -525,6 +526,7 @@ void cow_view_icon_refresh(struct cow_view *);
  * Recompute icon positions for all iconified views on an output.
  */
 void cow_view_layout_icons_on_output(struct cow_output *);
+void cow_view_invalidate_auto_icon_positions(struct cow_output *);
 
 bool cow_view_is_iconified(const struct cow_view *);
 

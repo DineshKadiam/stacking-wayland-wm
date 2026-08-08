@@ -248,6 +248,7 @@ extern struct cmd_entry cmd_move_entry;
 extern struct cmd_entry cmd_resize_entry;
 extern struct cmd_entry cmd_focus_entry;
 extern struct cmd_entry cmd_icon_reset_entry;
+extern struct cmd_entry cmd_icon_placement_entry;
 extern struct cmd_entry cmd_include_entry;
 extern struct cmd_entry cmd_desk_entry;
 extern struct cmd_entry cmd_desk_name_entry;

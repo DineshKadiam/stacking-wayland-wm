@@ -21,6 +21,7 @@
 #include <wayland-client.h>
 
 #include "cow/colour.h"
+#include "cow/icon_placement.h"
 #include "cow/menu.h"
 #include "cow/vector.h"
 
@@ -329,6 +330,10 @@ struct cow_config {
 
 	/* Pointer idle hiding.  Zero disables it. */
 	int cursor_hide_timeout;
+
+	/* Automatic placement of iconified-window icons. */
+	struct cow_icon_placement icon_placement;
+	struct wl_list icon_placement_overrides;
 
 	/* Raise on focus: raise window when focused (default: on) */
 	bool raise_on_focus;

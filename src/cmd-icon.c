@@ -48,6 +48,7 @@ icon_reset_view(struct cow_view *view)
 	if (view == NULL || view->closed)
 		return;
 	view->icon_manual_position = false;
+	view->icon_auto_position_valid = false;
 }
 
 static bool

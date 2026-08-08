@@ -804,6 +804,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 			view->icon_x = new_x;
 			view->icon_y = new_y;
 			view->icon_manual_position = true;
+			view->icon_auto_position_valid = false;
 			seat->op.icon_moved = true;
 			if (view->icon_node != NULL)
 				river_node_v1_set_position(view->icon_node,
