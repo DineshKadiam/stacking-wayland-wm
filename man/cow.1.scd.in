@@ -1479,6 +1479,12 @@ feel of a window.  All of these can be used with *decor -d*.
 |  *titlebar.position*
 :  _top_ | _bottom_ | _left_ | _right_
 :  Set where the titlebar is drawn. Default: _top_.
+|  *titlebar.active\_relief*
+:  _raised_ | _flat_ | _sunken_
+:  Relief of the title area when the window is focused. Default: _raised_.
+|  *titlebar.inactive\_relief*
+:  _raised_ | _flat_ | _sunken_
+:  Relief of the title area when the window is unfocused. Default: _raised_.
 |  *titlebar.button.N.vector*
 :  vector string
 :  Geometry of titlebar button _N_, where _N_ is 0 through 9. Odd
@@ -1493,6 +1499,20 @@ feel of a window.  All of these can be used with *decor -d*.
 |  *titlebar.button.N.image*
 :  PNG, SVG, or XPM image
 :  Image drawn inside titlebar button _N_ instead of its vector glyph.
+|  *titlebar.button.N.active\_relief*
+:  _raised_ | _flat_ | _sunken_
+:  Relief of button _N_ when the window is focused.
+|  *titlebar.button.N.inactive\_relief*
+:  _raised_ | _flat_ | _sunken_
+:  Relief of button _N_ when the window is unfocused.
+|  *titlebar.button.N.active\_colour*
+:  hexadecimal RGB
+:  Background of button _N_ when the window is focused. If unset, the
+   focused titlebar background is used.
+|  *titlebar.button.N.inactive\_colour*
+:  hexadecimal RGB
+:  Background of button _N_ when the window is unfocused. If unset, the
+   unfocused titlebar background is used.
 |  *titlebar.squeeze*
 :  _none_ | _natural_ | _fixed_
 :  Shrink the titlebar down to a minimum size.

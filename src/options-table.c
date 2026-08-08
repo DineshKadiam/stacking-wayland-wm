@@ -349,6 +349,19 @@ const struct cow_option_entry cow_options_table[] = {
 		.post = COW_OPTION_POST_REFRESH_VISUALS,
 	},
 	{
+		.name = "titlebar.active_relief",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_MIXED,
+		.action = COW_OPTION_TITLEBAR_ACTIVE_RELIEF,
+	},
+	{
+		.name = "titlebar.inactive_relief",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_MIXED,
+		.action = COW_OPTION_TITLEBAR_INACTIVE_RELIEF,
+	},
+
+	{
 		.name = "titlebar.height",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_MIXED,

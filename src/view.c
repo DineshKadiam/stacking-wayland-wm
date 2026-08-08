@@ -74,33 +74,40 @@ shade_uses_titlebar_axis(const struct cow_view *view, int direction)
 }
 
 static int
+titlebar_button_index(enum cow_view_cfg_option option,
+    enum cow_view_cfg_option first)
+{
+	if (option < first ||
+	    option > COW_VIEW_CFG_TITLEBAR_BUTTON_9_INACTIVE_COLOUR)
+		return -1;
+
+	int offset = option - first;
+	if (offset % COW_VIEW_CFG_TITLEBAR_BUTTON_STRIDE != 0)
+		return -1;
+
+	int idx = offset / COW_VIEW_CFG_TITLEBAR_BUTTON_STRIDE;
+	return idx < COW_TITLEBAR_NUM_BUTTONS ? idx : -1;
+}
+
+static int
 titlebar_button_vector_index(enum cow_view_cfg_option option)
 {
-	if (option < COW_VIEW_CFG_TITLEBAR_BUTTON_0_VECTOR ||
-	    option > COW_VIEW_CFG_TITLEBAR_BUTTON_9_IMAGE ||
-	    ((option - COW_VIEW_CFG_TITLEBAR_BUTTON_0_VECTOR) % 3) != 0)
-		return -1;
-	return (option - COW_VIEW_CFG_TITLEBAR_BUTTON_0_VECTOR) / 3;
+	return titlebar_button_index(option,
+	    COW_VIEW_CFG_TITLEBAR_BUTTON_0_VECTOR);
 }
 
 static int
 titlebar_button_action_index(enum cow_view_cfg_option option)
 {
-	if (option < COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTION ||
-	    option > COW_VIEW_CFG_TITLEBAR_BUTTON_9_IMAGE ||
-	    ((option - COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTION) % 3) != 0)
-		return -1;
-	return (option - COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTION) / 3;
+	return titlebar_button_index(option,
+	    COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTION);
 }
 
 static int
 titlebar_button_image_index(enum cow_view_cfg_option option)
 {
-	if (option < COW_VIEW_CFG_TITLEBAR_BUTTON_0_IMAGE ||
-	    option > COW_VIEW_CFG_TITLEBAR_BUTTON_9_IMAGE ||
-	    ((option - COW_VIEW_CFG_TITLEBAR_BUTTON_0_IMAGE) % 3) != 0)
-		return -1;
-	return (option - COW_VIEW_CFG_TITLEBAR_BUTTON_0_IMAGE) / 3;
+	return titlebar_button_index(option,
+	    COW_VIEW_CFG_TITLEBAR_BUTTON_0_IMAGE);
 }
 
 static char *

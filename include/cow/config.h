@@ -220,6 +220,10 @@ struct cow_titlebar_button_config {
 	struct cow_vector_button vector;
 	char			*action;
 	char			*image;
+	int			active_relief;
+	int			inactive_relief;
+	float			active_colour[4];
+	float			inactive_colour[4];
 };
 
 #define COW_TITLEBAR_NUM_BUTTONS 10
@@ -273,6 +277,9 @@ struct cow_titlebar_config {
 
 	/* Squeezed titlebar (CTWM SqueezeTitle). */
 	struct cow_titlebar_squeeze squeeze;
+	int active_relief;
+	int inactive_relief;
+
 };
 
 /*

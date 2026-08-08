@@ -81,6 +81,8 @@ static bool set_gradient_option(const char *, const char *, struct cmd_q *);
 static bool set_output_colour(const char *, const char *, struct cmd_q *);
 static bool set_border_colour(const char *, const char *, struct cmd_q *);
 static bool set_icon_colour(const char *, const char *, struct cmd_q *);
+static enum cmd_retval set_titlebar_active_relief(const char *, struct cmd_q *);
+static enum cmd_retval set_titlebar_inactive_relief(const char *, struct cmd_q *);
 static bool set_titlebar_colour(const char *, const char *, struct cmd_q *);
 static bool set_container_tab_colour(const char *, const char *, struct cmd_q *);
 static void set_border_style_option(const char *, struct cmd_q *);
@@ -429,20 +431,52 @@ cmd_set_reset_decor_target(struct cmd_q *cmdq)
 static enum cow_view_cfg_option
 button_vector_option(int idx)
 {
-	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_VECTOR + idx * 3;
+	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_VECTOR +
+	    idx * COW_VIEW_CFG_TITLEBAR_BUTTON_STRIDE;
 }
 
 static enum cow_view_cfg_option
 button_action_option(int idx)
 {
-	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTION + idx * 3;
+	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTION +
+	    idx * COW_VIEW_CFG_TITLEBAR_BUTTON_STRIDE;
 }
 
 static enum cow_view_cfg_option
 button_image_option(int idx)
 {
-	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_IMAGE + idx * 3;
+	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_IMAGE +
+	    idx * COW_VIEW_CFG_TITLEBAR_BUTTON_STRIDE;
 }
+
+static enum cow_view_cfg_option
+button_active_relief_option(int idx)
+{
+	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTIVE_RELIEF +
+	    idx * COW_VIEW_CFG_TITLEBAR_BUTTON_STRIDE;
+}
+
+static enum cow_view_cfg_option
+button_inactive_relief_option(int idx)
+{
+	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_INACTIVE_RELIEF +
+	    idx * COW_VIEW_CFG_TITLEBAR_BUTTON_STRIDE;
+}
+
+static enum cow_view_cfg_option
+button_active_colour_option(int idx)
+{
+	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTIVE_COLOUR +
+	    idx * COW_VIEW_CFG_TITLEBAR_BUTTON_STRIDE;
+}
+
+static enum cow_view_cfg_option
+button_inactive_colour_option(int idx)
+{
+	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_INACTIVE_COLOUR +
+	    idx * COW_VIEW_CFG_TITLEBAR_BUTTON_STRIDE;
+}
+
 
 static bool
 parse_button_key(const char *key, int *idx, const char **field)
@@ -504,7 +538,9 @@ set_option_is_decor(const struct cow_option_entry *opt, const char *key)
 	    strcmp(key, "titlebar.fg_active") == 0 ||
 	    strcmp(key, "titlebar.fg_inactive") == 0 ||
 	    strcmp(key, "titlebar.active_image") == 0 ||
-	    strcmp(key, "titlebar.inactive_image") == 0)
+	    strcmp(key, "titlebar.inactive_image") == 0 ||
+	    strcmp(key, "titlebar.active_relief") == 0 ||
+	    strcmp(key, "titlebar.inactive_relief") == 0)
 		return (true);
 	if (strcmp(key, "border.active") == 0 ||
 	    strcmp(key, "border.inactive") == 0 ||
@@ -534,6 +570,11 @@ set_option_is_decor(const struct cow_option_entry *opt, const char *key)
 		return parse_button_key(key, &idx, &field) &&
 		    (strcmp(field, "vector") == 0 ||
 			strcmp(field, "action") == 0 ||
+			strcmp(field, "active_relief") == 0 ||
+			strcmp(field, "inactive_relief") == 0 ||
+			strcmp(field, "active_colour") == 0 ||
+			strcmp(field, "inactive_colour") == 0 ||
+
 			strcmp(field, "image") == 0);
 	}
 	if (strncmp(key, "container.tab.", 14) == 0) {
@@ -701,6 +742,10 @@ set_option_exec(const struct cow_option_entry *opt, const char *key, const char 
 		return (set_desktop_size(args, cmdq));
 	case COW_OPTION_TITLEBAR_HEIGHT:
 		return (set_titlebar_height(val, cmdq));
+	case COW_OPTION_TITLEBAR_ACTIVE_RELIEF:
+		return (set_titlebar_active_relief(val, cmdq));
+	case COW_OPTION_TITLEBAR_INACTIVE_RELIEF:
+		return (set_titlebar_inactive_relief(val, cmdq));
 	case COW_OPTION_TITLEBAR_POSITION:
 		return (set_titlebar_position(val, cmdq));
 	case COW_OPTION_TITLEBAR_SQUEEZE:
@@ -846,6 +891,52 @@ set_titlebar_height(const char *val, struct cmd_q *cmdq)
 	finish_visual_update(COW_VIEW_CFG_TITLEBAR_HEIGHT, cfg);
 	return (CMD_RETURN_NORMAL);
 }
+
+static enum cmd_retval
+set_titlebar_active_relief(const char *val, struct cmd_q *cmdq)
+{
+	int v = COW_RELIEF_RAISED;
+	if (strcmp(val, "raised") == 0) {
+		v = COW_RELIEF_RAISED;
+	} else if (strcmp(val, "sunken") == 0) {
+		v = COW_RELIEF_SUNKEN;
+	} else if (strcmp(val, "flat") == 0) {
+		v = COW_RELIEF_FLAT;
+	} else {
+		cmdq_error(cmdq, "set: bad titlebar raised-lowered-sunken height %s", val);
+		return (CMD_RETURN_ERROR);
+	}
+
+	struct cow_view_cfg	    *cfg;
+	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
+	tb->active_relief = v;
+	finish_visual_update(COW_VIEW_CFG_TITLEBAR_ACTIVE_RELIEF, cfg);
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+set_titlebar_inactive_relief(const char *val, struct cmd_q *cmdq)
+{
+	int v = COW_RELIEF_RAISED;
+	if (strcmp(val, "raised") == 0) {
+		v = COW_RELIEF_RAISED;
+	} else if (strcmp(val, "sunken") == 0) {
+		v = COW_RELIEF_SUNKEN;
+	} else if (strcmp(val, "flat") == 0) {
+		v = COW_RELIEF_FLAT;
+	} else {
+		cmdq_error(cmdq, "set: bad titlebar raised-lowered-sunken height %s", val);
+		return (CMD_RETURN_ERROR);
+	}
+
+	struct cow_view_cfg	    *cfg;
+	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
+	tb->inactive_relief = v;
+	finish_visual_update(COW_VIEW_CFG_TITLEBAR_INACTIVE_RELIEF, cfg);
+	return (CMD_RETURN_NORMAL);
+}
+
+
 
 static enum cmd_retval
 set_titlebar_position(const char *val, struct cmd_q *cmdq)
@@ -1663,6 +1754,60 @@ set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 		finish_visual_update(button_action_option(idx), cfg);
 		return;
 	}
+	if (strcmp(field, "active_relief") == 0) {
+		if (strcmp(val, "raised") == 0) {
+			tb->buttons[idx].active_relief = COW_RELIEF_RAISED; // Default
+		} else if (strcmp(val, "sunken") == 0) {
+			tb->buttons[idx].active_relief = COW_RELIEF_SUNKEN; // Sunken/Reverse
+		} else if (strcmp(val, "flat") == 0) {
+			tb->buttons[idx].active_relief = COW_RELIEF_FLAT; // Flat
+		} else {
+			cmdq_error(cmdq, "set: invalid relief value");
+			return;
+		}
+		finish_visual_update(button_active_relief_option(idx), cfg);
+		return;
+	}
+	
+	if (strcmp(field, "inactive_relief") == 0) {
+		if (strcmp(val, "raised") == 0) {
+			tb->buttons[idx].inactive_relief = COW_RELIEF_RAISED; // Default
+		} else if (strcmp(val, "sunken") == 0) {
+			tb->buttons[idx].inactive_relief = COW_RELIEF_SUNKEN; // Sunken/Reverse
+		} else if (strcmp(val, "flat") == 0) {
+			tb->buttons[idx].inactive_relief = COW_RELIEF_FLAT; // Flat
+		} else {
+			cmdq_error(cmdq, "set: invalid relief value");
+			return;
+		}
+		finish_visual_update(button_inactive_relief_option(idx), cfg);
+		return;
+	}
+	
+	if (strcmp(field, "inactive_colour") == 0) {
+		float c[4];
+		if (!cow_colour_parse(val, c)) {
+			cmdq_error(cmdq, "set: invalid colour value");
+			return ;
+		}
+		
+		memcpy(tb->buttons[idx].inactive_colour, c, 4*sizeof(float));
+		finish_visual_update(button_inactive_colour_option(idx), cfg);
+		return;
+	}
+	
+		
+	if (strcmp(field, "active_colour") == 0) {
+		float c[4];
+		if (!cow_colour_parse(val, c)) {
+			cmdq_error(cmdq, "set: invalid colour value");
+			return ;
+		}
+		memcpy(tb->buttons[idx].active_colour, c, 4*sizeof(float));
+		finish_visual_update(button_active_colour_option(idx), cfg);
+		return;
+	}
+	
 	cmdq_error(cmdq, "set: unknown key: %s", key);
 }
 
