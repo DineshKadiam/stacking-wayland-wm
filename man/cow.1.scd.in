@@ -1622,9 +1622,122 @@ underneath it.
 
 Icons can be moved around the screen with the mouse.  In doing so, a window
 will continue to iconify to that dragged position.  Icons which are not
-moved manualky will be placed automatically along the bottom of the output.
+moved manually will be placed automatically along the bottom of the output.
 
 The following commands control icons:
+
+## icon-placement [-o OUTPUT] box full|WIDTHxHEIGHT±X±Y
+
+## icon-placement [-o OUTPUT] fill PRIMARY SECONDARY
+
+## icon-placement [-o OUTPUT] grid X Y
+
+## icon-placement [-o OUTPUT] compact BOOLEAN
+
+## icon-placement [-o OUTPUT] reset
+
+Configure automatic icon placement.  Without *-o*, the setting applies to all
+outputs.  With *-o*, _OUTPUT_ may be an output name or ordinal such as *@2*;
+only properties explicitly set for that output override the global policy.
+
+*box* _GEOMETRY_
+	Constrain automatic placement to a rectangle within the output's usable
+	area.  *full* uses the complete usable area.  An X-style geometry uses
+	pixel dimensions and offsets, for example *300x800-0+0*.  A negative X
+	or Y offset measures from the right or bottom edge.  Geometry outside the
+	usable area is clipped.
+
+*fill* _PRIMARY_ _SECONDARY_
+	Set the movement direction within a row or column and the direction used
+	when wrapping.  Directions are *left*, *right*, *up*, and *down*.  One
+	must be horizontal and the other vertical.  For example, *right up*
+	fills a bottom row from left to right before wrapping upward; *down left*
+	starts at the top-right, fills downward, then wraps leftward.
+
+*grid* _X_ _Y_
+	Set the positive pixel increments used while looking for a free position.
+	The built-in automatic grid uses the icon dimensions plus the traditional
+	8-pixel gap.  Explicit smaller increments allow tighter searching; occupied
+	positions are skipped.
+
+*compact* _BOOLEAN_
+	When true (the default), close gaps by arranging every automatic icon
+	again whenever the set of icons changes.  When false, keep surviving icons
+	in place when another window is deiconified and use the first free position
+	for the next icon.
+
+*reset*
+	Restore the built-in global policy.  With *-o*, remove all placement
+	overrides for that output so it inherits the global policy again.
+
+Manually dragged icons retain their positions and reserve their rectangles so
+automatic icons do not overlap them.  Placement changes immediately reflow
+only automatic icons.  If a configured box is full, *cow* searches the full
+usable area; if that too is full, it uses a deterministic overlapping fallback
+and logs a warning.
+
+Examples:
+
+The numbered boxes in these diagrams show the order in which free icon
+positions are considered.
+
+The traditional policy starts at the bottom-left.  *right* is the primary
+direction and *up* is the wrapping direction:
+
+```
+icon-placement fill right up
+
++---------------------------------------+
+|                                       |
+| [7] [8] [9]                           |
+| [4] [5] [6]                 wrap: up  |
+| [1] [2] [3]  primary: right           |
++---------------------------------------+
+```
+
+To start at the top-right, fill from top to bottom, and then add columns
+towards the left:
+
+```
+icon-placement box full
+icon-placement fill down left
+icon-placement compact false
+
++---------------------------------------+
+|                           [7] [4] [1] |
+|                  down: v  [8] [5] [2] |
+|       <-- wrap left       [9] [6] [3] |
++---------------------------------------+
+```
+
+The same fill policy can be constrained to a box.  In this example,
+*96x900-0+0* makes a 96 by 900 pixel strip at the top-right of the usable
+area; *-0* anchors its right edge and *+0* anchors its top edge:
+
+```
+icon-placement box 96x900-0+0
+icon-placement fill down left
+
++-----------------------------------+-----+
+|                                   | [1] |
+|                                   | [2] |
+|          rest of usable area      | [3] |
+|                                   | [4] |
+|                                   |  v  |
++-----------------------------------+-----+
+                              placement box
+```
+
+Output-specific settings override only the named properties and inherit the
+remaining global policy:
+
+```
+icon-placement -o @2 box full
+icon-placement -o @2 fill right down
+
+# Remove all overrides for the second output.
+icon-placement -o @2 reset
+```
 
 ## icon-reset [-F expr] [-t target]
 
