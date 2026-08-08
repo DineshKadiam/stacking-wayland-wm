@@ -28,6 +28,60 @@
 #include <time.h>
 #include <unistd.h>
 
+char *
+cow_path_resolve(const char *base_dir, const char *path)
+{
+	if (path == NULL)
+		return (NULL);
+	if (path[0] == '/')
+		return (strdup(path));
+
+	const char *suffix = NULL;
+	if (path[0] == '~' && (path[1] == '\0' || path[1] == '/'))
+		suffix = path + 1;
+	else if (strncmp(path, "$HOME", 5) == 0 &&
+	    (path[5] == '\0' || path[5] == '/'))
+		suffix = path + 5;
+	else if (strncmp(path, "${HOME}", 7) == 0 &&
+	    (path[7] == '\0' || path[7] == '/'))
+		suffix = path + 7;
+	if (suffix != NULL) {
+		const char *home = getenv("HOME");
+		if (home == NULL || home[0] == '\0')
+			return (NULL);
+		char *resolved;
+		if (asprintf(&resolved, "%s%s", home, suffix) < 0)
+			return (NULL);
+		return (resolved);
+	}
+
+	if (base_dir == NULL || base_dir[0] == '\0')
+		return (strdup(path));
+	char *resolved;
+	if (asprintf(&resolved, "%s/%s", base_dir, path) < 0)
+		return (NULL);
+	return (resolved);
+}
+
+char *
+cow_path_dirname(const char *path)
+{
+	if (path == NULL)
+		return (NULL);
+	const char *slash = strrchr(path, '/');
+	if (slash == NULL)
+		return (strdup("."));
+	if (slash == path)
+		return (strdup("/"));
+	size_t len = (size_t)(slash - path);
+	char *dir = malloc(len + 1);
+	if (dir == NULL)
+		return (NULL);
+	memcpy(dir, path, len);
+	dir[len] = '\0';
+	return (dir);
+}
+
 long
 cow_mono_ms(void)
 {

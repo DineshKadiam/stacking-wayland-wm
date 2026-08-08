@@ -16,10 +16,11 @@
 #include "cow/module_config.h"
 
 #include <errno.h>
-#include <libgen.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "cow/util.h"
 
 char *
 cow_module_config_default_path(const char *prog)
@@ -44,38 +45,13 @@ cow_module_config_default_path(const char *prog)
 char *
 cow_module_config_dirname(const char *path)
 {
-	char *copy = strdup(path);
-	char *dir, *out;
-
-	if (copy == NULL)
-		return NULL;
-	dir = dirname(copy);
-	out = strdup(dir);
-	free(copy);
-	return out;
+	return cow_path_dirname(path);
 }
 
 char *
 cow_module_config_resolve_path(const char *config_dir, const char *path)
 {
-	const char *home;
-	char *out;
-
-	if (path[0] == '/')
-		return strdup(path);
-	if (path[0] == '~' && path[1] == '/') {
-		home = getenv("HOME");
-		if (home == NULL || *home == '\0')
-			return NULL;
-		if (asprintf(&out, "%s/%s", home, path + 2) < 0)
-			return NULL;
-		return out;
-	}
-	if (config_dir == NULL)
-		return strdup(path);
-	if (asprintf(&out, "%s/%s", config_dir, path) < 0)
-		return NULL;
-	return out;
+	return cow_path_resolve(config_dir, path);
 }
 
 void

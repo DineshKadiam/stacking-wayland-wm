@@ -38,6 +38,17 @@ long cow_mono_ms(void);
 bool cow_runtime_socket_path(char *, size_t, const char *, const char *);
 
 /*
+ * Resolve a path against an optional base directory.  Leading ~/,
+ * $HOME/, and ${HOME}/ forms are expanded.  The returned string is owned by
+ * the caller; NULL indicates that HOME was required but unavailable, or an
+ * allocation failure.
+ */
+char *cow_path_resolve(const char *, const char *);
+
+/* Return an allocated directory component for a path. */
+char *cow_path_dirname(const char *);
+
+/*
  * Create, bind, and listen on an AF_UNIX SOCK_STREAM socket inside
  * $XDG_RUNTIME_DIR.
  *
