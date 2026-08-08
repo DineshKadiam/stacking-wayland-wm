@@ -445,6 +445,13 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 	int			       active_tab = ctx->active_tab;
 	bool			       drop_target = ctx->drop_target;
 
+	int align;
+	if (active) {
+		align = tb_cfg->active_title_justify;
+	} else {
+		align = tb_cfg->inactive_title_justify;
+	}
+	
 	if (tb_rect.height <= 0 || tb_rect.width <= 0 ||
 	    frame_w <= 2 * border_width)
 		return;
@@ -757,7 +764,6 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 	px_dk = colors[COW_VECTOR_SHADOW];
 	px_lt = colors[COW_VECTOR_HIGHLIGHT];
 
-
 	/* Title text area: between left and right buttons */
 	int title_x	    = tb_x + left_btns * btn_s;
 	int title_w	    = tb_w - (left_btns + right_btns) * btn_s;
@@ -778,7 +784,7 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 		};
 		cow_font_render_label(&dst, title_x, tb_y, title_w, tb_h, font,
 		    title, label_bg, fg, COW_TITLEBAR_PADDING,
-		    &rendered_text_w);
+		    align, &rendered_text_w);
 	}
 
 	/* Draw stipple for sticky windows in the empty areas
@@ -789,27 +795,46 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 
 		/* Centre the text gap within the title area */
 		int text_centre = title_x + title_w / 2;
-		int text_start	= text_centre - rendered_text_w / 2 - pad;
-		int text_end	= text_centre + (rendered_text_w + 1) / 2 + pad;
+		int text_start;
+		int text_end;
+		
+		switch (align) {
+			case PANGO_ALIGN_CENTER:
+				text_start	= text_centre - rendered_text_w / 2 - pad;
+				text_end	= text_centre + (rendered_text_w + 1) / 2 + pad;
+				break;
+			case PANGO_ALIGN_LEFT:
+				text_start = title_x + pad ;
+				text_end = title_x + rendered_text_w + 2 * pad;
+				break;
+			case PANGO_ALIGN_RIGHT:
+				text_start = title_x + title_w - 2 * pad - rendered_text_w;
+				text_end = title_x + title_w - 2 * pad;
+				break;
+		}
 
 		int sx1 = title_x + relief;
 		int sx2 = title_x + title_w - relief;
 
 		for (int y = tb_y + relief; y < tb_y + tb_h - relief; y++) {
 			/* Left stipple area */
-			for (int x = sx1; x < text_start && x < sx2; x++) {
-				if ((x + y) % 2 == 0)
-					pixels[y * stride_px + x] = px_lt;
-				else
-					pixels[y * stride_px + x] = px_dk;
+			if (align == PANGO_ALIGN_RIGHT || PANGO_ALIGN_CENTER) {
+				for (int x = sx1; x < text_start && x < sx2; x++) {
+					if ((x + y) % 2 == 0)
+						pixels[y * stride_px + x] = px_lt;
+					else
+						pixels[y * stride_px + x] = px_dk;
+				}
 			}
 			/* Right stipple area */
-			for (int x = text_end > sx1 ? text_end : sx1; x < sx2;
-			    x++) {
-				if ((x + y) % 2 == 0)
-					pixels[y * stride_px + x] = px_lt;
-				else
-					pixels[y * stride_px + x] = px_dk;
+			if (align == PANGO_ALIGN_CENTER || align == PANGO_ALIGN_LEFT) {
+					for (int x = text_end > sx1 ? text_end : sx1; x < sx2;
+					x++) {
+					if ((x + y) % 2 == 0)
+						pixels[y * stride_px + x] = px_lt;
+					else
+						pixels[y * stride_px + x] = px_dk;
+				}
 			}
 		}
 	}
@@ -960,7 +985,7 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 				};
 				cow_font_render_label(&dst, tx, tb_y, tw, tb_h,
 				    font, lbl, label_bg, tab_fg,
-				    COW_TITLEBAR_PADDING, NULL);
+				    COW_TITLEBAR_PADDING, PANGO_ALIGN_CENTER, NULL);
 			}
 		}
 	} else {

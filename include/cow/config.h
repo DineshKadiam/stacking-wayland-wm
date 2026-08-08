@@ -279,6 +279,8 @@ struct cow_titlebar_config {
 	struct cow_titlebar_squeeze squeeze;
 	int active_relief;
 	int inactive_relief;
+	int active_title_justify;
+	int inactive_title_justify;
 
 };
 

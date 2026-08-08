@@ -83,6 +83,8 @@ static bool set_border_colour(const char *, const char *, struct cmd_q *);
 static bool set_icon_colour(const char *, const char *, struct cmd_q *);
 static enum cmd_retval set_titlebar_active_relief(const char *, struct cmd_q *);
 static enum cmd_retval set_titlebar_inactive_relief(const char *, struct cmd_q *);
+static enum cmd_retval set_titlebar_active_title_justify(const char *, struct cmd_q *);
+static enum cmd_retval set_titlebar_inactive_title_justify(const char *, struct cmd_q *);
 static bool set_titlebar_colour(const char *, const char *, struct cmd_q *);
 static bool set_container_tab_colour(const char *, const char *, struct cmd_q *);
 static void set_border_style_option(const char *, struct cmd_q *);
@@ -540,7 +542,9 @@ set_option_is_decor(const struct cow_option_entry *opt, const char *key)
 	    strcmp(key, "titlebar.active_image") == 0 ||
 	    strcmp(key, "titlebar.inactive_image") == 0 ||
 	    strcmp(key, "titlebar.active_relief") == 0 ||
-	    strcmp(key, "titlebar.inactive_relief") == 0)
+	    strcmp(key, "titlebar.inactive_relief") == 0 ||
+	    strcmp(key, "titlebar.active_title_justify") == 0 ||
+	    strcmp(key, "titlebar.inactive_title_justify") == 0)
 		return (true);
 	if (strcmp(key, "border.active") == 0 ||
 	    strcmp(key, "border.inactive") == 0 ||
@@ -746,6 +750,10 @@ set_option_exec(const struct cow_option_entry *opt, const char *key, const char 
 		return (set_titlebar_active_relief(val, cmdq));
 	case COW_OPTION_TITLEBAR_INACTIVE_RELIEF:
 		return (set_titlebar_inactive_relief(val, cmdq));
+	case COW_OPTION_TITLEBAR_ACTIVE_TITLE_JUSTIFY:
+		return (set_titlebar_active_title_justify(val, cmdq));
+	case COW_OPTION_TITLEBAR_INACTIVE_TITLE_JUSTIFY:
+		return (set_titlebar_inactive_title_justify(val, cmdq));
 	case COW_OPTION_TITLEBAR_POSITION:
 		return (set_titlebar_position(val, cmdq));
 	case COW_OPTION_TITLEBAR_SQUEEZE:
@@ -903,7 +911,7 @@ set_titlebar_active_relief(const char *val, struct cmd_q *cmdq)
 	} else if (strcmp(val, "flat") == 0) {
 		v = COW_RELIEF_FLAT;
 	} else {
-		cmdq_error(cmdq, "set: bad titlebar raised-lowered-sunken height %s", val);
+		cmdq_error(cmdq, "set: bad titlebar relief %s", val);
 		return (CMD_RETURN_ERROR);
 	}
 
@@ -911,6 +919,50 @@ set_titlebar_active_relief(const char *val, struct cmd_q *cmdq)
 	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
 	tb->active_relief = v;
 	finish_visual_update(COW_VIEW_CFG_TITLEBAR_ACTIVE_RELIEF, cfg);
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+set_titlebar_active_title_justify(const char *val, struct cmd_q *cmdq)
+{
+	int v = PANGO_ALIGN_CENTER;
+	if (strcmp(val, "center") == 0) {
+		v = PANGO_ALIGN_CENTER;
+	} else if (strcmp(val, "left") == 0) {
+		v = PANGO_ALIGN_LEFT;
+	} else if (strcmp(val, "right") == 0) {
+		v = PANGO_ALIGN_RIGHT;
+	} else {
+		cmdq_error(cmdq, "set: bad titlebar alignment %s", val);
+		return (CMD_RETURN_ERROR);
+	}
+
+	struct cow_view_cfg	    *cfg;
+	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
+	tb->active_title_justify = v;
+	finish_visual_update(COW_VIEW_CFG_TITLEBAR_ACTIVE_TITLE_JUSTIFY, cfg);
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+set_titlebar_inactive_title_justify(const char *val, struct cmd_q *cmdq)
+{
+	int v = PANGO_ALIGN_CENTER;
+	if (strcmp(val, "center") == 0) {
+		v = PANGO_ALIGN_CENTER;
+	} else if (strcmp(val, "left") == 0) {
+		v = PANGO_ALIGN_LEFT;
+	} else if (strcmp(val, "right") == 0) {
+		v = PANGO_ALIGN_RIGHT;
+	} else {
+		cmdq_error(cmdq, "set: bad titlebar alignment %s", val);
+		return (CMD_RETURN_ERROR);
+	}
+
+	struct cow_view_cfg	    *cfg;
+	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
+	tb->inactive_title_justify = v;
+	finish_visual_update(COW_VIEW_CFG_TITLEBAR_INACTIVE_TITLE_JUSTIFY, cfg);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -925,7 +977,7 @@ set_titlebar_inactive_relief(const char *val, struct cmd_q *cmdq)
 	} else if (strcmp(val, "flat") == 0) {
 		v = COW_RELIEF_FLAT;
 	} else {
-		cmdq_error(cmdq, "set: bad titlebar raised-lowered-sunken height %s", val);
+		cmdq_error(cmdq, "set: bad titlebar relief %s", val);
 		return (CMD_RETURN_ERROR);
 	}
 

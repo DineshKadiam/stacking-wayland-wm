@@ -1485,6 +1485,13 @@ feel of a window.  All of these can be used with *decor -d*.
 |  *titlebar.inactive\_relief*
 :  _raised_ | _flat_ | _sunken_
 :  Relief of the title area when the window is unfocused. Default: _raised_.
+|  *titlebar.active\_title\_justify*
+:  _left_ | _centre_ | _center_ | _right_
+:  Alignment of the title text when the window is focused. Default: _centre_.
+|  *titlebar.inactive\_title\_justify*
+:  _left_ | _centre_ | _center_ | _right_
+:  Alignment of the title text when the window is unfocused. Default:
+   _centre_.
 |  *titlebar.button.N.vector*
 :  vector string
 :  Geometry of titlebar button _N_, where _N_ is 0 through 9. Odd

@@ -114,7 +114,7 @@ cow_font_text_width(struct cow_font *font, const char *text)
 void
 cow_font_render_label(struct cow_pixbuf *dst, int dx, int dy, int w, int h,
     struct cow_font *font, const char *text, const float bg[4],
-    const float fg[4], int reserve_px, int *out_text_w)
+    const float fg[4], int reserve_px, int align, int *out_text_w)
 {
 	if (out_text_w != NULL)
 		*out_text_w = 0;
@@ -145,7 +145,7 @@ cow_font_render_label(struct cow_pixbuf *dst, int dx, int dy, int w, int h,
 	if (avail_w > 0)
 		pango_layout_set_width(layout, avail_w * PANGO_SCALE);
 	pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
-	pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
+	pango_layout_set_alignment(layout, align);
 
 	int text_w = 0, text_h = 0;
 	pango_layout_get_pixel_size(layout, &text_w, &text_h);

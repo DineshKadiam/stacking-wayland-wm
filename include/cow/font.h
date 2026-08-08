@@ -49,6 +49,6 @@ int cow_font_text_width(struct cow_font *, const char *);
  * No-op if any of: dst NULL, font NULL, w <= 0, h <= 0, text NULL.
  */
 struct cow_pixbuf;
-void cow_font_render_label(struct cow_pixbuf *, int, int, int, int, struct cow_font *, const char *, const float[4], const float[4], int, int *);
+void cow_font_render_label(struct cow_pixbuf *, int, int, int, int, struct cow_font *, const char *, const float[4], const float[4], int, int, int *);
 
 #endif
