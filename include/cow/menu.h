@@ -83,7 +83,7 @@ struct cow_menu_item {
 	char		       *label;	/* display text; NULL for separator */
 	char		       *action; /* command string to run, or name of
 					 * sub-menu when is_popup is true */
-	char		       *icon; /* resolved PNG/SVG path, or NULL */
+	char		       *icon; /* resolved PNG/SVG/XPM path, or NULL */
 	uint32_t	       *icon_pixels; /* cached rendered icon */
 	int			icon_cache_size;
 	bool	       is_popup;		 /* action is a sub-menu name */

@@ -90,11 +90,11 @@ ignored.  Labels and commands containing whitespace must be quoted.
 	Set the pressed button text colour.
 
 *style button.image* _path_
-	Draw a PNG or SVG image in command buttons.  Relative paths are resolved
-	against the configuration file's directory.
+	Draw a PNG, SVG, or XPM image in command buttons.  Relative paths are
+	resolved against the configuration file's directory.
 
 *style button.image_pressed* _path_
-	Draw a PNG or SVG image while a command button is pressed.
+	Draw a PNG, SVG, or XPM image while a command button is pressed.
 
 *style button.image_size* _N_
 	Set the image size in pixels.  The default is 16.

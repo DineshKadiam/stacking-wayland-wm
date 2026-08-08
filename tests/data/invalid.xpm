@@ -1,0 +1,6 @@
+/* XPM */
+static char *invalid_xpm[] = {
+"2 1 1 1",
+". c #ffffff",
+".+"
+};

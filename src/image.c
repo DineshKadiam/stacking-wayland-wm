@@ -22,6 +22,7 @@
 #include <strings.h>
 
 #include "cow/memory.h"
+#include "xpm.h"
 
 #define NANOSVG_IMPLEMENTATION
 #include "nanosvg.h"
@@ -34,6 +35,7 @@ enum cow_image_type {
 	COW_IMAGE_NONE,
 	COW_IMAGE_PNG,
 	COW_IMAGE_SVG,
+	COW_IMAGE_XPM,
 };
 
 static enum cow_image_type
@@ -47,6 +49,8 @@ image_type(const char *path)
 		return COW_IMAGE_PNG;
 	if (strcasecmp(dot, ".svg") == 0)
 		return COW_IMAGE_SVG;
+	if (strcasecmp(dot, ".xpm") == 0)
+		return COW_IMAGE_XPM;
 	return COW_IMAGE_NONE;
 }
 
@@ -95,8 +99,16 @@ cow_image_validate(const char *path, char **cause)
 		xasprintf(cause, "%s: not a readable SVG", path);
 		return false;
 	}
+	case COW_IMAGE_XPM: {
+		struct cow_xpm_image xpm;
+		if (cow_xpm_load(path, &xpm, cause)) {
+			cow_xpm_free(&xpm);
+			return true;
+		}
+		return false;
+	}
 	default:
-		xasprintf(cause, "%s: expected .png or .svg", path);
+		xasprintf(cause, "%s: expected .png, .svg, or .xpm", path);
 		return false;
 	}
 }
@@ -224,6 +236,27 @@ render_svg(const char *path, struct cow_pixbuf *dst, int x, int y, int w,
 	return visible;
 }
 
+static bool
+render_xpm(const char *path, struct cow_pixbuf *dst, int x, int y, int w,
+    int h)
+{
+	struct cow_xpm_image xpm;
+	if (!cow_xpm_load(path, &xpm, NULL))
+		return false;
+	bool visible = false;
+	for (int i = 0; i < xpm.width * xpm.height; i++) {
+		if (xpm.pixels[i * 4 + 3] != 0) {
+			visible = true;
+			break;
+		}
+	}
+	if (visible)
+		render_rgba_scaled(xpm.pixels, xpm.width, xpm.height, dst, x, y,
+		    w, h);
+	cow_xpm_free(&xpm);
+	return visible;
+}
+
 bool
 cow_image_render_rect(const char *path, struct cow_pixbuf *dst, int x, int y,
     int w, int h)
@@ -236,6 +269,8 @@ cow_image_render_rect(const char *path, struct cow_pixbuf *dst, int x, int y,
 		return render_png(path, dst, x, y, w, h);
 	case COW_IMAGE_SVG:
 		return render_svg(path, dst, x, y, w, h);
+	case COW_IMAGE_XPM:
+		return render_xpm(path, dst, x, y, w, h);
 	default:
 		return false;
 	}
@@ -281,6 +316,14 @@ cow_image_render_tiled(const char *path, struct cow_pixbuf *dst)
 		xfree(src);
 		nsvgDeleteRasterizer(rast);
 		nsvgDelete(svg);
+		break;
+	}
+	case COW_IMAGE_XPM: {
+		struct cow_xpm_image xpm;
+		if (cow_xpm_load(path, &xpm, NULL)) {
+			render_rgba_tiled(xpm.pixels, xpm.width, xpm.height, dst);
+			cow_xpm_free(&xpm);
+		}
 		break;
 	}
 	default:

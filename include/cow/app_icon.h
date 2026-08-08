@@ -16,7 +16,7 @@
 #if !defined(COW_APP_ICON_H)
 #define COW_APP_ICON_H
 
-/* Return an allocated PNG/SVG path for app_id, or NULL when none is found. */
+/* Return an allocated PNG/SVG/XPM path for app_id, or NULL when none found. */
 char *cow_app_icon_resolve(const char *, int);
 
 #endif /* COW_APP_ICON_H */

@@ -60,7 +60,8 @@ supported_image_path(const char *path)
 	const char *dot = path != NULL ? strrchr(path, '.') : NULL;
 
 	return dot != NULL &&
-	    (strcasecmp(dot, ".png") == 0 || strcasecmp(dot, ".svg") == 0);
+	    (strcasecmp(dot, ".png") == 0 || strcasecmp(dot, ".svg") == 0 ||
+	    strcasecmp(dot, ".xpm") == 0);
 }
 
 static bool
@@ -340,7 +341,7 @@ icon_theme_search(const char *data_dir, const char *name, int wanted,
 	if (best->path != NULL)
 		return;
 
-	const char *extensions[] = { ".png", ".svg" };
+	const char *extensions[] = { ".png", ".svg", ".xpm" };
 	for (size_t i = 0; i < sizeof(extensions) / sizeof(extensions[0]);
 	    i++) {
 		if (snprintf(path, sizeof(path), "%s/pixmaps/%s%s", data_dir,
@@ -365,8 +366,7 @@ icon_name_find(const char *name, int wanted)
 
 	char *base = xstrdup(name);
 	char *dot  = strrchr(base, '.');
-	if (dot != NULL &&
-	    (strcasecmp(dot, ".png") == 0 || strcasecmp(dot, ".svg") == 0))
+	if (dot != NULL && supported_image_path(base))
 		*dot = '\0';
 
 	struct icon_match best	    = { .score = INT_MAX };

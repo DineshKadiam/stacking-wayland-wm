@@ -108,6 +108,7 @@ srcs = [
     'src/vector.c',
     'src/view.c',
     'src/wm.c',
+    'src/xpm.c',
     'vendor/cow_log.c',
     'vendor/cJSON.c',
 ]
@@ -339,6 +340,20 @@ executable('cow',
     include_directories: include_dirs,
     dependencies: all_deps,
     install: true,
+)
+
+xpm_test = executable('test-xpm',
+    'tests/test_xpm.c',
+    'src/xpm.c',
+    'src/memory.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('xpm', xpm_test,
+    args: [
+        meson.current_source_dir() / 'tests/data/basic.xpm',
+        meson.current_source_dir() / 'tests/data/invalid.xpm',
+    ],
 )
 
 executable('moocow',
