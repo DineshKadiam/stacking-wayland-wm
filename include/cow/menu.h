@@ -44,6 +44,9 @@ struct cow_menu_style {
 	int   border_width; /* outer border thickness (px) */
 	int   padding_x;    /* horizontal padding within items (px) */
 	int   padding_y;    /* vertical padding above/below text (px) */
+	int   icon_size;    /* menu item icon size (px) */
+	int   icon_gap;     /* gap between icon and label (px) */
+	char *icon_path;    /* colon-separated menu icon search path */
 	int   title_underlines;
 	bool  automatic_hotkeys;
 	enum cow_menu_selection_relief selection_relief;
@@ -64,6 +67,9 @@ enum cow_menu_style_field {
 	COW_MENU_STYLE_AUTOMATIC_HOTKEYS = 1u << 11,
 	COW_MENU_STYLE_SELECTION_RELIEF	 = 1u << 12,
 	COW_MENU_STYLE_BORDER_COLOUR	 = 1u << 13,
+	COW_MENU_STYLE_ICON_SIZE		 = 1u << 14,
+	COW_MENU_STYLE_ICON_GAP		 = 1u << 15,
+	COW_MENU_STYLE_ICON_PATH		 = 1u << 16,
 };
 
 enum cow_menu_item_type {
@@ -77,6 +83,9 @@ struct cow_menu_item {
 	char		       *label;	/* display text; NULL for separator */
 	char		       *action; /* command string to run, or name of
 					 * sub-menu when is_popup is true */
+	char		       *icon; /* resolved PNG/SVG path, or NULL */
+	uint32_t	       *icon_pixels; /* cached rendered icon */
+	int			icon_cache_size;
 	bool	       is_popup;		 /* action is a sub-menu name */
 	bool	       popup_pick_context; /* pick target before child actions */
 	struct wl_list link;		/* in cow_menu.items */
@@ -154,7 +163,7 @@ void cow_menu_destroy_all(void);
  */
 struct cow_menu_item *cow_menu_item_add(struct cow_menu *menu,
     enum cow_menu_item_type type, const char *label, const char *action,
-    bool is_popup, bool popup_pick_context);
+    bool is_popup, bool popup_pick_context, const char *icon);
 
 /* Open a popup at the given screen position. */
 struct cow_menu_popup *cow_menu_popup_open(struct cow_menu *menu, int x, int y,

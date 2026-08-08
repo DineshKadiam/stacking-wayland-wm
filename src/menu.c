@@ -36,6 +36,7 @@
 #include "cow/colour.h"
 #include "cow/config.h"
 #include "cow/draw.h"
+#include "cow/image.h"
 #include "cow/ipc.h"
 #include "cow/keybinding.h"
 #include "cow/memory.h"
@@ -73,6 +74,16 @@ cow_menu_style_default(struct cow_menu_style *s)
 	s->border_width		       = 0;
 	s->padding_x		       = 6;
 	s->padding_y		       = 2;
+	s->icon_size		       = 16;
+	s->icon_gap		       = 4;
+	const char *xdg = getenv("XDG_CONFIG_HOME");
+	const char *home = getenv("HOME");
+	if (xdg != NULL && xdg[0] != '\0')
+		xasprintf(&s->icon_path, "%s/cow/icons", xdg);
+	else if (home != NULL && home[0] != '\0')
+		xasprintf(&s->icon_path, "%s/.config/cow/icons", home);
+	else
+		s->icon_path = xstrdup("icons");
 	s->title_underlines	       = 2;
 	s->automatic_hotkeys	       = true;
 	s->selection_relief	       = COW_MENU_SELECTION_RELIEF_RAISED;
@@ -119,6 +130,9 @@ cow_menu_style_resolve(const struct cow_menu *menu, struct cow_menu_style *out)
 	APPLY(COW_MENU_STYLE_BORDER_WIDTH, border_width);
 	APPLY(COW_MENU_STYLE_PADDING_X, padding_x);
 	APPLY(COW_MENU_STYLE_PADDING_Y, padding_y);
+	APPLY(COW_MENU_STYLE_ICON_SIZE, icon_size);
+	APPLY(COW_MENU_STYLE_ICON_GAP, icon_gap);
+	APPLY(COW_MENU_STYLE_ICON_PATH, icon_path);
 	APPLY(COW_MENU_STYLE_TITLE_UNDERLINES, title_underlines);
 	APPLY(COW_MENU_STYLE_AUTOMATIC_HOTKEYS, automatic_hotkeys);
 	APPLY(COW_MENU_STYLE_SELECTION_RELIEF, selection_relief);
@@ -575,6 +589,8 @@ menu_item_free(struct cow_menu_item *it)
 {
 	xfree(it->label);
 	xfree(it->action);
+	xfree(it->icon);
+	xfree(it->icon_pixels);
 	xfree(it);
 }
 
@@ -614,6 +630,7 @@ cow_menu_destroy(struct cow_menu *menu)
 	cow_menu_clear(menu);
 	wl_list_remove(&menu->link);
 	xfree(menu->name);
+	xfree(menu->style.icon_path);
 	xfree(menu);
 }
 
@@ -641,7 +658,7 @@ cow_menu_destroy_all(void)
 struct cow_menu_item *
 cow_menu_item_add(struct cow_menu *menu, enum cow_menu_item_type type,
     const char *label, const char *action, bool is_popup,
-    bool popup_pick_context)
+    bool popup_pick_context, const char *icon)
 {
 	if (menu == NULL)
 		return (NULL);
@@ -649,6 +666,7 @@ cow_menu_item_add(struct cow_menu *menu, enum cow_menu_item_type type,
 	it->type		 = type;
 	it->label		 = (label != NULL) ? xstrdup(label) : NULL;
 	it->action		 = (action != NULL) ? xstrdup(action) : NULL;
+	it->icon		 = (icon != NULL) ? xstrdup(icon) : NULL;
 	it->is_popup		 = is_popup;
 	it->popup_pick_context	 = popup_pick_context;
 	wl_list_insert(menu->items.prev, &it->link);
@@ -728,6 +746,22 @@ text_extents(const struct cow_menu *menu, const struct cow_menu_item *it,
 	*h_out = h;
 }
 
+static int
+menu_icon_gutter(const struct cow_menu *menu, const struct cow_menu_style *style)
+{
+	if (menu == NULL || style == NULL || style->icon_size <= 0)
+		return (0);
+
+	struct cow_menu_item *it;
+	wl_list_for_each(it, &menu->items, link)
+	{
+		if (menu_item_visible(menu, it) &&
+		    it->type == COW_MENU_ITEM_NORMAL && it->icon != NULL)
+			return (style->icon_size + style->icon_gap);
+	}
+	return (0);
+}
+
 static void
 popup_layout(struct cow_menu_popup *p)
 {
@@ -756,10 +790,14 @@ popup_layout(struct cow_menu_popup *p)
 	}
 	if (max_text_h <= 0)
 		max_text_h = 12;
+	int icon_gutter = menu_icon_gutter(p->def, st);
+	int content_h = max_text_h;
+	if (icon_gutter > 0 && st->icon_size > content_h)
+		content_h = st->icon_size;
 	/* Always reserve the arrow gutter so columns align whether or
 	 * not any one item is a submenu link. */
 	(void)any_submenu;
-	int text_w = max_label_w + ARROW_W;
+	int text_w = icon_gutter + max_label_w + ARROW_W;
 
 	int inner_w = text_w + st->padding_x * 2;
 	int height  = st->border_width * 2;
@@ -767,10 +805,10 @@ popup_layout(struct cow_menu_popup *p)
 	{
 		if (!menu_item_visible(p->def, it))
 			continue;
-		height += item_row_height(it, max_text_h, st);
+		height += item_row_height(it, content_h, st);
 	}
 
-	p->item_h = max_text_h + st->padding_y * 2;
+	p->item_h = content_h + st->padding_y * 2;
 	p->width  = inner_w + st->border_width * 2;
 	p->height = height;
 }
@@ -975,6 +1013,50 @@ draw_submenu_arrow(struct cow_pixbuf *buf, int x, int y, int size,
 	}
 }
 
+static bool
+menu_item_cache_icon(struct cow_menu_item *item, int size)
+{
+	if (item == NULL || item->icon == NULL || size <= 0)
+		return (false);
+	if (item->icon_pixels != NULL && item->icon_cache_size == size)
+		return (true);
+
+	xfree(item->icon_pixels);
+	item->icon_pixels = xcalloc((size_t)size * size, sizeof(uint32_t));
+	item->icon_cache_size = 0;
+	struct cow_pixbuf icon = {
+		.pixels = item->icon_pixels,
+		.stride_px = size,
+		.width = size,
+		.height = size,
+	};
+	if (!cow_image_render_rect(item->icon, &icon, 0, 0, size, size)) {
+		xfree(item->icon_pixels);
+		item->icon_pixels = NULL;
+		return (false);
+	}
+	item->icon_cache_size = size;
+	return (true);
+}
+
+static void
+menu_item_draw_icon(cairo_surface_t *target, struct cow_menu_item *item,
+    int x, int y, int size)
+{
+	if (target == NULL || !menu_item_cache_icon(item, size))
+		return;
+
+	cairo_surface_t *icon = cairo_image_surface_create_for_data(
+	    (unsigned char *)item->icon_pixels, CAIRO_FORMAT_ARGB32, size, size,
+	    size * (int)sizeof(uint32_t));
+	cairo_t *cr = cairo_create(target);
+	cairo_set_source_surface(cr, icon, x, y);
+	cairo_rectangle(cr, x, y, size, size);
+	cairo_fill(cr);
+	cairo_destroy(cr);
+	cairo_surface_destroy(icon);
+}
+
 static void
 popup_render(struct cow_menu_popup *p)
 {
@@ -1019,6 +1101,7 @@ popup_render(struct cow_menu_popup *p)
 	/* Keep submenu arrows aligned across rows. */
 	const int ARROW_GUTTER = 14;
 	const int ARROW_SIZE   = 4;
+	const int ICON_GUTTER  = menu_icon_gutter(p->def, st);
 
 	struct cow_menu_item *it;
 	wl_list_for_each(it, &p->def->items, link)
@@ -1078,14 +1161,20 @@ popup_render(struct cow_menu_popup *p)
 				}
 			}
 
-			int label_w = innerw - st->padding_x * 2 - ARROW_GUTTER;
+			int label_x = x + st->padding_x + ICON_GUTTER;
+			int label_w = innerw - st->padding_x * 2 -
+			    ARROW_GUTTER - ICON_GUTTER;
 			if (label_w < 1)
 				label_w = 1;
+			if (it->icon != NULL && st->icon_size > 0)
+				menu_item_draw_icon(cs, it, x + st->padding_x,
+				    y + (rh - st->icon_size) / 2,
+				    st->icon_size);
 			char label[512];
 			int  underline;
 			menu_label_resolve(p->def, it, label, sizeof(label),
 			    &underline);
-			render_text(cs, x + st->padding_x, y, label_w, rh,
+			render_text(cs, label_x, y, label_w, rh,
 			    label, underline, st->fg, false, 0);
 
 			if (it->is_popup) {

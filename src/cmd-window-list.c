@@ -393,7 +393,7 @@ show_window_list(const char *filter_expr, const char *format,
 		cow_menu_enable_typeahead(menu);
 	cow_menu_item_add(menu, COW_MENU_ITEM_TITLE,
 	    typeahead ? "Window List (type to search)" : "Window List", NULL,
-	    false, false);
+	    false, false, NULL);
 
 	for (size_t i = 0; i < count; i++) {
 		view	    = entries[i].view;
@@ -402,7 +402,7 @@ show_window_list(const char *filter_expr, const char *format,
 		xasprintf(&action, "window-list -s %s%s", view->identifier,
 		    warp ? " -w" : "");
 		cow_menu_item_add(menu, COW_MENU_ITEM_NORMAL, label, action,
-		    false, false);
+		    false, false, NULL);
 		xfree(action);
 		xfree(label);
 	}

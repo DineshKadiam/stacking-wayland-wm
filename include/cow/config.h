@@ -374,7 +374,6 @@ struct cow_config {
 	float icon_background[4];
 	float icon_foreground[4];
 	bool icon_title_relief;
-
 	/* Titlebar */
 	struct cow_titlebar_config titlebar;
 

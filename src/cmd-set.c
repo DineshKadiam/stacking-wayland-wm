@@ -43,6 +43,7 @@
 #include "cow/stack.h"
 #include "cow/status.h"
 #include "cow/titlebar.h"
+#include "cow/util.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
@@ -968,33 +969,17 @@ set_key_is_image(const char *key)
 static char *
 set_image_resolve_path(const char *val, struct cmd_q *cmdq)
 {
-	char *path = NULL;
-
 	if (strcmp(val, "none") == 0)
 		return xstrdup(val);
-	if (val[0] == '/') {
-		path = xstrdup(val);
-	} else if (val[0] == '~' && val[1] == '/') {
-		const char *home = getenv("HOME");
-		if (home == NULL) {
-			cmdq_error(cmdq, "set: image: HOME is not set");
-			return NULL;
-		}
-		xasprintf(&path, "%s/%s", home, val + 2);
-	} else if (cmdq != NULL && cmdq->cmd != NULL &&
-	    cmdq->cmd->file != NULL) {
-		const char *file = cmdq->cmd->file;
-		const char *slash = strrchr(file, '/');
-		if (slash != NULL) {
-			size_t len = slash - file;
-			path = xmalloc(len + strlen(val) + 2);
-			memcpy(path, file, len);
-			path[len] = '/';
-			strcpy(path + len + 1, val);
-		} else
-			path = xstrdup(val);
-	} else
-		path = xstrdup(val);
+	char *base_dir = NULL;
+	if (cmdq != NULL && cmdq->cmd != NULL && cmdq->cmd->file != NULL)
+		base_dir = cow_path_dirname(cmdq->cmd->file);
+	char *path = cow_path_resolve(base_dir, val);
+	xfree(base_dir);
+	if (path == NULL) {
+		cmdq_error(cmdq, "set: image: cannot expand path: %s", val);
+		return (NULL);
+	}
 
 	char *cause = NULL;
 	if (!cow_image_validate(path, &cause)) {
