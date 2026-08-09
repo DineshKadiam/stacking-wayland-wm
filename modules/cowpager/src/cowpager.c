@@ -119,7 +119,6 @@ typedef struct {
 	int    n_outs;
 	pwin_t wins[MAX_WINS];
 	int    n_wins;
-	char   focused_id[128];
 	char   desktop_config[32]; /* "global" | "per-output" | "Shared" */
 	char   user_output[64];
 	struct {
@@ -1469,8 +1468,20 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 	 * Each window's thumbnail is sized in terms of its OWN
 	 * monitor's pixel dimensions, not the reference monitor's.
 	 */
-	for (int wi = 0; wi < st->n_wins; wi++) {
-		const pwin_t *w = &st->wins[wi];
+	/* Paint the focused window last so overlapping thumbnails cannot
+	 * obscure its highlight. */
+	const pwin_t *draw_wins[MAX_WINS];
+	int n_draw_wins = 0;
+	for (int focus_pass = 0; focus_pass < 2; focus_pass++) {
+		for (int wi = 0; wi < st->n_wins; wi++) {
+			const pwin_t *w = &st->wins[wi];
+			if ((w->focused != 0) == focus_pass)
+				draw_wins[n_draw_wins++] = w;
+		}
+	}
+	for (int wi = 0; wi < n_draw_wins; wi++) {
+		const pwin_t *w = draw_wins[wi];
+		int foc = w->focused != 0;
 		if (w->desk != d->nr)
 			continue;
 		if (!monitor_visible(w->output))
@@ -1512,7 +1523,6 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		if (wy + wh > sy + sh)
 			wh = sy + sh - wy;
 
-		int    foc = strcmp(w->id, st->focused_id) == 0;
 		double r, g, b;
 		if (foc) {
 			r = cfg.window_focused_bg[0];
@@ -2272,9 +2282,9 @@ hit_test_window(const state_t *st, double x, double y,
 				}
 			}
 		}
-		if (pick < 0 && st->focused_id[0] != '\0') {
+		if (pick < 0) {
 			for (int i = 0; i < n_hits; i++) {
-				if (strcmp(hits[i]->id, st->focused_id) == 0) {
+				if (hits[i]->focused) {
 					pick = i;
 					break;
 				}
@@ -3128,13 +3138,6 @@ parse_status(const char *json)
 	}
 	st.n_outs = oi;
 
-	cJSON *foc = cJSON_GetObjectItem(root, "focused");
-	if (foc) {
-		cJSON *fid = cJSON_GetObjectItem(foc, "id");
-		if (cJSON_IsString(fid))
-			strlcpy(st.focused_id, fid->valuestring,
-			    sizeof(st.focused_id));
-	}
 	cJSON_Delete(root);
 
 	/*
