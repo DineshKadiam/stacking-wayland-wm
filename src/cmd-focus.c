@@ -88,10 +88,10 @@ filter:
 
 struct cmd_entry cmd_focus_entry = {
 	"focus",
-	"t:npwF:d:o:Ll:",
+	"t:npwF:d:o:Ll:i:",
 	0,
 	0,
-	"focus [-npwL] [-F expr] [-l N] [-d dir] [-o output] "
+	"focus [-npwL] [-F expr] [-l N] [-d dir] [-o output] [-i id]"
 	"[-t %app|/title/|#id]",
 	cmd_focus_exec,
 	0,
@@ -151,6 +151,7 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 	const char *layer_val  = args_get(args, 'l');
 	bool	    do_warp    = args_has(args, 'w');
 	bool	    same_layer = args_has(args, 'L');
+	const char *id         = args_get(args, 'i');
 
 	if (args->argc > 0) {
 		cmdq_error(cmdq, "focus: unexpected argument: %s",
@@ -222,6 +223,9 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 			return (CMD_RETURN_ERROR);
 		}
 		do_directional(dir, target_layer, cmdq);
+	} else if (id != NULL) {
+		cmd_filter_free(&filter);
+		do_id(id, cmdq);
 	} else if (t_val != NULL) {
 		cmd_filter_free(&filter);
 		if (!focus_dispatch_selector(t_val, cmdq))
