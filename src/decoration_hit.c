@@ -47,7 +47,7 @@ cow_decoration_edges_at(struct cow_view *view, int fx, int fy, int cw, int ch)
 {
 	struct dec_frame_hit hit = {
 		.bw = view->dec.border_width,
-		.cl = cow_decoration_corner_length(view),
+		.cl = view->cfg.corner_length,
 		.fx = fx,
 		.fy = fy,
 	};
