@@ -29,6 +29,7 @@
 #include "cow/memory.h"
 #include "cow/menu.h"
 #include "cow/output.h"
+#include "cow/seat.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
@@ -39,10 +40,10 @@ static enum cmd_retval cmd_window_list_exec(struct cmd *, struct cmd_q *);
 
 struct cmd_entry cmd_window_list_entry = {
 	"window-list",
-	"F:S:f:ns:w",
+	"F:IS:f:nps:w",
 	0,
 	0,
-	"window-list [-n] [-w] [-F expr] [-f format] [-S sort]",
+	"window-list [-I] [-n] [-p] [-w] [-F expr] [-f format] [-S sort]",
 	cmd_window_list_exec,
 	0,
 };
@@ -156,6 +157,11 @@ window_list_format_conversion(void *data, char conversion)
 	case 'i':
 		label_append_string(ctx, view->identifier, true);
 		break;
+	case 'I':
+		label_append(ctx, view->identifier,
+		    view->identifier != NULL ? strnlen(view->identifier, 8) : 0,
+		    true);
+		break;
 	case 'o':
 		label_append_string(ctx,
 		    view->output != NULL ? view->output->name : NULL, true);
@@ -199,7 +205,7 @@ format_label(const char *format, const struct cow_view *view, int number)
 		.display_title = cow_decoration_display_title(view),
 	};
 
-	cow_format_parse(format, "ntTaioOdDxywhl", true,
+	cow_format_parse(format, "ntTaiIoOdDxywhl", true,
 	    window_list_format_text, window_list_format_conversion, &ctx, NULL);
 	if (ctx.buf == NULL)
 		ctx.buf = xstrdup("");
@@ -328,7 +334,8 @@ select_window(const char *id, bool warp, struct cmd_q *cmdq)
 
 static enum cmd_retval
 show_window_list(const char *filter_expr, const char *format,
-    const char *sort_value, bool typeahead, bool warp, struct cmd_q *cmdq)
+    const char *sort_value, bool icons, bool typeahead, bool at_pointer,
+    bool warp, struct cmd_q *cmdq)
 {
 	enum window_list_sort sort;
 	if (!parse_sort(sort_value, &sort, cmdq))
@@ -336,7 +343,7 @@ show_window_list(const char *filter_expr, const char *format,
 	if (format == NULL)
 		format = WINDOW_LIST_DEFAULT_FORMAT;
 	char *cause = NULL;
-	if (!cow_format_parse(format, "ntTaioOdDxywhl", true, NULL, NULL, NULL,
+	if (!cow_format_parse(format, "ntTaiIoOdDxywhl", true, NULL, NULL, NULL,
 		&cause)) {
 		cmdq_error(cmdq, "window-list: %s", cause);
 		xfree(cause);
@@ -402,21 +409,31 @@ show_window_list(const char *filter_expr, const char *format,
 		xasprintf(&action, "window-list -s %s%s", view->identifier,
 		    warp ? " -w" : "");
 		cow_menu_item_add(menu, COW_MENU_ITEM_NORMAL, label, action,
-		    false, false, NULL);
+		    false, false, icons ? cow_view_icon_image(view) : NULL);
 		xfree(action);
 		xfree(label);
 	}
 	xfree(entries);
 
-	struct cow_output *output = cmd_ctx_target_output(cmdq);
-	if (output == NULL)
-		output = cow_wm.current_output;
-	int cx = 0, cy = 0;
-	if (output != NULL) {
-		cx = output->usable_area.x + output->usable_area.width / 2;
-		cy = output->usable_area.y + output->usable_area.height / 2;
+	if (at_pointer) {
+		int x = 0, y = 0;
+
+		if (!cow_seat_get_pointer(&x, &y) && cow_wm.has_raw_pointer) {
+			x = cow_wm.raw_pointer_x;
+			y = cow_wm.raw_pointer_y;
+		}
+		cow_menu_popup_open(menu, x, y, NULL, NULL, true);
+	} else {
+		struct cow_output *output = cmd_ctx_target_output(cmdq);
+		if (output == NULL)
+			output = cow_wm.current_output;
+		int cx = 0, cy = 0;
+		if (output != NULL) {
+			cx = output->usable_area.x + output->usable_area.width / 2;
+			cy = output->usable_area.y + output->usable_area.height / 2;
+		}
+		cow_menu_popup_open_centered(menu, cx, cy, NULL);
 	}
-	cow_menu_popup_open_centered(menu, cx, cy, NULL);
 	cow_wm.needs_manage_dirty = true;
 	return (CMD_RETURN_NORMAL);
 }
@@ -425,22 +442,24 @@ static enum cmd_retval
 cmd_window_list_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	const char *id	 = args_get(self->args, 's');
+	bool	    icons = args_has(self->args, 'I');
 	bool	    typeahead = !args_has(self->args, 'n');
+	bool	    at_pointer = args_has(self->args, 'p');
 	bool	    warp = args_has(self->args, 'w');
 	if (id != NULL) {
-		if (args_get(self->args, 'F') != NULL ||
+		if (args_get(self->args, 'F') != NULL || icons || at_pointer ||
 		    args_get(self->args, 'f') != NULL ||
 		    args_get(self->args, 'S') != NULL ||
 		    args_has(self->args, 'n')) {
 			cmdq_error(cmdq,
-			    "window-list: -F, -f, -n, and -S cannot be used "
-			    "with -s");
+			    "window-list: -F, -f, -I, -n, -p, and -S cannot "
+			    "be used with -s");
 			return (CMD_RETURN_ERROR);
 		}
 		return (select_window(id, warp, cmdq) ? CMD_RETURN_NORMAL :
 							CMD_RETURN_ERROR);
 	}
 	return (show_window_list(args_get(self->args, 'F'),
-	    args_get(self->args, 'f'), args_get(self->args, 'S'), typeahead,
-	    warp, cmdq));
+	    args_get(self->args, 'f'), args_get(self->args, 'S'), icons,
+	    typeahead, at_pointer, warp, cmdq));
 }

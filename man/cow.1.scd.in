@@ -1190,22 +1190,28 @@ Move keyboard focus.
 	in that layer.  Combine with *-n*/*-p* to walk only within
 	_N_.  Mutually exclusive with *-L*.
 
-## window-list [-n] [-w] [-F expr] [-f format] [-S sort]
+## window-list [-I] [-n] [-p] [-w] [-F expr] [-f format] [-S sort]
 
-Open a transient, centred list of managed windows.  Press *1* through *9*, or
-*0* for the tenth entry, to select immediately.  For longer lists use the arrow
-keys and Enter.  Typing letters performs an incremental, case-insensitive
-filter over the displayed labels; only matching windows remain visible and the
-first match is selected.  Backspace removes the last search character and
-expands the list again.
+Open a transient list of managed windows, centred on the target output unless
+*-p* is used.  Press *1* through *9*, or *0* for the tenth entry, to select
+immediately.  For longer lists use the arrow keys and Enter.  Typing letters
+performs an incremental, case-insensitive filter over the displayed labels;
+only matching windows remain visible and the first match is selected.
+Backspace removes the last search character and expands the list again.
 
 Selecting an entry closes the list, switches to its output, desk, and page,
 restores it if iconified, activates its container tab if necessary, and focuses
 it.
 
+*-I*
+	Show each window's resolved application icon beside its label.
+
 *-n*
 	Disable type-ahead searching.  Number keys continue to select the first ten
 	entries, and the arrow keys and Enter continue to navigate and select.
+
+*-p*
+	Open the menu at the pointer instead of centring it on the target output.
 
 *-F* _expr_
 	Only include windows matching the DSL expression.  *self* is bound to each
@@ -1218,7 +1224,7 @@ it.
 	- *%t*: displayed title, including any *title.format* expansion
 	- *%T*: raw client title
 	- *%a*: application ID
-	- *%i*: window identifier
+	- *%i* / *%I*: full / first eight characters of the window identifier
 	- *%o* / *%O*: output name / number
 	- *%d* / *%D*: desk number / name
 	- *%x*, *%y*, *%w*, *%h*: window position and content size
@@ -1247,6 +1253,7 @@ bind L+a "window-list -f '%n  [%a] %t'"
 bind L+o "window-list -f '%n  %o:%d  %t'"
 bind L+s "window-list -S location"
 bind L+n "window-list -n"
+bind L+i "window-list -I -p"
 ```
 
 The popup takes keyboard focus while it is open, so no additional bindings are
