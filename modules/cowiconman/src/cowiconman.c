@@ -34,6 +34,7 @@
 #include "cow/image_cache.h"
 #include "cow/module.h"
 #include "cow/module_cursor.h"
+#include "cow/util.h"
 #include "xdg-shell-client-protocol.h"
 
 #define PROG "cowiconman"
@@ -157,9 +158,6 @@ static struct cow_module_cursor cursor;
 static struct wl_surface    *surface;
 static struct xdg_surface   *xdg_surface;
 static struct xdg_toplevel  *xdg_toplevel;
-static struct wl_surface    *popup_surface;
-static struct xdg_surface   *popup_xdg_surface;
-static struct xdg_popup	    *xdg_popup;
 
 static struct tracked_output tracked[MAX_OUTS];
 static int		     n_tracked;
@@ -168,8 +166,6 @@ static int    running = 1;
 static int    configured;
 static int    win_w, win_h;
 static double ptr_x, ptr_y;
-static struct wl_surface *pointer_surface;
-static uint32_t last_button_press_serial;
 static int    layout_cols = 1;
 static int    layout_rows = 1;
 static int    wake_pipe[2];
@@ -185,12 +181,6 @@ static int	  n_group_wins;
 static int	  scroll_first;
 static int	  visible_capacity;
 static int	  total_rows;
-static int	  popup_row = -1;
-static int	  popup_w, popup_h;
-static double	  popup_ptr_x, popup_ptr_y;
-static struct win popup_wins[MAX_WINS];
-static int	  popup_count;
-static int	  popup_ignore_release;
 
 static enum filter_value output_filter = FILTER_ANY;
 static enum filter_value desk_filter = FILTER_ANY;
@@ -219,9 +209,7 @@ static int		 n_matches;
 static void do_render(const struct state *);
 static void ipc_send(const char *);
 static void format_label(char *, size_t, const struct win *);
-static void format_popup_label(char *, size_t, const struct win *);
 static const char *group_key(const struct win *, char *, size_t);
-static void popup_render(void);
 
 static void
 usage(void)
@@ -976,19 +964,6 @@ format_label(char *dst, size_t dstsz, const struct win *w)
 	dst[len] = '\0';
 }
 
-static void
-format_popup_label(char *dst, size_t dstsz, const struct win *w)
-{
-	char base[256];
-	const char *title;
-
-	format_label(base, sizeof base, w);
-	title = base[0] != '\0' ? base : (w->title[0] != '\0' ? w->title :
-	    w->app_id);
-	snprintf(dst, dstsz, "%s [%.8s] %s:%d", title, w->id,
-	    w->output[0] != '\0' ? w->output : "-", w->desk);
-}
-
 static struct wl_buffer *
 shm_buf(int w, int h, void **px)
 {
@@ -1111,190 +1086,6 @@ draw_icon(cairo_t *cr, const char *path, int x, int y, int size)
 }
 
 static void
-popup_close(void)
-{
-	if (pointer_surface == popup_surface)
-		pointer_surface = NULL;
-	if (xdg_popup != NULL) {
-		xdg_popup_destroy(xdg_popup);
-		xdg_popup = NULL;
-	}
-	if (popup_xdg_surface != NULL) {
-		xdg_surface_destroy(popup_xdg_surface);
-		popup_xdg_surface = NULL;
-	}
-	if (popup_surface != NULL) {
-		wl_surface_destroy(popup_surface);
-		popup_surface = NULL;
-	}
-	popup_row = -1;
-	popup_count = 0;
-	popup_w = popup_h = 0;
-}
-
-static void
-popup_done(__unused void *data, __unused struct xdg_popup *popup)
-{
-	popup_close();
-}
-
-static void
-popup_configure(__unused void *data, __unused struct xdg_popup *popup,
-    __unused int32_t x, __unused int32_t y, __unused int32_t w,
-    __unused int32_t h)
-{
-}
-
-static const struct xdg_popup_listener popup_listener = {
-	.configure = popup_configure,
-	.popup_done = popup_done,
-};
-
-static void
-popup_xdg_surface_configure(__unused void *data, struct xdg_surface *xs,
-    uint32_t serial)
-{
-	xdg_surface_ack_configure(xs, serial);
-	popup_render();
-}
-
-static const struct xdg_surface_listener popup_xdg_surface_listener = {
-	.configure = popup_xdg_surface_configure,
-};
-
-static void
-popup_open(int row, uint32_t serial)
-{
-	struct xdg_positioner *pos;
-	struct row	      *r;
-	uint32_t	       anchor, gravity;
-
-	if (row < 0 || row >= n_rows || rows[row].count <= 1)
-		return;
-	popup_close();
-
-	r = &rows[row];
-	popup_row = row;
-	popup_count = r->count;
-	memcpy(popup_wins, &group_wins[r->first],
-	    sizeof(popup_wins[0]) * (size_t)popup_count);
-	popup_w = button_w;
-	if (popup_w < min_button_w)
-		popup_w = min_button_w;
-	if (popup_w > r->w)
-		popup_w = r->w;
-	popup_h = PAD * 2 + popup_count * ROW_H;
-
-	popup_surface = wl_compositor_create_surface(compositor);
-	if (popup_surface == NULL)
-		goto fail;
-	popup_xdg_surface = xdg_wm_base_get_xdg_surface(xdg_wm_base,
-	    popup_surface);
-	if (popup_xdg_surface == NULL)
-		goto fail;
-	xdg_surface_add_listener(popup_xdg_surface,
-	    &popup_xdg_surface_listener, NULL);
-
-	pos = xdg_wm_base_create_positioner(xdg_wm_base);
-	if (pos == NULL)
-		goto fail;
-	xdg_positioner_set_size(pos, popup_w, popup_h);
-	xdg_positioner_set_anchor_rect(pos, r->x, r->y, r->w, r->h);
-	if (anchor_mode == ANCHOR_BOTTOM) {
-		anchor = XDG_POSITIONER_ANCHOR_TOP_LEFT;
-		gravity = XDG_POSITIONER_GRAVITY_TOP_RIGHT;
-	} else {
-		anchor = XDG_POSITIONER_ANCHOR_BOTTOM_LEFT;
-		gravity = XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT;
-	}
-	xdg_positioner_set_anchor(pos, anchor);
-	xdg_positioner_set_gravity(pos, gravity);
-	xdg_popup = xdg_surface_get_popup(popup_xdg_surface, xdg_surface, pos);
-	xdg_positioner_destroy(pos);
-	if (xdg_popup == NULL)
-		goto fail;
-	xdg_popup_add_listener(xdg_popup, &popup_listener, NULL);
-	if (seat != NULL)
-		xdg_popup_grab(xdg_popup, seat, serial);
-	wl_surface_commit(popup_surface);
-	return;
-
-fail:
-	popup_close();
-}
-
-static void
-popup_render(void)
-{
-	void		 *px;
-	struct wl_buffer *buf;
-	cairo_surface_t *cs;
-	cairo_t		*cr;
-
-	if (popup_count <= 1 || popup_surface == NULL)
-		return;
-
-	buf = shm_buf(popup_w, popup_h, &px);
-	if (buf == NULL)
-		return;
-
-	cs = cairo_image_surface_create_for_data(px, CAIRO_FORMAT_ARGB32,
-	    popup_w, popup_h, popup_w * 4);
-	cr = cairo_create(cs);
-	cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL,
-	    CAIRO_FONT_WEIGHT_NORMAL);
-	cairo_set_font_size(cr, 12);
-
-	cairo_set_source_rgb(cr, 0.10, 0.10, 0.11);
-	cairo_paint(cr);
-
-	for (int i = 0; i < popup_count; i++) {
-		const struct win *w = &popup_wins[i];
-		char		  label[384];
-		int		  y = PAD + i * ROW_H;
-		int		  sunken = w->focused || w->iconified;
-		int		  label_x = PAD + TEXT_PAD;
-		int		  label_w = popup_w - 2 * PAD - 2 * TEXT_PAD;
-
-		if (w->focused)
-			cairo_set_source_rgb(cr, 0.25, 0.38, 0.64);
-		else if (w->iconified)
-			cairo_set_source_rgb(cr, 0.34, 0.25, 0.28);
-		else
-			cairo_set_source_rgb(cr, 0.28, 0.28, 0.31);
-		cairo_rectangle(cr, PAD, y, popup_w - 2 * PAD, ROW_H - 1);
-		cairo_fill(cr);
-		draw_relief(cr, PAD, y, popup_w - 2 * PAD, ROW_H - 1,
-		    sunken);
-
-		format_popup_label(label, sizeof(label), w);
-		if (show_icons) {
-			draw_icon(cr, w->icon, label_x,
-			    y + (ROW_H - icon_size) / 2, icon_size);
-			label_x += icon_size + MARKER_GAP;
-			label_w -= icon_size + MARKER_GAP;
-		}
-		if (iconified_marker) {
-			draw_iconified_marker(cr, w, label_x, y, ROW_H);
-			label_x += MARKER_SIZE + MARKER_GAP;
-			label_w -= MARKER_SIZE + MARKER_GAP;
-		}
-		cairo_set_source_rgb(cr, 0.94, 0.94, 0.96);
-		draw_text(cr, label_x, y + 16, label_w, label);
-	}
-
-	cairo_destroy(cr);
-	cairo_surface_flush(cs);
-	cairo_surface_destroy(cs);
-
-	wl_surface_attach(popup_surface, buf, 0, 0);
-	wl_surface_damage_buffer(popup_surface, 0, 0, popup_w, popup_h);
-	wl_surface_commit(popup_surface);
-	wl_buffer_destroy(buf);
-	munmap(px, (size_t)popup_w * 4 * (size_t)popup_h);
-}
-
-static void
 do_render(const struct state *st)
 {
 	void		 *px;
@@ -1413,23 +1204,7 @@ ipc_query(const char *cmd)
 }
 
 static void
-raise_self(void)
-{
-	char cmd[256];
-	char id[MAX_NAME];
-
-	pthread_mutex_lock(&lock);
-	strlcpy(id, self_id, sizeof(id));
-	pthread_mutex_unlock(&lock);
-
-	if (id[0] == '\0')
-		return;
-	snprintf(cmd, sizeof(cmd), "winops -t '#%s' -r", id);
-	ipc_send(cmd);
-}
-
-static void
-activate_win(const struct win *w, uint32_t button, int keep_self_raised)
+activate_win(const struct win *w, uint32_t button)
 {
 	char cmd[256];
 
@@ -1443,8 +1218,6 @@ activate_win(const struct win *w, uint32_t button, int keep_self_raised)
 		ipc_send(cmd);
 		snprintf(cmd, sizeof(cmd), "winops -t '#%s' -r", w->id);
 		ipc_send(cmd);
-		if (keep_self_raised)
-			raise_self();
 	} else if (button == BTN_MIDDLE) {
 		snprintf(cmd, sizeof(cmd), "winops -t '#%s' -i",
 		    w->id);
@@ -1454,7 +1227,107 @@ activate_win(const struct win *w, uint32_t button, int keep_self_raised)
 }
 
 static void
-activate_row(int idx, uint32_t button, uint32_t serial)
+filter_append_string(char **dst, const char *value)
+{
+	*(*dst)++ = '"';
+	for (const char *p = value; *p != '\0'; p++) {
+		if (*p == '"' || *p == '\\')
+			*(*dst)++ = '\\';
+		*(*dst)++ = *p;
+	}
+	*(*dst)++ = '"';
+}
+
+static const char *
+native_sort_name(void)
+{
+	switch (sort_mode) {
+	case SORT_TITLE:
+		return "title";
+	case SORT_APP:
+		return "app";
+	case SORT_ID:
+		return "id";
+	case SORT_NONE:
+		return "none";
+	}
+	return "none";
+}
+
+static char *
+native_group_format(void)
+{
+	static const char suffix[] = " [%I] %o:%d";
+	size_t size = strlen(label_format) + sizeof(suffix);
+	char *format = malloc(size);
+
+	if (format == NULL)
+		return NULL;
+	char *dst = format;
+	for (const char *src = label_format; *src != '\0'; src++) {
+		*dst++ = *src;
+		if (*src == '%' && src[1] != '\0') {
+			src++;
+			*dst++ = *src == 'i' ? 'I' : *src;
+		}
+	}
+	memcpy(dst, suffix, sizeof(suffix));
+	return format;
+}
+
+static void
+show_native_group(const struct row *r)
+{
+	static const char prefix[] = "self.id in [";
+	size_t filter_size = strlen("self.id in []") + 1;
+
+	for (int i = 0; i < r->count; i++)
+		filter_size += strlen(group_wins[r->first + i].id) * 2 + 4;
+	char *filter = malloc(filter_size);
+	if (filter == NULL)
+		return;
+	memcpy(filter, prefix, sizeof(prefix) - 1);
+	char *p = filter + sizeof(prefix) - 1;
+	for (int i = 0; i < r->count; i++) {
+		if (i != 0) {
+			*p++ = ',';
+			*p++ = ' ';
+		}
+		filter_append_string(&p, group_wins[r->first + i].id);
+	}
+	*p++ = ']';
+	*p = '\0';
+
+	char *format = native_group_format();
+	if (format == NULL) {
+		free(filter);
+		return;
+	}
+
+	const char *argv[11];
+	size_t argc = 0;
+	argv[argc++] = "window-list";
+	argv[argc++] = "-n";
+	argv[argc++] = "-p";
+	if (show_icons)
+		argv[argc++] = "-I";
+	argv[argc++] = "-F";
+	argv[argc++] = filter;
+	argv[argc++] = "-f";
+	argv[argc++] = format;
+	argv[argc++] = "-S";
+	argv[argc++] = native_sort_name();
+	char *command = cow_command_from_argv(argc, argv);
+	if (command != NULL) {
+		ipc_send(command);
+		free(command);
+	}
+	free(format);
+	free(filter);
+}
+
+static void
+activate_row(int idx, uint32_t button)
 {
 	struct row *r;
 
@@ -1463,10 +1336,10 @@ activate_row(int idx, uint32_t button, uint32_t serial)
 	r = &rows[idx];
 	if (r->count > 1) {
 		if (button == BTN_LEFT)
-			popup_open(idx, serial);
+			show_native_group(r);
 		return;
 	}
-	activate_win(&r->win, button, 0);
+	activate_win(&r->win, button);
 }
 
 static void
@@ -1683,20 +1556,6 @@ static const struct xdg_wm_base_listener xdg_wm_base_listener = {
 	.ping = xdg_wm_base_ping,
 };
 
-static void
-popup_select(uint32_t button)
-{
-	int idx;
-
-	if (popup_count <= 0)
-		return;
-	idx = (int)((popup_ptr_y - PAD) / ROW_H);
-	if (idx < 0 || idx >= popup_count)
-		return;
-	activate_win(&popup_wins[idx], button, 1);
-	popup_close();
-}
-
 static int
 row_at(double x, double y)
 {
@@ -1710,39 +1569,26 @@ row_at(double x, double y)
 
 static void
 ptr_enter(__unused void *d, __unused struct wl_pointer *p,
-    uint32_t serial, struct wl_surface *s, wl_fixed_t x,
+    uint32_t serial, __unused struct wl_surface *s, wl_fixed_t x,
     wl_fixed_t y)
 {
 	cow_module_cursor_set_default(&cursor, serial);
-	if (s == popup_surface) {
-		popup_ptr_x = wl_fixed_to_double(x);
-		popup_ptr_y = wl_fixed_to_double(y);
-	} else {
-		ptr_x = wl_fixed_to_double(x);
-		ptr_y = wl_fixed_to_double(y);
-	}
-	pointer_surface = s;
+	ptr_x = wl_fixed_to_double(x);
+	ptr_y = wl_fixed_to_double(y);
 }
 
 static void
 ptr_leave(__unused void *d, __unused struct wl_pointer *p,
-    __unused uint32_t serial, struct wl_surface *s)
+    __unused uint32_t serial, __unused struct wl_surface *s)
 {
-	if (pointer_surface == s)
-		pointer_surface = NULL;
 }
 
 static void
 ptr_motion(__unused void *d, __unused struct wl_pointer *p,
     __unused uint32_t time, wl_fixed_t x, wl_fixed_t y)
 {
-	if (pointer_surface == popup_surface) {
-		popup_ptr_x = wl_fixed_to_double(x);
-		popup_ptr_y = wl_fixed_to_double(y);
-	} else {
-		ptr_x = wl_fixed_to_double(x);
-		ptr_y = wl_fixed_to_double(y);
-	}
+	ptr_x = wl_fixed_to_double(x);
+	ptr_y = wl_fixed_to_double(y);
 }
 
 static void
@@ -1750,33 +1596,11 @@ ptr_button(__unused void *d, __unused struct wl_pointer *p,
     __unused uint32_t serial, __unused uint32_t time, uint32_t button,
     uint32_t state)
 {
-	if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
-		last_button_press_serial = serial;
-		if (pointer_surface == popup_surface && popup_surface != NULL &&
-		    popup_row >= 0 &&
-		    popup_ptr_x >= 0 && popup_ptr_x < popup_w &&
-		    popup_ptr_y >= 0 && popup_ptr_y < popup_h) {
-			popup_select(button);
-			popup_ignore_release = 1;
-		}
+	if (state == WL_POINTER_BUTTON_STATE_PRESSED)
 		return;
-	}
 	if (state != WL_POINTER_BUTTON_STATE_RELEASED)
 		return;
-	if (popup_ignore_release) {
-		popup_ignore_release = 0;
-		return;
-	}
-	if (pointer_surface == popup_surface && popup_surface != NULL &&
-	    popup_row >= 0 &&
-	    popup_ptr_x >= 0 && popup_ptr_x < popup_w &&
-	    popup_ptr_y >= 0 && popup_ptr_y < popup_h) {
-		popup_select(button);
-		return;
-	}
-	popup_close();
-	activate_row(row_at(ptr_x, ptr_y), button,
-	    last_button_press_serial != 0 ? last_button_press_serial : serial);
+	activate_row(row_at(ptr_x, ptr_y), button);
 }
 
 static void
@@ -2163,7 +1987,6 @@ main(int argc, char **argv)
 		event_free(wake_ev);
 	event_base_free(base);
 
-	popup_close();
 	if (xdg_toplevel != NULL)
 		xdg_toplevel_destroy(xdg_toplevel);
 	if (xdg_surface != NULL)

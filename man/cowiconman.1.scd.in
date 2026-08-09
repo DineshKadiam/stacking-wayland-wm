@@ -100,8 +100,11 @@ Left-click a row to focus the window.  If the window is iconified, it is
 restored and focused.
 
 Left-click a grouped row to open a selector for the windows in that group.
-Selector rows include the short window id, output, and desk.  Selecting a
-window restores/focuses it.
+The selector is a native cow menu using the current menu style.  Its rows
+include the short window id, output, and desk.  Selecting a window switches to
+its output, desk, and page, activates its container member when necessary,
+restores it when iconified, and focuses it.  Type-ahead is disabled for these
+selectors; number keys, arrows, Enter, and Escape remain available.
 
 Middle-click a row to toggle the window's iconified state.
 
