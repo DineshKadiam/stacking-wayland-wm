@@ -49,7 +49,7 @@
 
 #include "cow/attrs.h"
 #include "cow/colour.h"
-#include "cow/image.h"
+#include "cow/image_cache.h"
 #include "cow/module.h"
 #include "cow/module_config.h"
 #include "cow/module_cursor.h"
@@ -222,13 +222,7 @@ static int    opt_desk_last;
 static int    initial_size_done;
 static struct pager_config cfg;
 
-struct pager_icon_cache {
-	char *path;
-	int size;
-	uint32_t *pixels;
-	struct pager_icon_cache *next;
-};
-static struct pager_icon_cache *icon_cache;
+static struct cow_image_cache icon_cache;
 
 /*
  * Drag-an-overlay-plate handles.  The page-grid drawing publishes one
@@ -1191,84 +1185,6 @@ stroke_page_grid_lines(cairo_t *cr, double sx, double sy, double sw,
 }
 
 static void
-icon_cache_clear(void)
-{
-	while (icon_cache != NULL) {
-		struct pager_icon_cache *entry = icon_cache;
-		icon_cache = entry->next;
-		free(entry->path);
-		free(entry->pixels);
-		free(entry);
-	}
-}
-
-static struct pager_icon_cache *
-icon_cache_get(const char *path, int size)
-{
-	for (struct pager_icon_cache *entry = icon_cache; entry != NULL;
-	    entry = entry->next) {
-		if (entry->size == size && strcmp(entry->path, path) == 0)
-			return entry;
-	}
-
-	struct pager_icon_cache *entry = calloc(1, sizeof(*entry));
-	if (entry == NULL)
-		return NULL;
-	entry->path = strdup(path);
-	entry->pixels = calloc((size_t)size * size, sizeof(*entry->pixels));
-	if (entry->path == NULL || entry->pixels == NULL) {
-		free(entry->path);
-		free(entry->pixels);
-		free(entry);
-		return NULL;
-	}
-	entry->size = size;
-	struct cow_pixbuf pixbuf = {
-		.pixels = entry->pixels,
-		.stride_px = size,
-		.width = size,
-		.height = size,
-	};
-	if (!cow_image_render_rect(path, &pixbuf, 0, 0, size, size) &&
-	    strcmp(path, COW_DATADIR "/icons/default.png") != 0)
-		(void)cow_image_render_rect(COW_DATADIR "/icons/default.png",
-		    &pixbuf, 0, 0, size, size);
-	entry->next = icon_cache;
-	icon_cache = entry;
-	return entry;
-}
-
-static void
-blend_cached_icon(struct cow_pixbuf *dst, int x, int y,
-    const struct pager_icon_cache *icon)
-{
-	for (int sy = 0; sy < icon->size; sy++) {
-		int dy = y + sy;
-		if (dy < 0 || dy >= dst->height)
-			continue;
-		for (int sx = 0; sx < icon->size; sx++) {
-			int dx = x + sx;
-			if (dx < 0 || dx >= dst->width)
-				continue;
-			uint32_t src = icon->pixels[sy * icon->size + sx];
-			uint32_t sa = src >> 24;
-			if (sa == 0)
-				continue;
-			uint32_t *dp = &dst->pixels[dy * dst->stride_px + dx];
-			uint32_t d = *dp;
-			uint32_t inv = 255 - sa;
-			uint32_t a = sa + ((d >> 24) & 0xff) * inv / 255;
-			uint32_t r = ((src >> 16) & 0xff) +
-			    ((d >> 16) & 0xff) * inv / 255;
-			uint32_t g = ((src >> 8) & 0xff) +
-			    ((d >> 8) & 0xff) * inv / 255;
-			uint32_t b = (src & 0xff) + (d & 0xff) * inv / 255;
-			*dp = (a << 24) | (r << 16) | (g << 8) | b;
-		}
-	}
-}
-
-static void
 draw_icon_at(cairo_t *cr, const char *path, double cx, double cy, int size)
 {
 	if (path == NULL || *path == '\0' || size < 3)
@@ -1276,10 +1192,6 @@ draw_icon_at(cairo_t *cr, const char *path, double cx, double cy, int size)
 
 	int ix = (int)(cx - size / 2.0);
 	int iy = (int)(cy - size / 2.0);
-	struct pager_icon_cache *icon = icon_cache_get(path, size);
-	if (icon == NULL)
-		return;
-
 	cairo_surface_t *surface = cairo_get_target(cr);
 	cairo_surface_flush(surface);
 	struct cow_pixbuf pixbuf = {
@@ -1288,7 +1200,8 @@ draw_icon_at(cairo_t *cr, const char *path, double cx, double cy, int size)
 		.width = cairo_image_surface_get_width(surface),
 		.height = cairo_image_surface_get_height(surface),
 	};
-	blend_cached_icon(&pixbuf, ix, iy, icon);
+	(void)cow_image_cache_blit(&icon_cache, path,
+	    COW_DATADIR "/icons/default.png", &pixbuf, ix, iy, size);
 	cairo_surface_mark_dirty(surface);
 }
 
@@ -3795,7 +3708,7 @@ main(int argc, char *argv[])
 	if (seat != NULL)
 		wl_seat_destroy(seat);
 	wl_display_disconnect(display);
-	icon_cache_clear();
+	cow_image_cache_clear(&icon_cache);
 	pager_selections_free();
 
 	return 0;
