@@ -36,7 +36,8 @@ void cow_font_fini(struct cow_font *);
 int cow_font_text_width(struct cow_font *, const char *);
 
 /*
- * Render 'text' centred (with end-ellipsis) inside a w x h temporary
+ * Render 'text' with the requested alignment (and end-ellipsis) inside a
+ * w x h temporary
  * ARGB32 surface filled with 'bg', then composite the resulting glyphs
  * into 'dst' starting at (dx, dy).  Pixels with alpha=0 in the
  * intermediate surface are skipped, and the 'reserve_px' border of dst
@@ -49,6 +50,8 @@ int cow_font_text_width(struct cow_font *, const char *);
  * No-op if any of: dst NULL, font NULL, w <= 0, h <= 0, text NULL.
  */
 struct cow_pixbuf;
-void cow_font_render_label(struct cow_pixbuf *, int, int, int, int, struct cow_font *, const char *, const float[4], const float[4], int, int, int *);
+void cow_font_render_label(struct cow_pixbuf *, int, int, int, int,
+    struct cow_font *, const char *, const float[4], const float[4], int,
+    PangoAlignment, int *);
 
 #endif

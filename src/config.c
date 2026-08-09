@@ -20,7 +20,6 @@
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
-#include <pango/pangocairo.h>
 
 #include "cow/colour.h"
 #include "cow/compat.h"
@@ -292,8 +291,8 @@ cow_config_create(void)
 	config->titlebar.enabled   = false;
 	config->titlebar.font_name = NULL;
 	config->titlebar.position  = COW_TITLEBAR_TOP;
-	config->titlebar.active_title_justify = PANGO_ALIGN_CENTER;
-	config->titlebar.inactive_title_justify = PANGO_ALIGN_CENTER;
+	config->titlebar.active_title_justify = COW_TITLE_JUST_CENTRE;
+	config->titlebar.inactive_title_justify = COW_TITLE_JUST_CENTRE;
 	config->titlebar.button_style = COW_BORDER_STYLE_FVWM;
 	cow_colour_convert(config->titlebar.active_colour, 0xC0C0C0);
 	cow_colour_convert(config->titlebar.inactive_colour, 0xA0A0A0);

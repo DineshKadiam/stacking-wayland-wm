@@ -929,13 +929,14 @@ set_titlebar_active_relief(const char *val, struct cmd_q *cmdq)
 static enum cmd_retval
 set_titlebar_active_title_justify(const char *val, struct cmd_q *cmdq)
 {
-	int v = PANGO_ALIGN_CENTER;
-	if (strcmp(val, "center") == 0) {
-		v = PANGO_ALIGN_CENTER;
+	enum cow_title_justify v;
+
+	if (strcmp(val, "center") == 0 || strcmp(val, "centre") == 0) {
+		v = COW_TITLE_JUST_CENTRE;
 	} else if (strcmp(val, "left") == 0) {
-		v = PANGO_ALIGN_LEFT;
+		v = COW_TITLE_JUST_LEFT;
 	} else if (strcmp(val, "right") == 0) {
-		v = PANGO_ALIGN_RIGHT;
+		v = COW_TITLE_JUST_RIGHT;
 	} else {
 		cmdq_error(cmdq, "set: bad titlebar alignment %s", val);
 		return (CMD_RETURN_ERROR);
@@ -951,13 +952,14 @@ set_titlebar_active_title_justify(const char *val, struct cmd_q *cmdq)
 static enum cmd_retval
 set_titlebar_inactive_title_justify(const char *val, struct cmd_q *cmdq)
 {
-	int v = PANGO_ALIGN_CENTER;
-	if (strcmp(val, "center") == 0) {
-		v = PANGO_ALIGN_CENTER;
+	enum cow_title_justify v;
+
+	if (strcmp(val, "center") == 0 || strcmp(val, "centre") == 0) {
+		v = COW_TITLE_JUST_CENTRE;
 	} else if (strcmp(val, "left") == 0) {
-		v = PANGO_ALIGN_LEFT;
+		v = COW_TITLE_JUST_LEFT;
 	} else if (strcmp(val, "right") == 0) {
-		v = PANGO_ALIGN_RIGHT;
+		v = COW_TITLE_JUST_RIGHT;
 	} else {
 		cmdq_error(cmdq, "set: bad titlebar alignment %s", val);
 		return (CMD_RETURN_ERROR);

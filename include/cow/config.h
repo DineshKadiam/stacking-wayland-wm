@@ -192,6 +192,12 @@ enum cow_squeeze_just {
 	COW_JUST_RIGHT,
 };
 
+enum cow_title_justify {
+	COW_TITLE_JUST_LEFT = 0,
+	COW_TITLE_JUST_CENTRE,
+	COW_TITLE_JUST_RIGHT,
+};
+
 struct cow_titlebar_squeeze {
 	enum cow_squeeze_mode mode;
 	enum cow_squeeze_just justify;
@@ -281,8 +287,8 @@ struct cow_titlebar_config {
 	
 	int active_relief;
 	int inactive_relief;
-	int active_title_justify;
-	int inactive_title_justify;
+	enum cow_title_justify active_title_justify;
+	enum cow_title_justify inactive_title_justify;
 	enum cow_border_style button_style;
 
 };

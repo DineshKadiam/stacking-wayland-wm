@@ -528,6 +528,20 @@ draw_titlebar_button(uint32_t *pixels, int stride_px,
 	}
 }
 
+static PangoAlignment
+title_alignment(enum cow_title_justify justify)
+{
+	switch (justify) {
+	case COW_TITLE_JUST_LEFT:
+		return PANGO_ALIGN_LEFT;
+	case COW_TITLE_JUST_RIGHT:
+		return PANGO_ALIGN_RIGHT;
+	case COW_TITLE_JUST_CENTRE:
+	default:
+		return PANGO_ALIGN_CENTER;
+	}
+}
+
 static void
 cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 {
@@ -554,12 +568,8 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 	int			       active_tab = ctx->active_tab;
 	bool			       drop_target = ctx->drop_target;
 	enum cow_titlebar_position position = ctx->tb_cfg->position;
-	int align;
-	if (active) {
-		align = tb_cfg->active_title_justify;
-	} else {
-		align = tb_cfg->inactive_title_justify;
-	}
+	PangoAlignment align = title_alignment(active ?
+	    tb_cfg->active_title_justify : tb_cfg->inactive_title_justify);
 	enum cow_border_style border_style = tb_cfg->button_style;
 	
 	if (tb_rect.height <= 0 || tb_rect.width <= 0 ||
@@ -747,7 +757,8 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 
 		for (int y = tb_y + relief; y < tb_y + tb_h - relief; y++) {
 			/* Left stipple area */
-			if (align == PANGO_ALIGN_RIGHT || PANGO_ALIGN_CENTER) {
+			if (align == PANGO_ALIGN_RIGHT ||
+			    align == PANGO_ALIGN_CENTER) {
 				for (int x = sx1; x < text_start && x < sx2; x++) {
 					if ((x + y) % 2 == 0)
 						pixels[y * stride_px + x] = px_lt;

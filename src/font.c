@@ -114,7 +114,7 @@ cow_font_text_width(struct cow_font *font, const char *text)
 void
 cow_font_render_label(struct cow_pixbuf *dst, int dx, int dy, int w, int h,
     struct cow_font *font, const char *text, const float bg[4],
-    const float fg[4], int reserve_px, int align, int *out_text_w)
+    const float fg[4], int reserve_px, PangoAlignment align, int *out_text_w)
 {
 	if (out_text_w != NULL)
 		*out_text_w = 0;
