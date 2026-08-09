@@ -344,6 +344,8 @@ menu_style_field(const char *key)
 		return (COW_MENU_STYLE_ICON_GAP);
 	if (strcmp(key, "icon.path") == 0)
 		return (COW_MENU_STYLE_ICON_PATH);
+	if (strcmp(key, "font") == 0)
+		return (COW_MENU_STYLE_FONT);
 	if (strcmp(key, "title.underlines") == 0)
 		return (COW_MENU_STYLE_TITLE_UNDERLINES);
 	if (strcmp(key, "automatic.hotkeys") == 0)
@@ -360,7 +362,8 @@ menu_style_field_changes_geometry(uint32_t field)
 	    field == COW_MENU_STYLE_PADDING_X ||
 	    field == COW_MENU_STYLE_PADDING_Y ||
 	    field == COW_MENU_STYLE_ICON_SIZE ||
-	    field == COW_MENU_STYLE_ICON_GAP);
+	    field == COW_MENU_STYLE_ICON_GAP ||
+	    field == COW_MENU_STYLE_FONT);
 }
 
 static enum cmd_retval
@@ -444,6 +447,10 @@ cmd_menu_style_exec(struct cmd *self, struct cmd_q *cmdq)
 			xfree(menu->style.icon_path);
 			menu->style.icon_path = NULL;
 		}
+		if (field == COW_MENU_STYLE_FONT) {
+			xfree(menu->style.font);
+			menu->style.font = NULL;
+		}
 		if (!cow_ipc.startup_mode)
 			cow_menu_style_refresh(menu,
 			    menu_style_field_changes_geometry(field));
@@ -487,6 +494,34 @@ cmd_menu_style_exec(struct cmd *self, struct cmd_q *cmdq)
 		}
 		if (!cow_ipc.startup_mode)
 			cow_menu_style_refresh(menu, false);
+		xfree(val);
+		return (CMD_RETURN_NORMAL);
+	}
+	if (strcmp(key, "font") == 0) {
+		if (val[0] == '\0') {
+			cmdq_error(cmdq, "menu-style: font cannot be empty");
+			ret = CMD_RETURN_ERROR;
+			goto out;
+		}
+		if (menu_name == NULL) {
+			xfree(cow_config->menu_style.font);
+			cow_config->menu_style.font = xstrdup(val);
+		} else {
+			if (menu == NULL)
+				menu = cow_menu_create(menu_name);
+			if (menu == NULL) {
+				cmdq_error(cmdq,
+				    "menu-style: cannot create menu \"%s\"",
+				    menu_name);
+				ret = CMD_RETURN_ERROR;
+				goto out;
+			}
+			xfree(menu->style.font);
+			menu->style.font = xstrdup(val);
+			menu->style_overrides |= field;
+		}
+		if (!cow_ipc.startup_mode)
+			cow_menu_style_refresh(menu, true);
 		xfree(val);
 		return (CMD_RETURN_NORMAL);
 	}

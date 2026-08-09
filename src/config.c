@@ -436,6 +436,7 @@ cow_config_destroy(struct cow_config *config)
 	}
 	xfree(config->output_bg_image);
 	xfree(config->menu_style.icon_path);
+	xfree(config->menu_style.font);
 
 	xfree(config);
 }

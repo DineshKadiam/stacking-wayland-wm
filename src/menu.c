@@ -77,6 +77,7 @@ cow_menu_style_default(struct cow_menu_style *s)
 	s->padding_y		       = 2;
 	s->icon_size		       = 16;
 	s->icon_gap		       = 4;
+	s->font			       = NULL;
 	const char *xdg = getenv("XDG_CONFIG_HOME");
 	const char *home = getenv("HOME");
 	if (xdg != NULL && xdg[0] != '\0')
@@ -135,6 +136,7 @@ cow_menu_style_resolve(const struct cow_menu *menu, struct cow_menu_style *out)
 	APPLY(COW_MENU_STYLE_ICON_SIZE, icon_size);
 	APPLY(COW_MENU_STYLE_ICON_GAP, icon_gap);
 	APPLY(COW_MENU_STYLE_ICON_PATH, icon_path);
+	APPLY(COW_MENU_STYLE_FONT, font);
 	APPLY(COW_MENU_STYLE_TITLE_UNDERLINES, title_underlines);
 	APPLY(COW_MENU_STYLE_AUTOMATIC_HOTKEYS, automatic_hotkeys);
 	APPLY(COW_MENU_STYLE_SELECTION_RELIEF, selection_relief);
@@ -144,6 +146,7 @@ cow_menu_style_resolve(const struct cow_menu *menu, struct cow_menu_style *out)
 static bool label_contains_folded(const char *, const char *);
 
 static PangoFontDescription *g_font_desc;
+static char		    *g_font_name;
 static struct wl_keyboard   *g_menu_keyboard;
 static struct xkb_keymap    *g_menu_keymap;
 static struct xkb_state     *g_menu_xkb_state;
@@ -308,13 +311,19 @@ menu_keyboard_destroy(void)
 }
 
 static PangoFontDescription *
-menu_font(void)
+menu_font(const struct cow_menu_style *style)
 {
-	if (g_font_desc != NULL)
+	const char *name = style != NULL && style->font != NULL ? style->font :
+	    (cow_config != NULL && cow_config->font_name != NULL) ?
+	    cow_config->font_name : "Sans 11";
+
+	if (g_font_desc != NULL && g_font_name != NULL &&
+	    strcmp(g_font_name, name) == 0)
 		return (g_font_desc);
-	const char *name = (cow_config != NULL && cow_config->font_name) ?
-	    cow_config->font_name :
-	    "Sans 11";
+	if (g_font_desc != NULL)
+		pango_font_description_free(g_font_desc);
+	xfree(g_font_name);
+	g_font_name	 = xstrdup(name);
 	g_font_desc	 = pango_font_description_from_string(name);
 	/* If the font name had no explicit size, force 11pt. */
 	if (pango_font_description_get_size(g_font_desc) == 0)
@@ -669,6 +678,7 @@ cow_menu_destroy(struct cow_menu *menu)
 	wl_list_remove(&menu->link);
 	xfree(menu->name);
 	xfree(menu->style.icon_path);
+	xfree(menu->style.font);
 	xfree(menu);
 }
 
@@ -691,6 +701,8 @@ cow_menu_destroy_all(void)
 		pango_font_description_free(g_font_desc);
 		g_font_desc = NULL;
 	}
+	xfree(g_font_name);
+	g_font_name = NULL;
 }
 
 struct cow_menu_item *
@@ -755,7 +767,7 @@ menu_item_visible(const struct cow_menu *menu, const struct cow_menu_item *it)
 
 static void
 text_extents(const struct cow_menu *menu, const struct cow_menu_item *it,
-    bool bold, int *w_out, int *h_out)
+    const struct cow_menu_style *style, bool bold, int *w_out, int *h_out)
 {
 	*w_out = 0;
 	*h_out = 0;
@@ -765,7 +777,8 @@ text_extents(const struct cow_menu *menu, const struct cow_menu_item *it,
 	    1, 1);
 	cairo_t		*cr   = cairo_create(surf);
 	PangoLayout	*lay  = pango_cairo_create_layout(cr);
-	PangoFontDescription *fd = pango_font_description_copy(menu_font());
+	PangoFontDescription *fd =
+	    pango_font_description_copy(menu_font(style));
 	if (bold)
 		pango_font_description_set_weight(fd, PANGO_WEIGHT_BOLD);
 	pango_layout_set_font_description(lay, fd);
@@ -817,8 +830,8 @@ popup_layout(struct cow_menu_popup *p)
 		if (it->type == COW_MENU_ITEM_SEPARATOR)
 			continue;
 		int tw, th;
-		text_extents(p->def, it, it->type == COW_MENU_ITEM_TITLE, &tw,
-		    &th);
+		text_extents(p->def, it, st, it->type == COW_MENU_ITEM_TITLE,
+		    &tw, &th);
 		if (tw > max_label_w)
 			max_label_w = tw;
 		if (th > max_text_h)
@@ -936,7 +949,8 @@ popup_fit_to_output(struct cow_menu_popup *popup, int *x, int *y,
  */
 static void
 render_text(cairo_surface_t *cs, int x, int y, int w, int h, const char *text,
-    int underline, const float fg[4], bool bold, int align)
+    int underline, const float fg[4], const struct cow_menu_style *style,
+    bool bold, int align)
 {
 	if (text == NULL || text[0] == '\0')
 		return;
@@ -945,7 +959,8 @@ render_text(cairo_surface_t *cs, int x, int y, int w, int h, const char *text,
 	cairo_clip(cr);
 	cairo_set_source_rgba(cr, fg[0], fg[1], fg[2], fg[3]);
 	PangoLayout	     *lay = pango_cairo_create_layout(cr);
-	PangoFontDescription *fd  = pango_font_description_copy(menu_font());
+	PangoFontDescription *fd =
+	    pango_font_description_copy(menu_font(style));
 	if (bold)
 		pango_font_description_set_weight(fd, PANGO_WEIGHT_BOLD);
 	pango_layout_set_font_description(lay, fd);
@@ -1164,8 +1179,8 @@ popup_render(struct cow_menu_popup *p)
 			}
 			render_text(cs, x + st->padding_x, y,
 			    innerw - st->padding_x * 2, rh - 2, label,
-			    underline,
-			    st->title_fg, true, 1 /* centre */);
+			    underline, st->title_fg, st, true,
+			    1 /* centre */);
 			}
 			for (int u = 0; u < st->title_underlines && u < 2; u++) {
 				int yy = y + rh - 2 - u * 2;
@@ -1204,7 +1219,7 @@ popup_render(struct cow_menu_popup *p)
 			menu_label_resolve(p->def, it, label, sizeof(label),
 			    &underline);
 			render_text(cs, label_x, y, label_w, rh,
-			    label, underline, st->fg, false, 0);
+			    label, underline, st->fg, st, false, 0);
 
 			if (it->is_popup) {
 				int cy = y + rh / 2;

@@ -1932,6 +1932,8 @@ The table below shows the possible values:
 :  none
 |  *fg*
 :  near-black
+|  *font*
+:  the current global font (a Pango font description)
 |  *title.bg*
 :  0xbebebe
 |  *title.bg.gradient*
@@ -1986,7 +1988,21 @@ item hotkey and underlines it.  Use *&&* for a literal ampersand.
 When *automatic.hotkeys* is enabled, *cow* assigns unique alphanumeric hotkeys
 to selectable items that do not have an explicit *&* marker.
 
-Menus automatically use the *font_name* setting, used globally in *cow*.
+When *font* is not set, menus use the global font.
+
+The menu font can be set globally or per menu.  For example:
+
+```
+menu-style font 'Bitstream Vera Sans 17'
+menu-style -m WindowOpsMenu font 'monospace 10'
+```
+
+This allows menu and titlebar fonts to be selected independently:
+
+```
+decor -d default titlebar.font 'Bitstream Vera Sans 10'
+menu-style font 'Bitstream Vera Sans 17'
+```
 
 For example, these menus share the global geometry and default raised selection
 relief, but use different colour palettes:

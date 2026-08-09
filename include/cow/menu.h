@@ -53,6 +53,7 @@ struct cow_menu_style {
 	int   icon_size;    /* menu item icon size (px) */
 	int   icon_gap;     /* gap between icon and label (px) */
 	char *icon_path;    /* colon-separated menu icon search path */
+	char *font;         /* Pango font description, or NULL for global */
 	int   title_underlines;
 	bool  automatic_hotkeys;
 	enum cow_menu_selection_relief selection_relief;
@@ -78,6 +79,7 @@ enum cow_menu_style_field {
 	COW_MENU_STYLE_ICON_GAP		 = 1u << 15,
 	COW_MENU_STYLE_ICON_PATH		 = 1u << 16,
 	COW_MENU_STYLE_BORDER_RELIEF	 = 1u << 17,
+	COW_MENU_STYLE_FONT		 = 1u << 18,
 };
 
 enum cow_menu_item_type {
