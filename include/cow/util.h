@@ -48,6 +48,9 @@ char *cow_path_resolve(const char *, const char *);
 /* Return an allocated directory component for a path. */
 char *cow_path_dirname(const char *);
 
+/* Quote and join argv so cmd_string_parse() recovers the same arguments. */
+char *cow_command_from_argv(size_t, const char *const *);
+
 /*
  * Create, bind, and listen on an AF_UNIX SOCK_STREAM socket inside
  * $XDG_RUNTIME_DIR.

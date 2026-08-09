@@ -375,6 +375,14 @@ icon_placement_test = executable('test-icon-placement',
 )
 test('icon-placement', icon_placement_test)
 
+command_quote_test = executable('test-command-quote',
+    'tests/command-quote.c',
+    'src/util.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('command-quote', command_quote_test)
+
 subdir('cowbar')
 subdir('modules/cowbuttons')
 subdir('modules/cowident')

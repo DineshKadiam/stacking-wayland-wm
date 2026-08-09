@@ -28,6 +28,108 @@
 #include <time.h>
 #include <unistd.h>
 
+static bool
+command_arg_needs_quotes(const char *s)
+{
+	if (s == NULL || *s == '\0')
+		return (true);
+	for (; *s != '\0'; s++) {
+		unsigned char ch = (unsigned char)*s;
+		if (isspace(ch) || ch == '"' || ch == '\'' || ch == '\\' ||
+		    ch == '#')
+			return (true);
+	}
+	return (false);
+}
+
+static size_t
+command_arg_quoted_len(const char *s)
+{
+	if (!command_arg_needs_quotes(s))
+		return (strlen(s));
+
+	size_t len = 2;
+	for (; *s != '\0'; s++) {
+		switch (*s) {
+		case '\\':
+		case '"':
+		case '\n':
+		case '\r':
+		case '\t':
+			len += 2;
+			break;
+		default:
+			len++;
+			break;
+		}
+	}
+	return (len);
+}
+
+static char *
+command_arg_quote(char *dst, const char *s)
+{
+	if (!command_arg_needs_quotes(s)) {
+		size_t len = strlen(s);
+		memcpy(dst, s, len);
+		return (dst + len);
+	}
+
+	*dst++ = '"';
+	for (; *s != '\0'; s++) {
+		switch (*s) {
+		case '\\':
+			*dst++ = '\\';
+			*dst++ = '\\';
+			break;
+		case '"':
+			*dst++ = '\\';
+			*dst++ = '"';
+			break;
+		case '\n':
+			*dst++ = '\\';
+			*dst++ = 'n';
+			break;
+		case '\r':
+			*dst++ = '\\';
+			*dst++ = 'r';
+			break;
+		case '\t':
+			*dst++ = '\\';
+			*dst++ = 't';
+			break;
+		default:
+			*dst++ = *s;
+			break;
+		}
+	}
+	*dst++ = '"';
+	return (dst);
+}
+
+char *
+cow_command_from_argv(size_t argc, const char *const *argv)
+{
+	size_t len = 0;
+
+	for (size_t i = 0; i < argc; i++)
+		len += command_arg_quoted_len(argv[i]) + 1;
+	if (len == 0)
+		return (strdup(""));
+
+	char *buf = malloc(len);
+	if (buf == NULL)
+		return (NULL);
+	char *p = buf;
+	for (size_t i = 0; i < argc; i++) {
+		if (i != 0)
+			*p++ = ' ';
+		p = command_arg_quote(p, argv[i]);
+	}
+	*p = '\0';
+	return (buf);
+}
+
 char *
 cow_path_resolve(const char *base_dir, const char *path)
 {
