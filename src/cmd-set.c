@@ -975,15 +975,19 @@ set_titlebar_inactive_title_justify(const char *val, struct cmd_q *cmdq)
 static enum cmd_retval
 set_titlebar_button_style(const char *val, struct cmd_q *cmdq)
 {
-	enum cow_border_style v = COW_BORDER_STYLE_FVWM;
+	enum cow_titlebar_button_style v;
+
 	if (strcmp(val, "fvwm") == 0) {
-		v = COW_BORDER_STYLE_FVWM;
+		v = COW_TITLEBAR_BUTTON_STYLE_FVWM;
 	} else if (strcmp(val, "mwm") == 0) {
-		v = COW_BORDER_STYLE_MWM;
+		v = COW_TITLEBAR_BUTTON_STYLE_MWM;
 	} else if (strcmp(val, "none") == 0) {
-		v = COW_BORDER_STYLE_NONE;
+		v = COW_TITLEBAR_BUTTON_STYLE_NONE;
+	} else if (strcmp(val, "inherit") == 0) {
+		v = COW_TITLEBAR_BUTTON_STYLE_INHERIT;
 	} else {
-		cmdq_error(cmdq, "set: bad button style %s", val);
+		cmdq_error(cmdq, "set: titlebar.button_style: %s: "
+		    "expected inherit|fvwm|mwm|none", val);
 		return (CMD_RETURN_ERROR);
 	}
 
@@ -993,7 +997,6 @@ set_titlebar_button_style(const char *val, struct cmd_q *cmdq)
 	finish_visual_update(COW_VIEW_CFG_TITLEBAR_BUTTON_STYLE, cfg);
 	return (CMD_RETURN_NORMAL);
 }
-
 
 static enum cmd_retval
 set_titlebar_inactive_relief(const char *val, struct cmd_q *cmdq)

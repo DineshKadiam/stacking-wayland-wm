@@ -293,7 +293,7 @@ cow_config_create(void)
 	config->titlebar.position  = COW_TITLEBAR_TOP;
 	config->titlebar.active_title_justify = COW_TITLE_JUST_CENTRE;
 	config->titlebar.inactive_title_justify = COW_TITLE_JUST_CENTRE;
-	config->titlebar.button_style = COW_BORDER_STYLE_FVWM;
+	config->titlebar.button_style = COW_TITLEBAR_BUTTON_STYLE_INHERIT;
 	cow_colour_convert(config->titlebar.active_colour, 0xC0C0C0);
 	cow_colour_convert(config->titlebar.inactive_colour, 0xA0A0A0);
 	cow_colour_convert(config->titlebar.fg_active, 0x000000);

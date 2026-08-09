@@ -570,7 +570,9 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 	enum cow_titlebar_position position = ctx->tb_cfg->position;
 	PangoAlignment align = title_alignment(active ?
 	    tb_cfg->active_title_justify : tb_cfg->inactive_title_justify);
-	enum cow_border_style border_style = tb_cfg->button_style;
+	enum cow_border_style border_style =
+	    tb_cfg->button_style == COW_TITLEBAR_BUTTON_STYLE_INHERIT ?
+	    ctx->border_style : (enum cow_border_style)tb_cfg->button_style;
 	
 	if (tb_rect.height <= 0 || tb_rect.width <= 0 ||
 	    frame_w <= 2 * border_width)

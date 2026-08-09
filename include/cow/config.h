@@ -83,6 +83,13 @@ enum cow_border_style {
 	COW_BORDER_STYLE_FVWM = 1,
 };
 
+enum cow_titlebar_button_style {
+	COW_TITLEBAR_BUTTON_STYLE_INHERIT = -2,
+	COW_TITLEBAR_BUTTON_STYLE_NONE = COW_BORDER_STYLE_NONE,
+	COW_TITLEBAR_BUTTON_STYLE_MWM = COW_BORDER_STYLE_MWM,
+	COW_TITLEBAR_BUTTON_STYLE_FVWM = COW_BORDER_STYLE_FVWM,
+};
+
 /*
  * Window placement mode.
  */
@@ -289,7 +296,7 @@ struct cow_titlebar_config {
 	int inactive_relief;
 	enum cow_title_justify active_title_justify;
 	enum cow_title_justify inactive_title_justify;
-	enum cow_border_style button_style;
+	enum cow_titlebar_button_style button_style;
 
 };
 
