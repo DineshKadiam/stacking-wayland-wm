@@ -31,6 +31,7 @@
 #include <wayland-client.h>
 
 #include "cow/compat.h"
+#include "cow/image_cache.h"
 #include "cow/module.h"
 #include "cow/module_cursor.h"
 #include "xdg-shell-client-protocol.h"
@@ -42,8 +43,10 @@
 #define MAX_ROWS 512
 #define MAX_NAME 128
 #define MAX_MATCHES 16
+#define MAX_ICON_PATH 1024
 #define DEFAULT_BUTTON_W 300
 #define DEFAULT_MIN_BUTTON_W 80
+#define DEFAULT_ICON_SIZE 16
 #define ROW_H 24
 #define PAD 4
 #define TEXT_PAD 8
@@ -108,6 +111,7 @@ struct win {
 	char app_id[MAX_NAME];
 	char title[256];
 	char output[MAX_NAME];
+	char icon[MAX_ICON_PATH];
 	int  desk;
 	int  x, y;
 	int  vx, vy, w, h;
@@ -204,6 +208,9 @@ static int		 opt_cols;
 static int		 button_w = DEFAULT_BUTTON_W;
 static int		 min_button_w = DEFAULT_MIN_BUTTON_W;
 static int		 iconified_marker;
+static int		 show_icons;
+static int		 icon_size = DEFAULT_ICON_SIZE;
+static struct cow_image_cache icon_cache;
 static char		 self_title[MAX_NAME];
 static char		 self_id[MAX_NAME];
 static struct match_rule matches[MAX_MATCHES];
@@ -229,6 +236,7 @@ usage(void)
 	    "                  [--rows N] [--cols N]\n"
 	    "                  [--anchor none|top|bottom]\n"
 	    "                  [--button-width N] [--min-button-width N]\n"
+	    "                  [--icons] [--icon-size N]\n"
 	    "                  [--iconified-marker]\n"
 	    "                  [--show-self] [-h]\n");
 }
@@ -1067,17 +1075,39 @@ draw_relief(cairo_t *cr, double x, double y, double w, double h, int sunken)
 }
 
 static void
-draw_iconified_marker(cairo_t *cr, const struct row *r)
+draw_iconified_marker(cairo_t *cr, const struct win *win, double x,
+    double y, double h)
 {
-	double x = r->x + TEXT_PAD;
-	double y = r->y + (r->h - MARKER_SIZE) / 2.0;
+	double marker_y = y + (h - MARKER_SIZE) / 2.0;
 
-	if (!r->win.iconified)
+	if (!win->iconified)
 		return;
 	cairo_set_source_rgb(cr, 0.62, 0.62, 0.66);
-	cairo_rectangle(cr, x, y, MARKER_SIZE, MARKER_SIZE);
+	cairo_rectangle(cr, x, marker_y, MARKER_SIZE, MARKER_SIZE);
 	cairo_fill(cr);
-	draw_relief(cr, x, y, MARKER_SIZE, MARKER_SIZE, 0);
+	draw_relief(cr, x, marker_y, MARKER_SIZE, MARKER_SIZE, 0);
+}
+
+static void
+draw_icon(cairo_t *cr, const char *path, int x, int y, int size)
+{
+	cairo_surface_t	 *target;
+	struct cow_pixbuf pixbuf;
+
+	if (path[0] == '\0')
+		return;
+
+	target = cairo_get_target(cr);
+	cairo_surface_flush(target);
+	pixbuf = (struct cow_pixbuf) {
+		.pixels = (uint32_t *)cairo_image_surface_get_data(target),
+		.stride_px = cairo_image_surface_get_stride(target) / 4,
+		.width = cairo_image_surface_get_width(target),
+		.height = cairo_image_surface_get_height(target),
+	};
+	(void)cow_image_cache_blit(&icon_cache, path, NULL, &pixbuf, x, y,
+	    size);
+	cairo_surface_mark_dirty(target);
 }
 
 static void
@@ -1238,10 +1268,14 @@ popup_render(void)
 		    sunken);
 
 		format_popup_label(label, sizeof(label), w);
+		if (show_icons) {
+			draw_icon(cr, w->icon, label_x,
+			    y + (ROW_H - icon_size) / 2, icon_size);
+			label_x += icon_size + MARKER_GAP;
+			label_w -= icon_size + MARKER_GAP;
+		}
 		if (iconified_marker) {
-			struct row mr = { .win = *w, .x = PAD, .y = y,
-				.w = popup_w - 2 * PAD, .h = ROW_H };
-			draw_iconified_marker(cr, &mr);
+			draw_iconified_marker(cr, w, label_x, y, ROW_H);
 			label_x += MARKER_SIZE + MARKER_GAP;
 			label_w -= MARKER_SIZE + MARKER_GAP;
 		}
@@ -1328,8 +1362,15 @@ do_render(const struct state *st)
 			draw_relief(cr, r->x, r->y, r->w - 1, r->h - 1,
 			    sunken);
 
+			if (show_icons) {
+				draw_icon(cr, r->win.icon, label_x,
+				    r->y + (r->h - icon_size) / 2, icon_size);
+				label_x += icon_size + MARKER_GAP;
+				label_w -= icon_size + MARKER_GAP;
+			}
 			if (iconified_marker) {
-				draw_iconified_marker(cr, r);
+				draw_iconified_marker(cr, &r->win, label_x, r->y,
+				    r->h);
 				label_x += MARKER_SIZE + MARKER_GAP;
 				label_w -= MARKER_SIZE + MARKER_GAP;
 			}
@@ -1506,6 +1547,7 @@ fetch_windows(void)
 		copy_jstr(wins[n].app_id, sizeof(wins[n].app_id), w, "app_id");
 		copy_jstr(wins[n].title, sizeof(wins[n].title), w, "title");
 		copy_jstr(wins[n].output, sizeof(wins[n].output), w, "output");
+		copy_jstr(wins[n].icon, sizeof(wins[n].icon), w, "icon");
 		if (strcmp(wins[n].app_id, PROG) == 0 &&
 		    strcmp(wins[n].title, self_title) == 0)
 			strlcpy(new_self_id, wins[n].id, sizeof(new_self_id));
@@ -1961,6 +2003,8 @@ parse_args(int argc, char **argv)
 		{ "anchor",    required_argument, NULL, 'a' },
 		{ "button-width", required_argument, NULL, 'b' },
 		{ "min-button-width", required_argument, NULL, 'm' },
+		{ "icons",     no_argument,       NULL, 'i' },
+		{ "icon-size", required_argument, NULL, 'z' },
 		{ "iconified-marker", no_argument, NULL, 'I' },
 		{ "show-self", no_argument,       NULL, 'S' },
 		{ "help",      no_argument,       NULL, 'h' },
@@ -2014,6 +2058,14 @@ parse_args(int argc, char **argv)
 			break;
 		case 'm':
 			if (!parse_positive(optarg, &min_button_w))
+				return 0;
+			break;
+		case 'i':
+			show_icons = 1;
+			break;
+		case 'z':
+			if (!parse_positive(optarg, &icon_size) ||
+			    icon_size > ROW_H - 4)
 				return 0;
 			break;
 		case 'I':
@@ -2123,6 +2175,7 @@ main(int argc, char **argv)
 		wl_pointer_destroy(pointer);
 	}
 	cow_module_cursor_fini(&cursor);
+	cow_image_cache_clear(&icon_cache);
 	if (seat != NULL)
 		wl_seat_destroy(seat);
 	wl_display_disconnect(display);

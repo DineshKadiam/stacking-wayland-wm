@@ -11,10 +11,15 @@ iconman_deps = [
     dependency('cairo'),
     dependency('threads'),
     dependency('libevent'),
+    m_dep,
 ]
 
 executable('cowiconman',
     ['src/cowiconman.c'] + iconman_generated,
+    '../../src/image.c',
+    '../../src/image_cache.c',
+    '../../src/xpm.c',
+    '../../src/memory.c',
     '../../src/module.c',
     '../../src/util.c',
     '../../src/module_cursor.c',

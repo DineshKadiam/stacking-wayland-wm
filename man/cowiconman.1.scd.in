@@ -14,6 +14,7 @@ cowiconman - CoW Icon Manager
 [*--format* _FMT_]++
 [*--rows* _N_] [*--cols* _N_] [*--anchor* *none*|*top*|*bottom*]++
 [*--button-width* _N_] [*--min-button-width* _N_]++
+[*--icons*] [*--icon-size* _N_]++
 [*--iconified-marker*] [*--show-self*]
 
 # DESCRIPTION
@@ -75,6 +76,14 @@ area.
 	Minimum button width used when the preferred grid would exceed the
 	output's usable width.  The default is 80.
 
+*--icons*
+	Show each window's application icon before its label.  cowiconman uses
+	the icon resolved by cow.
+
+*--icon-size* _N_
+	Set the application icon size in pixels.  The default is 16 and the
+	maximum is 20.
+
 *--iconified-marker*
 	Reserve space before each label and draw a small square there for
 	iconified windows.
@@ -85,7 +94,7 @@ area.
 *-h*, *--help*
 	Print usage and exit.
 
-# USE
+# USAGE
 
 Left-click a row to focus the window.  If the window is iconified, it is
 restored and focused.
@@ -162,6 +171,12 @@ Show an iconified-window marker before labels:
 
 ```
 cowiconman --iconified-marker &
+```
+
+Show 16-pixel application icons before labels:
+
+```
+cowiconman --icons &
 ```
 
 Remove the border, handles, and titlebar from cowiconman while preserving
