@@ -1821,6 +1821,9 @@ decor to change aspects of how icons are controlled:
    windows can still be iconified, but no desktop icon is created.
 |  *icon.size*
 :  Iconified window icon size in pixels (default: 64).
+|  *icon.label\_area*
+:  Height in pixels reserved below the icon image for the centred window
+   title (default: 20).
 |  *icon.image*
 :  _auto_, _none_, or a PNG, SVG, or XPM path drawn inside the iconified window
    icon box.  The default, _auto_, resolves the application's desktop-entry icon

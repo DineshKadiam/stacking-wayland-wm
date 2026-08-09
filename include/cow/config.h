@@ -39,6 +39,7 @@ struct cow_desk;
 #define COW_CFG_DEFAULT_STEP 100
 #define COW_CFG_DEFAULT_CORNER_LENGTH 20
 #define COW_CFG_DEFAULT_ICON_SIZE 64
+#define COW_CFG_DEFAULT_ICON_LABEL_AREA 20
 #define COW_CFG_DEFAULT_SNAP_DISTANCE 10
 #define COW_CFG_DEFAULT_PAGE_COLS 1
 #define COW_CFG_DEFAULT_PAGE_ROWS 1
@@ -386,6 +387,7 @@ struct cow_config {
 	/* Icon size for iconified (minimized) windows */
 	bool icon_enabled;
 	int icon_size;
+	int icon_label_area;
 	char *icon_image;
 	float icon_background[4];
 	float icon_foreground[4];

@@ -516,6 +516,7 @@ set_option_is_decor(const struct cow_option_entry *opt, const char *key)
 	    strcmp(key, "border.width") == 0 ||
 	    strcmp(key, "icon.enabled") == 0 ||
 	    strcmp(key, "icon.size") == 0 ||
+	    strcmp(key, "icon.label_area") == 0 ||
 	    strcmp(key, "icon.image") == 0 ||
 	    strcmp(key, "icon.background") == 0 ||
 	    strcmp(key, "icon.foreground") == 0 ||

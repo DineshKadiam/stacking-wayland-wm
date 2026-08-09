@@ -234,6 +234,7 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 		dst->corner_length = COW_CFG_DEFAULT_CORNER_LENGTH;
 		dst->icon_enabled = true;
 		dst->icon_size	   = COW_CFG_DEFAULT_ICON_SIZE;
+		dst->icon_label_area = COW_CFG_DEFAULT_ICON_LABEL_AREA;
 		dst->border_style  = COW_BORDER_STYLE_FVWM;
 		cow_colour_convert(dst->icon_background, 0x828282);
 		cow_colour_convert(dst->icon_foreground, 0xFFFFFF);
@@ -268,6 +269,7 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 	    xstrdup0(cow_config->container.tab_inactive_image);
 	dst->icon_enabled	= cow_config->icon_enabled;
 	dst->icon_size		= cow_config->icon_size;
+	dst->icon_label_area = cow_config->icon_label_area;
 	dst->icon_image		= xstrdup0(cow_config->icon_image);
 	dst->title_format	= xstrdup0(cow_config->title_format);
 	memcpy(dst->icon_background, cow_config->icon_background,
@@ -638,6 +640,9 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		break;
 	case COW_VIEW_CFG_ICON_SIZE:
 		cfg->icon_size = cow_config->icon_size;
+		break;
+	case COW_VIEW_CFG_ICON_LABEL_AREA:
+		cfg->icon_label_area = cow_config->icon_label_area;
 		break;
 	case COW_VIEW_CFG_ICON_IMAGE:
 		xfree(cfg->icon_image);
@@ -2551,13 +2556,6 @@ cow_view_invalidate_auto_icon_positions(struct cow_output *output)
 void
 cow_view_layout_icons_on_output(struct cow_output *output)
 {
-	/* Use the global icon_size for the row geometry; individual
-	 * views may carry a different icon_size in their snapshot but
-	 * the layout grid is uniform per-output to keep icons aligned. */
-	int icon_sz = cow_config ? cow_config->icon_size :
-				   COW_CFG_DEFAULT_ICON_SIZE;
-	int icon_h  = icon_sz + 20; /* extra height for text below */
-	int icon_w  = icon_sz;
 	struct cow_icon_placement placement;
 	if (cow_config != NULL)
 		cow_icon_placement_resolve(cow_config, output, &placement);
@@ -2580,6 +2578,8 @@ cow_view_layout_icons_on_output(struct cow_output *output)
 		if (view->output != output)
 			continue;
 
+		int icon_w = view->cfg.icon_size;
+		int icon_h = icon_w + view->cfg.icon_label_area;
 		view->icon_width = icon_w;
 		view->icon_height = icon_h;
 		if (view->icon_manual_position)
@@ -2593,6 +2593,8 @@ cow_view_layout_icons_on_output(struct cow_output *output)
 			    view->icon_manual_position ||
 			    !view->icon_auto_position_valid)
 				continue;
+			int icon_w = view->cfg.icon_size;
+			int icon_h = icon_w + view->cfg.icon_label_area;
 			if (!icon_position_available(&output->usable_area, occupied,
 				occupied_count, view->icon_x, view->icon_y, icon_w,
 				icon_h)) {
@@ -2611,6 +2613,8 @@ cow_view_layout_icons_on_output(struct cow_output *output)
 		    view->icon_manual_position ||
 		    (!placement.compact && view->icon_auto_position_valid))
 			continue;
+		int icon_w = view->cfg.icon_size;
+		int icon_h = icon_w + view->cfg.icon_label_area;
 		int x, y;
 		bool found = cow_icon_placement_find(&placement, &box, icon_w, icon_h,
 		    occupied, occupied_count, &x, &y);

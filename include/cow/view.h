@@ -242,6 +242,7 @@ enum cow_view_cfg_option {
 	COW_VIEW_CFG_TITLE_FORMAT,
 	COW_VIEW_CFG_ICON_ENABLED,
 	COW_VIEW_CFG_ICON_SIZE,
+	COW_VIEW_CFG_ICON_LABEL_AREA,
 	COW_VIEW_CFG_ICON_IMAGE,
 	COW_VIEW_CFG_ICON_BACKGROUND,
 	COW_VIEW_CFG_ICON_FOREGROUND,
@@ -276,6 +277,7 @@ struct cow_view_cfg {
 
 	bool icon_enabled;
 	int icon_size;
+	int icon_label_area;
 	char *icon_image;
 	float icon_background[4];
 	float icon_foreground[4];

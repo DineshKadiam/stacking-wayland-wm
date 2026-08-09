@@ -128,6 +128,18 @@ const struct cow_option_entry cow_options_table[] = {
 		.post = COW_OPTION_POST_REFRESH_VISUALS,
 	},
 	{
+		.name = "icon.label_area",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_MIXED,
+		.action = COW_OPTION_SCALAR_INT,
+		.id = COW_VIEW_CFG_ICON_LABEL_AREA,
+		.config_offset = offsetof(struct cow_config, icon_label_area),
+		.view_offset = offsetof(struct cow_view_cfg, icon_label_area),
+		.lo = 0,
+		.hi = INT_MAX,
+		.post = COW_OPTION_POST_REFRESH_VISUALS,
+	},
+	{
 		.name = "icon.image",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_MIXED,

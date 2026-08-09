@@ -270,6 +270,7 @@ cow_config_create(void)
 	config->cursor_hide_timeout  = 0;
 	config->icon_enabled	     = true;
 	config->icon_size	     = COW_CFG_DEFAULT_ICON_SIZE;
+	config->icon_label_area     = COW_CFG_DEFAULT_ICON_LABEL_AREA;
 	config->icon_image	     = xstrdup("auto");
 	config->icon_title_relief = true;
 	config->snap_distance	     = COW_CFG_DEFAULT_SNAP_DISTANCE;
@@ -379,6 +380,7 @@ cow_config_reset_decor(struct cow_config *config)
 	config->icon_enabled = defaults->icon_enabled;
 	config->icon_image = defaults->icon_image;
 	config->icon_size = defaults->icon_size;
+	config->icon_label_area = defaults->icon_label_area;
 	memcpy(config->icon_background, defaults->icon_background,
 	    sizeof(config->icon_background));
 	memcpy(config->icon_foreground, defaults->icon_foreground,
