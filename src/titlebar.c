@@ -459,6 +459,76 @@ draw_titlebar_relief(uint32_t *pixels, int stride, int rx, int ry, int rw,
 }
 
 static void
+draw_titlebar_button(uint32_t *pixels, int stride_px,
+    struct cow_pixbuf *strip, const struct cow_titlebar_config *tb_cfg,
+    int btn_idx, int bx, int by, int btn_s, bool active, int pressed_button,
+    int icon_inverted_button, const struct cow_gradient *tb_gradient,
+    const char *tb_image, uint32_t px_base, uint32_t px_lt, uint32_t px_dk,
+    uint32_t px_fg, enum cow_border_style border_style,
+    enum cow_titlebar_position position)
+{
+	const struct cow_titlebar_button_config *button =
+	    &tb_cfg->buttons[btn_idx];
+	const float *custom_colour = active ? button->active_colour :
+	    button->inactive_colour;
+	int relief = active ? button->active_relief : button->inactive_relief;
+	uint32_t button_base = px_base;
+	uint32_t colours[5] = {
+		[COW_VECTOR_SHADOW] = px_dk,
+		[COW_VECTOR_HIGHLIGHT] = px_lt,
+		[COW_VECTOR_BG] = px_base,
+		[COW_VECTOR_FG] = px_fg,
+		[COW_VECTOR_INVISIBLE] = 0,
+	};
+
+	if ((tb_gradient == NULL ||
+	    tb_gradient->mode == COW_GRADIENT_NONE) && tb_image == NULL)
+		cow_draw_fill_rect(strip, bx, by, btn_s, btn_s, px_base);
+
+	if (custom_colour[3] != 0.0f) {
+		float custom_lt[4], custom_dk[4];
+
+		cow_colour_lighten(custom_lt, custom_colour);
+		cow_colour_darken(custom_dk, custom_colour);
+		button_base = cow_colour_to_pixel(custom_colour);
+		colours[COW_VECTOR_SHADOW] = cow_colour_to_pixel(custom_dk);
+		colours[COW_VECTOR_HIGHLIGHT] = cow_colour_to_pixel(custom_lt);
+		colours[COW_VECTOR_BG] = button_base;
+		cow_draw_fill_rect(strip, bx, by, btn_s, btn_s, button_base);
+	}
+
+	bool sunken = pressed_button == btn_idx;
+	if (relief == COW_RELIEF_SUNKEN)
+		sunken = !sunken;
+	if (sunken || relief != COW_RELIEF_FLAT) {
+		draw_titlebar_relief(pixels, stride_px, bx, by, btn_s, btn_s,
+		    colours[COW_VECTOR_HIGHLIGHT], colours[COW_VECTOR_SHADOW],
+		    sunken, border_style, position);
+	}
+
+	if (button->image != NULL) {
+		cow_image_render_rect(button->image, strip, bx + 2, by + 2,
+		    btn_s - 4, btn_s - 4);
+		return;
+	}
+
+	uint32_t btn_buf[btn_s * btn_s];
+	for (int p = 0; p < btn_s * btn_s; p++)
+		btn_buf[p] = button_base;
+
+	bool icon_inverted = icon_inverted_button == btn_idx || sunken;
+	cow_vector_button_draw(&button->vector, btn_buf, btn_s, btn_s, btn_s,
+	    btn_s, colours, icon_inverted);
+	for (int py = 1; py < btn_s - 1; py++) {
+		for (int px = 1; px < btn_s - 1; px++) {
+			uint32_t colour = btn_buf[py * btn_s + px];
+			if (colour != button_base)
+				pixels[(by + py) * stride_px + bx + px] = colour;
+		}
+	}
+}
+
+static void
 cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 {
 	uint32_t			      *pixels = ctx->pixels;
@@ -589,21 +659,6 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 			right_btns++;
 	}
 
-	/* Vector button colour palette */
-	uint32_t colors[5];
-	colors[COW_VECTOR_SHADOW]    = px_dk;
-	colors[COW_VECTOR_HIGHLIGHT] = px_lt;
-	colors[COW_VECTOR_BG]	     = px_base;
-	colors[COW_VECTOR_FG]	     = px_fg;
-	colors[COW_VECTOR_INVISIBLE] = 0;
-	
-	uint32_t customcolors[5];
-	customcolors[COW_VECTOR_FG]	     = px_fg;
-	customcolors[COW_VECTOR_INVISIBLE] = 0;
-	
-	uint32_t * finalcolours;
-
-
 	int pos = 0;
 	for (size_t i = 0; i < sizeof left_order / sizeof left_order[0]; i++) {
 		int btn_idx = left_order[i];
@@ -615,93 +670,11 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 			break;
 		pos++;
 
-		bool btn_sunken = (pressed_button == btn_idx);
-
-		if ((tb_gradient == NULL ||
-		    tb_gradient->mode == COW_GRADIENT_NONE) &&
-		    tb_image == NULL) {
-			for (int py = by; py < by + btn_s; py++)
-				for (int px = bx; px < bx + btn_s; px++)
-					pixels[py * stride_px + px] = px_base;
-		}
-
-		if (active && tb_cfg->buttons[btn_idx].active_colour[3]) {
-			uint32_t button_base = cow_colour_to_pixel(tb_cfg->buttons[btn_idx].active_colour);
-			cow_draw_fill_rect(&strip_p, bx, by, btn_s, btn_s, button_base);
-		} else if (!active && tb_cfg->buttons[btn_idx].inactive_colour[3]) {
-			uint32_t button_base = cow_colour_to_pixel(tb_cfg->buttons[btn_idx].inactive_colour);
-			cow_draw_fill_rect(&strip_p, bx, by, btn_s, btn_s, button_base);
-		}
-		if ((active && (tb_cfg->buttons[btn_idx].active_relief == COW_RELIEF_SUNKEN)) || (!active && (tb_cfg->buttons[btn_idx].inactive_relief == COW_RELIEF_SUNKEN))) {
-			// Flip the depth indicator for "sunken" buttons.
-			btn_sunken = !btn_sunken;
-		}
-		
-				
-		if (active && tb_cfg->buttons[btn_idx].active_colour[3]) {
-			float customlt[4], customdk[4];
-			cow_colour_lighten(customlt, tb_cfg->buttons[btn_idx].active_colour);
-			cow_colour_darken(customdk, tb_cfg->buttons[btn_idx].active_colour);
-			customcolors[COW_VECTOR_SHADOW]    = cow_colour_to_pixel(customdk);
-			customcolors[COW_VECTOR_HIGHLIGHT] = cow_colour_to_pixel(customlt);
-			customcolors[COW_VECTOR_BG]	     = cow_colour_to_pixel(tb_cfg->buttons[btn_idx].active_colour);
-			finalcolours = customcolors;
-			px_dk = customcolors[COW_VECTOR_SHADOW];
-			px_lt = customcolors[COW_VECTOR_HIGHLIGHT];
-		} else if (!active && tb_cfg->buttons[btn_idx].inactive_colour[3]) {
-			float customlt[4], customdk[4];
-			cow_colour_lighten(customlt, tb_cfg->buttons[btn_idx].inactive_colour);
-			cow_colour_darken(customdk, tb_cfg->buttons[btn_idx].inactive_colour);
-			customcolors[COW_VECTOR_SHADOW]    = cow_colour_to_pixel(customdk);
-			customcolors[COW_VECTOR_HIGHLIGHT] = cow_colour_to_pixel(customlt);
-			customcolors[COW_VECTOR_BG]	     = cow_colour_to_pixel(tb_cfg->buttons[btn_idx].inactive_colour);
-			finalcolours = customcolors;
-			px_dk = customcolors[COW_VECTOR_SHADOW];
-			px_lt = customcolors[COW_VECTOR_HIGHLIGHT];
-		} else {
-			finalcolours = colors;
-			px_dk = colors[COW_VECTOR_SHADOW];
-			px_lt = colors[COW_VECTOR_HIGHLIGHT];
-		}
-		
-		// if not sunken, and not flat, we can draw a border
-		if (btn_sunken || (active && (tb_cfg->buttons[btn_idx].active_relief != COW_RELIEF_FLAT)) || (!active && (tb_cfg->buttons[btn_idx].inactive_relief != COW_RELIEF_FLAT))) {
-			draw_titlebar_relief(pixels, stride_px, bx, by, btn_s, btn_s,
-		    px_lt, px_dk, btn_sunken, border_style, position);
-		}
-
-
-
-		if (tb_cfg->buttons[btn_idx].image != NULL) {
-			cow_image_render_rect(tb_cfg->buttons[btn_idx].image,
-			    &strip_p, bx + 2, by + 2, btn_s - 4, btn_s - 4);
-			continue;
-		}
-
-		/* Draw vector into temp buffer then blit */
-		uint32_t btn_buf[btn_s * btn_s];
-		for (int p = 0; p < btn_s * btn_s; p++)
-			btn_buf[p] = px_base;
-
-		bool icon_inverted =
-		    (icon_inverted_button == btn_idx) || btn_sunken;
-		cow_vector_button_draw(&tb_cfg->buttons[btn_idx].vector,
-		    btn_buf, btn_s, btn_s, btn_s, btn_s, finalcolours, icon_inverted);
-
-		for (int py = 1; py < btn_s - 1; py++) {
-			for (int px = 1; px < btn_s - 1; px++) {
-				uint32_t c = btn_buf[py * btn_s + px];
-				if (c != px_base)
-					pixels[(by + py) * stride_px +
-					    (bx + px)] = c;
-			}
-		}
+		draw_titlebar_button(pixels, stride_px, &strip_p, tb_cfg,
+		    btn_idx, bx, by, btn_s, active, pressed_button,
+		    icon_inverted_button, tb_gradient, tb_image, px_base, px_lt,
+		    px_dk, px_fg, border_style, position);
 	}
-	
-	// Reset custom trim colours
-	px_dk = colors[COW_VECTOR_SHADOW];
-	px_lt = colors[COW_VECTOR_HIGHLIGHT];
-
 
 	pos = 0;
 	for (size_t i = 0; i < sizeof right_order / sizeof right_order[0]; i++) {
@@ -714,95 +687,11 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 		if (bx < tb_x)
 			break;
 
-		bool btn_sunken = (pressed_button == btn_idx);
-
-		if ((tb_gradient == NULL ||
-		    tb_gradient->mode == COW_GRADIENT_NONE) &&
-		    tb_image == NULL) {
-			for (int py = by; py < by + btn_s; py++)
-				for (int px = bx; px < bx + btn_s; px++)
-					pixels[py * stride_px + px] = px_base;
-		}
-
-		if (active && tb_cfg->buttons[btn_idx].active_colour[3]) {
-			uint32_t button_base = cow_colour_to_pixel(tb_cfg->buttons[btn_idx].active_colour);
-			cow_draw_fill_rect(&strip_p, bx, by, btn_s, btn_s, button_base);
-		} else if (!active && tb_cfg->buttons[btn_idx].inactive_colour[0]) {
-			uint32_t button_base = cow_colour_to_pixel(tb_cfg->buttons[btn_idx].inactive_colour);
-			cow_draw_fill_rect(&strip_p, bx, by, btn_s, btn_s, button_base);
-		}
-
-		if (active && tb_cfg->buttons[btn_idx].active_colour[3]) {
-			uint32_t button_base = cow_colour_to_pixel(tb_cfg->buttons[btn_idx].active_colour);
-			cow_draw_fill_rect(&strip_p, bx, by, btn_s, btn_s, button_base);
-		} else if (!active && tb_cfg->buttons[btn_idx].inactive_colour[0]) {
-			uint32_t button_base = cow_colour_to_pixel(tb_cfg->buttons[btn_idx].inactive_colour);
-			cow_draw_fill_rect(&strip_p, bx, by, btn_s, btn_s, button_base);
-		}
-		if ((active && (tb_cfg->buttons[btn_idx].active_relief == COW_RELIEF_SUNKEN)) || (!active && (tb_cfg->buttons[btn_idx].inactive_relief == COW_RELIEF_SUNKEN))) {
-			// Flip the depth indicator for "sunken" buttons.
-			btn_sunken = !btn_sunken;
-		}
-		
-		if (active && tb_cfg->buttons[btn_idx].active_colour[3]) {
-			float customlt[4], customdk[4];
-			cow_colour_lighten(customlt, tb_cfg->buttons[btn_idx].active_colour);
-			cow_colour_darken(customdk, tb_cfg->buttons[btn_idx].active_colour);
-			customcolors[COW_VECTOR_SHADOW]    = cow_colour_to_pixel(customdk);
-			customcolors[COW_VECTOR_HIGHLIGHT] = cow_colour_to_pixel(customlt);
-			customcolors[COW_VECTOR_BG]	     = cow_colour_to_pixel(tb_cfg->buttons[btn_idx].active_colour);
-			finalcolours = customcolors;
-			px_dk = customcolors[COW_VECTOR_SHADOW];
-			px_lt = customcolors[COW_VECTOR_HIGHLIGHT];
-		} else if (!active && tb_cfg->buttons[btn_idx].inactive_colour[3]) {
-			float customlt[4], customdk[4];
-			cow_colour_lighten(customlt, tb_cfg->buttons[btn_idx].inactive_colour);
-			cow_colour_darken(customdk, tb_cfg->buttons[btn_idx].inactive_colour);
-			customcolors[COW_VECTOR_SHADOW]    = cow_colour_to_pixel(customdk);
-			customcolors[COW_VECTOR_HIGHLIGHT] = cow_colour_to_pixel(customlt);
-			customcolors[COW_VECTOR_BG]	     = cow_colour_to_pixel(tb_cfg->buttons[btn_idx].inactive_colour);
-			finalcolours = customcolors;
-			px_dk = customcolors[COW_VECTOR_SHADOW];
-			px_lt = customcolors[COW_VECTOR_HIGHLIGHT];
-		} else {
-			finalcolours = colors;
-			px_dk = colors[COW_VECTOR_SHADOW];
-			px_lt = colors[COW_VECTOR_HIGHLIGHT];
-		}
-		// if not sunken, and not flat, we can draw a border
-		if (btn_sunken || (active && (tb_cfg->buttons[btn_idx].active_relief != COW_RELIEF_FLAT)) || (!active && (tb_cfg->buttons[btn_idx].inactive_relief != COW_RELIEF_FLAT))) {
-			draw_titlebar_relief(pixels, stride_px, bx, by, btn_s, btn_s,
-		    px_lt, px_dk, btn_sunken, border_style, position);
-		}
-
-
-		if (tb_cfg->buttons[btn_idx].image != NULL) {
-			cow_image_render_rect(tb_cfg->buttons[btn_idx].image,
-			    &strip_p, bx + 2, by + 2, btn_s - 4, btn_s - 4);
-			continue;
-		}
-
-		uint32_t btn_buf[btn_s * btn_s];
-		for (int p = 0; p < btn_s * btn_s; p++)
-			btn_buf[p] = px_base;
-
-		bool icon_inv = (icon_inverted_button == btn_idx) || btn_sunken;
-		cow_vector_button_draw(&tb_cfg->buttons[btn_idx].vector,
-		    btn_buf, btn_s, btn_s, btn_s, btn_s, finalcolours, icon_inv);
-
-		for (int py = 1; py < btn_s - 1; py++) {
-			for (int px = 1; px < btn_s - 1; px++) {
-				uint32_t c = btn_buf[py * btn_s + px];
-				if (c != px_base)
-					pixels[(by + py) * stride_px +
-					    (bx + px)] = c;
-			}
-		}
+		draw_titlebar_button(pixels, stride_px, &strip_p, tb_cfg,
+		    btn_idx, bx, by, btn_s, active, pressed_button,
+		    icon_inverted_button, tb_gradient, tb_image, px_base, px_lt,
+		    px_dk, px_fg, border_style, position);
 	}
-	
-		// Reset custom trim colours
-	px_dk = colors[COW_VECTOR_SHADOW];
-	px_lt = colors[COW_VECTOR_HIGHLIGHT];
 
 	/* Title text area: between left and right buttons */
 	int title_x	    = tb_x + left_btns * btn_s;

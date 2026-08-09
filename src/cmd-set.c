@@ -480,7 +480,6 @@ button_inactive_colour_option(int idx)
 	    idx * COW_VIEW_CFG_TITLEBAR_BUTTON_STRIDE;
 }
 
-
 static bool
 parse_button_key(const char *key, int *idx, const char **field)
 {
@@ -1836,11 +1835,11 @@ set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 	}
 	if (strcmp(field, "active_relief") == 0) {
 		if (strcmp(val, "raised") == 0) {
-			tb->buttons[idx].active_relief = COW_RELIEF_RAISED; // Default
+			tb->buttons[idx].active_relief = COW_RELIEF_RAISED;
 		} else if (strcmp(val, "sunken") == 0) {
-			tb->buttons[idx].active_relief = COW_RELIEF_SUNKEN; // Sunken/Reverse
+			tb->buttons[idx].active_relief = COW_RELIEF_SUNKEN;
 		} else if (strcmp(val, "flat") == 0) {
-			tb->buttons[idx].active_relief = COW_RELIEF_FLAT; // Flat
+			tb->buttons[idx].active_relief = COW_RELIEF_FLAT;
 		} else {
 			cmdq_error(cmdq, "set: invalid relief value");
 			return;
@@ -1848,14 +1847,14 @@ set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 		finish_visual_update(button_active_relief_option(idx), cfg);
 		return;
 	}
-	
+
 	if (strcmp(field, "inactive_relief") == 0) {
 		if (strcmp(val, "raised") == 0) {
-			tb->buttons[idx].inactive_relief = COW_RELIEF_RAISED; // Default
+			tb->buttons[idx].inactive_relief = COW_RELIEF_RAISED;
 		} else if (strcmp(val, "sunken") == 0) {
-			tb->buttons[idx].inactive_relief = COW_RELIEF_SUNKEN; // Sunken/Reverse
+			tb->buttons[idx].inactive_relief = COW_RELIEF_SUNKEN;
 		} else if (strcmp(val, "flat") == 0) {
-			tb->buttons[idx].inactive_relief = COW_RELIEF_FLAT; // Flat
+			tb->buttons[idx].inactive_relief = COW_RELIEF_FLAT;
 		} else {
 			cmdq_error(cmdq, "set: invalid relief value");
 			return;
@@ -1863,31 +1862,30 @@ set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 		finish_visual_update(button_inactive_relief_option(idx), cfg);
 		return;
 	}
-	
+
 	if (strcmp(field, "inactive_colour") == 0) {
 		float c[4];
 		if (!cow_colour_parse(val, c)) {
 			cmdq_error(cmdq, "set: invalid colour value");
-			return ;
+			return;
 		}
-		
-		memcpy(tb->buttons[idx].inactive_colour, c, 4*sizeof(float));
+
+		memcpy(tb->buttons[idx].inactive_colour, c, sizeof(c));
 		finish_visual_update(button_inactive_colour_option(idx), cfg);
 		return;
 	}
-	
-		
+
 	if (strcmp(field, "active_colour") == 0) {
 		float c[4];
 		if (!cow_colour_parse(val, c)) {
 			cmdq_error(cmdq, "set: invalid colour value");
-			return ;
+			return;
 		}
-		memcpy(tb->buttons[idx].active_colour, c, 4*sizeof(float));
+		memcpy(tb->buttons[idx].active_colour, c, sizeof(c));
 		finish_visual_update(button_active_colour_option(idx), cfg);
 		return;
 	}
-	
+
 	cmdq_error(cmdq, "set: unknown key: %s", key);
 }
 
