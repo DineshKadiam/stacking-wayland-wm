@@ -1536,7 +1536,24 @@ pixel offset with a _p_ suffix, such as *100-5px50+1p@0*.
 Group windows into a tabbed container. A container is a meta-window that holds
 multiple application windows as tabs. Only the active tab's content is visible;
 all tabs share the container's position, size, and frame. The titlebar shows a
-clickable label for each member. Clicking a label activates that tab.
+clickable label for each member. Each label uses that window's *title_format*,
+so substitutions such as *%n* track application title changes and decor
+profiles can customise individual labels. Clicking a label activates that tab.
+
+For example, use the raw application title for all window and container-tab
+titles:
+
+```
+set title_format "%n"
+```
+
+Static text is also valid. It can be applied to a particular window using a
+decoration profile:
+
+```
+decor -d editor-tab title_format "Editor"
+decor -a editor-tab -t %foot
+```
 
 ## window-container [-t target] [-s source] [-arnpNP]
 

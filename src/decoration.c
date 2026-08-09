@@ -965,12 +965,8 @@ cow_decoration_update(struct cow_view *view, bool active)
 				struct cow_container_member *mem;
 				wl_list_for_each(mem, &ctr->members, link)
 				{
-					const char *lbl = mem->view->app_id;
-					if (lbl == NULL)
-						lbl = mem->view->title;
-					if (lbl == NULL)
-						lbl = "?";
-					tab_titles[idx] = lbl;
+					tab_titles[idx] =
+					    make_display_title(mem->view);
 					if (mem == ctr->active)
 						active_tab = idx;
 					idx++;
@@ -1014,6 +1010,8 @@ cow_decoration_update(struct cow_view *view, bool active)
 			};
 			cow_titlebar_render(&tbctx);
 			xfree(display_title);
+			for (int i = 0; i < n_tabs; i++)
+				xfree((char *)tab_titles[i]);
 			xfree(tab_titles);
 
 			if (shaded && ch == 0 && bw > 0 &&

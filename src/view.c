@@ -809,6 +809,18 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 }
 
 static void
+view_mark_title_dirty(struct cow_view *view)
+{
+	view->dec.dirty = true;
+	if (view->container_member == NULL)
+		return;
+
+	struct cow_container *c = view->container_member->container;
+	if (c->active != NULL)
+		c->active->view->dec.dirty = true;
+}
+
+static void
 window_handle_app_id(void *data, __unused struct river_window_v1 *rw,
     const char *app_id)
 {
@@ -821,6 +833,7 @@ window_handle_app_id(void *data, __unused struct river_window_v1 *rw,
 	    view->cfg.icon_size);
 	if (cow_view_is_iconified(view))
 		cow_view_icon_refresh(view);
+	view_mark_title_dirty(view);
 	cow_status_emit();
 	cow_wm_request_manage_dirty();
 }
@@ -837,8 +850,8 @@ window_handle_title(void *data, __unused struct river_window_v1 *rw,
 				       (strcmp(old, fresh) != 0);
 
 	xfree(view->title);
-	view->title	= title ? xstrdup(title) : NULL;
-	view->dec.dirty = true;
+	view->title = title ? xstrdup(title) : NULL;
+	view_mark_title_dirty(view);
 	cow_wm_request_manage_dirty();
 	cow_status_emit();
 
