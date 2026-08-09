@@ -410,6 +410,36 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		    xstrdup0(cow_config->titlebar.buttons[idx].image);
 		return;
 	}
+	idx = titlebar_button_index(option,
+	    COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTIVE_RELIEF);
+	if (idx != -1) {
+		cfg->titlebar.buttons[idx].active_relief =
+		    cow_config->titlebar.buttons[idx].active_relief;
+		return;
+	}
+	idx = titlebar_button_index(option,
+	    COW_VIEW_CFG_TITLEBAR_BUTTON_0_INACTIVE_RELIEF);
+	if (idx != -1) {
+		cfg->titlebar.buttons[idx].inactive_relief =
+		    cow_config->titlebar.buttons[idx].inactive_relief;
+		return;
+	}
+	idx = titlebar_button_index(option,
+	    COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTIVE_COLOUR);
+	if (idx != -1) {
+		memcpy(cfg->titlebar.buttons[idx].active_colour,
+		    cow_config->titlebar.buttons[idx].active_colour,
+		    sizeof(cfg->titlebar.buttons[idx].active_colour));
+		return;
+	}
+	idx = titlebar_button_index(option,
+	    COW_VIEW_CFG_TITLEBAR_BUTTON_0_INACTIVE_COLOUR);
+	if (idx != -1) {
+		memcpy(cfg->titlebar.buttons[idx].inactive_colour,
+		    cow_config->titlebar.buttons[idx].inactive_colour,
+		    sizeof(cfg->titlebar.buttons[idx].inactive_colour));
+		return;
+	}
 
 	switch (option) {
 	case COW_VIEW_CFG_BORDER:
@@ -580,6 +610,24 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 	case COW_VIEW_CFG_TITLEBAR_SQUEEZE_MIN_WIDTH:
 		cfg->titlebar.squeeze.min_width =
 		    cow_config->titlebar.squeeze.min_width;
+		break;
+	case COW_VIEW_CFG_TITLEBAR_ACTIVE_RELIEF:
+		cfg->titlebar.active_relief = cow_config->titlebar.active_relief;
+		break;
+	case COW_VIEW_CFG_TITLEBAR_INACTIVE_RELIEF:
+		cfg->titlebar.inactive_relief =
+		    cow_config->titlebar.inactive_relief;
+		break;
+	case COW_VIEW_CFG_TITLEBAR_ACTIVE_TITLE_JUSTIFY:
+		cfg->titlebar.active_title_justify =
+		    cow_config->titlebar.active_title_justify;
+		break;
+	case COW_VIEW_CFG_TITLEBAR_INACTIVE_TITLE_JUSTIFY:
+		cfg->titlebar.inactive_title_justify =
+		    cow_config->titlebar.inactive_title_justify;
+		break;
+	case COW_VIEW_CFG_TITLEBAR_BUTTON_STYLE:
+		cfg->titlebar.button_style = cow_config->titlebar.button_style;
 		break;
 	case COW_VIEW_CFG_CONTAINER_TAB_ACTIVE_COLOUR:
 		memcpy(cfg->container.tab_active, cow_config->container.tab_active,
