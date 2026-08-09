@@ -348,17 +348,36 @@ cow_titlebar_hit_for(const struct cow_view *view, int cw, int ch, int lx,
 	    dy >= r.y && dy < r.y + r.height);
 }
 
-/*
- * Draw FVWM-style raised relief: 1px highlight on top+left,
- * 1px shadow on bottom+right, matching fvwm's corner ownership.
- */
+struct titlebar_relief_edges {
+	uint32_t top;
+	uint32_t left;
+	uint32_t bottom;
+	uint32_t right;
+};
+
+static struct titlebar_relief_edges
+titlebar_relief_edges(enum cow_titlebar_position position, uint32_t ul,
+    uint32_t br)
+{
+	/* Vertical titlebars are rendered horizontally and rotated later. */
+	switch (position) {
+	case COW_TITLEBAR_LEFT:
+		return (struct titlebar_relief_edges) { ul, br, br, ul };
+	case COW_TITLEBAR_RIGHT:
+		return (struct titlebar_relief_edges) { br, ul, ul, br };
+	default:
+		return (struct titlebar_relief_edges) { ul, ul, br, br };
+	}
+}
+
 /*
  * Draw 2-ring concentric FVWM relief matching the original titlebar.c
  * draw_fvwm_relief (2px raised bevel = hiout + shin layers).
  */
 static void
 draw_fvwm_relief(uint32_t *pixels, int stride, int rx, int ry, int rw, int rh,
-    uint32_t px_lt, uint32_t px_dk, bool sunken, enum cow_titlebar_position position)
+    uint32_t px_lt, uint32_t px_dk, bool sunken,
+    enum cow_titlebar_position position)
 {
 	/*
 	 * FVWM-style 2px bevel.  Note that the corner ownership rule
@@ -378,42 +397,22 @@ draw_fvwm_relief(uint32_t *pixels, int stride, int rx, int ry, int rw, int rh,
 	};
 	uint32_t ul = sunken ? px_dk : px_lt;
 	uint32_t br = sunken ? px_lt : px_dk;
+	struct titlebar_relief_edges edges =
+	    titlebar_relief_edges(position, ul, br);
 
 	for (int r = 0; r < 2 && r < rw / 2 && r < rh / 2; r++) {
 		int y1 = ry + r + 1;
 
-		switch(position) {
-			case COW_TITLEBAR_LEFT:
-				if (r > 0)
-					cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + r,
-						ul);
-				cow_draw_vline(&p, rx + r, y1, ry + rh - 1 - r, br);
-				cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + rh - 1 - r,
-					br);
-				cow_draw_vline(&p, rx + rw - 1 - r, y1, ry + rh - 1 - r,
-					ul);
-				break;
-			case COW_TITLEBAR_RIGHT:
-				if (r > 0)
-					cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + r,
-						br);
-				cow_draw_vline(&p, rx + r, y1, ry + rh - 1 - r, ul);
-				cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + rh - 1 - r,
-					ul);
-				cow_draw_vline(&p, rx + rw - 1 - r, y1, ry + rh - 1 - r,
-					br);
-				break;
-			default:
-				if (r > 0)
-					cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + r,
-						ul);
-				cow_draw_vline(&p, rx + r, y1, ry + rh - 1 - r, ul);
-				cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + rh - 1 - r,
-					br);
-				cow_draw_vline(&p, rx + rw - 1 - r, y1, ry + rh - 1 - r,
-					br);
-				break;
+		if (r > 0) {
+			cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + r,
+			    edges.top);
 		}
+		cow_draw_vline(&p, rx + r, y1, ry + rh - 1 - r,
+		    edges.left);
+		cow_draw_hline(&p, rx + r, rx + rw - 1 - r,
+		    ry + rh - 1 - r, edges.bottom);
+		cow_draw_vline(&p, rx + rw - 1 - r, y1, ry + rh - 1 - r,
+		    edges.right);
 	}
 }
 
@@ -433,25 +432,14 @@ draw_titlebar_relief(uint32_t *pixels, int stride, int rx, int ry, int rw,
 		};
 		uint32_t ul = sunken ? px_dk : px_lt;
 		uint32_t br = sunken ? px_lt : px_dk;
-		switch (position) {
-			case COW_TITLEBAR_LEFT:
-				cow_draw_hline(&p, rx + 1, rx + rw - 1, ry, ul);
-				cow_draw_vline(&p, rx, ry + 1, ry + rh - 1, br);
-				cow_draw_hline(&p, rx, rx + rw - 2, ry + rh - 1, br);
-				cow_draw_vline(&p, rx + rw - 1, ry + 1, ry + rh - 1, ul);
-				break;
-			case COW_TITLEBAR_RIGHT:
-				cow_draw_hline(&p, rx + 1, rx + rw - 1, ry, br);
-				cow_draw_vline(&p, rx, ry + 1, ry + rh - 1, ul);
-				cow_draw_hline(&p, rx, rx + rw - 2, ry + rh - 1, ul);
-				cow_draw_vline(&p, rx + rw - 1, ry + 1, ry + rh - 1, br);
-				break;
-			default:
-				cow_draw_hline(&p, rx + 1, rx + rw - 1, ry, ul);
-				cow_draw_vline(&p, rx, ry + 1, ry + rh - 1, ul);
-				cow_draw_hline(&p, rx, rx + rw - 2, ry + rh - 1, br);
-				cow_draw_vline(&p, rx + rw - 1, ry + 1, ry + rh - 1, br);
-		}
+		struct titlebar_relief_edges edges =
+		    titlebar_relief_edges(position, ul, br);
+		cow_draw_hline(&p, rx + 1, rx + rw - 1, ry, edges.top);
+		cow_draw_vline(&p, rx, ry + 1, ry + rh - 1, edges.left);
+		cow_draw_hline(&p, rx, rx + rw - 2, ry + rh - 1,
+		    edges.bottom);
+		cow_draw_vline(&p, rx + rw - 1, ry + 1, ry + rh - 1,
+		    edges.right);
 		return;
 	}
 	draw_fvwm_relief(pixels, stride, rx, ry, rw, rh, px_lt, px_dk,
