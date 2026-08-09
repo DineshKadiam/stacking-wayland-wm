@@ -70,6 +70,7 @@
 enum cell_type {
 	CELL_EMPTY,
 	CELL_BUTTON,
+	CELL_SCRIPT,
 	CELL_PANEL_HANDLE,
 	CELL_EXTERNAL,
 	CELL_STATUS,
@@ -200,8 +201,17 @@ struct cell {
 	enum status_type  status;
 	int		  row;
 	int		  col;
-	char		  label[128];
+	char		  label[256];
 	char		  command[512];
+	char		  script[512];
+	int		  script_interval;
+	pid_t		  script_pid;
+	int		  script_fd;
+	char		  script_output[256];
+	size_t		  script_output_len;
+	bool		  script_output_done;
+	struct event	 *script_timer;
+	struct event	 *script_read_event;
 	enum panel_direction panel_dir;
 	int		  panel;
 	int		  target_panel;
@@ -272,6 +282,8 @@ static bool	       spawn_extra_instances = true;
 static char	       instance_title[256] = PROG;
 static struct panel_selection selected_panels[MAX_SELECTED_PANELS];
 static int	       n_selected_panels;
+static struct event_base *script_event_base;
+static struct event      *script_sigchld_event;
 
 static void render(void);
 static int  cell_colspan(const struct cell *);
@@ -291,6 +303,8 @@ static bool parse_instance_index(void);
 static void spawn_config_instances(const char *, const char *);
 static bool external_panels_exist(void);
 static void update_toplevel_size(void);
+static bool script_cells_start(struct event_base *);
+static void script_cells_stop(void);
 
 static void
 usage(void)
@@ -723,6 +737,8 @@ cell_get(int row, int col)
 	c->col = col;
 	c->panel = current_panel;
 	c->target_panel = -1;
+	c->script_pid = -1;
+	c->script_fd = -1;
 	if (row + 1 > cfg.rows)
 		cfg.rows = row + 1;
 	if (col + 1 > cfg.cols)
@@ -1034,6 +1050,47 @@ load_cell_props(struct cell *c, char **fields, int start, int n,
 		cfg.rows = c->row + cell_rowspan(c);
 	if (c->col + cell_colspan(c) > cfg.cols)
 		cfg.cols = c->col + cell_colspan(c);
+	return true;
+}
+
+static bool
+load_script(char **fields, int n, const char **why)
+{
+	struct cell *c;
+	bool interval_set = false;
+
+	if (n < 4 || ((n - 2) % 2) != 0) {
+		*why = "bad script";
+		return false;
+	}
+	c = cell_append();
+	if (c == NULL) {
+		*why = in_row ? "too many cells" : "script outside row";
+		return false;
+	}
+	c->type = CELL_SCRIPT;
+	strlcpy(c->script, fields[1], sizeof(c->script));
+
+	for (int i = 2; i < n; i += 2) {
+		if (strcmp(fields[i], "interval") == 0) {
+			int interval;
+
+			if (!parse_int(fields[i + 1], &interval) || interval < 1) {
+				*why = "bad script interval";
+				return false;
+			}
+			c->script_interval = interval;
+			interval_set = true;
+		} else if (strcmp(fields[i], "click") == 0) {
+			strlcpy(c->command, fields[i + 1], sizeof(c->command));
+		} else if (!load_cell_props(c, fields, i, i + 2, why))
+			return false;
+	}
+	if (!interval_set) {
+		*why = "script requires interval";
+		return false;
+	}
+	current_col = c->col + cell_colspan(c);
 	return true;
 }
 
@@ -1401,6 +1458,9 @@ load_config(const char *path)
 			if (!load_cell_props(c, fields, 3, n, &why))
 				goto line_error;
 			current_col = c->col + cell_colspan(c);
+		} else if (strcmp(fields[0], "script") == 0) {
+			if (!load_script(fields, n, &why))
+				goto line_error;
 		} else if (strcmp(fields[0], "status") == 0) {
 			if (n < 2) {
 				why = "bad status";
@@ -2305,6 +2365,7 @@ render(void)
 			if (c != NULL && c->type == CELL_SPACER)
 				continue;
 			if (c != NULL && (c->type == CELL_BUTTON ||
+			    c->type == CELL_SCRIPT ||
 			    c->type == CELL_PANEL_HANDLE)) {
 				label = c->label;
 				sunken = pressed_cell >= 0 &&
@@ -2378,6 +2439,212 @@ ipc_send(const char *cmd)
 		read(fd, b, sizeof(b));
 	}
 	close(fd);
+}
+
+static void
+script_schedule(struct cell *c, int seconds)
+{
+	struct timeval tv = { .tv_sec = seconds };
+
+	if (c->script_timer != NULL)
+		event_add(c->script_timer, &tv);
+}
+
+static void
+script_read_output(struct cell *c)
+{
+	char buf[512];
+	ssize_t n;
+
+	while ((n = read(c->script_fd, buf, sizeof(buf))) > 0) {
+		for (ssize_t i = 0; i < n; i++) {
+			unsigned char ch = (unsigned char)buf[i];
+
+			if (c->script_output_done)
+				continue;
+			if (ch == '\n') {
+				c->script_output_done = true;
+				continue;
+			}
+			if (ch == '\r' || ch == '\0')
+				continue;
+			if (c->script_output_len + 1 <
+			    sizeof(c->script_output)) {
+				c->script_output[c->script_output_len++] = (char)ch;
+				c->script_output[c->script_output_len] = '\0';
+			}
+		}
+	}
+	if (n == 0 && c->script_read_event != NULL)
+		event_del(c->script_read_event);
+}
+
+static void
+script_read_cb(__unused evutil_socket_t fd, __unused short events, void *data)
+{
+	script_read_output(data);
+}
+
+static void
+script_timer_cb(__unused evutil_socket_t fd, __unused short events, void *data)
+{
+	struct cell *c = data;
+	int pipefd[2];
+	pid_t pid;
+
+	if (c->script_pid > 0)
+		return;
+	if (pipe(pipefd) < 0) {
+		fprintf(stderr, "%s: script: pipe: %s\n", PROG,
+		    strerror(errno));
+		script_schedule(c, c->script_interval);
+		return;
+	}
+	pid = fork();
+	if (pid < 0) {
+		fprintf(stderr, "%s: script: fork: %s\n", PROG,
+		    strerror(errno));
+		close(pipefd[0]);
+		close(pipefd[1]);
+		script_schedule(c, c->script_interval);
+		return;
+	}
+	if (pid == 0) {
+		close(pipefd[0]);
+		setpgid(0, 0);
+		if (dup2(pipefd[1], STDOUT_FILENO) < 0)
+			_exit(127);
+		close(pipefd[1]);
+		execl("/bin/sh", "sh", "-c", c->script, (char *)NULL);
+		_exit(127);
+	}
+
+	close(pipefd[1]);
+	setpgid(pid, pid);
+	fcntl(pipefd[0], F_SETFL, O_NONBLOCK);
+	c->script_pid = pid;
+	c->script_fd = pipefd[0];
+	c->script_output[0] = '\0';
+	c->script_output_len = 0;
+	c->script_output_done = false;
+	c->script_read_event = event_new(script_event_base, c->script_fd,
+	    EV_READ | EV_PERSIST, script_read_cb, c);
+	if (c->script_read_event == NULL ||
+	    event_add(c->script_read_event, NULL) < 0) {
+		fprintf(stderr, "%s: script: cannot monitor output: %s\n", PROG,
+		    c->script);
+		if (c->script_read_event != NULL) {
+			event_free(c->script_read_event);
+			c->script_read_event = NULL;
+		}
+		close(c->script_fd);
+		c->script_fd = -1;
+	}
+}
+
+static void
+script_finish(struct cell *c, int status)
+{
+	if (c->script_fd >= 0)
+		script_read_output(c);
+	if (c->script_read_event != NULL) {
+		event_free(c->script_read_event);
+		c->script_read_event = NULL;
+	}
+	if (c->script_fd >= 0) {
+		close(c->script_fd);
+		c->script_fd = -1;
+	}
+	c->script_pid = -1;
+
+	if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+		if (strcmp(c->label, c->script_output) != 0) {
+			strlcpy(c->label, c->script_output, sizeof(c->label));
+			dirty = 1;
+			render();
+		}
+	} else if (WIFEXITED(status)) {
+		fprintf(stderr, "%s: script exited with status %d: %s\n", PROG,
+		    WEXITSTATUS(status), c->script);
+	} else if (WIFSIGNALED(status)) {
+		fprintf(stderr, "%s: script terminated by signal %d: %s\n",
+		    PROG, WTERMSIG(status), c->script);
+	}
+	script_schedule(c, c->script_interval);
+}
+
+static void
+script_sigchld_cb(__unused evutil_socket_t sig, __unused short events,
+    __unused void *data)
+{
+	for (int i = 0; i < n_cells; i++) {
+		struct cell *c = &cells[i];
+		int status;
+
+		if (c->type != CELL_SCRIPT || c->script_pid <= 0)
+			continue;
+		if (waitpid(c->script_pid, &status, WNOHANG) == c->script_pid)
+			script_finish(c, status);
+	}
+}
+
+static bool
+script_cells_start(struct event_base *base)
+{
+	struct timeval now = { 0 };
+	bool have_scripts = false;
+
+	script_event_base = base;
+	for (int i = 0; i < n_cells; i++) {
+		struct cell *c = &cells[i];
+
+		if (c->type != CELL_SCRIPT)
+			continue;
+		have_scripts = true;
+		c->script_timer = evtimer_new(base, script_timer_cb, c);
+		if (c->script_timer == NULL ||
+		    event_add(c->script_timer, &now) < 0)
+			return false;
+	}
+	if (!have_scripts)
+		return true;
+	script_sigchld_event = evsignal_new(base, SIGCHLD, script_sigchld_cb,
+	    NULL);
+	return script_sigchld_event != NULL &&
+	    event_add(script_sigchld_event, NULL) == 0;
+}
+
+static void
+script_cells_stop(void)
+{
+	if (script_sigchld_event != NULL) {
+		event_free(script_sigchld_event);
+		script_sigchld_event = NULL;
+	}
+	for (int i = 0; i < n_cells; i++) {
+		struct cell *c = &cells[i];
+
+		if (c->type != CELL_SCRIPT)
+			continue;
+		if (c->script_timer != NULL) {
+			event_free(c->script_timer);
+			c->script_timer = NULL;
+		}
+		if (c->script_read_event != NULL) {
+			event_free(c->script_read_event);
+			c->script_read_event = NULL;
+		}
+		if (c->script_fd >= 0) {
+			close(c->script_fd);
+			c->script_fd = -1;
+		}
+		if (c->script_pid > 0) {
+			kill(-c->script_pid, SIGTERM);
+			waitpid(c->script_pid, NULL, WNOHANG);
+			c->script_pid = -1;
+		}
+	}
+	script_event_base = NULL;
 }
 
 static char *
@@ -3128,6 +3395,8 @@ pointer_button(__unused void *data, __unused struct wl_pointer *p,
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
 		int idx = cell_at_point(ptr_x, ptr_y);
 		if (idx >= 0 && (cells[idx].type == CELL_BUTTON ||
+		    (cells[idx].type == CELL_SCRIPT &&
+		    cells[idx].command[0] != '\0') ||
 		    cells[idx].type == CELL_PANEL_HANDLE)) {
 			pressed_cell = idx;
 			render();
@@ -3140,7 +3409,8 @@ pointer_button(__unused void *data, __unused struct wl_pointer *p,
 	pressed_cell = -1;
 	render();
 	if (pressed >= 0 && idx == pressed &&
-	    cells[pressed].type == CELL_BUTTON)
+	    (cells[pressed].type == CELL_BUTTON ||
+	    cells[pressed].type == CELL_SCRIPT))
 		ipc_send(cells[pressed].command);
 	else if (pressed >= 0 && cells[pressed].type == CELL_PANEL_HANDLE)
 		panel_toggle(cells[pressed].target_panel);
@@ -3333,7 +3603,8 @@ main(int argc, char **argv)
 		    external_sync_cb, NULL);
 	if (wl_ev == NULL || wake_ev == NULL || event_add(wl_ev, NULL) < 0 ||
 	    event_add(wake_ev, NULL) < 0 || (external_ev != NULL &&
-	    event_add(external_ev, &external_tv) < 0)) {
+	    event_add(external_ev, &external_tv) < 0) ||
+	    !script_cells_start(base)) {
 		fprintf(stderr, "%s: failed to add events\n", PROG);
 		running = 0;
 	}
@@ -3351,6 +3622,7 @@ main(int argc, char **argv)
 		event_free(wake_ev);
 	if (external_ev != NULL)
 		event_free(external_ev);
+	script_cells_stop();
 	event_base_free(base);
 	externals_stop_all();
 
