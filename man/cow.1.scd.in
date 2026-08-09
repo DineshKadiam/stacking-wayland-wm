@@ -1934,6 +1934,8 @@ The table below shows the possible values:
 :  0x000000 (solid outer border colour)
 |  *border.width*
 :  2  (outer border thickness)
+|  *border.relief*
+:  flat (use _raised_ or _sunken_ for a three-dimensional border)
 |  *padding.x*
 :  6  (horizontal item padding)
 |  *padding.y*
@@ -1961,7 +1963,8 @@ colour.  This also applies to per-menu background overrides, including very
 light and very dark colours; no *selection.relief* setting is required to
 enable it.
 
-The outer menu border is a flat, solid *border.colour*.
+The flat outer menu border is a solid *border.colour*. Raised and sunken
+borders derive light and dark edges from *border.colour*.
 
 Gradient values use the same syntax as decoration gradients:
 *none*, *HGradient* _COLOUR_ _COLOUR_, or

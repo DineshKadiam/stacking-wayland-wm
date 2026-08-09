@@ -19,7 +19,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <wayland-client.h>
-
 #include "cow/colour.h"
 
 struct river_shell_surface_v1;
@@ -27,9 +26,16 @@ struct river_node_v1;
 struct cow_shm_buffer;
 struct cow_view;
 
+
 enum cow_menu_selection_relief {
 	COW_MENU_SELECTION_RELIEF_NONE,
 	COW_MENU_SELECTION_RELIEF_RAISED,
+};
+
+enum cow_menu_relief {
+	COW_MENU_RELIEF_RAISED,
+	COW_MENU_RELIEF_SUNKEN,
+	COW_MENU_RELIEF_FLAT,
 };
 
 struct cow_menu_style {
@@ -50,6 +56,7 @@ struct cow_menu_style {
 	int   title_underlines;
 	bool  automatic_hotkeys;
 	enum cow_menu_selection_relief selection_relief;
+	enum cow_menu_relief border_relief;
 };
 
 enum cow_menu_style_field {
@@ -70,6 +77,7 @@ enum cow_menu_style_field {
 	COW_MENU_STYLE_ICON_SIZE		 = 1u << 14,
 	COW_MENU_STYLE_ICON_GAP		 = 1u << 15,
 	COW_MENU_STYLE_ICON_PATH		 = 1u << 16,
+	COW_MENU_STYLE_BORDER_RELIEF	 = 1u << 17,
 };
 
 enum cow_menu_item_type {

@@ -332,6 +332,8 @@ menu_style_field(const char *key)
 		return (COW_MENU_STYLE_TITLE_BG_GRADIENT);
 	if (strcmp(key, "border.width") == 0)
 		return (COW_MENU_STYLE_BORDER_WIDTH);
+	if (strcmp(key, "border.relief") == 0)
+		return (COW_MENU_STYLE_BORDER_RELIEF);
 	if (strcmp(key, "padding.x") == 0)
 		return (COW_MENU_STYLE_PADDING_X);
 	if (strcmp(key, "padding.y") == 0)
@@ -567,6 +569,22 @@ cmd_menu_style_exec(struct cmd *self, struct cmd_q *cmdq)
 		} else {
 			cmdq_error(cmdq,
 			    "menu-style: %s: expected none|raised", key);
+			ret = CMD_RETURN_ERROR;
+		}
+		goto out;
+	}
+
+	if (strcmp(key, "border.relief") == 0) {
+		if (strcmp(val, "raised") == 0) {
+			st->border_relief = COW_MENU_RELIEF_RAISED;
+		} else if (strcmp(val, "flat") == 0) {
+			st->border_relief = COW_MENU_RELIEF_FLAT;
+		} else if (strcmp(val, "sunken") == 0) {
+			st->border_relief = COW_MENU_RELIEF_SUNKEN;
+		} else {
+			cmdq_error(cmdq,
+			    "menu-style: border.relief: %s: "
+			    "expected raised|flat|sunken", val);
 			ret = CMD_RETURN_ERROR;
 		}
 		goto out;

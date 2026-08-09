@@ -72,6 +72,7 @@ cow_menu_style_default(struct cow_menu_style *s)
 	s->bg_gradient.mode	       = COW_GRADIENT_NONE;
 	s->title_bg_gradient.mode      = COW_GRADIENT_NONE;
 	s->border_width		       = 0;
+	s->border_relief	       = COW_MENU_RELIEF_FLAT;
 	s->padding_x		       = 6;
 	s->padding_y		       = 2;
 	s->icon_size		       = 16;
@@ -128,6 +129,7 @@ cow_menu_style_resolve(const struct cow_menu *menu, struct cow_menu_style *out)
 	APPLY(COW_MENU_STYLE_BG_GRADIENT, bg_gradient);
 	APPLY(COW_MENU_STYLE_TITLE_BG_GRADIENT, title_bg_gradient);
 	APPLY(COW_MENU_STYLE_BORDER_WIDTH, border_width);
+	APPLY(COW_MENU_STYLE_BORDER_RELIEF, border_relief);
 	APPLY(COW_MENU_STYLE_PADDING_X, padding_x);
 	APPLY(COW_MENU_STYLE_PADDING_Y, padding_y);
 	APPLY(COW_MENU_STYLE_ICON_SIZE, icon_size);
@@ -381,6 +383,42 @@ menu_relief_colours(const float base[4], uint32_t *highlight, uint32_t *shadow)
 		*highlight = t.lt;
 	if (shadow != NULL)
 		*shadow = t.dk;
+}
+
+static void
+draw_menu_border(struct cow_pixbuf *p, const struct cow_menu_style *style,
+    uint32_t border_px)
+{
+	int bw = style->border_width;
+
+	if (bw <= 0)
+		return;
+	if (style->border_relief == COW_MENU_RELIEF_FLAT) {
+		cow_draw_fill_rect(p, 0, 0, p->width, bw, border_px);
+		cow_draw_fill_rect(p, 0, p->height - bw, p->width, bw,
+		    border_px);
+		cow_draw_fill_rect(p, 0, bw, bw, p->height - bw * 2,
+		    border_px);
+		cow_draw_fill_rect(p, p->width - bw, bw, bw,
+		    p->height - bw * 2, border_px);
+		return;
+	}
+
+	uint32_t highlight, shadow;
+	menu_relief_colours(style->border, &highlight, &shadow);
+	uint32_t ul = style->border_relief == COW_MENU_RELIEF_SUNKEN ?
+	    shadow : highlight;
+	uint32_t br = style->border_relief == COW_MENU_RELIEF_SUNKEN ?
+	    highlight : shadow;
+	for (int r = 0; r < bw && r < p->width / 2 && r < p->height / 2;
+	    r++) {
+		cow_draw_hline(p, r + 1, p->width - 1 - r, r, ul);
+		cow_draw_vline(p, r, r, p->height - 1 - r, ul);
+		cow_draw_hline(p, r, p->width - 2 - r,
+		    p->height - 1 - r, br);
+		cow_draw_vline(p, p->width - 1 - r, r + 1,
+		    p->height - 1 - r, br);
+	}
 }
 
 /* Extra state keyed by popup pointer. */
@@ -1079,16 +1117,7 @@ popup_render(struct cow_menu_popup *p)
 	fill_style_rect(&buf, 0, 0, p->width, p->height, st->bg,
 	    &st->bg_gradient);
 
-	if (st->border_width > 0) {
-		int bw = st->border_width;
-		cow_draw_fill_rect(&buf, 0, 0, p->width, bw, border_px);
-		cow_draw_fill_rect(&buf, 0, p->height - bw, p->width, bw,
-		    border_px);
-		cow_draw_fill_rect(&buf, 0, bw, bw, p->height - bw * 2,
-		    border_px);
-		cow_draw_fill_rect(&buf, p->width - bw, bw, bw,
-		    p->height - bw * 2, border_px);
-	}
+	draw_menu_border(&buf, st, border_px);
 
 	int		 y	= st->border_width;
 	int		 x	= st->border_width;
