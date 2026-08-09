@@ -904,17 +904,26 @@ set_titlebar_height(const char *val, struct cmd_q *cmdq)
 	return (CMD_RETURN_NORMAL);
 }
 
+static bool
+parse_relief(const char *val, enum cow_relief *relief)
+{
+	if (strcmp(val, "raised") == 0)
+		*relief = COW_RELIEF_RAISED;
+	else if (strcmp(val, "sunken") == 0)
+		*relief = COW_RELIEF_SUNKEN;
+	else if (strcmp(val, "flat") == 0)
+		*relief = COW_RELIEF_FLAT;
+	else
+		return false;
+	return true;
+}
+
 static enum cmd_retval
 set_titlebar_active_relief(const char *val, struct cmd_q *cmdq)
 {
-	int v = COW_RELIEF_RAISED;
-	if (strcmp(val, "raised") == 0) {
-		v = COW_RELIEF_RAISED;
-	} else if (strcmp(val, "sunken") == 0) {
-		v = COW_RELIEF_SUNKEN;
-	} else if (strcmp(val, "flat") == 0) {
-		v = COW_RELIEF_FLAT;
-	} else {
+	enum cow_relief v;
+
+	if (!parse_relief(val, &v)) {
 		cmdq_error(cmdq, "set: bad titlebar relief %s", val);
 		return (CMD_RETURN_ERROR);
 	}
@@ -1001,14 +1010,9 @@ set_titlebar_button_style(const char *val, struct cmd_q *cmdq)
 static enum cmd_retval
 set_titlebar_inactive_relief(const char *val, struct cmd_q *cmdq)
 {
-	int v = COW_RELIEF_RAISED;
-	if (strcmp(val, "raised") == 0) {
-		v = COW_RELIEF_RAISED;
-	} else if (strcmp(val, "sunken") == 0) {
-		v = COW_RELIEF_SUNKEN;
-	} else if (strcmp(val, "flat") == 0) {
-		v = COW_RELIEF_FLAT;
-	} else {
+	enum cow_relief v;
+
+	if (!parse_relief(val, &v)) {
 		cmdq_error(cmdq, "set: bad titlebar relief %s", val);
 		return (CMD_RETURN_ERROR);
 	}
@@ -1019,8 +1023,6 @@ set_titlebar_inactive_relief(const char *val, struct cmd_q *cmdq)
 	finish_visual_update(COW_VIEW_CFG_TITLEBAR_INACTIVE_RELIEF, cfg);
 	return (CMD_RETURN_NORMAL);
 }
-
-
 
 static enum cmd_retval
 set_titlebar_position(const char *val, struct cmd_q *cmdq)
@@ -1839,31 +1841,27 @@ set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 		return;
 	}
 	if (strcmp(field, "active_relief") == 0) {
-		if (strcmp(val, "raised") == 0) {
-			tb->buttons[idx].active_relief = COW_RELIEF_RAISED;
-		} else if (strcmp(val, "sunken") == 0) {
-			tb->buttons[idx].active_relief = COW_RELIEF_SUNKEN;
-		} else if (strcmp(val, "flat") == 0) {
-			tb->buttons[idx].active_relief = COW_RELIEF_FLAT;
-		} else {
-			cmdq_error(cmdq, "set: invalid relief value");
+		enum cow_relief relief;
+
+		if (!parse_relief(val, &relief)) {
+			cmdq_error(cmdq, "set: %s: %s: "
+			    "expected raised|sunken|flat", key, val);
 			return;
 		}
+		tb->buttons[idx].active_relief = relief;
 		finish_visual_update(button_active_relief_option(idx), cfg);
 		return;
 	}
 
 	if (strcmp(field, "inactive_relief") == 0) {
-		if (strcmp(val, "raised") == 0) {
-			tb->buttons[idx].inactive_relief = COW_RELIEF_RAISED;
-		} else if (strcmp(val, "sunken") == 0) {
-			tb->buttons[idx].inactive_relief = COW_RELIEF_SUNKEN;
-		} else if (strcmp(val, "flat") == 0) {
-			tb->buttons[idx].inactive_relief = COW_RELIEF_FLAT;
-		} else {
-			cmdq_error(cmdq, "set: invalid relief value");
+		enum cow_relief relief;
+
+		if (!parse_relief(val, &relief)) {
+			cmdq_error(cmdq, "set: %s: %s: "
+			    "expected raised|sunken|flat", key, val);
 			return;
 		}
+		tb->buttons[idx].inactive_relief = relief;
 		finish_visual_update(button_inactive_relief_option(idx), cfg);
 		return;
 	}

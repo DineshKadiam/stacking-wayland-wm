@@ -90,6 +90,12 @@ enum cow_titlebar_button_style {
 	COW_TITLEBAR_BUTTON_STYLE_FVWM = COW_BORDER_STYLE_FVWM,
 };
 
+enum cow_relief {
+	COW_RELIEF_RAISED,
+	COW_RELIEF_SUNKEN,
+	COW_RELIEF_FLAT,
+};
+
 /*
  * Window placement mode.
  */
@@ -234,8 +240,8 @@ struct cow_titlebar_button_config {
 	struct cow_vector_button vector;
 	char			*action;
 	char			*image;
-	int			active_relief;
-	int			inactive_relief;
+	enum cow_relief		active_relief;
+	enum cow_relief		inactive_relief;
 	float			active_colour[4];
 	float			inactive_colour[4];
 };
@@ -291,13 +297,12 @@ struct cow_titlebar_config {
 
 	/* Squeezed titlebar (CTWM SqueezeTitle). */
 	struct cow_titlebar_squeeze squeeze;
-	
-	int active_relief;
-	int inactive_relief;
+
+	enum cow_relief active_relief;
+	enum cow_relief inactive_relief;
 	enum cow_title_justify active_title_justify;
 	enum cow_title_justify inactive_title_justify;
 	enum cow_titlebar_button_style button_style;
-
 };
 
 /*

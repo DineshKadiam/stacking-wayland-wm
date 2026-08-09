@@ -27,12 +27,6 @@ enum cow_option_scope {
 	COW_OPTION_MIXED,
 };
 
-enum cow_relief {
-	COW_RELIEF_RAISED,
-	COW_RELIEF_SUNKEN,
-	COW_RELIEF_FLAT
-};
-
 enum cow_option_match {
 	COW_OPTION_EXACT,
 	COW_OPTION_PREFIX,

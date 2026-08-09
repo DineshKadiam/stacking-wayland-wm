@@ -537,7 +537,7 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 	int			       stride_px = ctx->stride_px;
 	int			       frame_w = ctx->frame_w;
 	int			       border_width = ctx->border_width;
-	
+
 	struct cow_box		       tb_rect = ctx->tb_rect;
 	const char		      *title = ctx->title;
 	bool			       active = ctx->active;
@@ -561,7 +561,7 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 	enum cow_border_style border_style =
 	    tb_cfg->button_style == COW_TITLEBAR_BUTTON_STYLE_INHERIT ?
 	    ctx->border_style : (enum cow_border_style)tb_cfg->button_style;
-	
+
 	if (tb_rect.height <= 0 || tb_rect.width <= 0 ||
 	    frame_w <= 2 * border_width)
 		return;
@@ -726,20 +726,21 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 		int text_centre = title_x + title_w / 2;
 		int text_start;
 		int text_end;
-		
+
 		switch (align) {
-			case PANGO_ALIGN_CENTER:
-				text_start	= text_centre - rendered_text_w / 2 - pad;
-				text_end	= text_centre + (rendered_text_w + 1) / 2 + pad;
-				break;
-			case PANGO_ALIGN_LEFT:
-				text_start = title_x + pad ;
-				text_end = title_x + rendered_text_w + 2 * pad;
-				break;
-			case PANGO_ALIGN_RIGHT:
-				text_start = title_x + title_w - 2 * pad - rendered_text_w;
-				text_end = title_x + title_w - 2 * pad;
-				break;
+		case PANGO_ALIGN_CENTER:
+			text_start = text_centre - rendered_text_w / 2 - pad;
+			text_end = text_centre + (rendered_text_w + 1) / 2 + pad;
+			break;
+		case PANGO_ALIGN_LEFT:
+			text_start = title_x + pad;
+			text_end = title_x + rendered_text_w + 2 * pad;
+			break;
+		case PANGO_ALIGN_RIGHT:
+			text_start =
+			    title_x + title_w - 2 * pad - rendered_text_w;
+			text_end = title_x + title_w - 2 * pad;
+			break;
 		}
 
 		int sx1 = title_x + relief;
