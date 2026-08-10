@@ -7,6 +7,8 @@
 # TODO: ".*" as a glob might be too much in the future; expand this out...
 FILES_TO_IGNORE=".clang-format
 .gitignore
+.builds
+.forgejo
 "
 
 (

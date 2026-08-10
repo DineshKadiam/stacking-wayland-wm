@@ -941,7 +941,7 @@ cell_append_block(void)
 }
 
 static bool
-parse_span(struct cell *c, const char *val, const char **why)
+parse_span(struct cell *c, char *val, const char **why)
 {
 	char *x;
 	int col_span, row_span;

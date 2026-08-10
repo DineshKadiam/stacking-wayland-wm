@@ -31,6 +31,14 @@
 %parse-param { void *scanner }
 %lex-param   { void *scanner }
 
+/* Bison maintains this counter for error recovery, but the pure parser API
+ * does not otherwise expose it to this grammar.  Referencing it here avoids
+ * an unused-but-set warning from generated parsers with newer GCC versions. */
+%initial-action
+{
+	(void)yynerrs;
+}
+
 %code requires {
 #include "cow/dsl.h"
 #include "dsl-ast.h"

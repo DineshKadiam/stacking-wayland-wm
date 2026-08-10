@@ -163,6 +163,8 @@ add_project_arguments(
     language: 'c',
 )
 
+meson.add_dist_script('tools/dist-tarball.sh')
+
 if hostsys == 'linux'
     add_project_arguments('-D_POSIX_C_SOURCE=200809L', language: 'c')
 endif

@@ -379,7 +379,7 @@ parse_group(const char *s)
 static int
 parse_match(const char *s)
 {
-	char *eq;
+	const char *eq;
 	const char *value;
 	char  field[16];
 	size_t len;
