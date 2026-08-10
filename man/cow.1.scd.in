@@ -539,7 +539,7 @@ The following details those commands which operate globally within *cow*.
 Note that the same command might also contain window/output settings, which will
 be also be added under the relevant section in this man page.
 
-## bind [-r] [contexts:]modifier+key action ...
+## bind [-r] [contexts:]modifier+key action ... | bind -d pattern
 
 Key bindings are specified as a modifier string immediately followed by *+* and
 a keysym name, or *-* and a numeric keycode:
@@ -573,6 +573,12 @@ rather than whichever window was previously focused.
 	Mark the binding as repeatable.  While the triggering key is held
 	the action re-fires every _repeat\_interval\_ms_ milliseconds after
 	an initial _repeat\_delay\_ms_ dwell (see *set*).
+
+*-d* _pattern_
+	Remove configured keyboard bindings whose complete key specification
+	matches the shell-style _pattern_.  Quote patterns in configuration files,
+	for example *bind -d "L+[0-9]"*.  This is useful before regenerating a
+	group of bindings from a script.
 
 *Modifier characters:*
 

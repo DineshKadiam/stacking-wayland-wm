@@ -17,13 +17,17 @@
  * Command: bind -- add a keyboard binding.
  *
  * usage: bind [-r] [contexts:]key action ...
+ *        bind -d pattern
  *
  *   -r  mark the binding as repeatable: while the triggering key is
  *       held the action re-fires every set repeat_interval_ms after
  *       an initial set repeat_delay_ms dwell.  Without -r the action
  *       fires once per press.
+ *
+ *   -d  delete bindings whose complete key specification matches pattern.
  */
 
+#include <fnmatch.h>
 #include <string.h>
 
 #include "cow/cmd.h"
@@ -46,10 +50,11 @@ static enum cmd_retval cmd_bind_exec(struct cmd *, struct cmd_q *);
  */
 struct cmd_entry cmd_bind_entry = {
 	"bind",
-	"+r",
-	2,
+	"+dr",
+	1,
 	-1,
-	"bind [-r] [contexts:]key action ...",
+	"bind [-r] [contexts:]key action ...\n"
+	"bind -d pattern",
 	cmd_bind_exec,
 	0,
 };
@@ -58,6 +63,33 @@ static enum cmd_retval
 cmd_bind_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	struct args *args = self->args;
+
+	if (args_has(args, 'd')) {
+		if (args_has(args, 'r') || args->argc != 1) {
+			cmdq_error(cmdq, "usage: bind -d pattern");
+			return (CMD_RETURN_ERROR);
+		}
+
+		struct cow_binding_entry *existing, *tmp;
+		wl_list_for_each_safe(existing, tmp,
+		    &cow_config->keyboard_bindings, link)
+		{
+			if (fnmatch(args->argv[0], existing->key_string, 0) != 0)
+				continue;
+			wl_list_remove(&existing->link);
+			xfree(existing->key_string);
+			xfree(existing->action_string);
+			xfree(existing);
+		}
+		cow_rebind_all_seats();
+		return (CMD_RETURN_NORMAL);
+	}
+
+	if (args->argc < 2) {
+		cmdq_error(cmdq, "usage: bind [-r] [contexts:]key action ...");
+		return (CMD_RETURN_ERROR);
+	}
+
 	uint32_t context;
 	const char *key, *error;
 	if (!cow_binding_parse_context(args->argv[0], &context, &key,
