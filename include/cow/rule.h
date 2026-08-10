@@ -42,6 +42,7 @@ enum cow_rule_type {
 	COW_RULE_ON_RESTART,
 	COW_RULE_ON_TITLE_CHANGE,
 	COW_RULE_ON_OUTPUTS_CHANGED,
+	COW_RULE_ON_DESKS_CHANGED,
 	/* Declarative desk style; re-applied as desk/page/view state changes. */
 	COW_RULE_ON_DESK,
 	COW_RULE_TYPE_COUNT,

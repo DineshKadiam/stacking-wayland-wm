@@ -796,6 +796,10 @@ The following table shows which events are available:
 :  Fired when the set of available outputs changes -- a monitor is
    plugged in or unplugged, or every output is destroyed and
    recreated. Fires once per change.  Useful to re-apply a monitor layouts.
+|  *on-desks-changed*
+:  Fired after *set desks.count* successfully resizes the live desk sets.
+   Fires once per command.  Use with *-g* to rebuild menus, bindings, or other
+   configuration derived from the available desks.
 |  *on-desk*
 :  Used to change window styles on a particular desk.
 
