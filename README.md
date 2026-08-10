@@ -28,75 +28,50 @@ The commands are inspired by tmux(1).
 See [this document](./architecture.md) which explains how CoW and River work
 together, and hence the overall technical design considerations.
 
-## Where to Start?
-
-There's been an attempt at some documentation:
-
-* `cow(1)` -- documents the commands/config settings which can be used to
-  configure `cow`.
-* `moocow(1)` -- the CLI used to communicate with `cow` from shell-scripts,
-  etc.
-* `cowbar(1)` -- JSON structure of the state of `cow` -- primarily used to
-  provide information to `waybar`, but can be used for any bar.
-* `cowiconman(1)` -- FvwmIconMan-style window list.
-
-More concretely though, have a look at:
-
-* [cow config file](./config/cow/cow.conf) -- this is documented and should help
-  you start making changes.  Copy it to `~/.config/cow` to get started making
-  changes,
-* [waybar](./config/waybar/) -- this can be copied verbatim to `~/.config/` if
-  desired to it can be configured to your liking.
-
-## Wiki
-
-See:  https://codeberg.org/thomasadam/cow/wiki/Home
-
 ## What does it look like?
 
 ![](./ss/cow-ss.png)
 
-There's also support for containers -- a top-level window which can group
-windows together into tabs.
+In this screenshot you can see:
 
-![](./ss/cow-container.png)
+* The focused window in teal, is also a container window which has the shell,
+  and midnight commander in the next tab.
+* cowpager: an overview of the current desk, showing window positions and the
+  highlighted page.
+* cowbuttons: a mock-up of a laucher.
+* [wteddy](https://codeberg.org/thomasadam/wteddy): an xteddy clone.
+* cowident: showing information about wteddy.
+* cowbuttons: a telephone widget
+* cowiconman: an overview of windows on this screen; note iconified windows
+  are shown, indicated by the grey box.
+* An open menu, selecting this would allow the user to pick a window to
+  operate on.
+* Two icons on the bottom left.
 
-### Pages / Pager
-
-![](./ss/cow-pages.png)
-
-A very crude video is [also available](https://youtu.be/tRdhfRfdPuI)
-
-### Old Screenshots
-
-See: https://codeberg.org/thomasadam/cow/wiki/Screenshots
+The window labelled `[9c3368e4] xterm` is actually owned by desktop 1 (as
+indicated by `waybar` at top of the screen.  The `1` button with an orange
+background is showing windows from that desk.  The window labelled
+`[9c3368e4] xterm` is actually owned by desktop 1 (as indicated by
+`waybar` at top of the screen.  The `1` button with an orange background is
+showing windows from that desk.  See the `-c` option to the `desk` command.
 
 ## How do I build CoW?
 
-Because `cow` is a window manager reliant on `river`, then the binary for
-`river` is required:
-
-* [river](https://codeberg.org/river/river)
-
-For the wayland parts:
+Required packages:
 
 * wayland_client
 * xkbcommon
 * pangocairo
 * cairo
 * libbsd (for non-BSD systems; linux, etc.)
+* bison (>= 3.0)
+* flex  (>= 2.6)
 
-Note that the names of the libraries above will vary across systems.
-
-Documentation is written in [scdoc](https://git.sr.ht/~sircmpwn/scdoc):
+Optional packages:
 
 * scdoc
 
-For the embedded scripting language used by `script { ... }` blocks
-(see *cow*(1), section SCRIPTING):
-
-* bison (>= 3.0)
-* flex  (>= 2.6)
+Note that the names of the libraries above will vary across systems.
 
 The build system itself uses `meson`, and hence the following command will
 configure, build, and install `cow`:
@@ -105,6 +80,11 @@ configure, build, and install `cow`:
 meson setup build
 meson compile -C build && meson install -C build
 ```
+
+Because `cow` is a window manager reliant on `river`, then the binary for
+`river` is required:
+
+* [river](https://codeberg.org/river/river)
 
 ## How do I run CoW?
 
@@ -132,6 +112,23 @@ cow to be used with wayland login managers.
 CoW has support for themes -- see [the themes directory](examples/themes) for
 more information about how to use these.  They're currently a feeble and
 incomplete attempt at converting [fvwm-themes to cow](https://fvwm-themes.sourceforge.net/windowdecors/)
+
+## Waybar
+
+*CoW* has no support for a bar, like waybar.  For that, see the [example
+file](./config/waybar/) -- this can be copied verbatim to `~/.config/` if desired to it can be configured to your liking.
+
+It is also suggested to look at cowbar(1) for sending information to waybar.
+
+## Wiki
+
+See:  https://codeberg.org/thomasadam/cow/wiki/Home
+
+## Old Screenshots
+
+Mostly for historical/development nostalgia:
+
+See: https://codeberg.org/thomasadam/cow/wiki/Screenshots
 
 ## Packages
 
