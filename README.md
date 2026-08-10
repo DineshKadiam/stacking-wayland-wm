@@ -116,7 +116,8 @@ incomplete attempt at converting [fvwm-themes to cow](https://fvwm-themes.source
 ## Waybar
 
 *CoW* has no support for a bar, like waybar.  For that, see the [example
-file](./config/waybar/) -- this can be copied verbatim to `~/.config/` if desired to it can be configured to your liking.
+file](./config/waybar/) -- this can be copied verbatim to `~/.config/`
+if desired to it can be configured to your liking.
 
 It is also suggested to look at cowbar(1) for sending information to waybar.
 
@@ -185,6 +186,10 @@ run `wlr-randr` with the appropriate values.
 Note that this is controlled via river(1) and `cow` has no means of being able
 to set monitors directly.  To get a more visual overview of things, the
 `wdisplays` command is helpful, and is similar to `arandr` from xrandr.
+
+## Is AI used in this project?
+
+No, it is not.
 
 # Logo and mascot.
 
