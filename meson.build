@@ -383,6 +383,15 @@ command_quote_test = executable('test-command-quote',
 )
 test('command-quote', command_quote_test)
 
+colour_test = executable('test-colour',
+    'tests/colour.c',
+    'src/colour.c',
+    'src/memory.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('colour', colour_test)
+
 subdir('cowbar')
 subdir('modules/cowbuttons')
 subdir('modules/cowident')

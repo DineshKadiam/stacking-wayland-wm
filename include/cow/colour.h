@@ -65,6 +65,14 @@ struct cow_colour_triple {
 void cow_colour_make_triple(struct cow_colour_triple *, const float *);
 
 /*
+ * Make shades for colour using reference to choose the Motif brightness
+ * class.  This keeps relief shading continuous when colour is one sample
+ * from a gradient that crosses a brightness threshold.
+ */
+void cow_colour_make_triple_for_reference(struct cow_colour_triple *,
+    const float *, const float *);
+
+/*
  * Theme constants used by drop-target highlighting.  These are kept in
  * one place so that the various decoration / titlebar / border paths
  * agree on the exact pixel values.

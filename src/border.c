@@ -520,8 +520,62 @@ paint_border_images(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
 	    colors->image, &p, fw_s - cls, fh_s - cls, cls, cls);
 }
 
+static void
+sampled_reference_add(const uint32_t *base, int stride, int x, int y,
+    uint64_t sum[3], uint64_t *count)
+{
+	uint32_t px = base[y * stride + x];
+
+	if ((px >> 24) == 0)
+		return;
+	sum[0] += (px >> 16) & 0xff;
+	sum[1] += (px >> 8) & 0xff;
+	sum[2] += px & 0xff;
+	(*count)++;
+}
+
+/* Average the composed border ring, without scanning the window interior. */
+static void
+sampled_relief_reference(float reference[4], const uint32_t *base, int stride,
+    int width, int height, int border_width)
+{
+	uint64_t sum[3] = { 0, 0, 0 };
+	uint64_t count = 0;
+	int top_h = border_width < height ? border_width : height;
+	int bottom_y = height - border_width;
+	int left_w = border_width < width ? border_width : width;
+	int right_x = width - border_width;
+
+	if (bottom_y < top_h)
+		bottom_y = top_h;
+	if (right_x < left_w)
+		right_x = left_w;
+
+	for (int y = 0; y < top_h; y++)
+		for (int x = 0; x < width; x++)
+			sampled_reference_add(base, stride, x, y, sum, &count);
+	for (int y = bottom_y; y < height; y++)
+		for (int x = 0; x < width; x++)
+			sampled_reference_add(base, stride, x, y, sum, &count);
+	for (int y = top_h; y < bottom_y; y++) {
+		for (int x = 0; x < left_w; x++)
+			sampled_reference_add(base, stride, x, y, sum, &count);
+		for (int x = right_x; x < width; x++)
+			sampled_reference_add(base, stride, x, y, sum, &count);
+	}
+
+	if (count == 0) {
+		reference[0] = reference[1] = reference[2] = 0.5f;
+	} else {
+		reference[0] = (float)sum[0] / (255.0f * (float)count);
+		reference[1] = (float)sum[1] / (255.0f * (float)count);
+		reference[2] = (float)sum[2] / (255.0f * (float)count);
+	}
+	reference[3] = 1.0f;
+}
+
 static uint32_t
-shade_sampled_pixel(uint32_t base, int shade)
+shade_sampled_pixel(uint32_t base, int shade, const float *reference)
 {
 	if (shade == 3 || base == TRANSPARENT_PX)
 		return (TRANSPARENT_PX);
@@ -533,7 +587,7 @@ shade_sampled_pixel(uint32_t base, int shade)
 		((base >> 24) & 0xff) / 255.0f,
 	};
 	struct cow_colour_triple t;
-	cow_colour_make_triple(&t, colour);
+	cow_colour_make_triple_for_reference(&t, colour, reference);
 
 	if (shade == 0)
 		return (t.dk);
@@ -544,13 +598,14 @@ shade_sampled_pixel(uint32_t base, int shade)
 
 static void
 put_sampled_pixel(uint32_t *pixels, const uint32_t *base, int stride, int img_w,
-    int img_h, int x, int y, int shade)
+    int img_h, int x, int y, int shade, const float *reference)
 {
 	if (base == NULL || shade == 3 || x < 0 || y < 0 || x >= img_w ||
 	    y >= img_h)
 		return;
 
-	uint32_t px = shade_sampled_pixel(base[y * stride + x], shade);
+	uint32_t px = shade_sampled_pixel(base[y * stride + x], shade,
+	    reference);
 	if (px != TRANSPARENT_PX)
 		pixels[y * stride + x] = px;
 }
@@ -558,7 +613,8 @@ put_sampled_pixel(uint32_t *pixels, const uint32_t *base, int stride, int img_w,
 static void
 sampled_relieve_rect(uint32_t *pixels, const uint32_t *base, int stride,
     int img_w, int img_h, int x, int y, int w, int h, int line_width,
-    int ul_left, int ul_top, int br_bot, int br_right)
+    int ul_left, int ul_top, int br_bot, int br_right,
+    const float *reference)
 {
 	if (w <= 0 || h <= 0 || line_width <= 0)
 		return;
@@ -574,31 +630,31 @@ sampled_relieve_rect(uint32_t *pixels, const uint32_t *base, int stride,
 		int xx = x + i;
 		for (int yy = y + i; yy <= y + h - 1 - i; yy++)
 			put_sampled_pixel(pixels, base, stride, img_w, img_h,
-			    xx, yy, ul_left);
+			    xx, yy, ul_left, reference);
 	}
 	for (int i = 0; i < max_h; i++) {
 		int yy = y + i;
 		for (int xx = x + i + 1; xx <= x + w - i; xx++)
 			put_sampled_pixel(pixels, base, stride, img_w, img_h,
-			    xx, yy, ul_top);
+			    xx, yy, ul_top, reference);
 	}
 	for (int i = 0; i < max_h; i++) {
 		int yy = y + h - i;
 		for (int xx = x + i; xx <= x + w - 1 - i; xx++)
 			put_sampled_pixel(pixels, base, stride, img_w, img_h,
-			    xx, yy, br_bot);
+			    xx, yy, br_bot, reference);
 	}
 	for (int i = 0; i < max_w; i++) {
 		int xx = x + w - i;
 		for (int yy = y + i + 1; yy <= y + h - i; yy++)
 			put_sampled_pixel(pixels, base, stride, img_w, img_h,
-			    xx, yy, br_right);
+			    xx, yy, br_right, reference);
 	}
 }
 
 static void
 draw_relief_rings_sampled(uint32_t *pixels, const uint32_t *base, int stride,
-    int fw_s, int fh_s, const int w[7])
+    int fw_s, int fh_s, const int w[7], const float *reference)
 {
 	int off = 0, rw = fw_s - 1, rh = fh_s - 1;
 
@@ -617,7 +673,7 @@ draw_relief_rings_sampled(uint32_t *pixels, const uint32_t *base, int stride,
 		for (int k = 0; k < w[i]; k++) {
 			sampled_relieve_rect(pixels, base, stride, fw_s, fh_s,
 			    off, off, rw, rh, 1, fvwm_ul[i], fvwm_ul[i],
-			    fvwm_br[i], fvwm_br[i]);
+			    fvwm_br[i], fvwm_br[i], reference);
 			off++;
 			rw -= 2;
 			rh -= 2;
@@ -786,7 +842,7 @@ static void
 draw_x_mark_tinted(uint32_t *pixels, const uint32_t *base, int stride,
     int img_w, int img_h, int x, int y, int mark_length, int mark_thickness,
     int offset_tl, bool do_draw_shadow, bool sampled, int shade,
-    uint32_t colour)
+    uint32_t colour, const float *reference)
 {
 	if (!sampled) {
 		draw_x_mark(pixels, stride, img_w, img_h, x, y, mark_length,
@@ -809,7 +865,7 @@ draw_x_mark_tinted(uint32_t *pixels, const uint32_t *base, int stride,
 		}
 		for (int xx = x1; xx <= x1 + len; xx++)
 			put_sampled_pixel(pixels, base, stride, img_w, img_h,
-			    xx, y1, shade);
+			    xx, y1, shade, reference);
 	}
 }
 
@@ -817,7 +873,7 @@ static void
 draw_y_mark_tinted(uint32_t *pixels, const uint32_t *base, int stride,
     int img_w, int img_h, int x, int y, int mark_length, int mark_thickness,
     int offset_tl, bool do_draw_shadow, bool sampled, int shade,
-    uint32_t colour)
+    uint32_t colour, const float *reference)
 {
 	if (!sampled) {
 		draw_y_mark(pixels, stride, img_w, img_h, x, y, mark_length,
@@ -840,14 +896,15 @@ draw_y_mark_tinted(uint32_t *pixels, const uint32_t *base, int stride,
 		}
 		for (int yy = y1; yy <= y1 + len - 1; yy++)
 			put_sampled_pixel(pixels, base, stride, img_w, img_h,
-			    x1, yy, shade);
+			    x1, yy, shade, reference);
 	}
 }
 
 static void
 draw_handle_marks(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
     int cls, const int w[7], int style, const uint32_t *base,
-    const struct edge_colours *ec, const struct cow_border_colour *colors)
+    const struct edge_colours *ec, const struct cow_border_colour *colors,
+    const float *reference)
 {
 	int w_dout     = w[0];
 	int inset      = (w[5] > 0 || w[6] > 0) ? 1 : 0;
@@ -868,30 +925,31 @@ draw_handle_marks(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
 	if (sbw > 0) {
 		draw_y_mark_tinted(pixels, base, stride, fw_s, fh_s, cls, 0,
 		    mark_len, mark_thick, offset_tl, false, base != NULL, 1,
-		    ec->n[1]);
+		    ec->n[1], reference);
 		draw_y_mark_tinted(pixels, base, stride, fw_s, fh_s, cls + sbw,
 		    0, mark_len, mark_thick, offset_tl, true, base != NULL, 0,
-		    ec->n[0]);
+		    ec->n[0], reference);
 		draw_y_mark_tinted(pixels, base, stride, fw_s, fh_s, cls,
 		    fh_s - bws + bws + offset_br, mark_len, mark_thick,
-		    offset_tl, false, base != NULL, 1, ec->s[1]);
+		    offset_tl, false, base != NULL, 1, ec->s[1], reference);
 		draw_y_mark_tinted(pixels, base, stride, fw_s, fh_s, cls + sbw,
 		    fh_s - bws + bws + offset_br, mark_len, mark_thick,
-		    offset_tl, true, base != NULL, 0, ec->s[0]);
+		    offset_tl, true, base != NULL, 0, ec->s[0], reference);
 	}
 	if (sbh > 0) {
 		draw_x_mark_tinted(pixels, base, stride, fw_s, fh_s, 0, cls,
 		    mark_len, mark_thick, offset_tl, false, base != NULL, 1,
-		    ec->w[1]);
+		    ec->w[1], reference);
 		draw_x_mark_tinted(pixels, base, stride, fw_s, fh_s, 0,
 		    cls + sbh, mark_len, mark_thick, offset_tl, true,
-		    base != NULL, 0, ec->w[0]);
+		    base != NULL, 0, ec->w[0], reference);
 		draw_x_mark_tinted(pixels, base, stride, fw_s, fh_s,
 		    fw_s - bws + bws + offset_br, cls, mark_len, mark_thick,
-		    offset_tl, false, base != NULL, 1, ec->e[1]);
+		    offset_tl, false, base != NULL, 1, ec->e[1], reference);
 		draw_x_mark_tinted(pixels, base, stride, fw_s, fh_s,
 		    fw_s - bws + bws + offset_br, cls + sbh, mark_len,
-		    mark_thick, offset_tl, true, base != NULL, 0, ec->e[0]);
+		    mark_thick, offset_tl, true, base != NULL, 0, ec->e[0],
+		    reference);
 	}
 
 	/* Corner marks */
@@ -941,11 +999,11 @@ draw_handle_marks(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
 		draw_x_mark_tinted(pixels, base, stride, fw_s, fh_s,
 		    cm[ci].cx + cm[ci].xm_x, cm[ci].cy + cm[ci].xm_y,
 		    mark_len, mark_thick, offset_tl, cm[ci].xm_shadow, sampled,
-		    xm_shade, xm_colour);
+		    xm_shade, xm_colour, reference);
 		draw_y_mark_tinted(pixels, base, stride, fw_s, fh_s,
 		    cm[ci].cx + cm[ci].ym_x, cm[ci].cy + cm[ci].ym_y,
 		    mark_len, mark_thick, offset_tl, cm[ci].ym_shadow, sampled,
-		    ym_shade, ym_colour);
+		    ym_shade, ym_colour, reference);
 	}
 }
 
@@ -988,18 +1046,22 @@ cow_border_style_render(uint32_t *pixels, int stride_px, int frame_w,
 	compute_layer_widths(w, bws, style);
 
 	uint32_t *relief_base = NULL;
+	float relief_reference[4];
 	if (border_has_gradient(colors)) {
 		size_t len = (size_t)stride_px * (size_t)frame_h;
 
 		relief_base = malloc(len * sizeof(*relief_base));
-		if (relief_base != NULL)
+		if (relief_base != NULL) {
 			memcpy(relief_base, pixels, len * sizeof(*relief_base));
+			sampled_relief_reference(relief_reference, relief_base,
+			    stride_px, frame_w, frame_h, bws);
+		}
 	}
 
 	/* Draw concentric relief rectangles */
 	if (relief_base != NULL)
 		draw_relief_rings_sampled(pixels, relief_base, stride_px,
-		    frame_w, frame_h, w);
+		    frame_w, frame_h, w, relief_reference);
 	else
 		draw_relief_rings(pixels, stride_px, frame_w, frame_h, w, &ec);
 
@@ -1010,7 +1072,8 @@ cow_border_style_render(uint32_t *pixels, int stride_px, int frame_w,
 
 		/* Draw handle marks on all 8 frame parts */
 		draw_handle_marks(pixels, stride_px, frame_w, frame_h, bws, cls,
-		    w, style, relief_base, &ec, colors);
+		    w, style, relief_base, &ec, colors,
+		    relief_base != NULL ? relief_reference : NULL);
 	}
 	paint_border_images(pixels, stride_px, frame_w, frame_h, bws,
 	    corners_enabled ? cls : 0, colors);

@@ -256,8 +256,14 @@ cow_colour_mult(float *r, float *g, float *b, float k)
 #undef SCALE
 }
 
-void
-cow_colour_lighten(float *dst, const float *src)
+enum cow_colour_brightness_class {
+	COW_COLOUR_DARK,
+	COW_COLOUR_MEDIUM,
+	COW_COLOUR_LIGHT,
+};
+
+static enum cow_colour_brightness_class
+cow_colour_brightness_classify(const float *src)
 {
 	unsigned int r		= (unsigned int)(src[0] * 65535.0f + 0.5f);
 	unsigned int g		= (unsigned int)(src[1] * 65535.0f + 0.5f);
@@ -267,11 +273,26 @@ cow_colour_lighten(float *dst, const float *src)
 	unsigned int dark_thr  = (unsigned int)(6.0 * 65535.0 * 0.15);
 	unsigned int light_thr = (unsigned int)(6.0 * 65535.0 * 0.85);
 
-	if (brightness < dark_thr) {
+	if (brightness < dark_thr)
+		return (COW_COLOUR_DARK);
+	if (brightness > light_thr)
+		return (COW_COLOUR_LIGHT);
+	return (COW_COLOUR_MEDIUM);
+}
+
+static void
+cow_colour_lighten_class(float *dst, const float *src,
+    enum cow_colour_brightness_class class)
+{
+	unsigned int r = (unsigned int)(src[0] * 65535.0f + 0.5f);
+	unsigned int g = (unsigned int)(src[1] * 65535.0f + 0.5f);
+	unsigned int b = (unsigned int)(src[2] * 65535.0f + 0.5f);
+
+	if (class == COW_COLOUR_DARK) {
 		r = 65535 - ((65535 - r) * 50 + 50) / 100;
 		g = 65535 - ((65535 - g) * 50 + 50) / 100;
 		b = 65535 - ((65535 - b) * 50 + 50) / 100;
-	} else if (brightness > light_thr) {
+	} else if (class == COW_COLOUR_LIGHT) {
 		r = (r * 80 + 50) / 100;
 		g = (g * 80 + 50) / 100;
 		b = (b * 80 + 50) / 100;
@@ -289,22 +310,19 @@ cow_colour_lighten(float *dst, const float *src)
 	dst[3] = src[3];
 }
 
-void
-cow_colour_darken(float *dst, const float *src)
+static void
+cow_colour_darken_class(float *dst, const float *src,
+    enum cow_colour_brightness_class class)
 {
-	unsigned int r		= (unsigned int)(src[0] * 65535.0f + 0.5f);
-	unsigned int g		= (unsigned int)(src[1] * 65535.0f + 0.5f);
-	unsigned int b		= (unsigned int)(src[2] * 65535.0f + 0.5f);
-	unsigned int brightness = 2 * r + 3 * g + 1 * b;
+	unsigned int r = (unsigned int)(src[0] * 65535.0f + 0.5f);
+	unsigned int g = (unsigned int)(src[1] * 65535.0f + 0.5f);
+	unsigned int b = (unsigned int)(src[2] * 65535.0f + 0.5f);
 
-	unsigned int dark_thr  = (unsigned int)(6.0 * 65535.0 * 0.15);
-	unsigned int light_thr = (unsigned int)(6.0 * 65535.0 * 0.85);
-
-	if (brightness < dark_thr) {
+	if (class == COW_COLOUR_DARK) {
 		r = 65535 - ((65535 - r) * 70 + 50) / 100;
 		g = 65535 - ((65535 - g) * 70 + 50) / 100;
 		b = 65535 - ((65535 - b) * 70 + 50) / 100;
-	} else if (brightness > light_thr) {
+	} else if (class == COW_COLOUR_LIGHT) {
 		r = (r * 55 + 50) / 100;
 		g = (g * 55 + 50) / 100;
 		b = (b * 55 + 50) / 100;
@@ -323,6 +341,20 @@ cow_colour_darken(float *dst, const float *src)
 }
 
 void
+cow_colour_lighten(float *dst, const float *src)
+{
+	cow_colour_lighten_class(dst, src,
+	    cow_colour_brightness_classify(src));
+}
+
+void
+cow_colour_darken(float *dst, const float *src)
+{
+	cow_colour_darken_class(dst, src,
+	    cow_colour_brightness_classify(src));
+}
+
+void
 cow_colour_make_triple(struct cow_colour_triple *out, const float *colour)
 {
 	float lt[4], dk[4];
@@ -331,6 +363,21 @@ cow_colour_make_triple(struct cow_colour_triple *out, const float *colour)
 	out->base = cow_colour_to_pixel(colour);
 	out->lt	  = cow_colour_to_pixel(lt);
 	out->dk	  = cow_colour_to_pixel(dk);
+}
+
+void
+cow_colour_make_triple_for_reference(struct cow_colour_triple *out,
+    const float *colour, const float *reference)
+{
+	float lt[4], dk[4];
+	enum cow_colour_brightness_class class =
+	    cow_colour_brightness_classify(reference);
+
+	cow_colour_lighten_class(lt, colour, class);
+	cow_colour_darken_class(dk, colour, class);
+	out->base = cow_colour_to_pixel(colour);
+	out->lt   = cow_colour_to_pixel(lt);
+	out->dk   = cow_colour_to_pixel(dk);
 }
 
 const float COW_COLOUR_DROP_ORANGE[4] = { 1.0f, 0.53f, 0.0f, 1.0f };
