@@ -30,8 +30,6 @@
 #include "cow/view.h"
 #include "cow/wm.h"
 
-#include "river-window-management-v1-client-protocol.h"
-
 const char *
 cow_state_path(void)
 {
@@ -493,8 +491,15 @@ cow_state_restore(void)
 						    ssw;
 						view->shade_saved_height = (int)
 						    ssh;
-						river_window_v1_propose_dimensions(
-						    view->river_window, 1, 1);
+						/* Shading keeps the client's real size and
+						 * hides its content with a clip box.  Restore
+						 * that clip instead of resizing the client;
+						 * the saved geometry above remains the size to
+						 * expose when the view is unshaded. */
+						view->pending_clip = true;
+						view->clip_x = view->clip_y = 0;
+						view->clip_w = view->clip_h = 1;
+						view->dec.dirty = true;
 					}
 				}
 			}
