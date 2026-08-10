@@ -110,13 +110,18 @@ main(int argc, char *argv[])
 	cow_config = cow_config_create();
 
 	/*
-	 * Initialize menu lists before loading config: menu-add commands
-	 * in the config file run before cow_wm_init() connects to River,
-	 * so the lists must be valid before cow_ipc_load_config() is called.
+	 * Initialize lists used while loading config before cow_wm_init()
+	 * connects to River.  menu-add needs the menu lists, while a top-level
+	 * script may snapshot windows, outputs, or desks; those sources should
+	 * produce empty lists during initial startup rather than walking
+	 * uninitialized list heads.  cow_wm_init() initializes them again after
+	 * preserving the menus created here.
 	 */
 	wl_list_init(&cow_wm.menus);
 	wl_list_init(&cow_wm.open_menus);
 	wl_list_init(&cow_wm.menu_graveyard);
+	wl_list_init(&cow_wm.views);
+	wl_list_init(&cow_wm.outputs);
 
 	/*
 	 * Resolve the config path: use the explicit -c path if given,
