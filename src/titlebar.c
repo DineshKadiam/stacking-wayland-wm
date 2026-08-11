@@ -459,6 +459,8 @@ draw_titlebar_button(uint32_t *pixels, int stride_px,
 	    &tb_cfg->buttons[btn_idx];
 	const float *custom_colour = active ? button->active_colour :
 	    button->inactive_colour;
+	bool has_custom_colour = active ? button->has_active_colour :
+	    button->has_inactive_colour;
 	int relief = active ? button->active_relief : button->inactive_relief;
 	uint32_t button_base = px_base;
 	uint32_t colours[5] = {
@@ -473,7 +475,7 @@ draw_titlebar_button(uint32_t *pixels, int stride_px,
 	    tb_gradient->mode == COW_GRADIENT_NONE) && tb_image == NULL)
 		cow_draw_fill_rect(strip, bx, by, btn_s, btn_s, px_base);
 
-	if (custom_colour[3] != 0.0f) {
+	if (has_custom_colour) {
 		float custom_lt[4], custom_dk[4];
 
 		cow_colour_lighten(custom_lt, custom_colour);

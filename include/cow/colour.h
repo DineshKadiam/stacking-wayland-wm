@@ -21,19 +21,24 @@
 
 void cow_colour_convert(float *, uint32_t);
 
+/* Unpack a premultiplied ARGB8888 pixel into straight RGBA components. */
+void cow_colour_from_pixel(float *, uint32_t);
+
 void cow_colour_lighten(float *, const float *);
 
 void cow_colour_darken(float *, const float *);
 
 /*
- * Pack a float[4] RGBA colour to a uint32_t ARGB8888 pixel.
+ * Pack straight float[4] RGBA components into a premultiplied ARGB8888
+ * pixel, as required by Cairo and Wayland WL_SHM_FORMAT_ARGB8888.
  */
 uint32_t cow_colour_to_pixel(const float *);
 
 /*
- * Parse a colour literal (decimal, 0-prefixed octal or 0x-prefixed hex)
- * and store the unpacked RGBA components in out.  Returns true on
- * success, false if str contains no parseable digits.
+ * Parse an RGB or RGBA colour literal.  Hexadecimal 0xRRGGBB values are
+ * opaque; 0xRRGGBBAA values carry an explicit alpha component.  Decimal
+ * and octal values up to 0xffffff are RGB, while larger values are RGBA.
+ * Returns true on success.
  */
 bool cow_colour_parse(const char *, float *);
 

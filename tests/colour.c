@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,9 +28,67 @@ brightness(uint32_t pixel)
 	    (pixel & 0xff));
 }
 
+static int
+near(float actual, float expected)
+{
+	return fabsf(actual - expected) < 0.005f;
+}
+
+static int
+test_parse(void)
+{
+	float c[4];
+
+	if (!cow_colour_parse("0x112233", c) ||
+	    !near(c[0], 0x11 / 255.0f) || !near(c[1], 0x22 / 255.0f) ||
+	    !near(c[2], 0x33 / 255.0f) || !near(c[3], 1.0f)) {
+		fprintf(stderr, "RGB colour parsing failed\n");
+		return (1);
+	}
+	if (!cow_colour_parse("0x11223380", c) ||
+	    !near(c[0], 0x11 / 255.0f) || !near(c[1], 0x22 / 255.0f) ||
+	    !near(c[2], 0x33 / 255.0f) || !near(c[3], 0x80 / 255.0f)) {
+		fprintf(stderr, "RGBA colour parsing failed\n");
+		return (1);
+	}
+	if (cow_colour_parse("0x112233zz", c) ||
+	    cow_colour_parse("0x1234567", c) ||
+	    cow_colour_parse("0x100000000", c)) {
+		fprintf(stderr, "invalid colour accepted\n");
+		return (1);
+	}
+
+	return (0);
+}
+
+static int
+test_pixel(void)
+{
+	const float in[4] = { 1.0f, 0.5f, 0.0f, 0.5f };
+	float	    out[4];
+	uint32_t    pixel = cow_colour_to_pixel(in);
+
+	if (pixel != 0x80804000) {
+		fprintf(stderr, "RGBA pixel is not premultiplied: 0x%08x\n",
+		    pixel);
+		return (1);
+	}
+	cow_colour_from_pixel(out, pixel);
+	if (!near(out[0], in[0]) || !near(out[1], in[1]) ||
+	    !near(out[2], in[2]) || !near(out[3], in[3])) {
+		fprintf(stderr, "RGBA pixel round trip failed\n");
+		return (1);
+	}
+
+	return (0);
+}
+
 int
 main(void)
 {
+	if (test_parse() != 0 || test_pixel() != 0)
+		return (1);
+
 	const float near_threshold[4] = {
 		0xea / 255.0f, 0xda / 255.0f, 0xb1 / 255.0f, 1.0f,
 	};

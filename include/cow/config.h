@@ -253,6 +253,8 @@ struct cow_titlebar_button_config {
 	enum cow_relief		inactive_relief;
 	float			active_colour[4];
 	float			inactive_colour[4];
+	bool			has_active_colour;
+	bool			has_inactive_colour;
 };
 
 #define COW_TITLEBAR_NUM_BUTTONS 10

@@ -31,6 +31,11 @@ cow rules to style or place companion windows.
 The format is line-oriented.  Blank lines and lines starting with *#* are
 ignored.  Labels and commands containing whitespace must be quoted.
 
+Colours may be opaque *0xRRGGBB* values or *0xRRGGBBAA* values carrying an
+alpha component.  In the latter form, *00* is fully transparent and *FF* is
+fully opaque.  For example, *style button.bg 0x282828CC* uses an 80-percent
+opaque dark grey.
+
 *cell* _W_ _H_
 	Set the default cell size in pixels.  The default is 96 by 32.
 

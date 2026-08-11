@@ -272,10 +272,17 @@ status_broadcast(const char *msg, size_t len)
 static void
 status_add_colour(cJSON *obj, const char *name, const float colour[4])
 {
-	uint32_t pixel = cow_colour_to_pixel(colour) & 0x00ffffff;
-	char	 buf[16];
+	uint8_t r = (uint8_t)(colour[0] * 255.0f + 0.5f);
+	uint8_t g = (uint8_t)(colour[1] * 255.0f + 0.5f);
+	uint8_t b = (uint8_t)(colour[2] * 255.0f + 0.5f);
+	uint8_t a = (uint8_t)(colour[3] * 255.0f + 0.5f);
+	char	buf[16];
 
-	snprintf(buf, sizeof(buf), "0x%06X", pixel);
+	if (a == 0xff)
+		snprintf(buf, sizeof(buf), "0x%02X%02X%02X", r, g, b);
+	else
+		snprintf(buf, sizeof(buf), "0x%02X%02X%02X%02X", r, g, b,
+		    a);
 	cJSON_AddStringToObject(obj, name, buf);
 }
 

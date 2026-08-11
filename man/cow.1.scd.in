@@ -92,6 +92,17 @@ Log files are opened in append mode.  Colour is enabled automatically only for
 terminal output; redirected output and explicit log files are plain text unless
 overridden with *-C always*.
 
+# COLOUR VALUES
+
+Colour settings accept *0xRRGGBB* for an opaque colour or *0xRRGGBBAA* for
+RGBA.  In the latter form, *00* is fully transparent and *FF* is fully opaque.
+For example, *0x282828CC* is dark grey at 80 percent opacity.
+
+Alpha applies to surfaces drawn by CoW and its companion programs, including
+window decorations, menus, icons, *cowpager*, and *cowbuttons*.  It does not
+change the opacity of application content.  A translucent output background
+reveals the compositor's background below CoW's background surface.
+
 # OUTPUT MANAGEMENT
 
 Neither *cow* nor *River* manages outputs (screens/monitors) directly.
@@ -1410,7 +1421,7 @@ feel of a window.  All of these can be used with *decor -d*.
 :  _true_ | _false_
 :  Draw handle marks on border corners.
 
-*Border Colour Settings* (values are hexadecimal RGB, e.g. *0xFF0000*):
+*Border Colour Settings* (values are hexadecimal RGB or RGBA):
 
 [[ *Key*
 :< *Description*
@@ -1466,7 +1477,7 @@ feel of a window.  All of these can be used with *decor -d*.
 :  Inactive border: west edge.
 
 
-*Titlebar Colour Settings* (values are hexadecimal RGB, e.g. *0xFF0000*):
+*Titlebar Colour Settings* (values are hexadecimal RGB or RGBA):
 [[ *Key*
 :< *Description*
 |  *titlebar.active\_colour*
@@ -1552,11 +1563,11 @@ feel of a window.  All of these can be used with *decor -d*.
 :  _raised_ | _flat_ | _sunken_
 :  Relief of button _N_ when the window is unfocused.
 |  *titlebar.button.N.active\_colour*
-:  hexadecimal RGB
+:  hexadecimal RGB or RGBA
 :  Background of button _N_ when the window is focused. If unset, the
    focused titlebar background is used.
 |  *titlebar.button.N.inactive\_colour*
-:  hexadecimal RGB
+:  hexadecimal RGB or RGBA
 :  Background of button _N_ when the window is unfocused. If unset, the
    unfocused titlebar background is used.
 |  *titlebar.squeeze*
@@ -1676,7 +1687,7 @@ container tabs:
 :[ *Values*
 :< *Description*
 |  *container.tab.active\_colour*
-:  hex colour (_0xRRGGBB_)
+:  hex colour (_0xRRGGBB_ or _0xRRGGBBAA_)
 :  Background colour of the active tab label. Default: _0xC0C0C0_.
 |  *container.tab.active\_gradient*
 :  _HGradient colour colour_ | _VGradient colour colour_ | _none_
@@ -1685,7 +1696,7 @@ container tabs:
 :  PNG, SVG, or XPM image
 :  Image painted over the active tab label. Use _none_ to clear.
 |  *container.tab.inactive\_colour*
-:  hex colour (_0xRRGGBB_)
+:  hex colour (_0xRRGGBB_ or _0xRRGGBBAA_)
 :  Background colour of inactive tab labels. Default: _0x808080_.
 |  *container.tab.inactive\_gradient*
 :  _HGradient colour colour_ | _VGradient colour colour_ | _none_
@@ -1694,10 +1705,10 @@ container tabs:
 :  PNG, SVG, or XPM image
 :  Image painted over inactive tab labels. Use _none_ to clear.
 |  *container.tab.fg\_active*
-:  hex colour (_0xRRGGBB_)
+:  hex colour (_0xRRGGBB_ or _0xRRGGBBAA_)
 :  Foreground (text) colour of the active tab label. Default: _0x000000_.
 |  *container.tab.fg\_inactive*
-:  hex colour (_0xRRGGBB_)
+:  hex colour (_0xRRGGBB_ or _0xRRGGBBAA_)
 :  Foreground (text) colour of inactive tab labels. Default: _0x202020_.
 |  *container.tab.sunken*
 :  _true_ | _1_ | _false_ | _0_
@@ -2298,10 +2309,10 @@ behaviour of desktops and pages:
 :  integer (ms, 50..5000)
 :  Cursor hover time at an edge before the page switches.  Default: _300_.
 |  *output.colour.background*
-:  hex colour (_0xRRGGBB_)
+:  hex colour (_0xRRGGBB_ or _0xRRGGBBAA_)
 :  Background colour for all outputs.
 |  *output.colour.background.*_output_
-:  hex colour (_0xRRGGBB_)
+:  hex colour (_0xRRGGBB_ or _0xRRGGBBAA_)
 :  Background colour for the named output or output number (*@N*).
 |  *output.image.background*
 :  path | _none_

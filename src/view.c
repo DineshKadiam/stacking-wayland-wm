@@ -398,6 +398,8 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		memcpy(cfg->titlebar.buttons[idx].active_colour,
 		    cow_config->titlebar.buttons[idx].active_colour,
 		    sizeof(cfg->titlebar.buttons[idx].active_colour));
+		cfg->titlebar.buttons[idx].has_active_colour =
+		    cow_config->titlebar.buttons[idx].has_active_colour;
 		return;
 	}
 	idx = titlebar_button_index(option,
@@ -406,6 +408,8 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		memcpy(cfg->titlebar.buttons[idx].inactive_colour,
 		    cow_config->titlebar.buttons[idx].inactive_colour,
 		    sizeof(cfg->titlebar.buttons[idx].inactive_colour));
+		cfg->titlebar.buttons[idx].has_inactive_colour =
+		    cow_config->titlebar.buttons[idx].has_inactive_colour;
 		return;
 	}
 

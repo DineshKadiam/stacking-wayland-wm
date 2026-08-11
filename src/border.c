@@ -525,12 +525,13 @@ sampled_reference_add(const uint32_t *base, int stride, int x, int y,
     uint64_t sum[3], uint64_t *count)
 {
 	uint32_t px = base[y * stride + x];
+	uint32_t a  = (px >> 24) & 0xff;
 
-	if ((px >> 24) == 0)
+	if (a == 0)
 		return;
-	sum[0] += (px >> 16) & 0xff;
-	sum[1] += (px >> 8) & 0xff;
-	sum[2] += px & 0xff;
+	sum[0] += ((((px >> 16) & 0xff) * 255) + a / 2) / a;
+	sum[1] += ((((px >> 8) & 0xff) * 255) + a / 2) / a;
+	sum[2] += (((px & 0xff) * 255) + a / 2) / a;
 	(*count)++;
 }
 
@@ -580,12 +581,8 @@ shade_sampled_pixel(uint32_t base, int shade, const float *reference)
 	if (shade == 3 || base == TRANSPARENT_PX)
 		return (TRANSPARENT_PX);
 
-	float colour[4] = {
-		((base >> 16) & 0xff) / 255.0f,
-		((base >> 8) & 0xff) / 255.0f,
-		(base & 0xff) / 255.0f,
-		((base >> 24) & 0xff) / 255.0f,
-	};
+	float colour[4];
+	cow_colour_from_pixel(colour, base);
 	struct cow_colour_triple t;
 	cow_colour_make_triple_for_reference(&t, colour, reference);
 

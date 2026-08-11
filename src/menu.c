@@ -1048,7 +1048,7 @@ draw_submenu_arrow(struct cow_pixbuf *buf, int x, int y, int size,
 		fill = buf->pixels[y * buf->stride_px + x];
 	float base[4];
 	struct cow_colour_triple arrow_colours;
-	cow_colour_convert(base, fill);
+	cow_colour_from_pixel(base, fill);
 	cow_colour_make_triple(&arrow_colours, base);
 
 	for (int i = 0; i <= size; i++) {

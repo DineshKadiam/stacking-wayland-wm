@@ -18,17 +18,40 @@
 #include "cow/memory.h"
 
 #include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
 bool
 cow_colour_parse(const char *str, float *out)
 {
+	if (str == NULL || out == NULL || str[0] == '-')
+		return false;
+
+	errno = 0;
 	char	     *end;
 	unsigned long v = strtoul(str, &end, 0);
-	if (end == str)
+	if (end == str || *end != '\0' || errno == ERANGE || v > UINT32_MAX)
 		return false;
-	cow_colour_convert(out, (uint32_t)v);
+
+	bool rgba = v > 0xffffffUL;
+	if (str[0] == '0' && (str[1] == 'x' || str[1] == 'X')) {
+		size_t digits = strlen(str + 2);
+		if (digits == 0 || digits == 7 || digits > 8)
+			return false;
+		rgba = digits == 8;
+	}
+
+	if (!rgba) {
+		cow_colour_convert(out, (uint32_t)v);
+		return true;
+	}
+
+	out[0] = ((v >> 24) & 0xff) / 255.0f;
+	out[1] = ((v >> 16) & 0xff) / 255.0f;
+	out[2] = ((v >> 8) & 0xff) / 255.0f;
+	out[3] = (v & 0xff) / 255.0f;
 	return true;
 }
 
@@ -92,8 +115,33 @@ cow_colour_to_pixel(const float *colour)
 	uint8_t g = (uint8_t)(colour[1] * 255.0f + 0.5f);
 	uint8_t b = (uint8_t)(colour[2] * 255.0f + 0.5f);
 	uint8_t a = (uint8_t)(colour[3] * 255.0f + 0.5f);
+	r = (uint8_t)(((unsigned int)r * a + 127) / 255);
+	g = (uint8_t)(((unsigned int)g * a + 127) / 255);
+	b = (uint8_t)(((unsigned int)b * a + 127) / 255);
 	return ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) |
 	    b;
+}
+
+void
+cow_colour_from_pixel(float *dst, uint32_t pixel)
+{
+	uint8_t a = (pixel >> 24) & 0xff;
+
+	dst[3] = a / 255.0f;
+	if (a == 0) {
+		dst[0] = dst[1] = dst[2] = 0.0f;
+		return;
+	}
+
+	dst[0] = ((pixel >> 16) & 0xff) / (float)a;
+	dst[1] = ((pixel >> 8) & 0xff) / (float)a;
+	dst[2] = (pixel & 0xff) / (float)a;
+	if (dst[0] > 1.0f)
+		dst[0] = 1.0f;
+	if (dst[1] > 1.0f)
+		dst[1] = 1.0f;
+	if (dst[2] > 1.0f)
+		dst[2] = 1.0f;
 }
 
 void

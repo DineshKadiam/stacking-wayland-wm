@@ -137,6 +137,20 @@ style label.inactive.fg 0x000000
 style window.focused.bg 0xf7c733
 ```
 
+Colours may be opaque *0xRRGGBB* values or *0xRRGGBBAA* values carrying an
+alpha component.  Each background layer has its own colour.  For example,
+the following makes the pager's principal backgrounds dark grey at 80
+percent opacity:
+
+```
+style background 0x282828CC
+style desk.bg 0x282828CC
+style page.bg 0x282828CC
+style page.active.bg 0x458588CC
+style label.bg 0x282828CC
+style label.active.bg 0x458588CC
+```
+
 By default, *cowpager* derives these colours from cow's current
 configured theme.  The output background becomes the pager background
 when one is configured; otherwise the inactive titlebar or tab colour is

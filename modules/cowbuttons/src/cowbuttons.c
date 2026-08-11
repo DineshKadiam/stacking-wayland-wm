@@ -2081,6 +2081,18 @@ set_source_colour(cairo_t *cr, const float *colour)
 }
 
 static void
+fill_source_colour(cairo_t *cr, const float *colour, double x, double y,
+    double w, double h)
+{
+	cairo_save(cr);
+	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+	set_source_colour(cr, colour);
+	cairo_rectangle(cr, x, y, w, h);
+	cairo_fill(cr);
+	cairo_restore(cr);
+}
+
+static void
 button_image_rect(const struct cell *c, double x, double y, double w,
     double h, int *ix, int *iy, int *iw, int *ih)
 {
@@ -2338,8 +2350,10 @@ render(void)
 	    CAIRO_FONT_WEIGHT_NORMAL);
 	cairo_set_font_size(cr, 12);
 
-	cairo_set_source_rgb(cr, 0.16, 0.16, 0.17);
+	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+	set_source_colour(cr, style.bg);
 	cairo_paint(cr);
+	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
 	for (int row = 0; row < cfg.rows; row++) {
 		for (int col = 0; col < cfg.cols; col++) {
@@ -2376,10 +2390,8 @@ render(void)
 			} else if (c != NULL && c->type == CELL_STATUS)
 				label = status_text(c, &st);
 
-			set_source_colour(cr, c == NULL ? style.bg :
-			    cell_bg_colour(c, sunken));
-			cairo_rectangle(cr, x, y, cell_w, cell_h);
-			cairo_fill(cr);
+			fill_source_colour(cr, c == NULL ? style.bg :
+			    cell_bg_colour(c, sunken), x, y, cell_w, cell_h);
 			if (c != NULL)
 				draw_button_image(c, image, &pixbuf, x, y, cell_w,
 				    cell_h);

@@ -312,6 +312,18 @@ set_source_colour(cairo_t *cr, const float c[4])
 }
 
 static void
+fill_source_colour(cairo_t *cr, const float c[4], double x, double y,
+    double w, double h)
+{
+	cairo_save(cr);
+	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+	set_source_colour(cr, c);
+	cairo_rectangle(cr, x, y, w, h);
+	cairo_fill(cr);
+	cairo_restore(cr);
+}
+
+static void
 apply_theme_defaults(const state_t *st)
 {
 	if (st == NULL)
@@ -1246,9 +1258,7 @@ fill_output_backgrounds(cairo_t *cr, const state_t *st, const canvas_t *cv,
 		if (aw <= 0.0 || ah <= 0.0)
 			continue;
 
-		set_source_colour(cr, o->background);
-		cairo_rectangle(cr, ax, ay, aw, ah);
-		cairo_fill(cr);
+		fill_source_colour(cr, o->background, ax, ay, aw, ah);
 	}
 }
 
@@ -1307,12 +1317,9 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 				}
 			}
 
-			if (is_cur)
-				set_source_colour(cr, cfg.page_active_bg);
-			else
-				set_source_colour(cr, cfg.page_bg);
-			cairo_rectangle(cr, cx, cy, cw, ch);
-			cairo_fill(cr);
+			fill_source_colour(cr,
+			    is_cur ? cfg.page_active_bg : cfg.page_bg, cx, cy,
+			    cw, ch);
 			fill_output_backgrounds(cr, st, cv, cx, cy, cw, ch);
 		}
 	}
@@ -1436,11 +1443,12 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		if (wy + wh > sy + sh)
 			wh = sy + sh - wy;
 
-		double r, g, b;
+		double r, g, b, a = 1.0;
 		if (foc) {
 			r = cfg.window_focused_bg[0];
 			g = cfg.window_focused_bg[1];
 			b = cfg.window_focused_bg[2];
+			a = cfg.window_focused_bg[3];
 		} else {
 			window_colour(w->id, &r, &g, &b);
 		}
@@ -1458,7 +1466,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 				double marker = 7.0;
 				double mx = wx + (ww - marker) / 2.0;
 				double my = wy + (wh - marker) / 2.0;
-				cairo_set_source_rgba(cr, r, g, b, 1.0);
+				cairo_set_source_rgba(cr, r, g, b, a);
 				cairo_rectangle(cr, mx, my, marker, marker);
 				cairo_fill(cr);
 				cairo_set_source_rgba(cr, 0.08, 0.08, 0.10, 1.0);
@@ -1469,7 +1477,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 			}
 			continue;
 		}
-		cairo_set_source_rgba(cr, r, g, b, 1.0);
+		cairo_set_source_rgba(cr, r, g, b, a);
 		cairo_rectangle(cr, wx, wy, ww, wh);
 		cairo_fill(cr);
 
@@ -1678,13 +1686,10 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 	int desk_hilight = cfg.label_highlight && is_active_desk &&
 	    L->mon_tab_h <= 0;
 
-	if (desk_hilight)
-		set_source_colour(cr, cfg.label_active_bg);
-	else
-		set_source_colour(cr, cfg.label_bg);
 	if (L->desk_label_h > 0) {
-		cairo_rectangle(cr, dx, dy, L->cell_w, L->desk_label_h);
-		cairo_fill(cr);
+		fill_source_colour(cr,
+		    desk_hilight ? cfg.label_active_bg : cfg.label_bg, dx,
+		    dy, L->cell_w, L->desk_label_h);
 
 		set_source_colour(cr, cfg.label_fg);
 		set_font(cr, L->desk_font_px, 1);
@@ -1719,12 +1724,9 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 	for (int i = 0; i < n_tab; i++) {
 		double tx = dx + i * tw;
 		int active = cfg.label_highlight && tab[i]->current_desk == d->nr;
-		if (active)
-			set_source_colour(cr, cfg.label_active_bg);
-		else
-			set_source_colour(cr, cfg.label_bg);
-		cairo_rectangle(cr, tx, tab_y, tw, L->mon_tab_h);
-		cairo_fill(cr);
+		fill_source_colour(cr,
+		    active ? cfg.label_active_bg : cfg.label_bg, tx, tab_y,
+		    tw, L->mon_tab_h);
 
 		cairo_set_source_rgba(cr, 0.04, 0.04, 0.06, 1.0);
 		cairo_set_line_width(cr, 1.0);
@@ -1848,8 +1850,10 @@ do_render(const state_t *st)
 	cairo_t		*cr = cairo_create(cs);
 
 	/* Outer background */
+	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
 	set_source_colour(cr, cfg.background);
 	cairo_paint(cr);
+	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
 	const pout_t *ref = reference_output(st);
 	if (!ref)
@@ -1884,9 +1888,8 @@ do_render(const state_t *st)
 		    d->nr == ref->current_desk;
 
 		/* Desk cell background */
-		set_source_colour(cr, cfg.desk_bg);
-		cairo_rectangle(cr, dx, dy, L.cell_w, L.cell_h);
-		cairo_fill(cr);
+		fill_source_colour(cr, cfg.desk_bg, dx, dy, L.cell_w,
+		    L.cell_h);
 
 		/* Chrome: desk label + monitor-label row. */
 		draw_desk_chrome(cr, st, &L, d, dx, dy, is_active);

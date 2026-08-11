@@ -1863,6 +1863,7 @@ set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 		}
 
 		memcpy(tb->buttons[idx].inactive_colour, c, sizeof(c));
+		tb->buttons[idx].has_inactive_colour = true;
 		finish_visual_update(button_inactive_colour_option(idx), cfg);
 		return;
 	}
@@ -1874,6 +1875,7 @@ set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 			return;
 		}
 		memcpy(tb->buttons[idx].active_colour, c, sizeof(c));
+		tb->buttons[idx].has_active_colour = true;
 		finish_visual_update(button_active_colour_option(idx), cfg);
 		return;
 	}

@@ -37,10 +37,12 @@ font_blend_over(uint32_t dst, uint32_t src)
 	uint32_t sr = (src >> 16) & 0xff;
 	uint32_t sg = (src >> 8) & 0xff;
 	uint32_t sb = src & 0xff;
+	uint32_t da = (dst >> 24) & 0xff;
 	uint32_t dr = (dst >> 16) & 0xff;
 	uint32_t dg = (dst >> 8) & 0xff;
 	uint32_t db = dst & 0xff;
 
+	uint32_t out_a = a + (da * inv + 127) / 255;
 	uint32_t r = sr + (dr * inv + 127) / 255;
 	uint32_t g = sg + (dg * inv + 127) / 255;
 	uint32_t b = sb + (db * inv + 127) / 255;
@@ -51,7 +53,7 @@ font_blend_over(uint32_t dst, uint32_t src)
 		g = 0xff;
 	if (b > 0xff)
 		b = 0xff;
-	return (0xffu << 24) | (r << 16) | (g << 8) | b;
+	return (out_a << 24) | (r << 16) | (g << 8) | b;
 }
 
 static void
