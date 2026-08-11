@@ -266,6 +266,8 @@ cow_seat_create(struct river_seat_v1 *river_seat)
 	seat->titlebar_press	   = COW_TITLEBAR_PRESS_NONE;
 	seat->pressed_button_idx   = -1;
 	seat->pressed_view	   = NULL;
+	seat->pending_button_click_idx = -1;
+	seat->pending_button_click_deadline_ms = -1;
 
 	wl_list_init(&seat->keybindings);
 	wl_list_init(&seat->pointer_bindings);
@@ -423,6 +425,11 @@ cow_seat_forget_view(struct cow_seat *seat, struct cow_view *view)
 		seat->sloppy_focus_view = NULL;
 	if (seat->last_click_view == view)
 		seat->last_click_view = NULL;
+	if (seat->pending_button_click_view == view) {
+		seat->pending_button_click_view = NULL;
+		seat->pending_button_click_idx = -1;
+		seat->pending_button_click_deadline_ms = -1;
+	}
 	if (seat->pressed_view == view)
 		seat->pressed_view = NULL;
 	if (seat->op.view == view)

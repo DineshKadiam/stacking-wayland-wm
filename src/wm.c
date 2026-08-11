@@ -109,12 +109,13 @@ static struct cow_view *manage_focus_replacement_for_close(struct cow_seat *,
     struct cow_view *);
 static void manage_prepare_focus_replacement(struct cow_view *);
 static int  manage_click_count(struct cow_seat *, struct cow_view *,
-    struct timespec *);
+    enum cow_dec_region, struct timespec *);
 static void manage_store_click(struct cow_seat *, struct cow_view *,
-    struct timespec *, int);
-static void manage_titlebar_button_action(struct cow_view *, int);
+    enum cow_dec_region, struct timespec *, int);
 static bool manage_titlebar_button_press(struct cow_seat *, struct cow_view *,
     int, int);
+static void manage_titlebar_button_pending(struct cow_seat *);
+static int  manage_next_button_click_ms(void);
 static struct cow_view *manage_container_drag_target(struct cow_seat *);
 static enum cow_dec_region decoration_outer_region(struct cow_view *, int, int,
     int, int);
@@ -524,37 +525,67 @@ manage_configure_views(void)
 }
 
 static void
-manage_titlebar_button_action(struct cow_view *view, int idx)
+manage_titlebar_button_single(struct cow_view *view, int idx)
 {
-	if (idx < 0 || idx >= COW_TITLEBAR_NUM_BUTTONS)
+	cow_dec_binding_fire(view, cow_dec_region_button(idx), 1);
+}
+
+static void
+manage_titlebar_button_pending_clear(struct cow_seat *seat)
+{
+	seat->pending_button_click_view = NULL;
+	seat->pending_button_click_idx = -1;
+	seat->pending_button_click_deadline_ms = -1;
+}
+
+static void
+manage_titlebar_button_pending(struct cow_seat *seat)
+{
+	struct cow_view *view = seat->pending_button_click_view;
+	if (view == NULL)
+		return;
+	if (!view->closed && cow_mono_ms() <
+	    seat->pending_button_click_deadline_ms)
 		return;
 
-	const char *action = view->cfg.titlebar.buttons[idx].action;
-	if (action == NULL || *action == '\0')
-		return;
+	int idx = seat->pending_button_click_idx;
+	manage_titlebar_button_pending_clear(seat);
+	if (!view->closed)
+		manage_titlebar_button_single(view, idx);
+}
 
-	cow_wm.focused_view = view;
-	if (view->output != NULL)
-		cow_output_set_current(view->output);
+static void
+manage_titlebar_button_click(struct cow_seat *seat, struct cow_view *view,
+    int idx)
+{
+	enum cow_dec_region region = cow_dec_region_button(idx);
+	long now = cow_mono_ms();
 
-	struct cmd_list *cmdlist = NULL;
-	char		*cause	 = NULL;
-	if (cmd_string_parse(action, &cmdlist, NULL, 0, &cause) != 0) {
-		if (cause != NULL) {
-			cow_log_error("titlebar button command: %s", cause);
-			xfree(cause);
-		}
+	if (seat->pending_button_click_view == view &&
+	    seat->pending_button_click_idx == idx &&
+	    now < seat->pending_button_click_deadline_ms) {
+		manage_titlebar_button_pending_clear(seat);
+		if (!cow_dec_binding_fire(view, region, 2))
+			cow_dec_binding_fire(view, region, 1);
 		return;
 	}
-	if (cmdlist == NULL)
-		return;
 
-	struct cmd_q *cmdq = cmdq_new();
-	cmdq->client_fd	   = -1;
-	cmdq_set_default_target(cmdq, view, view->desk, view->output);
-	cmdq_run(cmdq, cmdlist);
-	cmd_list_free(cmdlist);
-	cmdq_free(cmdq);
+	/* A click on another button resolves the previous click as single. */
+	if (seat->pending_button_click_view != NULL) {
+		struct cow_view *pending = seat->pending_button_click_view;
+		int pending_idx = seat->pending_button_click_idx;
+		manage_titlebar_button_pending_clear(seat);
+		if (!pending->closed)
+			manage_titlebar_button_single(pending, pending_idx);
+	}
+
+	if (cow_dec_binding_lookup(region, 2) != NULL) {
+		seat->pending_button_click_view = view;
+		seat->pending_button_click_idx = idx;
+		seat->pending_button_click_deadline_ms = now + DOUBLE_CLICK_MS;
+	} else {
+		manage_titlebar_button_single(view, idx);
+	}
 }
 
 static void
@@ -574,7 +605,7 @@ manage_titlebar_button_release(struct cow_seat *seat)
 			    seat->pressed_button_idx;
 		}
 		if (still_on_button) {
-			manage_titlebar_button_action(view,
+			manage_titlebar_button_click(seat, view,
 			    seat->pressed_button_idx);
 		}
 		view->pressed_button = -1;
@@ -697,10 +728,11 @@ manage_container_tab_click(struct cow_seat *seat, struct cow_view *view, int lx,
 
 static int
 manage_click_count(struct cow_seat *seat, struct cow_view *view,
-    struct timespec *now)
+    enum cow_dec_region region, struct timespec *now)
 {
 	clock_gettime(CLOCK_MONOTONIC, now);
 	if (seat->last_click_view == view &&
+	    seat->last_click_region == (int)region &&
 	    elapsed_ms(&seat->last_click_time, now) < DOUBLE_CLICK_MS)
 		return (2);
 	return (1);
@@ -708,12 +740,13 @@ manage_click_count(struct cow_seat *seat, struct cow_view *view,
 
 static void
 manage_store_click(struct cow_seat *seat, struct cow_view *view,
-    struct timespec *now, int clicks)
+    enum cow_dec_region region, struct timespec *now, int clicks)
 {
 	if (clicks == 2) {
 		seat->last_click_view = NULL;
 	} else {
 		seat->last_click_view = view;
+		seat->last_click_region = region;
 		seat->last_click_time = *now;
 	}
 }
@@ -767,32 +800,32 @@ manage_decoration_click(struct cow_seat *seat, struct cow_view *view)
 	if (view->sd != COW_SHADE_NONE)
 		cow_view_shaded_content_size(view, view->sd, &cw, &ch);
 
-	struct timespec now;
-	int		clicks = manage_click_count(seat, view, &now);
-
+	enum cow_dec_region region = COW_DEC_REGION_NONE;
 	uint32_t edges = decoration_corner_edges(view, lx, ly, cw, ch);
 	if (edges != 0) {
-		cow_dec_binding_dispatch(seat, view,
-		    corner_region_from_edges(edges), clicks);
+		region = corner_region_from_edges(edges);
 	} else if (cow_titlebar_hit_for(view, cw, ch, lx, ly)) {
 		if (manage_titlebar_button_press(seat, view, lx, ly)) {
-			/* handled */
+			seat->last_click_view = NULL;
+			return;
 		} else if (cow_titlebar_is_vertical(
 			       view->cfg.titlebar.position) ||
 		    !manage_container_tab_click(seat, view, lx, cw)) {
-			cow_dec_binding_dispatch(seat, view,
-			    COW_DEC_REGION_TITLEBAR, clicks);
+			region = COW_DEC_REGION_TITLEBAR;
 		} else {
+			seat->last_click_view = NULL;
 			return;
 		}
 	} else {
-		enum cow_dec_region er =
-		    decoration_outer_region(view, lx, ly, cw, ch);
-		if (er != COW_DEC_REGION_NONE)
-			cow_dec_binding_dispatch(seat, view, er, clicks);
+		region = decoration_outer_region(view, lx, ly, cw, ch);
 	}
+	if (region == COW_DEC_REGION_NONE)
+		return;
 
-	manage_store_click(seat, view, &now, clicks);
+	struct timespec now;
+	int clicks = manage_click_count(seat, view, region, &now);
+	cow_dec_binding_dispatch(seat, view, region, clicks);
+	manage_store_click(seat, view, region, &now, clicks);
 }
 
 static void
@@ -831,6 +864,7 @@ manage_sloppy_focus(struct cow_seat *seat)
 static void
 manage_process_seat(struct cow_seat *seat)
 {
+	manage_titlebar_button_pending(seat);
 	/* A triggered binding may itself cause pointer focus, and therefore
 	 * binding context, to change.  Run it before context reconciliation so
 	 * disabling the old context cannot discard the pending action.
@@ -1660,6 +1694,24 @@ cow_wm_flush_display(void)
 	return false;
 }
 
+static int
+manage_next_button_click_ms(void)
+{
+	long now = cow_mono_ms();
+	long next = -1;
+	struct cow_seat *seat;
+
+	wl_list_for_each(seat, &cow_wm.seats, wm_link)
+	{
+		if (seat->pending_button_click_view == NULL)
+			continue;
+		long delta = seat->pending_button_click_deadline_ms - now;
+		if (next < 0 || delta < next)
+			next = delta;
+	}
+	return next < 0 ? -1 : (int)next;
+}
+
 static void
 cow_wm_schedule_tick(struct event *tick_ev)
 {
@@ -1677,6 +1729,13 @@ cow_wm_schedule_tick(struct event *tick_ev)
 
 	if (cow_menu_is_open() && (tick_ms < 0 || tick_ms > 33))
 		tick_ms = 33;
+
+	int button_ms = manage_next_button_click_ms();
+	if (button_ms >= 0) {
+		int wait = button_ms < 1 ? 1 : button_ms;
+		if (tick_ms < 0 || wait < tick_ms)
+			tick_ms = wait;
+	}
 
 	if (cow_wm.outputs_changed_deadline_ms >= 0) {
 		long delta = cow_wm.outputs_changed_deadline_ms -

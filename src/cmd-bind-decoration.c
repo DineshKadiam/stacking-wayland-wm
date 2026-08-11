@@ -40,6 +40,7 @@ static enum cmd_retval cmd_bind_decoration_exec(struct cmd *, struct cmd_q *);
  * Accepted shapes:
  *   bind-decoration REGION cmd [args...]
  *   bind-decoration -2 REGION cmd [args...]
+ * REGION may also be a titlebar button number from 0 through 9.
  */
 struct cmd_entry cmd_bind_decoration_entry = { "bind-decoration", "", 2, -1,
 	"bind-decoration [-2] REGION command [args ...]",
@@ -67,7 +68,7 @@ cmd_bind_decoration_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (region == COW_DEC_REGION_NONE) {
 		cmdq_error(cmdq,
 		    "bind-decoration: unknown region '%s' "
-		    "(expected N|S|E|W|NE|NW|SE|SW|titlebar)",
+		    "(expected N|S|E|W|NE|NW|SE|SW|titlebar|0..9)",
 		    args->argv[idx]);
 		return (CMD_RETURN_ERROR);
 	}
@@ -140,6 +141,9 @@ cow_decoration_register_default_bindings(void)
 	register_default(COW_DEC_REGION_TITLEBAR, 1, "window-move");
 	register_default(COW_DEC_REGION_TITLEBAR, 2,
 	    "window-shade -d titlebar");
+	register_default(COW_DEC_REGION_BUTTON_0, 1, "window-maximize -T");
+	register_default(COW_DEC_REGION_BUTTON_1, 1, "winops -c");
+	register_default(COW_DEC_REGION_BUTTON_2, 1, "winops -i");
 }
 
 static bool

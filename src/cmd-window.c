@@ -572,7 +572,7 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 	view->maximized = view->maximized_h || view->maximized_v;
 	cow_view_set_pending_maximized_hint(view, true);
 
-	int mbi = cow_view_maximize_button_index(view);
+	int mbi = cow_view_maximize_button_index();
 	if (mbi >= 0)
 		view->icon_inverted_button = mbi;
 	return true;

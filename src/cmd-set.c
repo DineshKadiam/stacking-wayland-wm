@@ -440,13 +440,6 @@ button_vector_option(int idx)
 }
 
 static enum cow_view_cfg_option
-button_action_option(int idx)
-{
-	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTION +
-	    idx * COW_VIEW_CFG_TITLEBAR_BUTTON_STRIDE;
-}
-
-static enum cow_view_cfg_option
 button_image_option(int idx)
 {
 	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_IMAGE +
@@ -1834,12 +1827,6 @@ set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 			return;
 		}
 		finish_visual_update(button_vector_option(idx), cfg);
-		return;
-	}
-	if (strcmp(field, "action") == 0) {
-		xfree(tb->buttons[idx].action);
-		tb->buttons[idx].action = xstrdup(val);
-		finish_visual_update(button_action_option(idx), cfg);
 		return;
 	}
 	if (strcmp(field, "active_relief") == 0) {

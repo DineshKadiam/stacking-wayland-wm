@@ -172,6 +172,16 @@ enum cow_dec_region {
 	COW_DEC_REGION_SE,
 	COW_DEC_REGION_SW,
 	COW_DEC_REGION_TITLEBAR,
+	COW_DEC_REGION_BUTTON_0,
+	COW_DEC_REGION_BUTTON_1,
+	COW_DEC_REGION_BUTTON_2,
+	COW_DEC_REGION_BUTTON_3,
+	COW_DEC_REGION_BUTTON_4,
+	COW_DEC_REGION_BUTTON_5,
+	COW_DEC_REGION_BUTTON_6,
+	COW_DEC_REGION_BUTTON_7,
+	COW_DEC_REGION_BUTTON_8,
+	COW_DEC_REGION_BUTTON_9,
 	COW_DEC_REGION_COUNT,
 };
 
@@ -238,7 +248,6 @@ bool cow_parse_squeeze_just(const char *, enum cow_squeeze_just *);
  */
 struct cow_titlebar_button_config {
 	struct cow_vector_button vector;
-	char			*action;
 	char			*image;
 	enum cow_relief		active_relief;
 	enum cow_relief		inactive_relief;
@@ -489,6 +498,7 @@ const char *cow_config_find_action(struct cow_config *, const char *);
  * on a bad name.
  */
 enum cow_dec_region cow_dec_region_parse(const char *);
+enum cow_dec_region cow_dec_region_button(int);
 
 const char *cow_dec_region_name(enum cow_dec_region);
 
@@ -504,10 +514,10 @@ bool cow_dec_binding_fire(struct cow_view *, enum cow_dec_region, int clicks);
 
 /*
  * Click-dispatch helper for the wm.c decoration-click router.
- * Fires the (region, 1) binding immediately on press for press-and-
- * hold semantics; on a (region, 2) follow-up cancels the in-flight
- * pointer op (so press-without-motion side-effects roll back) and
- * runs the 2-click binding.
+ * Fires an edge, corner, or titlebar (region, 1) binding immediately
+ * on press for press-and-hold semantics; on a (region, 2) follow-up
+ * cancels the in-flight pointer op and runs the 2-click binding.
+ * Titlebar buttons are dispatched separately on release by wm.c.
  */
 struct cow_seat;
 bool cow_dec_binding_dispatch(struct cow_seat *seat, struct cow_view *,
@@ -516,7 +526,8 @@ bool cow_dec_binding_dispatch(struct cow_seat *seat, struct cow_view *,
 /*
  * Populate the current cow_config->decoration_bindings list with
  * the built-in defaults (resize for each edge/corner; move +
- * double-click-shade for the titlebar).  Call once after
+ * double-click-shade for the titlebar; standard titlebar button
+ * actions).  Call once after
  * cow_config_create so user `bind-decoration` lines in the config
  * naturally override these defaults via the same-pair replacement
  * rule in cmd-bind-decoration.

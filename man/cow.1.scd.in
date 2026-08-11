@@ -563,7 +563,7 @@ For overlapping contextual bindings, the most specific context wins.
 - R: output background (root).
 - W: application window content.
 - I: an iconified-window icon.
-- 0 through 9: the corresponding titlebar button.
+- 0 to 9: the corresponding titlebar button.
 
 Multiple characters combine regions.  The context window becomes the command's
 default target, making window commands act on the window under that region
@@ -704,6 +704,8 @@ shorthands and the long form:
 :  _south-west_
 |  *titlebar*
 :  _title_
+|  *0* to *9*
+:  titlebar buttons 0 to 9
 
 The default bindings are:
 
@@ -722,8 +724,23 @@ The default bindings are:
 |  titlebar
 :  double
 :  window-shade -d titlebar (shade / unshade toward the titlebar)
+|  0
+:  single
+:  window-maximize -T (toggle vertical maximisation)
+|  1
+:  single
+:  winops -c (close)
+|  2
+:  single
+:  winops -i (iconify)
 
 Double-clicks on edges and corners have no defaults.
+
+If a button has both single- and double-click bindings, CoW waits until the
+double-click interval has elapsed before running the single-click action.  A
+second click on the same button runs only the double-click action.  Other
+decoration regions retain immediate press-and-hold handling for interactive
+move and resize actions.
 
 *Limitation:* *River* does not expose which button was used when clicking on the
 window decoration, so currently, only mouse button 1 is usable.
@@ -745,6 +762,11 @@ bind-decoration N window-maximize -m
 # of starting a corner resize still fires on the first click; bind
 # the single-click pair too if you want to suppress it).
 bind-decoration -2 NE    winops -c
+
+# Button 0 toggles vertical maximisation on one click and full
+# maximisation on two clicks.
+bind-decoration 0       window-maximize -T
+bind-decoration -2 0    window-maximize -m
 
 # Chain: start a resize then focus the next window.
 bind-decoration SE       window-resize -e se \; focus -n
@@ -1516,15 +1538,10 @@ feel of a window.  All of these can be used with *decor -d*.
    draws the title area and buttons without relief. Default: _inherit_.
 |  *titlebar.button.N.vector*
 :  vector string
-:  Geometry of titlebar button _N_, where _N_ is 0 through 9. Odd
+:  Geometry of titlebar button _N_, where _N_ is 0 to 9. Odd
    buttons are placed on the left; even buttons are placed on the right,
    with button 0 nearest the right edge. Use _none_ to hide a button slot
    unless it has an image configured.
-|  *titlebar.button.N.action*
-:  command string
-:  Command run when titlebar button _N_ is clicked. The clicked window is
-   the default command target. Quote commands that contain spaces, for
-   example _'window-maximize -T'_.
 |  *titlebar.button.N.image*
 :  PNG, SVG, or XPM image
 :  Image drawn inside titlebar button _N_ instead of its vector glyph.

@@ -116,7 +116,6 @@ config_decor_free(struct cow_config *config)
 	border_images_free(&config->border_active);
 	border_images_free(&config->border_inactive);
 	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++) {
-		xfree(config->titlebar.buttons[i].action);
 		xfree(config->titlebar.buttons[i].image);
 	}
 }
@@ -143,7 +142,6 @@ config_decor_detach(struct cow_config *config)
 	border_images_detach(&config->border_active);
 	border_images_detach(&config->border_inactive);
 	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++) {
-		config->titlebar.buttons[i].action = NULL;
 		config->titlebar.buttons[i].image = NULL;
 	}
 }
@@ -323,7 +321,6 @@ cow_config_create(void)
 		v->points[2]  = (struct cow_vector_point) { 75, 25, 0, 0, -1 };
 		v->points[3]  = (struct cow_vector_point) { 25, 75, 0, 0, 3 };
 		v->points[4]  = (struct cow_vector_point) { 25, 25, 0, 0, -1 };
-		config->titlebar.buttons[1].action = xstrdup("winops -c");
 	}
 	{
 		struct cow_vector_button *v =
@@ -334,7 +331,6 @@ cow_config_create(void)
 		v->points[2]  = (struct cow_vector_point) { 75, 75, 0, 0, 3 };
 		v->points[3]  = (struct cow_vector_point) { 75, 25, 0, 0, 3 };
 		v->points[4]  = (struct cow_vector_point) { 25, 25, 0, 0, 3 };
-		config->titlebar.buttons[0].action = xstrdup("window-maximize -T");
 	}
 	{
 		struct cow_vector_button *v =
@@ -345,7 +341,6 @@ cow_config_create(void)
 		v->points[2]  = (struct cow_vector_point) { 75, 75, 0, 0, 3 };
 		v->points[3]  = (struct cow_vector_point) { 25, 75, 0, 0, 3 };
 		v->points[4]  = (struct cow_vector_point) { 25, 65, 0, 0, 3 };
-		config->titlebar.buttons[2].action = xstrdup("winops -i");
 	}
 
 	wl_list_init(&config->keyboard_bindings);
@@ -578,7 +573,7 @@ cow_config_set_output_background_image(struct cow_config *config,
  * Region names are matched case-insensitively.  Both compass shorthands
  * (N / S / E / W / NE / NW / SE / SW) and full names (north / south /
  * east / west / north-east etc.) are accepted, plus "titlebar" / "title"
- * for the title bar zone.
+ * for the title bar zone and 0 through 9 for titlebar buttons.
  */
 static const struct {
 	enum cow_dec_region region;
@@ -594,7 +589,25 @@ static const struct {
 	{ COW_DEC_REGION_SE,	     "se",	   "south-east" },
 	{ COW_DEC_REGION_SW,	     "sw",	   "south-west" },
 	{ COW_DEC_REGION_TITLEBAR, "titlebar", "title"      },
+	{ COW_DEC_REGION_BUTTON_0, "0",        NULL         },
+	{ COW_DEC_REGION_BUTTON_1, "1",        NULL         },
+	{ COW_DEC_REGION_BUTTON_2, "2",        NULL         },
+	{ COW_DEC_REGION_BUTTON_3, "3",        NULL         },
+	{ COW_DEC_REGION_BUTTON_4, "4",        NULL         },
+	{ COW_DEC_REGION_BUTTON_5, "5",        NULL         },
+	{ COW_DEC_REGION_BUTTON_6, "6",        NULL         },
+	{ COW_DEC_REGION_BUTTON_7, "7",        NULL         },
+	{ COW_DEC_REGION_BUTTON_8, "8",        NULL         },
+	{ COW_DEC_REGION_BUTTON_9, "9",        NULL         },
 };
+
+enum cow_dec_region
+cow_dec_region_button(int idx)
+{
+	if (idx < 0 || idx >= COW_TITLEBAR_NUM_BUTTONS)
+		return COW_DEC_REGION_NONE;
+	return (enum cow_dec_region)(COW_DEC_REGION_BUTTON_0 + idx);
+}
 
 enum cow_dec_region
 cow_dec_region_parse(const char *s)

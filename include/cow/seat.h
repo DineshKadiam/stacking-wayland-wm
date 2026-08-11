@@ -74,12 +74,17 @@ struct cow_seat {
 	/* Pending sloppy focus (set on pointer_enter, applied in manage) */
 	struct cow_view *sloppy_focus_view;
 
-	/* Double-click detection for window shading */
+	/* Double-click detection for decoration bindings. */
 	struct cow_view *last_click_view;
-	int		 last_click_lx, last_click_ly;
+	int		 last_click_region;
 	struct timespec	 last_click_time;
 	bool pending_shade;   /* set when double-click detected in decoration */
 	int  shade_direction; /* COW_SHADE_* direction from double-click */
+
+	/* A titlebar-button single click awaiting the double-click deadline. */
+	struct cow_view *pending_button_click_view;
+	int		 pending_button_click_idx;
+	long		 pending_button_click_deadline_ms;
 
 	/* Pointer operation state */
 	struct cow_pointer_op op;

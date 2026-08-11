@@ -97,13 +97,6 @@ titlebar_button_vector_index(enum cow_view_cfg_option option)
 }
 
 static int
-titlebar_button_action_index(enum cow_view_cfg_option option)
-{
-	return titlebar_button_index(option,
-	    COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTION);
-}
-
-static int
 titlebar_button_image_index(enum cow_view_cfg_option option)
 {
 	return titlebar_button_index(option,
@@ -114,15 +107,6 @@ static char *
 xstrdup0(const char *s)
 {
 	return s != NULL ? xstrdup(s) : NULL;
-}
-
-static void
-titlebar_button_actions_free(struct cow_titlebar_config *tb)
-{
-	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++) {
-		xfree(tb->buttons[i].action);
-		tb->buttons[i].action = NULL;
-	}
 }
 
 static void
@@ -140,14 +124,6 @@ titlebar_button_images_dup(struct cow_titlebar_config *dst,
 {
 	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++)
 		dst->buttons[i].image = xstrdup0(src->buttons[i].image);
-}
-
-static void
-titlebar_button_actions_dup(struct cow_titlebar_config *dst,
-    const struct cow_titlebar_config *src)
-{
-	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++)
-		dst->buttons[i].action = xstrdup0(src->buttons[i].action);
 }
 
 static void
@@ -260,7 +236,6 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 	dst->titlebar.active_image = xstrdup0(cow_config->titlebar.active_image);
 	dst->titlebar.inactive_image =
 	    xstrdup0(cow_config->titlebar.inactive_image);
-	titlebar_button_actions_dup(&dst->titlebar, &cow_config->titlebar);
 	titlebar_button_images_dup(&dst->titlebar, &cow_config->titlebar);
 	dst->container		= cow_config->container;
 	dst->container.tab_active_image =
@@ -394,13 +369,6 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 	if (idx != -1) {
 		cfg->titlebar.buttons[idx].vector =
 		    cow_config->titlebar.buttons[idx].vector;
-		return;
-	}
-	idx = titlebar_button_action_index(option);
-	if (idx != -1) {
-		xfree(cfg->titlebar.buttons[idx].action);
-		cfg->titlebar.buttons[idx].action =
-		    xstrdup0(cow_config->titlebar.buttons[idx].action);
 		return;
 	}
 	idx = titlebar_button_image_index(option);
@@ -744,7 +712,6 @@ cow_view_cfg_fini(struct cow_view_cfg *cfg)
 	xfree(cfg->container.tab_inactive_image);
 	border_images_free(&cfg->border_active);
 	border_images_free(&cfg->border_inactive);
-	titlebar_button_actions_free(&cfg->titlebar);
 	titlebar_button_images_free(&cfg->titlebar);
 	cfg->font_name		= NULL;
 	cfg->title_format	= NULL;
@@ -2139,15 +2106,11 @@ view_refit_maximized(struct cow_view *view)
  * ================================================================ */
 
 int
-cow_view_maximize_button_index(const struct cow_view *view)
+cow_view_maximize_button_index(void)
 {
-	const struct cow_titlebar_config *tb = (view != NULL) ?
-	    &view->cfg.titlebar :
-	    (cow_config != NULL ? &cow_config->titlebar : NULL);
-	if (tb == NULL)
-		return -1;
 	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++) {
-		const char *action = tb->buttons[i].action;
+		const char *action = cow_dec_binding_lookup(
+		    cow_dec_region_button(i), 1);
 		if (action != NULL &&
 		    strncmp(action, "window-maximize", 15) == 0)
 			return i;
@@ -2205,7 +2168,7 @@ cow_view_maximize(struct cow_view *view)
 	 */
 	cow_view_sync_container_geometry(view, view->x, view->y, w, h);
 
-	int mbi = cow_view_maximize_button_index(view);
+	int mbi = cow_view_maximize_button_index();
 	if (mbi >= 0) {
 		view->icon_inverted_button = mbi;
 		view->dec.dirty		   = true;
