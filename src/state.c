@@ -23,12 +23,39 @@
 #include <unistd.h>
 
 #include "cow/compat.h"
+#include "cow/config.h"
 #include "cow/desk_ops.h"
 #include "cow/json_util.h"
 #include "cow/memory.h"
 #include "cow/output.h"
+#include "cow/stack.h"
 #include "cow/view.h"
 #include "cow/wm.h"
+
+/*
+ * Return the view's bottom-to-top position within its effective layer.
+ * Store a compact rank rather than raise_seq itself: raise_seq is a uint64_t
+ * near UINT64_MAX / 2 and cannot be represented exactly by cJSON's double.
+ */
+static int
+view_stack_order(const struct cow_view *view)
+{
+	int		 order = 0;
+	struct cow_view *other;
+
+	wl_list_for_each(other, &cow_wm.views, wm_link)
+	{
+		if (other->closed || other == view)
+			continue;
+		if (cow_view_effective_layer(other) !=
+		    cow_view_effective_layer(view))
+			continue;
+		if (other->raise_seq < view->raise_seq)
+			order++;
+	}
+
+	return order;
+}
 
 const char *
 cow_state_path(void)
@@ -96,7 +123,6 @@ cow_state_save(void)
 
 	/* Save per-view state */
 	cJSON		*views	 = cJSON_AddArrayToObject(root, "views");
-	int		 z_order = 0;
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
@@ -112,7 +138,9 @@ cow_state_save(void)
 		cJSON_AddNumberToObject(v, "width", view->content_width);
 		cJSON_AddNumberToObject(v, "height", view->content_height);
 		cJSON_AddNumberToObject(v, "flags", view->flags);
-		cJSON_AddNumberToObject(v, "z_order", z_order++);
+		cJSON_AddNumberToObject(v, "layer", view->layer);
+		cJSON_AddNumberToObject(v, "z_order",
+		    view_stack_order(view));
 
 		if (view->desk != NULL)
 			cJSON_AddNumberToObject(v, "desk", view->desk->nr);
@@ -354,6 +382,28 @@ cow_state_restore(void)
 			if (vs == NULL)
 				continue;
 
+			/*
+			 * River re-announces existing windows after exec.  They pass
+			 * through cow_view_configure() before state restoration, which
+			 * marks them for the focus and raise normally given to a new
+			 * window.  Preserve the old stack and restore only the saved
+			 * focus target instead.
+			 */
+			view->needs_focus = false;
+			view->needs_raise = false;
+
+			long long layer;
+			int max_layer = cow_config != NULL ? cow_config->max_layer :
+			    COW_CFG_MAX_LAYER;
+			if (cow_json_get_int(vs, "layer", &layer) && layer >= 0)
+				view->layer = (uint8_t)(layer > max_layer ? max_layer :
+				    layer);
+
+			long long z_order;
+			if (cow_json_get_int(vs, "z_order", &z_order) &&
+			    z_order >= 0)
+				view->raise_seq = (uint64_t)z_order;
+
 			/* Output matching — must happen before position
 			 * restore so that vx/vy are computed against the
 			 * correct output origin and page viewport. */
@@ -570,14 +620,16 @@ cow_state_restore(void)
 		}
 	}
 
-	/* Restore focus */
+	/* Apply the restored order before the next render pass. */
+	if (restored)
+		cow_stack_mark_dirty();
+
+	/* Restore focus through the seat so all focus bookkeeping agrees. */
 	const char *focused_id = NULL;
 	if (cow_json_get_string(root, "focused", &focused_id)) {
 		struct cow_view *view = cow_view_find_by_identifier(focused_id);
-		if (view != NULL) {
-			cow_wm.focused_view = view;
-			view->needs_raise   = true;
-		}
+		if (view != NULL)
+			cow_wm.pending_focus = view;
 	}
 
 	cJSON_Delete(root);
