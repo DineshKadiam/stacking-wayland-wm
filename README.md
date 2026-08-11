@@ -4,6 +4,12 @@
   <img src="./logos/CoW-final.svg">
 </p>
 
+<p align="center">
+  <a href="https://thomasadam.codeberg.page/cow/">Website</a> ·
+  <a href="https://codeberg.org/thomasadam/cow/wiki/Home">Wiki</a> ·
+  <a href="https://codeberg.org/thomasadam/cow/issues">Issues</a>
+</p>
+
 `cow` is a stacking window manager.  Unlike other compositors based on
 wlroots, `cow` is a window manager using [river](https://codeberg.org/river/river)
 as the compositor.

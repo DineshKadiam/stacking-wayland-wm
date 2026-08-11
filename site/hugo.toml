@@ -1,0 +1,23 @@
+baseURL = "https://thomasadam.codeberg.page/cow/"
+locale = "en-GB"
+title = "CoW"
+disableKinds = ["taxonomy", "term", "RSS", "sitemap", "robotsTXT"]
+
+[params]
+repository = "https://codeberg.org/thomasadam/cow"
+documentation = "https://codeberg.org/thomasadam/cow/wiki/Home"
+architecture = "https://codeberg.org/thomasadam/cow/src/branch/main/architecture.md"
+packages = "https://codeberg.org/thomasadam/cow/wiki/Packages"
+
+[module]
+  [[module.mounts]]
+  source = "static"
+  target = "static"
+
+  [[module.mounts]]
+  source = "../logos"
+  target = "static/assets"
+
+  [[module.mounts]]
+  source = "../ss/cow-ss.png"
+  target = "static/assets/cow-ss.png"

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="{{ .Description }}">
+  <meta name="theme-color" content="#b8b8b8">
+  <title>{{ .Site.Title }} — a stacking window manager for Wayland</title>
+  <link rel="icon" href="{{ "assets/Only-CoW.svg" | relURL }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ "styles.css" | relURL }}?v=mobile-layout">
+  <script src="{{ "script.js" | relURL }}?v=shade-window" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="desktop-panel">
+    <nav aria-label="Primary navigation">
+      <a href="{{ .Site.Params.repository }}">Source</a>
+      <a href="{{ .Site.Params.documentation }}">Documentation</a>
+      <a href="{{ .Site.Params.repository }}/issues">Issues</a>
+      <a href="https://web.libera.chat/#cow-wayland">IRC</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    {{ partial "window-start.html" (dict "id" "top" "class" "hero-window" "title" .Params.hero.window_title "heading_id" "hero-title") }}
+      <div class="window-content hero-content">
+        <div class="hero-logo" aria-label="CoW project logo">
+          <img src="{{ "assets/CoW-final.svg" | relURL }}" alt="CoW">
+        </div>
+        <div class="hero-copy">
+          <h1 id="hero-title">{{ .Params.hero.heading }}</h1>
+        </div>
+      </div>
+    {{ partial "window-end.html" . }}
+
+    <div class="window-pair">
+      {{ partial "window-start.html" (dict "id" "features" "title" .Params.about.heading "heading_id" "features-title") }}
+        <div class="window-content overview-panel">
+          <p>{{ .Params.about.text }}</p>
+          <br />
+          <p>High-level features include:</p>
+          <ul>
+            <li>IPC scripting.</li>
+            <li>Server-side decorations can be customisable.</li>
+            <li>Placement of windows through different commands.</li>
+            <li>Native menu support.</li>
+            <li>Rules can control scripting.</li>
+            <li>Internal DSL (Domain Specific Language) allows for
+              filtering.</li>
+          </ul>
+          <p>... plus a lot more!</p>
+        </div>
+      {{ partial "window-end.html" . }}
+
+      {{ partial "window-start.html" (dict "id" "why-cow" "title" .Params.about.second_heading "heading_id" "why-cow-title") }}
+        <div class="window-content overview-panel">
+          <p>{{ .Params.about.second_text }}</p>
+          <p>Some useful things to know about the community:</p>
+          <ul>
+            <li>IRC is the best way of saying hello or asking questions</li>
+            <li>Report any issues over IRC or by creating a <a href="https://codeberg.org/thomasadam/cow/issues">Codeberg issue.</a></li>
+            <li>There's some chatter on Mastodon about CoW and other WMs.</li>
+            <li>A community Wiki exists.  <a href="https://codeberg.org/thomasadam/cow/wiki">Feel free to contribute</a></li>
+          </ul>
+          <br />
+          <p>Development:</p>
+          <ul>
+            <li><p>See the <a href="https://codeberg.org/thomasadam/cow">README file</a></p></li>
+            <li><p>For anything else, ask on IRC</p></li>
+          </ul>
+        </div>
+      {{ partial "window-end.html" . }}
+    </div>
+
+    {{ partial "window-start.html" (dict "title" "Screenshot" "heading_id" "screenshot-title" "class" "screenshot-window") }}
+      <figure class="window-content screenshot-content">
+        <a href="{{ "assets/cow-ss.png" | relURL }}">
+          <img src="{{ "assets/cow-ss.png" | relURL }}" alt="A CoW desktop showing decorated windows, a container, pager, menus, launcher buttons and iconified windows" loading="lazy">
+        </a>
+        <figcaption>{{ .Params.screenshot_caption }}</figcaption>
+      </figure>
+    {{ partial "window-end.html" . }}
+  </main>
+
+  <aside class="window-tray" aria-label="Closed sections" hidden>
+    <span>Windows:</span>
+    <div class="window-tray-items"></div>
+  </aside>
+
+  <hr />
+
+  <footer>
+    <img src="{{ "assets/Only-CoW.svg" | relURL }}" alt="" aria-hidden="true">
+    <p>CoW is open source. Questions and discussion are welcome in <a href="https://web.libera.chat/#cow-wayland">#cow-wayland</a>.</p>
+    <a href="#top">Back to top</a>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,11 @@
+<section class="window{{ with .class }} {{ . }}{{ end }}"{{ with .id }} id="{{ . }}"{{ end }} aria-labelledby="{{ .heading_id }}">
+  <div class="titlebar">
+    <button class="titlebar-button shade" type="button" data-window-action="shade" aria-label="Shade this section" aria-expanded="true"></button>
+    {{ if eq .heading_id "hero-title" }}
+    <span class="window-title">{{ .title }}</span>
+    {{ else }}
+    <h2 class="window-title" id="{{ .heading_id }}">{{ .title }}</h2>
+    {{ end }}
+    <button class="titlebar-button minimise" type="button" data-window-action="minimise" aria-label="Minimise this section" aria-expanded="true"></button>
+    <button class="titlebar-button maximise" type="button" data-window-action="maximise" aria-label="Maximise this section" aria-pressed="false"></button>
+  </div>
