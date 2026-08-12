@@ -1928,6 +1928,8 @@ cow_view_set_maximized(struct cow_view *view, bool max)
 	view->maximized	  = max;
 	view->maximized_h = max;
 	view->maximized_v = max;
+	view->maximized_h_ignore_reserved = false;
+	view->maximized_v_ignore_reserved = false;
 
 	/*
 	 * Notify status clients of the flip so per-window UI (the
@@ -2065,7 +2067,16 @@ view_refit_maximized(struct cow_view *view)
 	if (view == NULL || !view->maximized || view->output == NULL)
 		return;
 
-	struct cow_box *ua = &view->output->usable_area;
+	struct cow_box full = {
+	    .x = view->output->x,
+	    .y = view->output->y,
+	    .width = view->output->width,
+	    .height = view->output->height,
+	};
+	const struct cow_box *ha = view->maximized_h_ignore_reserved ? &full :
+	    &view->output->usable_area;
+	const struct cow_box *va = view->maximized_v_ignore_reserved ? &full :
+	    &view->output->usable_area;
 	int frame_w, frame_h, content_x, content_y;
 	cow_titlebar_frame_geometry(view, view->content_width,
 	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
@@ -2073,21 +2084,21 @@ view_refit_maximized(struct cow_view *view)
 	int new_x = view->x;
 	int new_y = view->y;
 	if (view->maximized_h)
-		new_x = ua->x + content_x;
+		new_x = ha->x + content_x;
 	if (view->maximized_v)
-		new_y = ua->y + content_y;
+		new_y = va->y + content_y;
 
-	if (view->maximized_h && frame_w <= ua->width) {
-		int min_x = ua->x + content_x;
-		int max_x = ua->x + ua->width - frame_w + content_x;
+	if (view->maximized_h && frame_w <= ha->width) {
+		int min_x = ha->x + content_x;
+		int max_x = ha->x + ha->width - frame_w + content_x;
 		if (new_x < min_x)
 			new_x = min_x;
 		else if (new_x > max_x)
 			new_x = max_x;
 	}
-	if (view->maximized_v && frame_h <= ua->height) {
-		int min_y = ua->y + content_y;
-		int max_y = ua->y + ua->height - frame_h + content_y;
+	if (view->maximized_v && frame_h <= va->height) {
+		int min_y = va->y + content_y;
+		int max_y = va->y + va->height - frame_h + content_y;
 		if (new_y < min_y)
 			new_y = min_y;
 		else if (new_y > max_y)
@@ -2186,7 +2197,16 @@ cow_view_reflow_maximized(struct cow_view *view)
 	    view->output == NULL)
 		return;
 
-	struct cow_box *ua = &view->output->usable_area;
+	struct cow_box full = {
+	    .x = view->output->x,
+	    .y = view->output->y,
+	    .width = view->output->width,
+	    .height = view->output->height,
+	};
+	const struct cow_box *ha = view->maximized_h_ignore_reserved ? &full :
+	    &view->output->usable_area;
+	const struct cow_box *va = view->maximized_v_ignore_reserved ? &full :
+	    &view->output->usable_area;
 	int frame_w, frame_h, content_x, content_y;
 	cow_titlebar_frame_geometry(view, view->content_width,
 	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
@@ -2196,12 +2216,12 @@ cow_view_reflow_maximized(struct cow_view *view)
 	int w = view->content_width;
 	int h = view->content_height;
 	if (view->maximized_h) {
-		x = ua->x + content_x;
-		w = ua->width - (frame_w - view->content_width);
+		x = ha->x + content_x;
+		w = ha->width - (frame_w - view->content_width);
 	}
 	if (view->maximized_v) {
-		y = ua->y + content_y;
-		h = ua->height - (frame_h - view->content_height);
+		y = va->y + content_y;
+		h = va->height - (frame_h - view->content_height);
 	}
 	cow_clamp_dimensions(&w, &h);
 

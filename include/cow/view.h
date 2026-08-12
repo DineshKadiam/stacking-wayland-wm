@@ -354,6 +354,8 @@ struct cow_view {
 	bool maximized;
 	bool maximized_h;
 	bool maximized_v;
+	bool maximized_h_ignore_reserved;
+	bool maximized_v_ignore_reserved;
 	bool expanded; /* window-expand restore/toggle state */
 	uint32_t tiled_edges; /* river_window_v1 tiled edge hint */
 	bool pending_tiled_edges;

@@ -156,6 +156,10 @@ cow_state_save(void)
 		 * cow_view_set_maximized fallback below. */
 		cJSON_AddBoolToObject(v, "maximized_h", view->maximized_h);
 		cJSON_AddBoolToObject(v, "maximized_v", view->maximized_v);
+		cJSON_AddBoolToObject(v, "maximized_h_ignore_reserved",
+		    view->maximized_h_ignore_reserved);
+		cJSON_AddBoolToObject(v, "maximized_v_ignore_reserved",
+		    view->maximized_v_ignore_reserved);
 		if (view->maximized) {
 			cJSON_AddNumberToObject(v, "saved_x", view->saved_x);
 			cJSON_AddNumberToObject(v, "saved_y", view->saved_y);
@@ -523,6 +527,12 @@ cow_state_restore(void)
 					view->maximized_h = mh;
 					view->maximized_v = mv;
 					view->maximized	  = mh || mv;
+					cow_json_get_bool(vs,
+					    "maximized_h_ignore_reserved",
+					    &view->maximized_h_ignore_reserved);
+					cow_json_get_bool(vs,
+					    "maximized_v_ignore_reserved",
+					    &view->maximized_v_ignore_reserved);
 				}
 			}
 

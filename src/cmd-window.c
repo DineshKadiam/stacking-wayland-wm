@@ -71,7 +71,7 @@ static enum cmd_retval	    do_set_circulate_skip(struct cow_view *,
 	 const char *, struct cmd_q *);
 static void		    do_expand(struct cow_view *, enum expand_dir, bool);
 static bool		    do_maximize(struct cow_view *, enum maximize_type,
-		    enum maximize_axis, struct cmd_q *);
+		    enum maximize_axis, bool, struct cmd_q *);
 static void		    do_shade(struct cow_view *, const char *);
 static bool		    parse_tiled_edges(const char *, uint32_t *);
 static enum expand_dir	    resolve_direction(const char *);
@@ -246,10 +246,10 @@ cmd_window_expand_exec(struct cmd *self, struct cmd_q *cmdq)
 
 struct cmd_entry cmd_window_maximize_entry = {
 	"window-maximize",
-	"t:Tmuhvk",
+	"t:TmuhvkR",
 	0,
 	0,
-	"window-maximize [-t target] [-T] [-m] [-u] [-h] [-v] [-k]",
+	"window-maximize [-t target] [-T] [-m] [-u] [-h] [-v] [-k] [-R]",
 	cmd_window_maximize_exec,
 	0,
 };
@@ -277,12 +277,12 @@ cmd_window_maximize_exec(struct cmd *self, struct cmd_q *cmdq)
 	bool ok;
 	if (args_has(args, 'T'))
 		ok = do_maximize(view, args_has(args, 'k') ? MAX_TOGGLE_KEEP :
-		    MAX_TOGGLE, axis, cmdq);
+		    MAX_TOGGLE, axis, args_has(args, 'R'), cmdq);
 	else if (args_has(args, 'u'))
-		ok = do_maximize(view, UNMAXIMIZE, axis, cmdq);
+		ok = do_maximize(view, UNMAXIMIZE, axis, false, cmdq);
 	else
 		ok = do_maximize(view, args_has(args, 'k') ? MAXIMIZE_KEEP :
-		    MAXIMIZE, axis, cmdq);
+		    MAXIMIZE, axis, args_has(args, 'R'), cmdq);
 	if (!ok)
 		return (CMD_RETURN_ERROR);
 
@@ -467,7 +467,7 @@ maxaxis_to_restore(const struct cow_view *view, enum maximize_axis axis,
 
 static bool
 do_maximize(struct cow_view *view, enum maximize_type mt,
-    enum maximize_axis axis, struct cmd_q *cmdq)
+    enum maximize_axis axis, bool ignore_reserved, struct cmd_q *cmdq)
 {
 	if (view->output == NULL) {
 		cmdq_error(cmdq, "window-maximize: target window has no output");
@@ -510,6 +510,10 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 				view->maximized_h = false;
 			if (touch_v)
 				view->maximized_v = false;
+			if (touch_h)
+				view->maximized_h_ignore_reserved = false;
+			if (touch_v)
+				view->maximized_v_ignore_reserved = false;
 			view->maximized = view->maximized_h ||
 			    view->maximized_v;
 			if (!view->maximized) {
@@ -525,7 +529,12 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 			mt = MAXIMIZE_KEEP;
 	}
 
-	struct cow_box *ua = &view->output->usable_area;
+	struct cow_box area = ignore_reserved ? (struct cow_box) {
+	    .x = view->output->x,
+	    .y = view->output->y,
+	    .width = view->output->width,
+	    .height = view->output->height,
+	} : view->output->usable_area;
 	int frame_w, frame_h, content_x, content_y;
 	cow_titlebar_frame_geometry(view, view->content_width,
 	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
@@ -550,12 +559,12 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 		int new_w = view->content_width;
 		int new_h = view->content_height;
 		if (axis == MAX_AXIS_BOTH || axis == MAX_AXIS_H) {
-			new_x = ua->x + content_x;
-			new_w = ua->width - frame_extra_w;
+			new_x = area.x + content_x;
+			new_w = area.width - frame_extra_w;
 		}
 		if (axis == MAX_AXIS_BOTH || axis == MAX_AXIS_V) {
-			new_y = ua->y + content_y;
-			new_h = ua->height - frame_extra_h;
+			new_y = area.y + content_y;
+			new_h = area.height - frame_extra_h;
 		}
 		cow_clamp_dimensions(&new_w, &new_h);
 		cow_view_set_pending_geometry(view, new_x, new_y, new_w, new_h);
@@ -565,10 +574,14 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 			    new_w, new_h);
 	}
 
-	if (axis == MAX_AXIS_BOTH || axis == MAX_AXIS_H)
+	if (axis == MAX_AXIS_BOTH || axis == MAX_AXIS_H) {
 		view->maximized_h = true;
-	if (axis == MAX_AXIS_BOTH || axis == MAX_AXIS_V)
+		view->maximized_h_ignore_reserved = ignore_reserved;
+	}
+	if (axis == MAX_AXIS_BOTH || axis == MAX_AXIS_V) {
 		view->maximized_v = true;
+		view->maximized_v_ignore_reserved = ignore_reserved;
+	}
 	view->maximized = view->maximized_h || view->maximized_v;
 	cow_view_set_pending_maximized_hint(view, true);
 

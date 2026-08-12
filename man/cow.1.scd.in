@@ -1320,7 +1320,7 @@ so that it can be unmaximized.
 *-T*
 	Toggle: restore original geometry if the window is already expanded.
 
-## window-maximize [-t target] [-T] [-m] [-u] [-h] [-v] [-k]
+## window-maximize [-t target] [-T] [-m] [-u] [-h] [-v] [-k] [-R]
 
 Maximize or restore a window.
 
@@ -1352,6 +1352,12 @@ Maximize or restore a window.
 	Combined with *-T*, restore if the requested axis is already
 	maximized; otherwise mark it maximized without changing size.
 
+*-R*
+	Ignore reserved areas and maximize to the full output dimensions.
+	This includes both areas configured with *reserved.EDGE* and areas
+	reported automatically by River for layer-shell surfaces. Combined
+	with *-h* or *-v*, it applies only to the requested axis.
+
 Per-axis maximised state is independent: *window-maximize -h*
 followed by *window-maximize -v* leaves the window maximised on
 both axes, and each axis can be restored separately with *-T -h* and *-T -v*.
@@ -1366,6 +1372,7 @@ window-maximize -v     # vertical only
 window-maximize -T -h  # toggle horizontal maximised state only
 window-maximize -u -v  # un-maximise vertical only, keep horizontal
 window-maximize -k     # mark maximised without changing size
+window-maximize -R     # maximise over panels and other reserved areas
 ```
 
 ## pick-window [-F expr] command ...

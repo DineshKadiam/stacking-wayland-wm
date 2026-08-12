@@ -1051,8 +1051,12 @@ manage_apply_dimension_bounds(struct cow_view *view)
 			cow_titlebar_frame_geometry(view, view->content_width,
 			    view->content_height, &frame_w, &frame_h,
 			    &content_x, &content_y);
-			width  = ua->width - (frame_w - view->content_width);
-			height = ua->height - (frame_h - view->content_height);
+			width = (view->maximized_h_ignore_reserved ?
+			    view->output->width : ua->width) -
+			    (frame_w - view->content_width);
+			height = (view->maximized_v_ignore_reserved ?
+			    view->output->height : ua->height) -
+			    (frame_h - view->content_height);
 		}
 		if (width < 0)
 			width = 0;
