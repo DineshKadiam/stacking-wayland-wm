@@ -322,10 +322,12 @@ resize_clear_maximized_axes(struct cow_view *view, uint32_t edges)
 	if (clear_h) {
 		view->maximized_h = false;
 		view->maximized_h_ignore_reserved = false;
+		view->maximized_h_keep_geometry = false;
 	}
 	if (clear_v) {
 		view->maximized_v = false;
 		view->maximized_v_ignore_reserved = false;
+		view->maximized_v_keep_geometry = false;
 	}
 	view->maximized = view->maximized_h || view->maximized_v;
 	if (!view->maximized) {

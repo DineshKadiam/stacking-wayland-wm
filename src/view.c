@@ -1930,6 +1930,8 @@ cow_view_set_maximized(struct cow_view *view, bool max)
 	view->maximized_v = max;
 	view->maximized_h_ignore_reserved = false;
 	view->maximized_v_ignore_reserved = false;
+	view->maximized_h_keep_geometry = false;
+	view->maximized_v_keep_geometry = false;
 
 	/*
 	 * Notify status clients of the flip so per-window UI (the
@@ -2083,12 +2085,13 @@ view_refit_maximized(struct cow_view *view)
 
 	int new_x = view->x;
 	int new_y = view->y;
-	if (view->maximized_h)
+	if (view->maximized_h && !view->maximized_h_keep_geometry)
 		new_x = ha->x + content_x;
-	if (view->maximized_v)
+	if (view->maximized_v && !view->maximized_v_keep_geometry)
 		new_y = va->y + content_y;
 
-	if (view->maximized_h && frame_w <= ha->width) {
+	if (view->maximized_h && !view->maximized_h_keep_geometry &&
+	    frame_w <= ha->width) {
 		int min_x = ha->x + content_x;
 		int max_x = ha->x + ha->width - frame_w + content_x;
 		if (new_x < min_x)
@@ -2096,7 +2099,8 @@ view_refit_maximized(struct cow_view *view)
 		else if (new_x > max_x)
 			new_x = max_x;
 	}
-	if (view->maximized_v && frame_h <= va->height) {
+	if (view->maximized_v && !view->maximized_v_keep_geometry &&
+	    frame_h <= va->height) {
 		int min_y = va->y + content_y;
 		int max_y = va->y + va->height - frame_h + content_y;
 		if (new_y < min_y)
@@ -2215,11 +2219,11 @@ cow_view_reflow_maximized(struct cow_view *view)
 	int y = view->y;
 	int w = view->content_width;
 	int h = view->content_height;
-	if (view->maximized_h) {
+	if (view->maximized_h && !view->maximized_h_keep_geometry) {
 		x = ha->x + content_x;
 		w = ha->width - (frame_w - view->content_width);
 	}
-	if (view->maximized_v) {
+	if (view->maximized_v && !view->maximized_v_keep_geometry) {
 		y = va->y + content_y;
 		h = va->height - (frame_h - view->content_height);
 	}

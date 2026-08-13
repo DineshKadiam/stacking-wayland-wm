@@ -49,6 +49,7 @@ struct opts {
 	bool	    resize;	     /* honour -r / -R */
 	bool	    resize_explicit; /* user passed -r or -R */
 	bool	    include_special; /* -i: include max/shaded */
+	bool	    maximize;        /* -m: mark maximized after arranging */
 	/*
 	 * Exclusion selectors -- each follows cow's window selector
 	 * syntax: %app_id, /title-substring/, #window-id.
@@ -112,10 +113,10 @@ usage(FILE *fp)
 {
 	fprintf(fp,
 	    "usage: cowrearrange tile    [-o output] [-d desk] [--rows N]\n"
-	    "                            [--cols N] [-r|-R] [-i]\n"
+	    "                            [--cols N] [-r|-R] [-i] [-m]\n"
 	    "                            [-x SELECTOR ...]\n"
 	    "       cowrearrange cascade [-o output] [-d desk] [--dx N]\n"
-	    "                            [--dy N] [-r|-R] [-i]\n"
+	    "                            [--dy N] [-r|-R] [-i] [-m]\n"
 	    "                            [-x SELECTOR ...]\n"
 	    "\n"
 	    "  -o output       target output by name (default: current)\n"
@@ -127,6 +128,7 @@ usage(FILE *fp)
 	    "  -r              resize windows to fit (tile default)\n"
 	    "  -R              preserve sizes; place only (cascade default)\n"
 	    "  -i              include maximised / shaded windows\n"
+	    "  -m, --maximize  mark windows maximised after arranging\n"
 	    "  -x, --exclude   exclude windows matching SELECTOR (repeatable);\n"
 	    "                  SELECTOR is %%app_id, /title-substring/, or #id\n");
 }
@@ -206,6 +208,9 @@ parse_opts(int argc, char *argv[], struct opts *o)
 			o->resize_explicit = true;
 		} else if (strcmp(a, "-i") == 0) {
 			o->include_special = true;
+		} else if (strcmp(a, "-m") == 0 ||
+		    strcmp(a, "--maximize") == 0) {
+			o->maximize = true;
 		} else if (strcmp(a, "--exclude") == 0 ||
 		    strcmp(a, "-x") == 0) {
 			if (i + 1 >= argc) {
@@ -680,12 +685,13 @@ layout_cascade(struct win *wins, int n, const struct workarea *wa,
 
 /*
  * Build one batched command-string of the form
- *   window-move -t :::#A -x X1 -y Y1 ; window-resize -t :::#A -w W1 -h H1 ; ...
+ *   window-move -t "#A" -x X1 -y Y1 ;
+ *   window-resize -t "#A" -w W1 -h H1 ; ...
  * The IPC buffer in cow has a generous limit; for desk-sized N this
  * fits comfortably.  Returns a malloc'd string, NULL on failure.
  */
 static char *
-build_cmd(const struct placed *plan, int n, bool resize)
+build_cmd(const struct placed *plan, int n, bool resize, bool maximize)
 {
 	size_t cap = 256;
 	size_t len = 0;
@@ -697,7 +703,16 @@ build_cmd(const struct placed *plan, int n, bool resize)
 	for (int i = 0; i < n; i++) {
 		char chunk[512];
 		int  nm;
-		if (resize) {
+		if (resize && maximize) {
+			nm = snprintf(chunk, sizeof(chunk),
+			    "%swindow-maximize -m -t \"#%s\" -k ; "
+			    "window-move -t \"#%s\" -x %d -y %d ; "
+			    "window-resize -t \"#%s\" -w %d -h %d ; "
+			    "window-tile -t \"#%s\"",
+			    (i == 0) ? "" : " ; ", plan[i].id, plan[i].id,
+			    plan[i].content_x, plan[i].content_y, plan[i].id,
+			    plan[i].content_w, plan[i].content_h, plan[i].id);
+		} else if (resize) {
 			nm = snprintf(chunk, sizeof(chunk),
 			    "%swindow-move -t \"#%s\" -x %d -y %d ; "
 			    "window-resize -t \"#%s\" -w %d -h %d ; "
@@ -705,6 +720,12 @@ build_cmd(const struct placed *plan, int n, bool resize)
 			    (i == 0) ? "" : " ; ", plan[i].id,
 			    plan[i].content_x, plan[i].content_y, plan[i].id,
 			    plan[i].content_w, plan[i].content_h, plan[i].id);
+		} else if (maximize) {
+			nm = snprintf(chunk, sizeof(chunk),
+			    "%swindow-maximize -m -t \"#%s\" -k ; "
+			    "window-move -t \"#%s\" -x %d -y %d",
+			    (i == 0) ? "" : " ; ", plan[i].id, plan[i].id,
+			    plan[i].content_x, plan[i].content_y);
 		} else {
 			nm = snprintf(chunk, sizeof(chunk),
 			    "%swindow-move -t \"#%s\" -x %d -y %d",
@@ -816,7 +837,7 @@ main(int argc, char *argv[])
 	else
 		layout_cascade(wins, n, &wa, &opts, plan);
 
-	char *cmd = build_cmd(plan, n, opts.resize);
+	char *cmd = build_cmd(plan, n, opts.resize, opts.maximize);
 	if (cmd == NULL) {
 		fprintf(stderr,
 		    "cowrearrange: failed to build batched command\n");

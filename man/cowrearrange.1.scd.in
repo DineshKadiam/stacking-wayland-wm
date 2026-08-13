@@ -6,8 +6,8 @@ cowrearrange - tile or cascade the windows on a given desk
 
 # SYNOPSIS
 
-*cowrearrange tile* [*-o* _output_] [*-d* _desk_] [*--rows* _N_] [*--cols* _N_] [*-r*|*-R*] [*-i*] [*-x* _SELECTOR_ ...]++
-*cowrearrange cascade* [*-o* _output_] [*-d* _desk_] [*--dx* _N_] [*--dy* _N_] [*-r*|*-R*] [*-i*] [*-x* _SELECTOR_ ...]
+*cowrearrange tile* [*-o* _output_] [*-d* _desk_] [*--rows* _N_] [*--cols* _N_] [*-r*|*-R*] [*-i*] [*-m*] [*-x* _SELECTOR_ ...]++
+*cowrearrange cascade* [*-o* _output_] [*-d* _desk_] [*--dx* _N_] [*--dy* _N_] [*-r*|*-R*] [*-i*] [*-m*] [*-x* _SELECTOR_ ...]
 
 # DESCRIPTION
 
@@ -75,6 +75,10 @@ By default only the current output's desk is rearranged.
 	skipped because their geometry is owned by the maximise / shade
 	state and a plain move would silently break the invariant.
 
+*-m*, *--maximize*
+	Mark each window maximised while retaining its original geometry.
+	Unmaximising the window restores it to its previous geometry.
+
 *-x* _SELECTOR_, *--exclude* _SELECTOR_
 	Exclude any window matching _SELECTOR_ from the candidate set.
 	Repeatable: a window is dropped if it matches the selector on
@@ -97,6 +101,9 @@ By default only the current output's desk is rearranged.
 ```
 # Tile the current desk into an approximately square grid.
 cowrearrange tile
+
+# Tile windows and retain the resulting geometry as their maximised state.
+cowrearrange tile -m
 
 # Tile into exactly three columns, preserving window sizes.
 cowrearrange tile --cols 3 -R

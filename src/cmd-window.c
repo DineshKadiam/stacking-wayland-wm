@@ -514,6 +514,10 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 				view->maximized_h_ignore_reserved = false;
 			if (touch_v)
 				view->maximized_v_ignore_reserved = false;
+			if (touch_h)
+				view->maximized_h_keep_geometry = false;
+			if (touch_v)
+				view->maximized_v_keep_geometry = false;
 			view->maximized = view->maximized_h ||
 			    view->maximized_v;
 			if (!view->maximized) {
@@ -577,10 +581,12 @@ do_maximize(struct cow_view *view, enum maximize_type mt,
 	if (axis == MAX_AXIS_BOTH || axis == MAX_AXIS_H) {
 		view->maximized_h = true;
 		view->maximized_h_ignore_reserved = ignore_reserved;
+		view->maximized_h_keep_geometry = mt == MAXIMIZE_KEEP;
 	}
 	if (axis == MAX_AXIS_BOTH || axis == MAX_AXIS_V) {
 		view->maximized_v = true;
 		view->maximized_v_ignore_reserved = ignore_reserved;
+		view->maximized_v_keep_geometry = mt == MAXIMIZE_KEEP;
 	}
 	view->maximized = view->maximized_h || view->maximized_v;
 	cow_view_set_pending_maximized_hint(view, true);

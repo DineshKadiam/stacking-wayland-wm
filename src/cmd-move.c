@@ -189,6 +189,14 @@ unmax_if_needed(struct cow_view *view)
 	cow_view_clear_expanded_state(view);
 	if (!view->maximized)
 		return;
+	/*
+	 * window-maximize -k deliberately allows the current geometry to
+	 * represent a maximized window.  Keep that state, and its saved restore
+	 * geometry, when a later command positions the window.
+	 */
+	if ((!view->maximized_h || view->maximized_h_keep_geometry) &&
+	    (!view->maximized_v || view->maximized_v_keep_geometry))
+		return;
 	cow_view_set_maximized(view, false);
 	view->icon_inverted_button = -1;
 	view->dec.dirty		   = true;

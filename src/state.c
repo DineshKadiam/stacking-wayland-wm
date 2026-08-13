@@ -160,6 +160,10 @@ cow_state_save(void)
 		    view->maximized_h_ignore_reserved);
 		cJSON_AddBoolToObject(v, "maximized_v_ignore_reserved",
 		    view->maximized_v_ignore_reserved);
+		cJSON_AddBoolToObject(v, "maximized_h_keep_geometry",
+		    view->maximized_h_keep_geometry);
+		cJSON_AddBoolToObject(v, "maximized_v_keep_geometry",
+		    view->maximized_v_keep_geometry);
 		if (view->maximized) {
 			cJSON_AddNumberToObject(v, "saved_x", view->saved_x);
 			cJSON_AddNumberToObject(v, "saved_y", view->saved_y);
@@ -533,6 +537,12 @@ cow_state_restore(void)
 					cow_json_get_bool(vs,
 					    "maximized_v_ignore_reserved",
 					    &view->maximized_v_ignore_reserved);
+					cow_json_get_bool(vs,
+					    "maximized_h_keep_geometry",
+					    &view->maximized_h_keep_geometry);
+					cow_json_get_bool(vs,
+					    "maximized_v_keep_geometry",
+					    &view->maximized_v_keep_geometry);
 				}
 			}
 
