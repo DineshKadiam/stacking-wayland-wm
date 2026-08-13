@@ -20,6 +20,7 @@ Included examples:
 |awol      | grey raised FVWM-style colours
 |blackbox  | Blackbox-style titlebar pixmaps
 |brushedmetal | brushed metal pixmaps
+|canoe    | lavender, purple, and grey Canoe-inspired Motif styling
 |cde       | CDE-style geometry and colours
 |celticbow | red celtic titlebar pixmaps
 |default   | default fvwm-themes decoration
