@@ -39,6 +39,7 @@
 #include "cow/layer_shell.h"
 #include "cow/memory.h"
 #include "cow/menu.h"
+#include "cow/keyboard_layout.h"
 #include "cow/desk_ops.h"
 #include "cow/output.h"
 #include "cow/pan_frames.h"
@@ -65,6 +66,7 @@
 #include "river-layer-shell-v1-client-protocol.h"
 #include "river-window-management-v1-client-protocol.h"
 #include "river-xkb-bindings-v1-client-protocol.h"
+#include "river-xkb-config-v1-client-protocol.h"
 
 #define GHOST_RADIUS 24
 
@@ -296,6 +298,8 @@ registry_global(__unused void *data, struct wl_registry *registry,
 		cow_wm.xkb_bindings = wl_registry_bind(registry, name,
 		    &river_xkb_bindings_v1_interface, bind_version);
 		cow_wm.xkb_bindings_version = bind_version;
+	} else if (strcmp(interface, river_xkb_config_v1_interface.name) == 0) {
+		cow_keyboard_layout_bind(registry, name, version);
 	} else if (strcmp(interface, river_layer_shell_v1_interface.name) ==
 	    0) {
 		cow_wm.layer_shell = wl_registry_bind(registry, name,
@@ -1490,6 +1494,7 @@ cow_wm_init(void)
 	wl_list_init(&cow_wm.views);
 	wl_list_init(&cow_wm.outputs);
 	wl_list_init(&cow_wm.seats);
+	cow_keyboard_layout_init();
 	wl_list_init(&cow_wm.containers);
 	wl_list_init(&cow_wm.new_views);
 	wl_list_init(&cow_wm.closed_views);
@@ -1568,6 +1573,7 @@ cow_wm_init(void)
 
 	/* Initialize status FIFO */
 	cow_status_init();
+	cow_status_emit();
 
 	return true;
 
@@ -1596,6 +1602,7 @@ cow_wm_fini(void)
 		cow_view_destroy(view);
 
 	cow_status_fini();
+	cow_keyboard_layout_fini();
 	cow_ipc_fini();
 	xfree(cow_ipc.config_path);
 	cow_ipc.config_path = NULL;

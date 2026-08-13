@@ -32,6 +32,7 @@
 #include "cow/config.h"
 #include "cow/desk_ops.h"
 #include "cow/event.h"
+#include "cow/keyboard_layout.h"
 #include "cow/memory.h"
 #include "cow/module_protocol.h"
 #include "cow/output.h"
@@ -434,6 +435,7 @@ cow_status_emit(void)
 
 	cJSON *root = cJSON_CreateObject();
 	status_add_theme(root);
+	cow_keyboard_layout_add_status(root);
 
 	/* Per-output desk state */
 	cJSON		  *outputs = cJSON_AddArrayToObject(root, "outputs");

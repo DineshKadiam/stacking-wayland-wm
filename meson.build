@@ -43,6 +43,7 @@ srcs = [
     'src/cmd-icon.c',
     'src/cmd-icon-placement.c',
     'src/cmd-include.c',
+    'src/cmd-keyboard-layout.c',
     'src/cmd-list-commands.c',
     'src/cmd-list.c',
     'src/cmd-menu.c',
@@ -87,6 +88,7 @@ srcs = [
     'src/icon_placement.c',
     'src/ipc.c',
     'src/json_util.c',
+    'src/keyboard_layout.c',
     'src/keybinding.c',
     'src/layer_shell.c',
     'src/main.c',
@@ -319,6 +321,7 @@ wl_proto_dir = wayland_protos.get_variable('pkgdatadir')
 generated = wl_mod.scan_xml(
     'protocol/river-window-management-v1.xml',
     'protocol/river-xkb-bindings-v1.xml',
+    'protocol/river-xkb-config-v1.xml',
     'protocol/river-layer-shell-v1.xml',
     wl_proto_dir / 'stable/xdg-shell/xdg-shell.xml',
     'protocol/wlr-layer-shell-unstable-v1.xml',

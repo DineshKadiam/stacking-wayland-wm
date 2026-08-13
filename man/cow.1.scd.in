@@ -932,6 +932,16 @@ Read and execute commands from _file_.  Absolute paths are used as-is, *~/* is
 resolved relative to *$HOME*, and other relative paths are resolved relative to
 *$XDG\_RUNTIME\_DIR*.
 
+## keyboard-layout NAME
+
+Set the active XKB layout on every keyboard. _NAME_ must match a
+descriptive layout name in the keyboard's current keymap. River ignores a name
+which does not exist.
+
+```
+keyboard-layout 'English (UK)'
+```
+
 ## list-commands
 
 Return a JSON array of all registered commands, each with _name_ and _usage_

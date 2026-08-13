@@ -43,6 +43,7 @@ struct ext_idle_notifier_v1;
 struct ext_idle_notification_v1;
 struct wl_cursor_theme;
 struct river_xkb_bindings_v1;
+struct river_xkb_config_v1;
 struct river_layer_shell_v1;
 struct river_window_v1;
 struct river_output_v1;
@@ -110,6 +111,7 @@ struct cow_wm {
 	struct river_window_manager_v1 *manager;
 	struct river_xkb_bindings_v1   *xkb_bindings;
 	uint32_t			xkb_bindings_version;
+	struct river_xkb_config_v1     *xkb_config;
 	struct river_layer_shell_v1    *layer_shell;
 
 	/* Sequence state */
@@ -123,6 +125,7 @@ struct cow_wm {
 	struct wl_list views;	       /* cow_view.wm_link */
 	struct wl_list outputs;	       /* cow_output.wm_link */
 	struct wl_list seats;	       /* cow_seat.wm_link */
+	struct wl_list keyboard_layouts; /* cow_keyboard_layout.link */
 	struct wl_list containers;     /* cow_container.wm_link */
 	struct wl_list menus;	       /* cow_menu.link — all defined menus */
 	struct wl_list open_menus;     /* cow_menu_popup.link — open popups */

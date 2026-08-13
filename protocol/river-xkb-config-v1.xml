@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="river_xkb_config_v1">
+  <copyright>
+    SPDX-FileCopyrightText: © 2026 Isaac Freund
+    SPDX-License-Identifier: MIT
+  </copyright>
+
+  <interface name="river_xkb_config_v1" version="2">
+    <enum name="error">
+      <entry name="invalid_destroy" value="0"/>
+      <entry name="invalid_format" value="1"/>
+    </enum>
+    <request name="stop"/>
+    <event name="finished"/>
+    <request name="destroy" type="destructor"/>
+    <enum name="keymap_format">
+      <entry name="text_v1" value="1"/>
+      <entry name="text_v2" value="2"/>
+    </enum>
+    <request name="create_keymap">
+      <arg name="id" type="new_id" interface="river_xkb_keymap_v1"/>
+      <arg name="fd" type="fd"/>
+      <arg name="format" type="uint" enum="keymap_format"/>
+    </request>
+    <event name="xkb_keyboard">
+      <arg name="id" type="new_id" interface="river_xkb_keyboard_v1"/>
+    </event>
+  </interface>
+
+  <interface name="river_xkb_keymap_v1" version="2">
+    <request name="destroy" type="destructor"/>
+    <event name="success"/>
+    <event name="failure">
+      <arg name="error_msg" type="string"/>
+    </event>
+  </interface>
+
+  <interface name="river_xkb_keyboard_v1" version="2">
+    <enum name="error">
+      <entry name="invalid_keymap" value="0"/>
+    </enum>
+    <request name="destroy" type="destructor"/>
+    <event name="removed"/>
+    <!-- The input-device object is not needed by CoW. Omitting its
+         interface keeps this protocol independent of the input-management
+         protocol while preserving the wire representation. -->
+    <event name="input_device">
+      <arg name="device" type="object"/>
+    </event>
+    <request name="set_keymap">
+      <arg name="keymap" type="object" interface="river_xkb_keymap_v1"/>
+    </request>
+    <request name="set_layout_by_index">
+      <arg name="index" type="int"/>
+    </request>
+    <request name="set_layout_by_name">
+      <arg name="name" type="string"/>
+    </request>
+    <event name="layout">
+      <arg name="index" type="uint"/>
+      <arg name="name" type="string" allow-null="true"/>
+    </event>
+    <request name="capslock_enable"/>
+    <request name="capslock_disable"/>
+    <event name="capslock_enabled"/>
+    <event name="capslock_disabled"/>
+    <request name="numlock_enable"/>
+    <request name="numlock_disable"/>
+    <event name="numlock_enabled"/>
+    <event name="numlock_disabled"/>
+    <event name="done" since="2"/>
+  </interface>
+</protocol>
