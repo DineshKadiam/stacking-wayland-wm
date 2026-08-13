@@ -5,7 +5,7 @@
 
     "modules-left": ["custom/cow-desks"],
     "modules-center": ["custom/cow-title"],
-    "modules-right": ["cpu", "memory", "cpu#loadavg", "clock", "tray"],
+    "modules-right": ["custom/cow-language", "cpu", "memory", "cpu#loadavg", "clock", "tray"],
 
     "cpu": {
         "format": "[CPU:{}]"
@@ -28,6 +28,12 @@
         "format": "{}",
         "tooltip": true,
         "max-length": 80
+    },
+    "custom/cow-language": {
+        "exec": "cowbar -f language",
+        "return-type": "json",
+        "format": "[KBD:{}]",
+        "tooltip": false
     },
     "clock": {
         "format": "[{:%b %d %H:%M:%S}]",

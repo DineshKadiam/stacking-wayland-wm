@@ -50,7 +50,7 @@ usage(void)
 	    "usage: cowbar [-o output] [-f field] [-w module] [-n]\n"
 	    "\n"
 	    "  -o output   filter for named output\n"
-	    "  -f field    extract field: desks, focused, outputs\n"
+	    "  -f field    extract field: desks, focused, language, outputs\n"
 	    "  -w module   emit waybar JSON for module: desks, title\n"
 	    "              (requires -o for desks; -o filters title to one bar)\n"
 	    "  -n          show desk names instead of numbers\n"
@@ -121,16 +121,14 @@ buf_appendf(char **buf, size_t *cap, size_t *len, const char *fmt, ...)
 	}
 }
 
-/*
- * Emit a single {"text":..., "tooltip":...} JSON object.  Both strings are
- * pre-rendered so the consumer (waybar) doesn't need to format anything.
- */
+/* Emit a Waybar JSON object. Tooltip may be omitted. */
 static void
 emit_waybar(const char *text, const char *tooltip)
 {
 	cJSON *obj = cJSON_CreateObject();
 	cJSON_AddStringToObject(obj, "text", text != NULL ? text : "");
-	cJSON_AddStringToObject(obj, "tooltip", tooltip != NULL ? tooltip : "");
+	if (tooltip != NULL)
+		cJSON_AddStringToObject(obj, "tooltip", tooltip);
 	emit(obj);
 	cJSON_Delete(obj);
 }
@@ -377,6 +375,10 @@ main(int argc, char *argv[])
 			cJSON *focused = cJSON_GetObjectItem(state, "focused");
 			if (focused != NULL)
 				emit(focused);
+		} else if (field != NULL && strcmp(field, "language") == 0) {
+			cJSON *language = cJSON_GetObjectItem(state, "language");
+			emit_waybar(cJSON_IsString(language) ?
+			    language->valuestring : "", NULL);
 		} else if (field != NULL && strcmp(field, "outputs") == 0) {
 			cJSON *outputs = cJSON_GetObjectItem(state, "outputs");
 			if (outputs != NULL)

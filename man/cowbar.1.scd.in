@@ -43,6 +43,10 @@ without requiring ordering guarantees.
 		includes _display\_title_, which is already formatted by
 		*cow*(1)'s _title\_format_ setting.
 
+	*language*
+		Emit the active keyboard layout as a Waybar-compatible _text_
+		object.
+
 	*outputs*
 		Emit the full outputs array on each update.
 
@@ -74,7 +78,8 @@ Each line of output is a self-contained JSON object, suitable for parsing with
     "title": "fish",
     "display_title": "[0123abcd] fish",
     "desk": 1
-  }
+  },
+  "language": "English (UK)"
 }
 ```
 
@@ -88,6 +93,12 @@ Each line of output is a self-contained JSON object, suitable for parsing with
 
 ```
 {"app_id": "foot", "title": "fish", "display_title": "[0123abcd] fish", "desk": 1}
+```
+
+*-f language* output:
+
+```
+{"text": "English (UK)"}
 ```
 
 *-f outputs* output:
@@ -137,6 +148,12 @@ Extract focused window information:
 
 ```
 cowbar -f focused
+```
+
+Show the current keyboard layout:
+
+```
+cowbar -f language
 ```
 
 Pipe into *jq*(1) for the title of the focused window:
