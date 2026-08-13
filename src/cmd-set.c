@@ -474,6 +474,20 @@ button_inactive_colour_option(int idx)
 	    idx * COW_VIEW_CFG_TITLEBAR_BUTTON_STRIDE;
 }
 
+static enum cow_view_cfg_option
+button_active_fg_option(int idx)
+{
+	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTIVE_FG +
+	    idx * COW_VIEW_CFG_TITLEBAR_BUTTON_STRIDE;
+}
+
+static enum cow_view_cfg_option
+button_inactive_fg_option(int idx)
+{
+	return COW_VIEW_CFG_TITLEBAR_BUTTON_0_INACTIVE_FG +
+	    idx * COW_VIEW_CFG_TITLEBAR_BUTTON_STRIDE;
+}
+
 static bool
 parse_button_key(const char *key, int *idx, const char **field)
 {
@@ -574,7 +588,8 @@ set_option_is_decor(const struct cow_option_entry *opt, const char *key)
 			strcmp(field, "inactive_relief") == 0 ||
 			strcmp(field, "active_colour") == 0 ||
 			strcmp(field, "inactive_colour") == 0 ||
-
+			strcmp(field, "active_fg") == 0 ||
+			strcmp(field, "inactive_fg") == 0 ||
 			strcmp(field, "image") == 0);
 	}
 	if (strncmp(key, "container.tab.", 14) == 0) {
@@ -1877,6 +1892,25 @@ set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 		memcpy(tb->buttons[idx].active_colour, c, sizeof(c));
 		tb->buttons[idx].has_active_colour = true;
 		finish_visual_update(button_active_colour_option(idx), cfg);
+		return;
+	}
+
+	if (strcmp(field, "active_fg") == 0 ||
+	    strcmp(field, "inactive_fg") == 0) {
+		float c[4];
+		if (!cow_colour_parse(val, c)) {
+			cmdq_error(cmdq, "set: invalid colour value");
+			return;
+		}
+		if (field[0] == 'a') {
+			memcpy(tb->buttons[idx].active_fg, c, sizeof(c));
+			tb->buttons[idx].has_active_fg = true;
+			finish_visual_update(button_active_fg_option(idx), cfg);
+		} else {
+			memcpy(tb->buttons[idx].inactive_fg, c, sizeof(c));
+			tb->buttons[idx].has_inactive_fg = true;
+			finish_visual_update(button_inactive_fg_option(idx), cfg);
+		}
 		return;
 	}
 

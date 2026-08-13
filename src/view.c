@@ -78,7 +78,7 @@ titlebar_button_index(enum cow_view_cfg_option option,
     enum cow_view_cfg_option first)
 {
 	if (option < first ||
-	    option > COW_VIEW_CFG_TITLEBAR_BUTTON_9_INACTIVE_COLOUR)
+	    option > COW_VIEW_CFG_TITLEBAR_BUTTON_9_INACTIVE_FG)
 		return -1;
 
 	int offset = option - first;
@@ -410,6 +410,26 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		    sizeof(cfg->titlebar.buttons[idx].inactive_colour));
 		cfg->titlebar.buttons[idx].has_inactive_colour =
 		    cow_config->titlebar.buttons[idx].has_inactive_colour;
+		return;
+	}
+	idx = titlebar_button_index(option,
+	    COW_VIEW_CFG_TITLEBAR_BUTTON_0_ACTIVE_FG);
+	if (idx != -1) {
+		memcpy(cfg->titlebar.buttons[idx].active_fg,
+		    cow_config->titlebar.buttons[idx].active_fg,
+		    sizeof(cfg->titlebar.buttons[idx].active_fg));
+		cfg->titlebar.buttons[idx].has_active_fg =
+		    cow_config->titlebar.buttons[idx].has_active_fg;
+		return;
+	}
+	idx = titlebar_button_index(option,
+	    COW_VIEW_CFG_TITLEBAR_BUTTON_0_INACTIVE_FG);
+	if (idx != -1) {
+		memcpy(cfg->titlebar.buttons[idx].inactive_fg,
+		    cow_config->titlebar.buttons[idx].inactive_fg,
+		    sizeof(cfg->titlebar.buttons[idx].inactive_fg));
+		cfg->titlebar.buttons[idx].has_inactive_fg =
+		    cow_config->titlebar.buttons[idx].has_inactive_fg;
 		return;
 	}
 

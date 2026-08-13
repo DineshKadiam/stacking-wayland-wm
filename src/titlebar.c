@@ -461,6 +461,10 @@ draw_titlebar_button(uint32_t *pixels, int stride_px,
 	    button->inactive_colour;
 	bool has_custom_colour = active ? button->has_active_colour :
 	    button->has_inactive_colour;
+	const float *custom_fg = active ? button->active_fg :
+	    button->inactive_fg;
+	bool has_custom_fg = active ? button->has_active_fg :
+	    button->has_inactive_fg;
 	int relief = active ? button->active_relief : button->inactive_relief;
 	uint32_t button_base = px_base;
 	uint32_t colours[5] = {
@@ -486,6 +490,8 @@ draw_titlebar_button(uint32_t *pixels, int stride_px,
 		colours[COW_VECTOR_BG] = button_base;
 		cow_draw_fill_rect(strip, bx, by, btn_s, btn_s, button_base);
 	}
+	if (has_custom_fg)
+		colours[COW_VECTOR_FG] = cow_colour_to_pixel(custom_fg);
 
 	bool sunken = pressed_button == btn_idx;
 	if (relief == COW_RELIEF_SUNKEN)

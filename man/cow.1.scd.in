@@ -969,6 +969,19 @@ include themes/fvwm
 decor -a fvwm
 ```
 
+Titlebar buttons may set their face and vector foreground colours separately
+for focused and unfocused windows:
+
+```
+decor -d motif titlebar.button.0.active_colour 0xC0C0C0
+decor -d motif titlebar.button.0.inactive_colour 0xC0C0C0
+decor -d motif titlebar.button.0.active_fg 0x000000
+decor -d motif titlebar.button.0.inactive_fg 0xFFFFFF
+```
+
+The foreground properties affect native vector buttons. Image buttons render
+the colours contained in the image itself.
+
 Image values in a profile may name PNG, SVG, or XPM files.  Relative image
 paths are resolved against the file containing the *decor -d* command, so a
 theme directory can keep its config and image assets together.
