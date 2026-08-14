@@ -210,6 +210,15 @@ cow_keyboard_layout_add_status(cJSON *root)
 	}
 }
 
+const char *
+cow_keyboard_layout_active_name(void)
+{
+	if (active_layout == NULL || !active_layout->has_layout)
+		return (NULL);
+
+	return (active_layout->name);
+}
+
 bool
 cow_keyboard_layout_set_name(const char *name)
 {

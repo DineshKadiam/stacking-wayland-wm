@@ -36,6 +36,7 @@ void cow_keyboard_layout_init(void);
 void cow_keyboard_layout_bind(struct wl_registry *, uint32_t, uint32_t);
 void cow_keyboard_layout_fini(void);
 void cow_keyboard_layout_add_status(struct cJSON *);
+const char *cow_keyboard_layout_active_name(void);
 bool cow_keyboard_layout_set_name(const char *);
 
 #endif

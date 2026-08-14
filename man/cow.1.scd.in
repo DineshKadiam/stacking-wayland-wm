@@ -913,6 +913,10 @@ When used via *moocow*(1) the JSON is printed to standard output.
 	Return an array of output objects, each with _name_, _x_, _y_,
 	_width_, _height_, and a _usable_ sub-object reflecting reserved areas.
 
+*show keyboard-layout*
+	Return the name of the active keyboard layout, or _null_ if one is not
+	set.
+
 *show config* _key_
 	Return the current value of a configuration key. Supported keys:
 	_border.width_, _step_, _border.corner\_length_, _border.style_,

@@ -20,6 +20,7 @@
  *        show desk
  *        show output
  *        show rules
+ *        show keyboard-layout
  *        show config KEY
  *        show config.KEY
  */
@@ -31,6 +32,7 @@
 #include "cow/cmd-filter.h"
 #include "cow/config.h"
 #include "cow/ipc.h"
+#include "cow/keyboard_layout.h"
 #include "cow/output.h"
 #include "cow/rule.h"
 #include "cow/status.h"
@@ -44,6 +46,7 @@ static enum cmd_retval do_show_windows(int, struct cmd_filter *,
 static void	       do_show_desk(int fd);
 static void	       do_show_output(int fd);
 static void	       do_show_rules(int fd);
+static void	       do_show_keyboard_layout(int fd);
 static void	       do_show_config(const char *ckey, int fd, struct cmd_q *);
 
 struct cmd_entry cmd_show_entry = {
@@ -91,6 +94,11 @@ cmd_show_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	if (strcmp(topic, "rules") == 0) {
 		do_show_rules(fd);
+		return (CMD_RETURN_NORMAL);
+	}
+
+	if (strcmp(topic, "keyboard-layout") == 0) {
+		do_show_keyboard_layout(fd);
 		return (CMD_RETURN_NORMAL);
 	}
 
@@ -270,6 +278,15 @@ do_show_output(int fd)
 		cJSON_AddItemToArray(arr, o);
 	}
 	cow_ipc_respond_data(fd, arr);
+}
+
+static void
+do_show_keyboard_layout(int fd)
+{
+	const char *name = cow_keyboard_layout_active_name();
+
+	cow_ipc_respond_data(fd, name != NULL ?
+	    cJSON_CreateString(name) : cJSON_CreateNull());
 }
 
 static void
