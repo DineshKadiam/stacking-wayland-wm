@@ -905,9 +905,10 @@ popup_chain_left(const struct cow_menu_popup *popup)
 
 static void
 popup_fit_to_output(struct cow_menu_popup *popup, int *x, int *y,
-    struct cow_menu_popup *parent)
+    struct cow_menu_popup *parent, struct cow_output *out)
 {
-	struct cow_output *out = popup_output_for(parent, *x, *y);
+	if (out == NULL)
+		out = popup_output_for(parent, *x, *y);
 	if (out == NULL)
 		return;
 
@@ -1418,12 +1419,13 @@ cow_menu_popup_open(struct cow_menu *menu, int x, int y,
 	}
 
 	popup_layout(p);
+	struct cow_output *out = popup_output_for(parent, x, y);
 
 	if (parent == NULL && centre_title_on_position) {
 		x -= p->width / 2;
 		y -= p->style.border_width + p->item_h / 2;
 	}
-	popup_fit_to_output(p, &x, &y, parent);
+	popup_fit_to_output(p, &x, &y, parent, out);
 	p->x = x;
 	p->y = y;
 
@@ -1463,9 +1465,10 @@ cow_menu_popup_open_centered(struct cow_menu *menu, int cx, int cy,
 	p->keep_centered = true;
 
 	popup_layout(p);
+	struct cow_output *out = popup_output_for(NULL, cx, cy);
 	int x = cx - p->width / 2;
 	int y = cy - p->height / 2;
-	popup_fit_to_output(p, &x, &y, NULL);
+	popup_fit_to_output(p, &x, &y, NULL, out);
 	p->x = x;
 	p->y = y;
 
@@ -1564,7 +1567,7 @@ popup_refit_position(struct cow_menu_popup *p)
 	if (p->parent == NULL) {
 		int x = p->x;
 		int y = p->y;
-		popup_fit_to_output(p, &x, &y, NULL);
+		popup_fit_to_output(p, &x, &y, NULL, NULL);
 		p->x = x;
 		p->y = y;
 		return;
@@ -1584,7 +1587,7 @@ popup_refit_position(struct cow_menu_popup *p)
 		idx++;
 	}
 	int x = parent->x + parent->width - 5;
-	popup_fit_to_output(p, &x, &y, parent);
+	popup_fit_to_output(p, &x, &y, parent, NULL);
 	p->x = x;
 	p->y = y;
 }
