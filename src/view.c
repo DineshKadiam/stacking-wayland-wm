@@ -787,6 +787,13 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 
 	view->content_width  = width;
 	view->content_height = height;
+	/* Keep the geometry restored by unshade consistent when the window is
+	 * hidden.
+	 */
+	if (view->sd != COW_SHADE_NONE) {
+		view->shade_saved_width = width;
+		view->shade_saved_height = height;
+	}
 
 	/*
 	 * Apply a deferred position now that the new (smaller) buffer
@@ -1635,6 +1642,10 @@ void
 cow_view_set_pending_geometry_anchored(struct cow_view *view, int x, int y,
     int w, int h, bool anchor_right, bool anchor_bottom)
 {
+	if (view->sd != COW_SHADE_NONE) {
+		view->shade_saved_width = w;
+		view->shade_saved_height = h;
+	}
 	view->pending_resize = true;
 	view->pending_x	     = x;
 	view->pending_y	     = y;
