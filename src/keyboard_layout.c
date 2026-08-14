@@ -71,8 +71,8 @@ keyboard_layout(void *data,
 	if (changed) {
 		xfree(keyboard->name);
 		keyboard->name = name != NULL ? xstrdup(name) : NULL;
-		keyboard->changed = true;
 		active_layout = keyboard;
+		cow_status_emit();
 	}
 }
 
@@ -101,15 +101,9 @@ keyboard_numlock_disabled(__unused void *data,
 }
 
 static void
-keyboard_done(void *data,
+keyboard_done(__unused void *data,
     __unused struct river_xkb_keyboard_v1 *river_keyboard)
 {
-	struct cow_keyboard_layout *keyboard = data;
-
-	if (!keyboard->changed)
-		return;
-	keyboard->changed = false;
-	cow_status_emit();
 }
 
 static const struct river_xkb_keyboard_v1_listener keyboard_listener = {

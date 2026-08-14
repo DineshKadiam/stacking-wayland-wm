@@ -30,7 +30,6 @@ struct cow_keyboard_layout {
 	uint32_t		 index;
 	char			*name;
 	bool			 has_layout;
-	bool			 changed;
 };
 
 void cow_keyboard_layout_init(void);
