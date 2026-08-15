@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#b8b8b8">
   <title>{{ .Site.Title }} — a stacking window manager for Wayland</title>
   <link rel="icon" href="{{ "assets/Only-CoW.svg" | relURL }}" type="image/svg+xml">
-  <link rel="stylesheet" href="{{ "styles.css" | relURL }}?v=mobile-layout">
+  <link rel="stylesheet" href="{{ "styles.css" | relURL }}?v=release-window">
   <script src="{{ "script.js" | relURL }}?v=shade-window" defer></script>
 </head>
 <body>
@@ -31,6 +31,13 @@
         <div class="hero-copy">
           <h1 id="hero-title">{{ .Params.hero.heading }}</h1>
         </div>
+      </div>
+    {{ partial "window-end.html" . }}
+
+    {{ partial "window-start.html" (dict "id" "release" "class" "release-window" "title" .Params.release.heading "heading_id" "release-title") }}
+      <div class="window-content release-content">
+        <p>{{ .Params.release.text }}</p>
+        <a class="wm-button" href="{{ .Site.Params.changelog }}">View the changelog</a>
       </div>
     {{ partial "window-end.html" . }}
 
@@ -92,7 +99,7 @@
 
   <footer>
     <img src="{{ "assets/Only-CoW.svg" | relURL }}" alt="" aria-hidden="true">
-    <p>CoW is open source. Questions and discussion are welcome in <a href="https://web.libera.chat/#cow-wayland">#cow-wayland</a>.</p>
+    <p>CoW is open source. Questions and discussions are welcome in <a href="https://web.libera.chat/#cow-wayland">#cow-wayland</a>.</p>
     <a href="#top">Back to top</a>
   </footer>
 </body>

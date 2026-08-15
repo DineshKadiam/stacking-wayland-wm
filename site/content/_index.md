@@ -4,6 +4,9 @@ description: A configurable stacking window manager for Wayland, built on River 
 hero:
   window_title: CoW — Compositor on Wayland
   heading: A stacking window manager using River as the compositor.
+release:
+  heading: Release Information
+  text: The latest release of CoW is 0.1 (August 2026).
 about:
   heading: Aims
   text: The aims of CoW are to represent the 90s look-and-feel of FVWM and MWM, while also allowing for more modern styles as well.  CoW can be configured directly through commands and the same commands can be used in its configuration file, making CoW scriptable through external applications.

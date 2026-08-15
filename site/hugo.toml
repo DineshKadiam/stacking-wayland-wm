@@ -8,6 +8,7 @@ repository = "https://codeberg.org/thomasadam/cow"
 documentation = "https://codeberg.org/thomasadam/cow/wiki/Home"
 architecture = "https://codeberg.org/thomasadam/cow/src/branch/main/architecture.md"
 packages = "https://codeberg.org/thomasadam/cow/wiki/Packages"
+changelog = "https://codeberg.org/thomasadam/cow/src/branch/main/CHANGELOG.md"
 
 [module]
   [[module.mounts]]

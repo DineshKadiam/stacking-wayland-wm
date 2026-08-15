@@ -318,6 +318,22 @@ body.has-maximised-window {
   margin-top: 0;
 }
 
+.release-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+}
+
+.release-content p {
+  margin: 0;
+}
+
+.release-content .wm-button {
+  flex: 0 0 auto;
+}
+
 .hero-content {
   display: grid;
   grid-template-columns: minmax(180px, 0.3fr) minmax(0, 1fr);
@@ -998,6 +1014,11 @@ body.has-window-tray {
     line-height: 1.15;
     white-space: normal;
     text-wrap: balance;
+  }
+
+  .release-content {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .overview-panel,
