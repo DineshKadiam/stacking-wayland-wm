@@ -54,6 +54,9 @@
 #define MIN_CELL_H 16
 #define TEXT_PAD 6
 #define BTN_LEFT 0x110
+#define BTN_RIGHT 0x111
+#define BTN_MIDDLE 0x112
+#define DOUBLE_CLICK_MS 300
 #define WL_SEAT_VERSION 4
 #define DEFAULT_IMAGE_SIZE 16
 #define MAX_BLOCKS 32
@@ -103,6 +106,19 @@ enum panel_direction {
 	PANEL_RIGHT,
 	PANEL_UP,
 	PANEL_DOWN,
+};
+
+enum click_button {
+	CLICK_LEFT,
+	CLICK_MIDDLE,
+	CLICK_RIGHT,
+	CLICK_BUTTON_COUNT,
+};
+
+enum click_count {
+	CLICK_SINGLE,
+	CLICK_DOUBLE,
+	CLICK_COUNT,
 };
 
 enum block_type {
@@ -202,7 +218,7 @@ struct cell {
 	int		  row;
 	int		  col;
 	char		  label[256];
-	char		  command[512];
+	char		  command[CLICK_BUTTON_COUNT][CLICK_COUNT][512];
 	char		  script[512];
 	int		  script_interval;
 	pid_t		  script_pid;
@@ -261,6 +277,7 @@ static int	   running = 1;
 static int	   win_w;
 static int	   win_h;
 static int	   pressed_cell = -1;
+static int	   pressed_button = -1;
 static double	   ptr_x;
 static double	   ptr_y;
 static int	   wake_pipe[2];
@@ -284,6 +301,10 @@ static struct panel_selection selected_panels[MAX_SELECTED_PANELS];
 static int	       n_selected_panels;
 static struct event_base *script_event_base;
 static struct event      *script_sigchld_event;
+static struct event      *click_timer;
+static int		 pending_click_cell = -1;
+static int		 pending_click_button = -1;
+static uint32_t		 pending_click_time;
 
 static void render(void);
 static int  cell_colspan(const struct cell *);
@@ -1015,6 +1036,36 @@ load_external(char **fields, int n, const char **why)
 }
 
 static bool
+click_property(const char *prop, enum click_button *button,
+    enum click_count *count)
+{
+	if (strcmp(prop, "click") == 0 || strcmp(prop, "leftclick") == 0) {
+		*button = CLICK_LEFT;
+		*count = CLICK_SINGLE;
+	} else if (strcmp(prop, "doubleclick") == 0 ||
+	    strcmp(prop, "leftdoubleclick") == 0) {
+		*button = CLICK_LEFT;
+		*count = CLICK_DOUBLE;
+	} else if (strcmp(prop, "middleclick") == 0) {
+		*button = CLICK_MIDDLE;
+		*count = CLICK_SINGLE;
+	} else if (strcmp(prop, "middledoubleclick") == 0) {
+		*button = CLICK_MIDDLE;
+		*count = CLICK_DOUBLE;
+	} else if (strcmp(prop, "rightclick") == 0) {
+		*button = CLICK_RIGHT;
+		*count = CLICK_SINGLE;
+	} else if (strcmp(prop, "rightdoubleclick") == 0) {
+		*button = CLICK_RIGHT;
+		*count = CLICK_DOUBLE;
+	} else {
+		return false;
+	}
+
+	return true;
+}
+
+static bool
 load_cell_props(struct cell *c, char **fields, int start, int n,
     const char **why)
 {
@@ -1027,8 +1078,17 @@ load_cell_props(struct cell *c, char **fields, int start, int n,
 	for (int i = start; i < n; i += 2) {
 		const char *prop = fields[i];
 		const char *val = fields[i + 1];
+		enum click_button button;
+		enum click_count count;
 
-		if (strcmp(prop, "width") == 0) {
+		if (click_property(prop, &button, &count)) {
+			if (c->type != CELL_BUTTON && c->type != CELL_SCRIPT) {
+				*why = "click action on non-clickable cell";
+				return false;
+			}
+			strlcpy(c->command[button][count], val,
+			    sizeof(c->command[button][count]));
+		} else if (strcmp(prop, "width") == 0) {
 			if (!parse_int(val, &v) || v < MIN_CELL_W) {
 				*why = "bad width";
 				return false;
@@ -1081,8 +1141,6 @@ load_script(char **fields, int n, const char **why)
 			}
 			c->script_interval = interval;
 			interval_set = true;
-		} else if (strcmp(fields[i], "click") == 0) {
-			strlcpy(c->command, fields[i + 1], sizeof(c->command));
 		} else if (!load_cell_props(c, fields, i, i + 2, why))
 			return false;
 	}
@@ -1454,7 +1512,8 @@ load_config(const char *path)
 			}
 			c->type = CELL_BUTTON;
 			strlcpy(c->label, fields[1], sizeof(c->label));
-			strlcpy(c->command, fields[2], sizeof(c->command));
+			strlcpy(c->command[CLICK_LEFT][CLICK_SINGLE], fields[2],
+			    sizeof(c->command[CLICK_LEFT][CLICK_SINGLE]));
 			if (!load_cell_props(c, fields, 3, n, &why))
 				goto line_error;
 			current_col = c->col + cell_colspan(c);
@@ -3396,34 +3455,126 @@ pointer_motion(__unused void *data, __unused struct wl_pointer *p,
 	ptr_y = wl_fixed_to_double(sy);
 }
 
+static int
+click_button_index(uint32_t button)
+{
+	switch (button) {
+	case BTN_LEFT:
+		return CLICK_LEFT;
+	case BTN_MIDDLE:
+		return CLICK_MIDDLE;
+	case BTN_RIGHT:
+		return CLICK_RIGHT;
+	default:
+		return -1;
+	}
+}
+
+static bool
+cell_has_click_action(const struct cell *c, int button)
+{
+	return c->command[button][CLICK_SINGLE][0] != '\0' ||
+	    c->command[button][CLICK_DOUBLE][0] != '\0';
+}
+
+static void
+pending_click_run_single(void)
+{
+	int cell = pending_click_cell;
+	int button = pending_click_button;
+
+	pending_click_cell = -1;
+	pending_click_button = -1;
+	pending_click_time = 0;
+	if (click_timer != NULL)
+		event_del(click_timer);
+	if (cell >= 0 && cell < n_cells && button >= 0 &&
+	    button < CLICK_BUTTON_COUNT &&
+	    cells[cell].command[button][CLICK_SINGLE][0] != '\0')
+		ipc_send(cells[cell].command[button][CLICK_SINGLE]);
+}
+
+static void
+click_timer_cb(__unused evutil_socket_t fd, __unused short events,
+    __unused void *data)
+{
+	pending_click_run_single();
+}
+
+static void
+cell_click(int cell, int button, uint32_t time)
+{
+	struct cell *c = &cells[cell];
+	const char *single = c->command[button][CLICK_SINGLE];
+	const char *double_click = c->command[button][CLICK_DOUBLE];
+
+	if (double_click[0] == '\0') {
+		if (pending_click_cell >= 0)
+			pending_click_run_single();
+		if (single[0] != '\0')
+			ipc_send(single);
+		return;
+	}
+
+	if (pending_click_cell == cell && pending_click_button == button &&
+	    time - pending_click_time < DOUBLE_CLICK_MS) {
+		pending_click_cell = -1;
+		pending_click_button = -1;
+		pending_click_time = 0;
+		event_del(click_timer);
+		ipc_send(double_click);
+		return;
+	}
+
+	if (pending_click_cell >= 0)
+		pending_click_run_single();
+	pending_click_cell = cell;
+	pending_click_button = button;
+	pending_click_time = time;
+	struct timeval delay = {
+	    .tv_sec = 0,
+	    .tv_usec = DOUBLE_CLICK_MS * 1000,
+	};
+	evtimer_add(click_timer, &delay);
+}
+
 static void
 pointer_button(__unused void *data, __unused struct wl_pointer *p,
-    __unused uint32_t serial, __unused uint32_t time, uint32_t button,
+    __unused uint32_t serial, uint32_t time, uint32_t button,
     uint32_t state)
 {
-	if (button != BTN_LEFT)
+	int click_button = click_button_index(button);
+	if (click_button < 0)
 		return;
 
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
 		int idx = cell_at_point(ptr_x, ptr_y);
 		if (idx >= 0 && (cells[idx].type == CELL_BUTTON ||
-		    (cells[idx].type == CELL_SCRIPT &&
-		    cells[idx].command[0] != '\0') ||
-		    cells[idx].type == CELL_PANEL_HANDLE)) {
+		    cells[idx].type == CELL_SCRIPT) &&
+		    cell_has_click_action(&cells[idx], click_button)) {
 			pressed_cell = idx;
+			pressed_button = click_button;
+			render();
+		} else if (idx >= 0 && click_button == CLICK_LEFT &&
+		    cells[idx].type == CELL_PANEL_HANDLE) {
+			pressed_cell = idx;
+			pressed_button = click_button;
 			render();
 		}
 		return;
 	}
 
+	if (pressed_button != click_button)
+		return;
 	int idx = cell_at_point(ptr_x, ptr_y);
 	int pressed = pressed_cell;
 	pressed_cell = -1;
+	pressed_button = -1;
 	render();
 	if (pressed >= 0 && idx == pressed &&
 	    (cells[pressed].type == CELL_BUTTON ||
 	    cells[pressed].type == CELL_SCRIPT))
-		ipc_send(cells[pressed].command);
+		cell_click(pressed, click_button, time);
 	else if (pressed >= 0 && cells[pressed].type == CELL_PANEL_HANDLE)
 		panel_toggle(cells[pressed].target_panel);
 }
@@ -3610,11 +3761,13 @@ main(int argc, char **argv)
 	    wayland_cb, NULL);
 	wake_ev = event_new(base, wake_pipe[0], EV_READ | EV_PERSIST, wake_cb,
 	    NULL);
+	click_timer = evtimer_new(base, click_timer_cb, NULL);
 	if (external_panels_exist())
 		external_ev = event_new(base, -1, EV_PERSIST,
 		    external_sync_cb, NULL);
-	if (wl_ev == NULL || wake_ev == NULL || event_add(wl_ev, NULL) < 0 ||
-	    event_add(wake_ev, NULL) < 0 || (external_ev != NULL &&
+	if (wl_ev == NULL || wake_ev == NULL || click_timer == NULL ||
+	    event_add(wl_ev, NULL) < 0 || event_add(wake_ev, NULL) < 0 ||
+	    (external_ev != NULL &&
 	    event_add(external_ev, &external_tv) < 0) ||
 	    !script_cells_start(base)) {
 		fprintf(stderr, "%s: failed to add events\n", PROG);
@@ -3634,6 +3787,10 @@ main(int argc, char **argv)
 		event_free(wake_ev);
 	if (external_ev != NULL)
 		event_free(external_ev);
+	if (click_timer != NULL) {
+		event_free(click_timer);
+		click_timer = NULL;
+	}
 	script_cells_stop();
 	event_base_free(base);
 	externals_stop_all();

@@ -111,12 +111,29 @@ opaque dark grey.
 	Set the default button text justification.  The default is _left_.
 
 *button* _label_ _command_ [_property_ _value_ ...]
-	Create a clickable button.  _command_ is sent to cow through the command
-	socket.  Supported properties are *width*, *height*, *span*, *bg*,
+	Create a clickable button.  _command_ is sent to cow as its
+	left-click action.
+	Supported properties are *width*, *height*, *span*, *bg*,
 	*bg_pressed*, *fg*, *fg_pressed*, *image*, *image_pressed*,
-	*image_size*, *image_position*, and *justify*.
+	*image_size*, *image_position*, *justify*, and the click-action
+	properties described below.
 
-*script* _command_ *interval* _seconds_ [*click* _command_] [_property_ _value_ ...]
+*leftclick* _command_
+*click* _command_
+*middleclick* _command_
+*rightclick* _command_
+	Set the single-click action for the specific button.  *click* is an
+	alias for *leftclick*.  
+
+*doubleclick* _command_
+*leftdoubleclick* _command_
+*middledoubleclick* _command_
+*rightdoubleclick* _command_
+	Set a double-click action.  *doubleclick* is an alias for
+	*leftdoubleclick*.  When both single- and double-click actions exist for
+	the same button, the single-click action is delayed for 300 ms.
+
+*script* _command_ *interval* _seconds_ [_property_ _value_ ...]
 	Create a cell whose label is supplied by an external command. The command
 	is run through the shell immediately after startup and then again the
 	configured number of seconds after each run finishes. Runs never overlap.
@@ -126,9 +143,8 @@ opaque dark grey.
 	the label. If the command fails, the previous successful label is retained
 	and an error is written to standard error.
 
-	The optional *click* value is a cow command, like a regular button command.
-	Use _click "exec ..."_ to run an external program. Script cells support the
-	same styling and geometry properties as *button* cells.
+	Script cells support the same click actions, styling, and geometry
+	properties as *button* cells.
 
 *external* _command_ [_property_ _value_ ...]
 	Create a panel slot managed by an external command.  The command is
