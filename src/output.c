@@ -752,7 +752,7 @@ cow_output_render_background(struct cow_output *output)
 }
 
 struct cow_output *
-cow_output_at(int x, int y)
+cow_output_at_exact(int x, int y)
 {
 	struct cow_output *output;
 	wl_list_for_each(output, &cow_wm.outputs, wm_link)
@@ -762,6 +762,16 @@ cow_output_at(int x, int y)
 			return output;
 		}
 	}
+	return NULL;
+}
+
+struct cow_output *
+cow_output_at(int x, int y)
+{
+	struct cow_output *output = cow_output_at_exact(x, y);
+
+	if (output != NULL)
+		return output;
 	return cow_wm.current_output;
 }
 

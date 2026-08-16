@@ -529,22 +529,23 @@ cow_pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
 
 /*
  * Constrain (*new_x, *new_y) so the dragged view's frame doesn't slide off
- * the screen edge when no further page exists in the direction of travel.
+ * the output edge when no further page exists in the direction of travel.
  */
 static void
-clamp_drag_to_screen(const struct cow_view *view, int *new_x, int *new_y)
+clamp_drag_to_output(const struct cow_view *view,
+    const struct cow_output *output, int *new_x, int *new_y)
 {
-	if (view->output == NULL || cow_config == NULL)
+	if (output == NULL || cow_config == NULL)
 		return;
 
 	int cols    = cow_config->page_cols;
 	int rows    = cow_config->page_rows;
-	int cur_col = cow_page_col(view->output);
-	int cur_row = cow_page_row(view->output);
-	int ox	    = view->output->x;
-	int oy	    = view->output->y;
-	int ow	    = view->output->width;
-	int oh	    = view->output->height;
+	int cur_col = cow_page_col(output);
+	int cur_row = cow_page_row(output);
+	int ox	    = output->x;
+	int oy	    = output->y;
+	int ow	    = output->width;
+	int oh	    = output->height;
 	int frame_w, frame_h, content_x, content_y;
 	pointer_op_frame_geometry(view, &frame_w, &frame_h, &content_x,
 	    &content_y);
@@ -583,7 +584,8 @@ static void
 op_finalize(struct cow_seat *seat, struct cow_view *view)
 {
 	enum cow_pointer_op_type finished_type = seat->op.type;
-	bool icon_moved = seat->op.icon_moved;
+	bool icon_moved     = seat->op.icon_moved;
+	bool container_drag = seat->container_drag;
 
 	if (seat->op.type == COW_POINTER_OP_RESIZE)
 		river_window_v1_inform_resize_end(view->river_window);
@@ -644,8 +646,17 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 	cow_drag_ghost_destroy();
 	cow_geometry_window_hide();
 
-	if (finished_type != COW_POINTER_OP_ICON_MOVE)
+	if (finished_type == COW_POINTER_OP_MOVE && !container_drag &&
+	    seat->has_pointer_position) {
+		struct cow_output *target = cow_output_at_exact(seat->pointer_x,
+		    seat->pointer_y);
+		if (target != NULL && target != view->output) {
+			cow_view_reassign_output(view, target);
+			cow_view_clear_orphan(view);
+		}
+	} else if (finished_type != COW_POINTER_OP_ICON_MOVE) {
 		cow_view_update_output(view);
+	}
 
 	if (finished_type == COW_POINTER_OP_ICON_MOVE) {
 		cow_log_debug("pointer operation end (type=%s window=%s "
@@ -881,8 +892,15 @@ cow_pointer_op_process(struct cow_seat *seat)
 			/* Normal move */
 			int new_x = fl + content_x;
 			int new_y = ft + content_y;
+			struct cow_output *target = view->output;
+			if (seat->has_pointer_position) {
+				struct cow_output *exact = cow_output_at_exact(
+				    seat->pointer_x, seat->pointer_y);
+				if (exact != NULL)
+					target = exact;
+			}
 
-			clamp_drag_to_screen(view, &new_x, &new_y);
+			clamp_drag_to_output(view, target, &new_x, &new_y);
 			bool position_changed = new_x != view->x || new_y != view->y;
 
 			view->x = new_x;
@@ -899,14 +917,11 @@ cow_pointer_op_process(struct cow_seat *seat)
 			 * vx/vy into a coordinate frame the user did not
 			 * intend.
 			 */
-			if (seat->has_pointer_position) {
-				struct cow_output *target = cow_output_at(
-				    seat->pointer_x, seat->pointer_y);
-				if (target != NULL && target != view->output) {
-					cow_view_reassign_output(view, target);
-					cow_view_clear_orphan(view);
-				}
-			} else {
+			if (seat->has_pointer_position &&
+			    target != view->output) {
+				cow_view_reassign_output(view, target);
+				cow_view_clear_orphan(view);
+			} else if (!seat->has_pointer_position) {
 				cow_view_update_output(view);
 			}
 			cow_view_sync_vxy_from_global(view);
@@ -918,13 +933,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 				COW_GEOMETRY_WINDOW_NONE &&
 			    cow_config->geometry_window !=
 				COW_GEOMETRY_WINDOW_RESIZE) {
-				struct cow_output *output = NULL;
-				if (seat->has_pointer_position)
-					output = cow_output_at(seat->pointer_x,
-					    seat->pointer_y);
-				if (output == NULL)
-					output = view->output;
-				cow_geometry_window_update_move(output, view->x,
+				cow_geometry_window_update_move(target, view->x,
 				    view->y);
 			}
 		}
