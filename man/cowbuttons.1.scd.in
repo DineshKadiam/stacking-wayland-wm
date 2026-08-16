@@ -75,7 +75,7 @@ opaque dark grey.
 	non-empty.
 
 *font* _name_
-	Set the cairo toy-font face used for labels.
+	Set the font face used for labels.
 
 *resizable* _true_|_false_
 	Allow the window to be resized.  The configured grid remains the minimum

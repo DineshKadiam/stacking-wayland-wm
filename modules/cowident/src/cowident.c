@@ -30,6 +30,8 @@
 
 #include "cow/module.h"
 #include "cow/module_cursor.h"
+#include "cow/memory.h"
+#include "cow/text.h"
 
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-output-unstable-v1-client-protocol.h"
@@ -38,7 +40,7 @@
 #define MAX_OUTPUTS 20
 #define MAX_VIEWS 256
 #define ID_LEN 64
-#define NAME_LEN 256
+#define MAX_VALUE_WIDTH 480
 
 /*
  * One output the compositor advertises.  We track wl_output's logical
@@ -64,9 +66,9 @@ struct out {
 
 struct view_info {
 	char	 id[ID_LEN];
-	char	 app_id[NAME_LEN];
-	char	 title[NAME_LEN];
-	char	 output[NAME_LEN];
+	char	*app_id;
+	char	*title;
+	char	*output;
 	int	 desk;
 	int	 x, y;
 	int	 vx, vy;
@@ -162,6 +164,32 @@ copy_jstr(char *dst, size_t cap, cJSON *obj, const char *key)
 	return true;
 }
 
+static char *
+dup_jstr(cJSON *obj, const char *key)
+{
+	if (obj == NULL)
+		return (NULL);
+	cJSON *v = cJSON_GetObjectItem(obj, key);
+	if (v == NULL || !cJSON_IsString(v) || v->valuestring == NULL)
+		return (NULL);
+
+	char *copy;
+	xasprintf(&copy, "%s", v->valuestring);
+	return (copy);
+}
+
+static void
+free_views(void)
+{
+	for (int i = 0; i < n_views; i++) {
+		xfree(views[i].app_id);
+		xfree(views[i].title);
+		xfree(views[i].output);
+	}
+	memset(views, 0, sizeof(views));
+	n_views = 0;
+}
+
 static int
 get_jnum(cJSON *obj, const char *key, int def)
 {
@@ -208,6 +236,7 @@ fetch_font(void)
 static void
 fetch_views(void)
 {
+	free_views();
 	char *resp = ipc_query("show windows");
 	if (!resp) {
 		fprintf(stderr, "cowident: no response to 'show windows'\n");
@@ -239,9 +268,9 @@ fetch_views(void)
 		memset(v, 0, sizeof(*v));
 
 		copy_jstr(v->id, sizeof(v->id), w, "id");
-		copy_jstr(v->app_id, sizeof(v->app_id), w, "app_id");
-		copy_jstr(v->title, sizeof(v->title), w, "title");
-		copy_jstr(v->output, sizeof(v->output), w, "output");
+		v->app_id = dup_jstr(w, "app_id");
+		v->title = dup_jstr(w, "title");
+		v->output = dup_jstr(w, "output");
 		v->desk		   = get_jnum(w, "desk", -1);
 		v->x		   = get_jnum(w, "x", 0);
 		v->y		   = get_jnum(w, "y", 0);
@@ -1074,7 +1103,7 @@ overlay_destroy(void)
 
 struct row {
 	const char *label;
-	char	    value[NAME_LEN];
+	char	   *value;
 };
 
 #define MAX_ROWS 32
@@ -1083,17 +1112,32 @@ static struct row popup_rows[MAX_ROWS];
 static int	  n_rows;
 
 static void
-add_row(const char *label, const char *fmt, ...)
+add_row(const char *label, char *value)
 {
-	if (n_rows >= MAX_ROWS)
+	if (n_rows >= MAX_ROWS) {
+		xfree(value);
 		return;
+	}
 	struct row *r = &popup_rows[n_rows++];
 	r->label      = label;
+	r->value      = value;
+}
 
-	va_list ap;
-	va_start(ap, fmt);
-	vsnprintf(r->value, sizeof(r->value), fmt, ap);
-	va_end(ap);
+#define ADD_ROW(label, ...)                        \
+	do {                                         \
+		char *value;                           \
+		xasprintf(&value, __VA_ARGS__);         \
+		add_row((label), value);                \
+	} while (0)
+
+static void
+free_popup_rows(void)
+{
+	for (int i = 0; i < n_rows; i++) {
+		xfree(popup_rows[i].value);
+		popup_rows[i].value = NULL;
+	}
+	n_rows = 0;
 }
 
 static void
@@ -1110,18 +1154,21 @@ static void
 build_popup_rows(void)
 {
 	struct view_info *v = &views[selected_view];
-	n_rows		    = 0;
+	free_popup_rows();
 	char state[128]	    = "";
 
-	add_row("Window ID:", "%s", v->id);
-	add_row("App ID:", "%s", v->app_id[0] ? v->app_id : "(none)");
-	add_row("Title:", "%s", v->title[0] ? v->title : "(none)");
-	add_row("Output:", "%s", v->output[0] ? v->output : "(unknown)");
-	add_row("Desk:", "%d", v->desk);
-	add_row("Position:", "%d,%d  (virtual %d,%d)", v->x, v->y, v->vx,
+	ADD_ROW("Window ID:", "%s", v->id);
+	ADD_ROW("App ID:", "%s", v->app_id != NULL && v->app_id[0] != '\0' ?
+	    v->app_id : "(none)");
+	ADD_ROW("Title:", "%s", v->title != NULL && v->title[0] != '\0' ?
+	    v->title : "(none)");
+	ADD_ROW("Output:", "%s", v->output != NULL && v->output[0] != '\0' ?
+	    v->output : "(unknown)");
+	ADD_ROW("Desk:", "%d", v->desk);
+	ADD_ROW("Position:", "%d,%d  (virtual %d,%d)", v->x, v->y, v->vx,
 	    v->vy);
-	add_row("Size:", "%d x %d", v->width, v->height);
-	add_row("Frame:", "%d,%d  %d x %d", v->frame_x, v->frame_y, v->frame_w,
+	ADD_ROW("Size:", "%d x %d", v->width, v->height);
+	ADD_ROW("Frame:", "%d,%d  %d x %d", v->frame_x, v->frame_y, v->frame_w,
 	    v->frame_h);
 	append_state(state, sizeof(state), v->focused, "focused");
 	append_state(state, sizeof(state), v->maximized, "maximized");
@@ -1129,42 +1176,47 @@ build_popup_rows(void)
 	append_state(state, sizeof(state), v->iconified, "iconified");
 	append_state(state, sizeof(state), v->circulate_skip,
 	    "circulate-skip");
-	add_row("State:", "%s", state);
+	ADD_ROW("State:", "%s", state);
 	if (v->use_ssd)
-		add_row("Decoration:", "SSD (border %d, titlebar %d)",
+		ADD_ROW("Decoration:", "SSD (border %d, titlebar %d)",
 		    v->border_width, v->title_thickness);
 	else
-		add_row("Decoration:", "CSD");
+		ADD_ROW("Decoration:", "CSD");
 	if (v->squeeze_mode[0] && strcmp(v->squeeze_mode, "none") != 0)
-		add_row("Squeeze:", "%s, %s", v->squeeze_mode,
+		ADD_ROW("Squeeze:", "%s, %s", v->squeeze_mode,
 		    v->squeeze_justify);
 }
+
+#undef ADD_ROW
 
 /*
  * Compute popup size from rendered text extents and lay out columns.
  * Returns the column-divider x in *col_x.
  */
 static void
-measure_popup(PangoLayout *layout, int *out_w, int *out_h, int *col_x)
+measure_popup(cairo_t *cr, PangoFontDescription *font, int *out_w,
+    int *out_h, int *col_x)
 {
 	int max_label = 0, max_value = 0, line_h = 0;
 	for (int i = 0; i < n_rows; i++) {
-		pango_layout_set_text(layout, popup_rows[i].label, -1);
 		int w, h;
-		pango_layout_get_pixel_size(layout, &w, &h);
+		cow_text_measure(cr, font, popup_rows[i].label, &w, &h);
 		if (w > max_label)
 			max_label = w;
 		if (h > line_h)
 			line_h = h;
 
-		pango_layout_set_text(layout, popup_rows[i].value, -1);
-		pango_layout_get_pixel_size(layout, &w, &h);
+		cow_text_measure(cr, font, popup_rows[i].value, &w, &h);
 		if (w > max_value)
 			max_value = w;
+		if (h > line_h)
+			line_h = h;
 	}
 
 	const int margin = 12;
 	const int gutter = 12;
+	if (max_value > MAX_VALUE_WIDTH)
+		max_value = MAX_VALUE_WIDTH;
 	*col_x		 = margin + max_label;
 	*out_w		 = margin + max_label + gutter + max_value + margin;
 	*out_h		 = margin + n_rows * (line_h + 2) + margin;
@@ -1192,46 +1244,37 @@ draw_popup(void)
 	cairo_rectangle(cr, 0.5, 0.5, popup_w - 1, popup_h - 1);
 	cairo_stroke(cr);
 
-	/* Pango layout using cow's font. */
-	PangoLayout	     *layout = pango_cairo_create_layout(cr);
+	/* Pango font using cow's font setting. */
 	PangoFontDescription *desc   = pango_font_description_from_string(
 	      cfg_font);
 	if (!desc)
 		desc = pango_font_description_from_string("monospace 10");
-	pango_layout_set_font_description(layout, desc);
 
 	int col_x, want_w, want_h;
-	measure_popup(layout, &want_w, &want_h, &col_x);
+	measure_popup(cr, desc, &want_w, &want_h, &col_x);
 
 	/* Draw rows.  Labels are right-aligned in the left column,
 	 * values are left-aligned at col_x + gutter. */
 	const int margin   = 12;
 	const int gutter   = 12;
-	int	  text_h   = 0;
-	int	  baseline = margin;
+	int	  text_h = 0;
+	int	  text_y = margin;
 
 	cairo_set_source_rgba(cr, 0.10, 0.10, 0.10, 1.0);
 	for (int i = 0; i < n_rows; i++) {
-		/* Label */
-		pango_layout_set_text(layout, popup_rows[i].label, -1);
-		int lw, lh;
-		pango_layout_get_pixel_size(layout, &lw, &lh);
-		cairo_move_to(cr, col_x - lw, baseline);
-		pango_cairo_show_layout(cr, layout);
-
-		/* Value */
-		pango_layout_set_text(layout, popup_rows[i].value, -1);
-		int vw, vh;
-		pango_layout_get_pixel_size(layout, &vw, &vh);
-		cairo_move_to(cr, col_x + gutter, baseline);
-		pango_cairo_show_layout(cr, layout);
-
+		int lh, vh;
+		cow_text_measure(cr, desc, popup_rows[i].label, NULL, &lh);
+		cow_text_measure(cr, desc, popup_rows[i].value, NULL, &vh);
 		text_h = lh > vh ? lh : vh;
-		baseline += text_h + 2;
+		cow_text_render(cr, desc, margin, text_y, col_x - margin,
+		    text_h, popup_rows[i].label, PANGO_ALIGN_RIGHT, NULL);
+		cow_text_render(cr, desc, col_x + gutter, text_y,
+		    popup_w - col_x - gutter - margin, text_h,
+		    popup_rows[i].value, PANGO_ALIGN_LEFT, NULL);
+		text_y += text_h + 2;
 	}
 
 	pango_font_description_free(desc);
-	g_object_unref(layout);
 
 	cairo_destroy(cr);
 	cairo_surface_destroy(cs);
@@ -1257,18 +1300,15 @@ size_popup(void)
 	cairo_surface_t *cs = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1,
 	    1);
 	cairo_t		*cr = cairo_create(cs);
-	PangoLayout	*layout	   = pango_cairo_create_layout(cr);
 	PangoFontDescription *desc = pango_font_description_from_string(
 	    cfg_font);
 	if (!desc)
 		desc = pango_font_description_from_string("monospace 10");
-	pango_layout_set_font_description(layout, desc);
 
 	int col_x;
-	measure_popup(layout, &popup_w, &popup_h, &col_x);
+	measure_popup(cr, desc, &popup_w, &popup_h, &col_x);
 
 	pango_font_description_free(desc);
-	g_object_unref(layout);
 	cairo_destroy(cr);
 	cairo_surface_destroy(cs);
 	(void)col_x;
@@ -1448,6 +1488,8 @@ main(void)
 
 	if (phase == PHASE_DONE) {
 		/* Cancelled. */
+		free_popup_rows();
+		free_views();
 		cow_module_cursor_fini(&cursor);
 		wl_display_disconnect(display);
 		return 0;
@@ -1462,6 +1504,8 @@ main(void)
 	popup_destroy();
 	wl_display_flush(display);
 
+	free_popup_rows();
+	free_views();
 	cow_module_cursor_fini(&cursor);
 	wl_display_disconnect(display);
 	return 0;

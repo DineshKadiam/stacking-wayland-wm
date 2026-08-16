@@ -22,7 +22,9 @@ ident_deps = [
 
 executable('cowident',
     ['src/cowident.c'] + ident_generated,
+    '../../src/memory.c',
     '../../src/module.c',
+    '../../src/text.c',
     '../../src/util.c',
     '../../src/module_cursor.c',
     '../../vendor/cJSON.c',

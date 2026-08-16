@@ -40,6 +40,7 @@
 #include "cow/module.h"
 #include "cow/module_config.h"
 #include "cow/module_cursor.h"
+#include "cow/text.h"
 #include "cow/vector.h"
 #include "xdg-shell-client-protocol.h"
 
@@ -1992,40 +1993,18 @@ status_text(const struct cell *c, const struct state *st)
 	return "";
 }
 
-static void
-draw_text(cairo_t *cr, double x, double y, double max_w, const char *text,
-    enum text_justify justify)
+static PangoAlignment
+text_alignment(enum text_justify justify)
 {
-	cairo_text_extents_t te;
-	char buf[256];
-	const char *out = text;
-	double dx;
-
-	if (text == NULL || max_w <= 0)
-		return;
-	cairo_text_extents(cr, text, &te);
-	if (te.width > max_w) {
-		strlcpy(buf, text, sizeof(buf));
-		size_t len = strlen(buf);
-		while (len > 1) {
-			buf[--len] = '\0';
-			cairo_text_extents(cr, buf, &te);
-			if (te.width + 12 <= max_w)
-				break;
-		}
-		if (len > 1)
-			strlcat(buf, "...", sizeof(buf));
-		out = buf;
-		cairo_text_extents(cr, out, &te);
+	switch (justify) {
+	case JUSTIFY_CENTER:
+		return (PANGO_ALIGN_CENTER);
+	case JUSTIFY_RIGHT:
+		return (PANGO_ALIGN_RIGHT);
+	case JUSTIFY_LEFT:
+	default:
+		return (PANGO_ALIGN_LEFT);
 	}
-
-	dx = 0;
-	if (justify == JUSTIFY_CENTER && te.width < max_w)
-		dx = (max_w - te.width) / 2.0;
-	else if (justify == JUSTIFY_RIGHT && te.width < max_w)
-		dx = max_w - te.width;
-	cairo_move_to(cr, x + dx, y);
-	cairo_show_text(cr, out);
 }
 
 static void
@@ -2405,9 +2384,9 @@ render(void)
 		.stride_px = win_w,
 	};
 	cr = cairo_create(cs);
-	cairo_select_font_face(cr, cfg.font, CAIRO_FONT_SLANT_NORMAL,
-	    CAIRO_FONT_WEIGHT_NORMAL);
-	cairo_set_font_size(cr, 12);
+	PangoFontDescription *font = pango_font_description_new();
+	pango_font_description_set_family(font, cfg.font);
+	pango_font_description_set_absolute_size(font, 12 * PANGO_SCALE);
 
 	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
 	set_source_colour(cr, style.bg);
@@ -2467,8 +2446,9 @@ render(void)
 			}
 			set_source_colour(cr, c == NULL ? style.fg :
 			    cell_fg_colour(c, sunken));
-			draw_text(cr, tx, y + cell_h / 2.0 + 4.0, tw,
-			    label, c == NULL ? style.justify : cell_justify(c));
+			cow_text_render(cr, font, tx, y, tw, cell_h, label,
+			    text_alignment(c == NULL ? style.justify :
+				cell_justify(c)), NULL);
 		}
 	}
 
@@ -2489,6 +2469,7 @@ render(void)
 			draw_panel_indicator(&pixbuf, c, x, y, w, h, sunken);
 	}
 	cairo_surface_mark_dirty(cs);
+	pango_font_description_free(font);
 	cairo_destroy(cr);
 	cairo_surface_destroy(cs);
 

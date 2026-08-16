@@ -34,6 +34,7 @@
 #include "cow/image_cache.h"
 #include "cow/module.h"
 #include "cow/module_cursor.h"
+#include "cow/text.h"
 #include "cow/util.h"
 #include "xdg-shell-client-protocol.h"
 
@@ -999,35 +1000,6 @@ shm_buf(int w, int h, void **px)
 }
 
 static void
-draw_text(cairo_t *cr, double x, double y, double max_w, const char *text)
-{
-	cairo_text_extents_t te;
-
-	if (max_w <= 0)
-		return;
-	cairo_text_extents(cr, text, &te);
-	if (te.width <= max_w) {
-		cairo_move_to(cr, x, y);
-		cairo_show_text(cr, text);
-		return;
-	}
-
-	char buf[256];
-	strlcpy(buf, text, sizeof(buf));
-	size_t len = strlen(buf);
-	while (len > 1) {
-		buf[--len] = '\0';
-		cairo_text_extents(cr, buf, &te);
-		if (te.width + 12 <= max_w)
-			break;
-	}
-	if (len > 1)
-		strncat(buf, "...", sizeof(buf) - strlen(buf) - 1);
-	cairo_move_to(cr, x, y);
-	cairo_show_text(cr, buf);
-}
-
-static void
 draw_relief(cairo_t *cr, double x, double y, double w, double h, int sunken)
 {
 	if (sunken)
@@ -1120,9 +1092,9 @@ do_render(const struct state *st)
 	cs = cairo_image_surface_create_for_data(px, CAIRO_FORMAT_ARGB32,
 	    win_w, win_h, win_w * 4);
 	cr = cairo_create(cs);
-	cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL,
-	    CAIRO_FONT_WEIGHT_NORMAL);
-	cairo_set_font_size(cr, 12);
+	PangoFontDescription *font = pango_font_description_new();
+	pango_font_description_set_family(font, "Sans");
+	pango_font_description_set_absolute_size(font, 12 * PANGO_SCALE);
 
 	cairo_set_source_rgb(cr, 0.10, 0.10, 0.11);
 	cairo_paint(cr);
@@ -1133,8 +1105,9 @@ do_render(const struct state *st)
 		cairo_fill(cr);
 		draw_relief(cr, PAD, PAD, win_w - PAD * 2, ROW_H, 0);
 		cairo_set_source_rgb(cr, 0.88, 0.88, 0.90);
-		draw_text(cr, PAD + TEXT_PAD, PAD + 16, win_w - 2 * PAD,
-		    "cowiconman");
+		cow_text_render(cr, font, PAD + TEXT_PAD, PAD,
+		    win_w - 2 * (PAD + TEXT_PAD), ROW_H, "cowiconman",
+		    PANGO_ALIGN_LEFT, NULL);
 	} else {
 		for (int i = 0; i < n_rows; i++) {
 			struct row *r = &rows[i];
@@ -1166,10 +1139,12 @@ do_render(const struct state *st)
 				label_w -= MARKER_SIZE + MARKER_GAP;
 			}
 			cairo_set_source_rgb(cr, 0.94, 0.94, 0.96);
-			draw_text(cr, label_x, r->y + 16, label_w, r->label);
+			cow_text_render(cr, font, label_x, r->y, label_w, r->h,
+			    r->label, PANGO_ALIGN_LEFT, NULL);
 		}
 	}
 
+	pango_font_description_free(font);
 	cairo_destroy(cr);
 	cairo_surface_flush(cs);
 	cairo_surface_destroy(cs);
