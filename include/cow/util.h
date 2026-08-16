@@ -51,6 +51,9 @@ char *cow_path_dirname(const char *);
 /* Quote and join argv so cmd_string_parse() recovers the same arguments. */
 char *cow_command_from_argv(size_t, const char *const *);
 
+/* Escape text for use in XML/Pango markup. The caller owns the result. */
+char *cow_markup_escape(const char *);
+
 /*
  * Create, bind, and listen on an AF_UNIX SOCK_STREAM socket inside
  * $XDG_RUNTIME_DIR.

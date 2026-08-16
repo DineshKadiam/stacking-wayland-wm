@@ -9,6 +9,7 @@ cowbar_inc = [
 executable('cowbar',
     'src/cowbar.c',
     '../src/module.c',
+    '../src/module_config.c',
     '../src/util.c',
     '../vendor/cJSON.c',
     include_directories: cowbar_inc,

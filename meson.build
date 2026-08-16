@@ -420,6 +420,7 @@ install_data(
 
 install_data(
     'config/cow/cow.conf',
+    'config/cow/cowbar.conf',
     install_dir: etc_prefix + '/etc/cow',
 )
 

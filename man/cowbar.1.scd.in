@@ -6,7 +6,7 @@ cowbar - relay cow window manager status updates
 
 # SYNOPSIS
 
-*cowbar* [*-h*] [*-n*] [*-o* _output_] [*-f* _field_] [*-w* _module_]
+*cowbar* [*-h*] [*-n*] [*-c* _path_] [*-o* _output_] [*-f* _field_] [*-w* _module_]
 
 # DESCRIPTION
 
@@ -24,6 +24,10 @@ allowing it to be started concurrently with *cow* during session initialisation
 without requiring ordering guarantees.
 
 # OPTIONS
+
+*-c* _path_
+	Load style and format overrides from _path_. The installed defaults are
+	loaded first. An explicit file replaces those defaults.
 
 *-o* _output_
 	Filter snapshots to the named output. When combined with *-f desks*,
@@ -56,6 +60,66 @@ without requiring ordering guarantees.
 
 *-h*
 	Print usage and exit.
+
+# WAYBAR PRESENTATION
+
+Waybar modules emitted with *-w* use Pango markup so that individual desks
+within a single custom module can have different styles. Waybar CSS can still
+style the custom module as a whole, but cannot select the individual spans.
+
+The installed *cowbar.conf* supplies the default presentation. A readable
+_$XDG_CONFIG_HOME/cow/cowbar.conf_ or _~/.config/cow/cowbar.conf_ override the
+defaults.
+
+Style lines have the form:
+
+```
+style name attribute value [attribute value ...]
+```
+
+Valid style names are *desk.active*, *desk.collected*, *desk.occupied*,
+*desk.separator*, *page.separator*, *page*, *status*, and *title*. Valid
+attributes are *foreground*, *background*, *weight*, *style*, and *underline*.
+Attribute values follow Pango markup conventions. Quote colours beginning with
+*#*, since an unquoted *#* begins a comment. The special value *none* clears an
+attribute inherited from the installed defaults.
+
+Format lines have the form:
+
+```
+format name "value"
+```
+
+The supported formats and required conversions are:
+
+[[ *Name*
+:< *Conversions*
+|  *desk*
+:  one *%s* (desk name or number)
+|  *page*
+:  two *%d* values (column and row)
+|  *status*
+:  *%s*, *%d*, *%s* (output, active-window count, desktop configuration)
+|  *title*
+:  one *%s* (focused-window title)
+
+Use *%%* for a literal percent sign. Dynamic text and configured Pango
+attribute values are escaped before markup is emitted.
+
+The *layout* command controls the order of the three desk-module elements:
+
+```
+layout desks page status
+```
+
+Valid elements are *desks*, *page*, and *status*. Each may appear at most once.
+Omit an element to hide it. The installed default shown above preserves the
+traditional cowbar order.
+
+Send *SIGHUP* to a running *cowbar* process to reload its configuration. A
+successful reload immediately re-renders the most recent Waybar snapshot. If
+the new configuration is invalid, cowbar reports the error and keeps the
+previous configuration active.
 
 # OUTPUT FORMAT
 
@@ -118,6 +182,12 @@ Each line of output is a self-contained JSON object, suitable for parsing with
 
 # FILES
 
+_/<PREFIX>/etc/cow/cowbar.conf_
+	Installed default Waybar styles and formats.
+
+_$XDG_CONFIG_HOME/cow/cowbar.conf_ or _~/.config/cow/cowbar.conf_
+	Optional per-user style and format overrides.
+
 _$XDG\_RUNTIME\_DIR/cow-$WAYLAND\_DISPLAY-status.sock_
 	Status broadcast socket created by *cow*(1). *cow* writes a JSON
 	snapshot to every connected client on each state change. If
@@ -160,6 +230,12 @@ Pipe into *jq*(1) for the title of the focused window:
 
 ```
 cowbar -f focused | jq -r '.title // empty'
+```
+
+Override the active desk colour while retaining all other defaults:
+
+```
+style desk.active foreground "#ffffff" background "#75507b"
 ```
 
 # SEE ALSO

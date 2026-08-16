@@ -131,6 +131,48 @@ cow_command_from_argv(size_t argc, const char *const *argv)
 }
 
 char *
+cow_markup_escape(const char *text)
+{
+	if (text == NULL)
+		return (strdup(""));
+
+	size_t len = 0;
+	for (const char *p = text; *p != '\0'; p++) {
+		switch (*p) {
+		case '&': len += 5; break;
+		case '<':
+		case '>': len += 4; break;
+		case '\'':
+		case '"': len += 6; break;
+		default: len++; break;
+		}
+	}
+
+	char *escaped = malloc(len + 1);
+	if (escaped == NULL)
+		return (NULL);
+	char *dst = escaped;
+	for (const char *p = text; *p != '\0'; p++) {
+		const char *entity = NULL;
+		switch (*p) {
+		case '&': entity = "&amp;"; break;
+		case '<': entity = "&lt;"; break;
+		case '>': entity = "&gt;"; break;
+		case '\'': entity = "&apos;"; break;
+		case '"': entity = "&quot;"; break;
+		default: *dst++ = *p; break;
+		}
+		if (entity != NULL) {
+			size_t entity_len = strlen(entity);
+			memcpy(dst, entity, entity_len);
+			dst += entity_len;
+		}
+	}
+	*dst = '\0';
+	return (escaped);
+}
+
+char *
 cow_path_resolve(const char *base_dir, const char *path)
 {
 	if (path == NULL)

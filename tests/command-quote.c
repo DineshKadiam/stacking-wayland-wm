@@ -34,6 +34,20 @@ check(size_t argc, const char *const *argv, const char *expected)
 	free(command);
 }
 
+static void
+check_markup(const char *text, const char *expected)
+{
+	char *escaped = cow_markup_escape(text);
+
+	if (escaped == NULL || strcmp(escaped, expected) != 0) {
+		fprintf(stderr, "expected: %s\nactual:   %s\n", expected,
+		    escaped != NULL ? escaped : "(null)");
+		free(escaped);
+		exit(1);
+	}
+	free(escaped);
+}
+
 int
 main(void)
 {
@@ -49,6 +63,9 @@ main(void)
 
 	const char *special[] = { "", "two words", "a\\b", "a\nb", "#id" };
 	check(5, special, "\"\" \"two words\" \"a\\\\b\" \"a\\nb\" \"#id\"");
+
+	check_markup("plain", "plain");
+	check_markup("<&>\"'", "&lt;&amp;&gt;&quot;&apos;");
 
 	return (0);
 }
