@@ -614,21 +614,6 @@ pan_frames_destroy_all(void)
 	    pan_frames_destroy_output(output);
 }
 
-/* Active MOVE drag (excluding container drags), or NULL. */
-static struct cow_view *
-pan_find_drag_view(void)
-{
-	struct cow_seat *s;
-	wl_list_for_each(s, &cow_wm.seats, wm_link)
-	{
-		if (s->op_in_progress && s->op.type == COW_POINTER_OP_MOVE &&
-		    !s->container_drag && s->op.view != NULL &&
-		    !s->op.view->closed)
-			return s->op.view;
-	}
-	return NULL;
-}
-
 /* Compute view's frame edges (incl. border + titlebar) in global coords. */
 static void
 pan_view_frame(const struct cow_view *v, int *l, int *t, int *r, int *b)
@@ -820,7 +805,7 @@ pan_fire(struct cow_output *output, int edge)
 	if (ptr_y >= output->y + output->height)
 		ptr_y = output->y + output->height - 1;
 
-	struct cow_view *drag = pan_find_drag_view();
+	struct cow_view *drag = cow_pointer_op_active_move_view();
 	int		 warp_x, warp_y;
 	pan_warp_target(output, edge, ptr_x, ptr_y, drag, &warp_x, &warp_y);
 

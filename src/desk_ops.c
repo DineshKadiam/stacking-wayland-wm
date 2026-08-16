@@ -21,6 +21,7 @@
 #include "cow/log.h"
 #include "cow/output.h"
 #include "cow/pan_frames.h"
+#include "cow/pointer_op.h"
 #include "cow/rule.h"
 #include "cow/seat.h"
 #include "cow/status.h"
@@ -72,10 +73,25 @@ view_visible_in_page(const struct cow_view *view,
 	/* Sub-page scrolls use overlap visibility even with edge_scroll. */
 	bool aligned = (vpx % w == 0 && vpy % h == 0);
 
-	if (cow_config->edge_scroll && aligned)
+	if (cow_config->edge_scroll && aligned &&
+	    !cow_pointer_op_is_moving_view(view))
 		return origin_visible;
-	return !(fx + frame_w <= vpx || fx >= vpx + w ||
-	    fy + frame_h <= vpy || fy >= vpy + h);
+
+	struct cow_box frame = {
+		.x = fx,
+		.y = fy,
+		.width = frame_w,
+		.height = frame_h,
+	};
+	struct cow_box page = {
+		.x = vpx,
+		.y = vpy,
+		.width = w,
+		.height = h,
+	};
+	struct cow_box intersection;
+	cow_box_intersection(&frame, &page, &intersection);
+	return intersection.width > 0 && intersection.height > 0;
 }
 
 bool

@@ -152,6 +152,38 @@ pointer_op_type_name(enum cow_pointer_op_type type)
 	}
 }
 
+static bool
+seat_is_moving_view(const struct cow_seat *seat, const struct cow_view *view)
+{
+	return seat->op_in_progress && seat->op.type == COW_POINTER_OP_MOVE &&
+	    !seat->container_drag && seat->op.view != NULL &&
+	    !seat->op.view->closed && (view == NULL || seat->op.view == view);
+}
+
+struct cow_view *
+cow_pointer_op_active_move_view(void)
+{
+	struct cow_seat *seat;
+	wl_list_for_each(seat, &cow_wm.seats, wm_link)
+	{
+		if (seat_is_moving_view(seat, NULL))
+			return seat->op.view;
+	}
+	return NULL;
+}
+
+bool
+cow_pointer_op_is_moving_view(const struct cow_view *view)
+{
+	struct cow_seat *seat;
+	wl_list_for_each(seat, &cow_wm.seats, wm_link)
+	{
+		if (seat_is_moving_view(seat, view))
+			return true;
+	}
+	return false;
+}
+
 /*
  * Snap a coordinate to nearby edges.  Checks usable area boundaries,
  * output boundaries, and other visible window frame edges.

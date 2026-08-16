@@ -126,6 +126,12 @@ void cow_pointer_op_start_menu_select(struct cow_seat *);
 bool cow_pointer_op_finish_menu_select(struct cow_seat *);
 void cow_pointer_op_disarm_attached(struct cow_seat *);
 
+/* Return the view in an active non-container move, or NULL. */
+struct cow_view *cow_pointer_op_active_move_view(void);
+
+/* Return whether the view is in an active non-container move. */
+bool cow_pointer_op_is_moving_view(const struct cow_view *);
+
 /*
  * Process pointer operation state during a manage sequence.
  * Applies op_delta to the view's position/dimensions.
