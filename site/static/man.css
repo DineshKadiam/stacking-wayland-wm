@@ -1,0 +1,219 @@
+.manual-main {
+  width: min(1180px, calc(100% - 2rem));
+}
+
+.manual-window {
+  margin-top: 0;
+}
+
+.manual-content {
+  --manual-accent: #32686b;
+  --manual-rule: #aaa697;
+  min-height: 12rem;
+  padding: clamp(1rem, 3vw, 2rem);
+  overflow-x: auto;
+}
+
+.manual-content .manual-text {
+  max-width: 92ch;
+  margin: 0 auto;
+}
+
+.manual-content table.head,
+.manual-content table.foot {
+  width: 100%;
+  margin-bottom: 1.5rem;
+  border-collapse: collapse;
+  border-bottom: 1px solid var(--manual-rule);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+}
+
+.manual-content table.head td,
+.manual-content table.foot td {
+  padding: 0.25rem 0.4rem;
+}
+
+.manual-content td.head-rtitle,
+.manual-content td.foot-os {
+  text-align: right;
+}
+
+.manual-content td.head-vol {
+  text-align: center;
+}
+
+.manual-content h1.Sh {
+  max-width: none;
+  margin: 1.8rem 0 0.6rem;
+  padding-bottom: 0.2rem;
+  color: var(--manual-accent);
+  border-bottom: 2px solid var(--manual-rule);
+  font-family: var(--mono);
+  font-size: 1.25rem;
+  line-height: 1.25;
+  letter-spacing: 0;
+  white-space: normal;
+}
+
+.manual-content h2.Ss {
+  margin: 1.35rem 0 0.5rem;
+  padding-left: 0.55rem;
+  color: var(--manual-accent);
+  border-left: 4px solid var(--frame-light);
+  font-size: 1.05rem;
+}
+
+.manual-content .permalink {
+  text-decoration: none;
+}
+
+.manual-content .manual-text a:not(.permalink) {
+  color: var(--manual-accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+
+.manual-content .manual-text a:not(.permalink):hover,
+.manual-content .manual-text a:not(.permalink):focus-visible {
+  color: var(--frame-dark);
+}
+
+.manual-content p.Pp {
+  margin: 0.65rem 0;
+}
+
+.manual-content .Nd,
+.manual-content .Bf,
+.manual-content .Op {
+  display: inline;
+}
+
+.manual-content .Pa,
+.manual-content .Ad {
+  font-style: italic;
+}
+
+.manual-content .Ms,
+.manual-content code.Nm,
+.manual-content .Fl,
+.manual-content .Cm,
+.manual-content .Ic,
+.manual-content code.In,
+.manual-content .Fd,
+.manual-content .Fn,
+.manual-content .Cd {
+  font-weight: 700;
+  font-family: inherit;
+}
+
+.manual-content pre {
+  max-width: 100%;
+  margin: 0.6rem 0;
+  padding: 0.65rem 0.8rem;
+  overflow-x: auto;
+  border: 0;
+  border-left: 3px solid var(--frame-light);
+  background: rgba(221, 216, 198, 0.55);
+  line-height: 1.2;
+}
+
+.manual-content table.tbl {
+  width: 100%;
+  margin: 0.8rem 0 1rem;
+  border: 0 !important;
+  border-spacing: 1px;
+  background: #8b887e;
+  box-shadow:
+    inset 2px 2px 0 #6f6c63,
+    inset -2px -2px 0 #fff;
+}
+
+.manual-content table.tbl td {
+  padding: 0.3rem 0.5rem;
+  border: 0;
+  background: #ebe7d8;
+  vertical-align: top;
+}
+
+.manual-content table.tbl tr:first-child td {
+  background: var(--paper-deep);
+}
+
+.manual-content dl.Bl-tag,
+.manual-content dl.Bl-diag {
+  display: grid;
+  grid-template-columns: minmax(10rem, auto) minmax(0, 1fr);
+  gap: 0.35rem 1rem;
+}
+
+.manual-content dl.Bl-tag > dt,
+.manual-content dl.Bl-diag > dt {
+  font-weight: 700;
+}
+
+.manual-content dl.Bl-tag > dd,
+.manual-content dl.Bl-diag > dd {
+  margin-left: 0;
+}
+
+.manual-content #Search_Order ~ dl.Bl-tag {
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 0.7rem;
+}
+
+.manual-index-header {
+  max-width: 72ch;
+  margin: 0 auto 1.5rem;
+}
+
+.manual-index-header h2 {
+  margin: 0;
+}
+
+.manual-index {
+  display: grid;
+  max-width: 72ch;
+  margin: 0 auto;
+  padding: 0;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.55rem;
+  list-style: none;
+}
+
+.manual-index a {
+  display: block;
+  padding: 0.7rem 0.9rem;
+  border: 2px solid #9d998c;
+  background: var(--paper-deep);
+  text-decoration: none;
+  box-shadow:
+    inset 2px 2px 0 #fff,
+    inset -2px -2px 0 #6f6c63;
+}
+
+.manual-index a:hover,
+.manual-index a:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+@media (max-width: 680px) {
+  .manual-content dl.Bl-tag,
+  .manual-content dl.Bl-diag {
+    display: block;
+  }
+
+  .manual-content dl.Bl-tag > dd,
+  .manual-content dl.Bl-diag > dd {
+    margin: 0 0 0.8rem 1rem;
+  }
+
+  .manual-content table.head td:nth-child(2),
+  .manual-content table.head td:nth-child(3),
+  .manual-content table.foot td:nth-child(2),
+  .manual-content table.foot td:nth-child(3) {
+    display: none;
+  }
+}

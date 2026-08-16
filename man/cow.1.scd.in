@@ -1452,8 +1452,7 @@ feel of a window.  All of these can be used with *decor -d*.
 |  *titlebar.font*
 :  Pango font string for titlebars.
 |  *border.handles*
-:  _true_ | _false_
-:  Draw handle marks on border corners.
+:  _true_ | _false_. Draw handle marks on border corners.
 
 *Border Colour Settings* (values are hexadecimal RGB or RGBA):
 
