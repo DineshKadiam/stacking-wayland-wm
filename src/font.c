@@ -15,6 +15,7 @@
  */
 #include "cow/font.h"
 #include "cow/log.h"
+#include "cow/text.h"
 
 #include <cairo/cairo.h>
 #include <stdbool.h>
@@ -63,15 +64,7 @@ font_metrics(struct cow_font *font, const char *text, int *width, int *height)
 	    cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 0, 0);
 
 	cairo_t	    *cairo  = cairo_create(surface);
-	PangoLayout *layout = pango_cairo_create_layout(cairo);
-
-	pango_layout_set_font_description(layout, font->desc);
-	pango_layout_set_text(layout, text, -1);
-	pango_cairo_update_layout(cairo, layout);
-	pango_cairo_show_layout(cairo, layout);
-	pango_layout_get_pixel_size(layout, width, height);
-
-	g_object_unref(layout);
+	cow_text_measure(cairo, font->desc, text, width, height);
 	cairo_surface_destroy(surface);
 	cairo_destroy(cairo);
 }
@@ -139,30 +132,10 @@ cow_font_render_label(struct cow_pixbuf *dst, int dx, int dy, int w, int h,
 	if (text_inset < 0)
 		text_inset = 0;
 
-	PangoLayout *layout = pango_cairo_create_layout(cr);
-	pango_layout_set_font_description(layout, font->desc);
-	pango_layout_set_text(layout, text, -1);
-
 	int avail_w = w - 2 * text_inset;
-	if (avail_w > 0)
-		pango_layout_set_width(layout, avail_w * PANGO_SCALE);
-	pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
-	pango_layout_set_alignment(layout, align);
-
-	int text_w = 0, text_h = 0;
-	pango_layout_get_pixel_size(layout, &text_w, &text_h);
-	if (out_text_w != NULL)
-		*out_text_w = text_w;
-
-	int text_y = (h - text_h) / 2;
-	if (text_y < 0)
-		text_y = 0;
-
-	cairo_move_to(cr, text_inset, text_y);
 	cairo_set_source_rgba(cr, fg[0], fg[1], fg[2], fg[3]);
-	pango_cairo_show_layout(cr, layout);
-
-	g_object_unref(layout);
+	cow_text_render(cr, font->desc, text_inset, 0, avail_w, h, text, align,
+	    out_text_w);
 	cairo_surface_flush(surface);
 
 	unsigned char *sdata   = cairo_image_surface_get_data(surface);

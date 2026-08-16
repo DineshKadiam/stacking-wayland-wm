@@ -105,6 +105,7 @@ srcs = [
     'src/stack.c',
     'src/state.c',
     'src/status.c',
+    'src/text.c',
     'src/titlebar.c',
     'src/util.c',
     'src/vector.c',
@@ -396,6 +397,14 @@ colour_test = executable('test-colour',
     dependencies: all_deps,
 )
 test('colour', colour_test)
+
+text_test = executable('test-text',
+    'tests/text.c',
+    'src/text.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('text', text_test)
 
 subdir('cowbar')
 subdir('modules/cowbuttons')
