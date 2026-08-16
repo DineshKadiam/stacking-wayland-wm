@@ -651,6 +651,10 @@ void cow_view_sync_global_from_vxy(struct cow_view *);
 /* Restore saved pre-maximize/pre-expand geometry. */
 void cow_view_restore_saved_geometry(struct cow_view *);
 
+/* Find the first view that's in a specific range */
+struct cow_view *
+cow_view_find_inside_box(int, int, int, int, struct cow_output *);
+
 /*
  * JSON serialisation helpers for view metadata.
  * Each adds scalar fields directly to 'obj'; callers are responsible

@@ -169,6 +169,7 @@ static const struct set_enum_option set_placement_options[] = {
 	{ "undermouse", COW_PLACEMENT_UNDERMOUSE },
 	{ "centre", COW_PLACEMENT_CENTRE },
 	{ "center", COW_PLACEMENT_CENTRE },
+	{ "empty", COW_PLACEMENT_EMPTY },
 	{ NULL, -1 },
 };
 

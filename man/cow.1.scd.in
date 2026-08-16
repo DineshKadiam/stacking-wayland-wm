@@ -1550,7 +1550,7 @@ feel of a window.  All of these can be used with *decor -d*.
 :  Show the geometry overlay while interactively moving or resizing windows.
    Default: _both_.
 |  *placement*
-:  _cascade_ | _undermouse_ | _centre_ | _center_
+:  _cascade_ | _undermouse_ | _centre_ | _center_ | _empty_
 :  New window placement. Default: _cascade_.
 |  *titlebar.enabled*
 :  _true_ | _1_

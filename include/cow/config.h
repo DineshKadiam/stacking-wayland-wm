@@ -103,6 +103,7 @@ enum cow_placement_mode {
 	COW_PLACEMENT_CASCADE,
 	COW_PLACEMENT_UNDERMOUSE,
 	COW_PLACEMENT_CENTRE,
+	COW_PLACEMENT_EMPTY,
 };
 
 enum cow_geometry_window_mode {
