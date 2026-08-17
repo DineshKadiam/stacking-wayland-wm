@@ -28,6 +28,21 @@
 #include <time.h>
 #include <unistd.h>
 
+bool
+cow_string_choice_parse(const struct cow_string_choice *choices,
+    const char *value, int *result)
+{
+	if (choices == NULL || value == NULL || result == NULL)
+		return (false);
+	for (; choices->name != NULL; choices++) {
+		if (strcmp(value, choices->name) == 0) {
+			*result = choices->value;
+			return (true);
+		}
+	}
+	return (false);
+}
+
 static bool
 command_arg_needs_quotes(const char *s)
 {

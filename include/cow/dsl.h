@@ -38,6 +38,8 @@ struct dsl_error {
 	char *message; /* xmalloced; caller frees */
 };
 
+void dsl_error_fini(struct dsl_error *);
+
 /*
  * Parse `src` as a DSL `script { ... }` block.  On success returns
  * a heap-allocated AST owned by the caller; free with dsl_free().

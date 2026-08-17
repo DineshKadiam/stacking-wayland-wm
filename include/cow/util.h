@@ -19,6 +19,15 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+struct cow_string_choice {
+	const char *name;
+	int         value;
+};
+
+/* Look up an exact string in a NULL-terminated choice table. */
+bool cow_string_choice_parse(const struct cow_string_choice *, const char *,
+    int *);
+
 /*
  * Small project-wide utilities used by multiple modules.
  */

@@ -26,8 +26,7 @@ cmd_filter_error_free(struct cmd_filter *filter)
 {
 	if (filter->err == NULL)
 		return;
-	xfree(filter->err->file);
-	xfree(filter->err->message);
+	dsl_error_fini(filter->err);
 	xfree(filter->err);
 	filter->err = NULL;
 }

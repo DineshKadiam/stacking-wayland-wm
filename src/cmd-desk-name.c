@@ -96,14 +96,10 @@ cmd_desk_name_exec(struct cmd *self, struct cmd_q *cmdq)
 			cmdq_error(cmdq, "desk-name: -d needs N");
 			return (CMD_RETURN_ERROR);
 		}
-		char *end;
-		long  nr = strtol(args->argv[0], &end, 10);
-		if (end == args->argv[0] || *end != '\0' || nr < 0 ||
-		    nr > 255) {
-			cmdq_error(cmdq, "desk-name: bad N: %s",
-			    args->argv[0]);
+		long long nr;
+		if (!cmd_parse_int(cmdq, "desk-name", "N", args->argv[0],
+		    0, UINT8_MAX, &nr))
 			return (CMD_RETURN_ERROR);
-		}
 		char *cause = NULL;
 		if (!cow_desk_set_delete(output, (uint8_t)nr, &cause)) {
 			cmdq_error(cmdq, "%s",
@@ -121,12 +117,10 @@ cmd_desk_name_exec(struct cmd *self, struct cmd_q *cmdq)
 		cmdq_error(cmdq, "desk-name: usage: N NAME");
 		return (CMD_RETURN_ERROR);
 	}
-	char *end;
-	long  nr = strtol(args->argv[0], &end, 10);
-	if (end == args->argv[0] || *end != '\0' || nr < 0 || nr > 255) {
-		cmdq_error(cmdq, "desk-name: bad N: %s", args->argv[0]);
+	long long nr;
+	if (!cmd_parse_int(cmdq, "desk-name", "N", args->argv[0], 0,
+	    UINT8_MAX, &nr))
 		return (CMD_RETURN_ERROR);
-	}
 	char *cause = NULL;
 	if (!cow_desk_set_name(output, (uint8_t)nr, args->argv[1], &cause)) {
 		cmdq_error(cmdq, "%s",

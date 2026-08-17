@@ -48,6 +48,22 @@ check_markup(const char *text, const char *expected)
 	free(escaped);
 }
 
+static void
+check_string_choices(void)
+{
+	static const struct cow_string_choice choices[] = {
+		{ "one", 1 },
+		{ "two", 2 },
+		{ NULL, 0 },
+	};
+	int value = 0;
+
+	if (!cow_string_choice_parse(choices, "two", &value) || value != 2)
+		exit(1);
+	if (cow_string_choice_parse(choices, "three", &value) || value != 2)
+		exit(1);
+}
+
 int
 main(void)
 {
@@ -66,6 +82,7 @@ main(void)
 
 	check_markup("plain", "plain");
 	check_markup("<&>\"'", "&lt;&amp;&gt;&quot;&apos;");
+	check_string_choices();
 
 	return (0);
 }

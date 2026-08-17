@@ -134,23 +134,18 @@ struct set_border_edge {
 	size_t	    has_offset;
 };
 
-struct set_enum_option {
-	const char *name;
-	int	    value;
-};
-
-static const struct set_enum_option set_border_style_options[] = {
+static const struct cow_string_choice set_border_style_options[] = {
 	{ "fvwm", COW_BORDER_STYLE_FVWM },
 	{ "mwm", COW_BORDER_STYLE_MWM },
 	{ NULL, COW_BORDER_STYLE_NONE },
 };
 
-static const struct set_enum_option set_focus_options[] = {
+static const struct cow_string_choice set_focus_options[] = {
 	{ "sloppy", COW_FOCUS_MODE_SLOPPY },
 	{ NULL, COW_FOCUS_MODE_CLICK },
 };
 
-static const struct set_enum_option set_geometry_window_options[] = {
+static const struct cow_string_choice set_geometry_window_options[] = {
 	{ "both", COW_GEOMETRY_WINDOW_BOTH },
 	{ "move", COW_GEOMETRY_WINDOW_MOVE },
 	{ "resize", COW_GEOMETRY_WINDOW_RESIZE },
@@ -158,14 +153,14 @@ static const struct set_enum_option set_geometry_window_options[] = {
 	{ NULL, -1 },
 };
 
-static const struct set_enum_option set_clamp_mode_options[] = {
+static const struct cow_string_choice set_clamp_mode_options[] = {
 	{ "none", COW_CLAMP_NONE },
 	{ "all_outputs", COW_CLAMP_TO_ALL_OUTPUTS },
 	{ "output", COW_CLAMP_TO_OUTPUT },
 	{ NULL, -1 },
 };
 
-static const struct set_enum_option set_titlebar_position_options[] = {
+static const struct cow_string_choice set_titlebar_position_options[] = {
 	{ "top", COW_TITLEBAR_TOP },
 	{ "bottom", COW_TITLEBAR_BOTTOM },
 	{ "left", COW_TITLEBAR_LEFT },
@@ -173,7 +168,7 @@ static const struct set_enum_option set_titlebar_position_options[] = {
 	{ NULL, -1 },
 };
 
-static const struct set_enum_option set_placement_options[] = {
+static const struct cow_string_choice set_placement_options[] = {
 	{ "cascade", COW_PLACEMENT_CASCADE },
 	{ "undermouse", COW_PLACEMENT_UNDERMOUSE },
 	{ "centre", COW_PLACEMENT_CENTRE },
@@ -182,9 +177,32 @@ static const struct set_enum_option set_placement_options[] = {
 	{ NULL, -1 },
 };
 
-static const struct set_enum_option set_page_visibility_options[] = {
+static const struct cow_string_choice set_page_visibility_options[] = {
 	{ "origin", COW_PAGE_VISIBILITY_ORIGIN },
 	{ "overlap", COW_PAGE_VISIBILITY_OVERLAP },
+	{ NULL, -1 },
+};
+
+static const struct cow_string_choice set_relief_options[] = {
+	{ "raised", COW_RELIEF_RAISED },
+	{ "sunken", COW_RELIEF_SUNKEN },
+	{ "flat", COW_RELIEF_FLAT },
+	{ NULL, -1 },
+};
+
+static const struct cow_string_choice set_title_justify_options[] = {
+	{ "center", COW_TITLE_JUST_CENTRE },
+	{ "centre", COW_TITLE_JUST_CENTRE },
+	{ "left", COW_TITLE_JUST_LEFT },
+	{ "right", COW_TITLE_JUST_RIGHT },
+	{ NULL, -1 },
+};
+
+static const struct cow_string_choice set_button_style_options[] = {
+	{ "fvwm", COW_TITLEBAR_BUTTON_STYLE_FVWM },
+	{ "mwm", COW_TITLEBAR_BUTTON_STYLE_MWM },
+	{ "none", COW_TITLEBAR_BUTTON_STYLE_NONE },
+	{ "inherit", COW_TITLEBAR_BUTTON_STYLE_INHERIT },
 	{ NULL, -1 },
 };
 
@@ -711,14 +729,12 @@ set_scalar_string(const struct cow_option_entry *opt, const char *val,
 	if (cfg != NULL && opt->view_offset != COW_OPTION_NO_OFFSET) {
 		char **ptr = (char **)((char *)cfg + opt->view_offset);
 
-		xfree(*ptr);
-		*ptr = xstrdup(val);
+		xstrset(ptr, val);
 		cow_view_cfg_set_override(cfg, opt->id);
 	} else if (cow_config != NULL) {
 		char **ptr = (char **)((char *)cow_config + opt->config_offset);
 
-		xfree(*ptr);
-		*ptr = xstrdup(val);
+		xstrset(ptr, val);
 		if (opt->scope == COW_OPTION_MIXED)
 			propagate_global_option(opt->id);
 	}
@@ -937,15 +953,12 @@ set_titlebar_height(const char *val, struct cmd_q *cmdq)
 static bool
 parse_relief(const char *val, enum cow_relief *relief)
 {
-	if (strcmp(val, "raised") == 0)
-		*relief = COW_RELIEF_RAISED;
-	else if (strcmp(val, "sunken") == 0)
-		*relief = COW_RELIEF_SUNKEN;
-	else if (strcmp(val, "flat") == 0)
-		*relief = COW_RELIEF_FLAT;
-	else
-		return false;
-	return true;
+	int parsed;
+
+	if (!cow_string_choice_parse(set_relief_options, val, &parsed))
+		return (false);
+	*relief = parsed;
+	return (true);
 }
 
 static enum cmd_retval
@@ -970,16 +983,12 @@ set_titlebar_active_title_justify(const char *val, struct cmd_q *cmdq)
 {
 	enum cow_title_justify v;
 
-	if (strcmp(val, "center") == 0 || strcmp(val, "centre") == 0) {
-		v = COW_TITLE_JUST_CENTRE;
-	} else if (strcmp(val, "left") == 0) {
-		v = COW_TITLE_JUST_LEFT;
-	} else if (strcmp(val, "right") == 0) {
-		v = COW_TITLE_JUST_RIGHT;
-	} else {
+	int parsed;
+	if (!cow_string_choice_parse(set_title_justify_options, val, &parsed)) {
 		cmdq_error(cmdq, "set: bad titlebar alignment %s", val);
 		return (CMD_RETURN_ERROR);
 	}
+	v = parsed;
 
 	struct cow_view_cfg	    *cfg;
 	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
@@ -993,16 +1002,12 @@ set_titlebar_inactive_title_justify(const char *val, struct cmd_q *cmdq)
 {
 	enum cow_title_justify v;
 
-	if (strcmp(val, "center") == 0 || strcmp(val, "centre") == 0) {
-		v = COW_TITLE_JUST_CENTRE;
-	} else if (strcmp(val, "left") == 0) {
-		v = COW_TITLE_JUST_LEFT;
-	} else if (strcmp(val, "right") == 0) {
-		v = COW_TITLE_JUST_RIGHT;
-	} else {
+	int parsed;
+	if (!cow_string_choice_parse(set_title_justify_options, val, &parsed)) {
 		cmdq_error(cmdq, "set: bad titlebar alignment %s", val);
 		return (CMD_RETURN_ERROR);
 	}
+	v = parsed;
 
 	struct cow_view_cfg	    *cfg;
 	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
@@ -1016,19 +1021,13 @@ set_titlebar_button_style(const char *val, struct cmd_q *cmdq)
 {
 	enum cow_titlebar_button_style v;
 
-	if (strcmp(val, "fvwm") == 0) {
-		v = COW_TITLEBAR_BUTTON_STYLE_FVWM;
-	} else if (strcmp(val, "mwm") == 0) {
-		v = COW_TITLEBAR_BUTTON_STYLE_MWM;
-	} else if (strcmp(val, "none") == 0) {
-		v = COW_TITLEBAR_BUTTON_STYLE_NONE;
-	} else if (strcmp(val, "inherit") == 0) {
-		v = COW_TITLEBAR_BUTTON_STYLE_INHERIT;
-	} else {
+	int parsed;
+	if (!cow_string_choice_parse(set_button_style_options, val, &parsed)) {
 		cmdq_error(cmdq, "set: titlebar.button_style: %s: "
 		    "expected inherit|fvwm|mwm|none", val);
 		return (CMD_RETURN_ERROR);
 	}
+	v = parsed;
 
 	struct cow_view_cfg	    *cfg;
 	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
@@ -1057,22 +1056,18 @@ set_titlebar_inactive_relief(const char *val, struct cmd_q *cmdq)
 static enum cmd_retval
 set_titlebar_position(const char *val, struct cmd_q *cmdq)
 {
-	for (const struct set_enum_option *opt = set_titlebar_position_options;
-	    opt->name != NULL; opt++) {
-		if (strcmp(val, opt->name) == 0) {
-			struct cow_view_cfg *cfg;
-			struct cow_titlebar_config *tb = target_titlebar(cmdq,
-			    &cfg);
-
-			tb->position = opt->value;
-			finish_visual_update(COW_VIEW_CFG_TITLEBAR_POSITION,
-			    cfg);
-			return (CMD_RETURN_NORMAL);
-		}
+	int position;
+	if (!cow_string_choice_parse(set_titlebar_position_options, val,
+	    &position)) {
+		cmdq_error(cmdq, "set: titlebar.position: bad value: %s", val);
+		return (CMD_RETURN_ERROR);
 	}
 
-	cmdq_error(cmdq, "set: titlebar.position: bad value: %s", val);
-	return (CMD_RETURN_ERROR);
+	struct cow_view_cfg *cfg;
+	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
+	tb->position = position;
+	finish_visual_update(COW_VIEW_CFG_TITLEBAR_POSITION, cfg);
+	return (CMD_RETURN_NORMAL);
 }
 
 static enum cmd_retval
@@ -1226,8 +1221,7 @@ set_icon_image(const char *key, const char *val, struct cmd_q *cmdq)
 	if (strcmp(key, "icon.image") != 0)
 		return (CMD_RETURN_ERROR);
 	if (strcmp(val, "auto") == 0) {
-		xfree(*slot);
-		*slot = xstrdup("auto");
+		xstrset(slot, "auto");
 		finish_visual_update(COW_VIEW_CFG_ICON_IMAGE, cfg);
 		return (CMD_RETURN_NORMAL);
 	}
@@ -1332,9 +1326,7 @@ set_output_image(const char *key, const char *val, struct cmd_q *cmdq)
 			if (out != NULL) {
 				cow_config_set_output_background_image(
 				    cow_config, oname, image);
-				xfree(out->bg_image);
-				out->bg_image = image != NULL ?
-				    xstrdup(image) : NULL;
+				xstrset(&out->bg_image, image);
 				out->has_bg_image = true;
 				out->bg_dirty     = true;
 				refresh_visuals();
@@ -1357,8 +1349,7 @@ set_output_image(const char *key, const char *val, struct cmd_q *cmdq)
 		return (CMD_RETURN_ERROR);
 	}
 
-	xfree(cow_config->output_bg_image);
-	cow_config->output_bg_image = image != NULL ? xstrdup(image) : NULL;
+	xstrset(&cow_config->output_bg_image, image);
 	cow_config->has_output_bg_image = true;
 	refresh_visuals();
 	xfree(path);
@@ -1692,13 +1683,9 @@ static void
 set_border_style_option(const char *val, struct cmd_q *cmdq)
 {
 	enum cow_border_style style = COW_BORDER_STYLE_NONE;
-	for (const struct set_enum_option *opt = set_border_style_options;
-	    opt->name != NULL; opt++) {
-		if (strcmp(val, opt->name) == 0) {
-			style = opt->value;
-			break;
-		}
-	}
+	int parsed;
+	if (cow_string_choice_parse(set_border_style_options, val, &parsed))
+		style = parsed;
 
 	struct cow_view_cfg *cfg = cfg_target(cmdq);
 	if (cfg != NULL)
@@ -1793,70 +1780,59 @@ static void
 set_focus_option(const char *val)
 {
 	cow_config->focus_mode = COW_FOCUS_MODE_CLICK;
-	for (const struct set_enum_option *opt = set_focus_options;
-	    opt->name != NULL; opt++) {
-		if (strcmp(val, opt->name) == 0) {
-			cow_config->focus_mode = opt->value;
-			return;
-		}
-	}
+	int parsed;
+	if (cow_string_choice_parse(set_focus_options, val, &parsed))
+		cow_config->focus_mode = parsed;
 }
 
 static void
 set_geometry_window_option(const char *val, struct cmd_q *cmdq)
 {
-	for (const struct set_enum_option *opt = set_geometry_window_options;
-	    opt->name != NULL; opt++) {
-		if (strcmp(val, opt->name) == 0) {
-			cow_config->geometry_window = opt->value;
-			return;
-		}
+	int parsed;
+	if (!cow_string_choice_parse(set_geometry_window_options, val, &parsed)) {
+		cmdq_error(cmdq, "set: geometry_window: unknown mode: %s", val);
+		return;
 	}
-	cmdq_error(cmdq, "set: geometry_window: unknown mode: %s", val);
+	cow_config->geometry_window = parsed;
 }
 
 static enum cmd_retval
 set_clamp_mode_option(const char *val, struct cmd_q *cmdq)
 {
-	for (const struct set_enum_option *opt = set_clamp_mode_options;
-	    opt->name != NULL; opt++) {
-		if (strcmp(val, opt->name) == 0) {
-			cow_config->clamp_mode = opt->value;
-			return (CMD_RETURN_NORMAL);
-		}
+	int parsed;
+	if (!cow_string_choice_parse(set_clamp_mode_options, val, &parsed)) {
+		cmdq_error(cmdq, "set: clamp_mode: unknown mode: %s", val);
+		return (CMD_RETURN_ERROR);
 	}
-	cmdq_error(cmdq, "set: clamp_mode: unknown mode: %s", val);
-	return (CMD_RETURN_ERROR);
+	cow_config->clamp_mode = parsed;
+	return (CMD_RETURN_NORMAL);
 }
 
 
 static void
 set_placement_option(const char *val, struct cmd_q *cmdq)
 {
-	for (const struct set_enum_option *opt = set_placement_options;
-	    opt->name != NULL; opt++) {
-		if (strcmp(val, opt->name) == 0) {
-			cow_config->placement = opt->value;
-			return;
-		}
+	int parsed;
+	if (!cow_string_choice_parse(set_placement_options, val, &parsed)) {
+		cmdq_error(cmdq, "set: placement: unknown mode: %s", val);
+		return;
 	}
-	cmdq_error(cmdq, "set: placement: unknown mode: %s", val);
+	cow_config->placement = parsed;
 }
 
 static enum cmd_retval
 set_page_visibility_option(const char *val, struct cmd_q *cmdq)
 {
-	for (const struct set_enum_option *opt = set_page_visibility_options;
-	    opt->name != NULL; opt++) {
-		if (strcmp(val, opt->name) != 0)
-			continue;
-		cow_config->page_visibility = opt->value;
-		if (!cow_ipc.startup_mode)
-			cow_wm_request_manage_dirty();
-		return (CMD_RETURN_NORMAL);
+	int parsed;
+	if (!cow_string_choice_parse(set_page_visibility_options, val,
+	    &parsed)) {
+		cmdq_error(cmdq, "set: page_visibility: unknown mode: %s", val);
+		return (CMD_RETURN_ERROR);
 	}
-	cmdq_error(cmdq, "set: page_visibility: unknown mode: %s", val);
-	return (CMD_RETURN_ERROR);
+	cow_config->page_visibility = parsed;
+	if (!cow_ipc.startup_mode)
+		cow_wm_request_manage_dirty();
+	return (CMD_RETURN_NORMAL);
 }
 
 static void
@@ -1864,11 +1840,9 @@ set_font_option(const char *val, struct cmd_q *cmdq)
 {
 	struct cow_view_cfg *cfg = cfg_target(cmdq);
 	if (cfg != NULL) {
-		xfree(cfg->font_name);
-		cfg->font_name = xstrdup(val);
+		xstrset(&cfg->font_name, val);
 	} else {
-		xfree(cow_config->font_name);
-		cow_config->font_name = xstrdup(val);
+		xstrset(&cow_config->font_name, val);
 	}
 	finish_visual_update(COW_VIEW_CFG_FONT, cfg);
 }

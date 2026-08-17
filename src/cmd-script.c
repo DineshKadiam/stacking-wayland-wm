@@ -58,8 +58,7 @@ cmd_script_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (ast == NULL) {
 		cmdq_error(cmdq, "script: parse error at %d:%d: %s", err.line,
 		    err.col, err.message != NULL ? err.message : "(unknown)");
-		xfree(err.file);
-		xfree(err.message);
+		dsl_error_fini(&err);
 		return (CMD_RETURN_ERROR);
 	}
 
@@ -69,14 +68,12 @@ cmd_script_exec(struct cmd *self, struct cmd_q *cmdq)
 		cmdq_error(cmdq, "script: eval error at %d:%d: %s", eerr.line,
 		    eerr.col,
 		    eerr.message != NULL ? eerr.message : "(unknown)");
-		xfree(eerr.file);
-		xfree(eerr.message);
+		dsl_error_fini(&eerr);
 		dsl_free(ast);
 		return (CMD_RETURN_ERROR);
 	}
 
-	xfree(eerr.file);
-	xfree(eerr.message);
+	dsl_error_fini(&eerr);
 	dsl_free(ast);
 	return (CMD_RETURN_NORMAL);
 }

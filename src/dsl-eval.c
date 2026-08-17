@@ -32,6 +32,17 @@
 #include "dsl-sources.h"
 #include "dsl-value.h"
 
+void
+dsl_error_fini(struct dsl_error *error)
+{
+	if (error == NULL)
+		return;
+	xfree(error->file);
+	xfree(error->message);
+	error->file = NULL;
+	error->message = NULL;
+}
+
 struct dsl_ast *
 dsl_parse(const char *src, const char *file, struct dsl_error *err)
 {
