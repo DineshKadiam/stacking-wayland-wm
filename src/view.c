@@ -1336,13 +1336,21 @@ cow_view_find_inside_box(int min_x, int min_y, int max_x, int max_y, struct cow_
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{		
-		cow_titlebar_frame_geometry(view, view->content_width, view->content_height, &frame_w, &frame_h, &cx, &cy);
-		if (!view->placed || view->closed || view->identifier == NULL || view->output != output)
+		
+		if (!view->placed || !cow_view_visible(view, output))
 			continue;
+		int cw = view->content_width;
+		int ch = view->content_height;
+		/* If the window is shaded, only size the match like the empty titlebar */
+		if (view->sd != COW_SHADE_NONE) {
+			cow_view_shaded_content_size(view, view->sd, &cw, &ch);
+		}
+		cow_titlebar_frame_geometry(view, cw, ch, &frame_w, &frame_h, &cx, &cy);
+		
 			
 		// view->x and view->y are the positions of the *content*.
 		// view->x-cx and view->y - cy seem to be the true corner of the rendered frame
-		if ((view->x-cx <= max_x && (view->x+frame_w-cx) >= min_x) && (view->y-cy <= max_y && (view->y+frame_h-cx) >= min_y)) {	
+		if ((view->x-cx <= max_x && (view->x+frame_w-cx) >= min_x) && (view->y-cy <= max_y && (view->y+frame_h-cy) >= min_y)) {
 			return view;
 		}
 	}
@@ -1375,8 +1383,12 @@ view_place_empty(struct cow_view *view, int frame_x, int frame_y, int content_x,
 			while (test_x + frame_x < max_x) {
 				clash = cow_view_find_inside_box(test_x, test_y, test_x+frame_x, test_y+frame_y, view->output);
 				if (clash) {
-					
-					cow_titlebar_frame_geometry(clash, clash->content_width, clash->content_height, &frame_w, &frame_h, &cx, &cy);
+					int cw = clash->content_width;
+					int ch = clash->content_height;
+					if (clash->sd != COW_SHADE_NONE) {
+						cow_view_shaded_content_size(clash, clash->sd, &cw, &ch);
+					}
+					cow_titlebar_frame_geometry(clash, cw, ch, &frame_w, &frame_h, &cx, &cy);
 					if (test_x >= clash->x + frame_w - cx + gap) {
 						// If the window info we got would not let us move forward, assume something went wrong
 						// and fall back.
@@ -1391,16 +1403,18 @@ view_place_empty(struct cow_view *view, int frame_x, int frame_y, int content_x,
 						nextrow = clash->y + frame_h - cy;
 					}
 				} else {
+					
 					// Clean space found, place and go.
 					view->x = content_x+test_x;
 					view->y = content_y+test_y;
+
 					return;		
 				}
 			}
 			// Slide back to the left and start the next row
 			test_x = ua->x;
 			test_y = nextrow + gap;	
-		} while (nextrow < max_y - (content_y + frame_y));
+		} while (nextrow < (max_y - frame_y));
 	}
 	
 	// No great choice, so fall back to cascade.
