@@ -73,7 +73,8 @@ view_visible_in_page(const struct cow_view *view,
 	/* Sub-page scrolls use overlap visibility even with edge_scroll. */
 	bool aligned = (vpx % w == 0 && vpy % h == 0);
 
-	if (cow_config->edge_scroll && aligned &&
+	if (cow_config->page_visibility == COW_PAGE_VISIBILITY_ORIGIN &&
+	    cow_config->edge_scroll && aligned &&
 	    !cow_pointer_op_is_moving_view(view))
 		return origin_visible;
 

@@ -678,14 +678,13 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 	cow_drag_ghost_destroy();
 	cow_geometry_window_hide();
 
-	if (finished_type == COW_POINTER_OP_MOVE && !container_drag &&
-	    seat->has_pointer_position) {
-		struct cow_output *target = cow_output_at_exact(seat->pointer_x,
-		    seat->pointer_y);
+	if (finished_type == COW_POINTER_OP_MOVE && !container_drag) {
+		struct cow_output *target = cow_output_at_exact(view->x, view->y);
 		if (target != NULL && target != view->output) {
 			cow_view_reassign_output(view, target);
 			cow_view_clear_orphan(view);
-		}
+		} else if (target == NULL && !seat->has_pointer_position)
+			cow_view_update_output(view);
 	} else if (finished_type != COW_POINTER_OP_ICON_MOVE) {
 		cow_view_update_output(view);
 	}
@@ -924,34 +923,31 @@ cow_pointer_op_process(struct cow_seat *seat)
 			/* Normal move */
 			int new_x = fl + content_x;
 			int new_y = ft + content_y;
-			struct cow_output *target = view->output;
+			struct cow_output *clamp_output = view->output;
 			if (seat->has_pointer_position) {
 				struct cow_output *exact = cow_output_at_exact(
 				    seat->pointer_x, seat->pointer_y);
 				if (exact != NULL)
-					target = exact;
+					clamp_output = exact;
 			}
 
-			clamp_drag_to_output(view, target, &new_x, &new_y);
+			clamp_drag_to_output(view, clamp_output, &new_x, &new_y);
 			bool position_changed = new_x != view->x || new_y != view->y;
 
 			view->x = new_x;
 			view->y = new_y;
 
 			/*
-			 * Use the cursor position (not the view centre) to
-			 * pick the output.  The cursor represents the user's
-			 * intent; the view geometry may straddle output
-			 * boundaries mid-drag (especially right after a
-			 * page-cross warp where the view is wider than the
-			 * warp margin), and reassigning by centre would flip
-			 * the view to a different output and remap its
-			 * vx/vy into a coordinate frame the user did not
-			 * intend.
+			 * Clamp against the output under the pointer so an adjoining
+			 * output does not act as a barrier.  Transfer ownership only
+			 * when the content origin enters that output, matching the
+			 * origin-based vx/vy page visibility model.  This distinction
+			 * matters for vertical titlebars, where the pointer and frame
+			 * can cross an output boundary before the content does.
 			 */
-			if (seat->has_pointer_position &&
-			    target != view->output) {
-				cow_view_reassign_output(view, target);
+			struct cow_output *owner = cow_output_at_exact(new_x, new_y);
+			if (owner != NULL && owner != view->output) {
+				cow_view_reassign_output(view, owner);
 				cow_view_clear_orphan(view);
 			} else if (!seat->has_pointer_position) {
 				cow_view_update_output(view);
@@ -965,7 +961,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 				COW_GEOMETRY_WINDOW_NONE &&
 			    cow_config->geometry_window !=
 				COW_GEOMETRY_WINDOW_RESIZE) {
-				cow_geometry_window_update_move(target, view->x,
+				cow_geometry_window_update_move(view->output, view->x,
 				    view->y);
 			}
 		}

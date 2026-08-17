@@ -112,6 +112,11 @@ enum cow_geometry_window_mode {
 	COW_GEOMETRY_WINDOW_BOTH,
 };
 
+enum cow_page_visibility {
+	COW_PAGE_VISIBILITY_ORIGIN,
+	COW_PAGE_VISIBILITY_OVERLAP,
+};
+
 enum cow_titlebar_position {
 	COW_TITLEBAR_TOP,
 	COW_TITLEBAR_BOTTOM,
@@ -351,6 +356,7 @@ struct cow_config {
 	 * Default 1×1 preserves the existing single-page behaviour. */
 	int page_cols; /* columns (horizontal) */
 	int page_rows; /* rows (vertical) */
+	enum cow_page_visibility page_visibility;
 
 	/* Smooth page scroll animation.
 	 * When true, page switches animate over page_scroll_ms milliseconds.

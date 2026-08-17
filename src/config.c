@@ -269,6 +269,7 @@ cow_config_create(void)
 	config->desk_count	     = COW_DEFAULT_DESK_COUNT;
 	config->page_cols	     = COW_CFG_DEFAULT_PAGE_COLS;
 	config->page_rows	     = COW_CFG_DEFAULT_PAGE_ROWS;
+	config->page_visibility     = COW_PAGE_VISIBILITY_ORIGIN;
 	config->page_scroll_animate  = false;
 	config->page_scroll_ms	     = COW_CFG_DEFAULT_PAGE_SCROLL_MS;
 	config->edge_scroll	      = false;

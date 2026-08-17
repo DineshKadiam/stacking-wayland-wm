@@ -481,6 +481,12 @@ const struct cow_option_entry cow_options_table[] = {
 		.hi = 5000,
 	},
 	{
+		.name = "page_visibility",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_GLOBAL,
+		.action = COW_OPTION_PAGE_VISIBILITY,
+	},
+	{
 		.name = "page_scroll_animate",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_GLOBAL,

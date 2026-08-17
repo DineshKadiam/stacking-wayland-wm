@@ -365,6 +365,9 @@ do_show_config(const char *ckey, int fd, struct cmd_q *cmdq)
 			mode = "resize";
 		val = cJSON_CreateString(mode);
 	}
+	else if (strcmp(ckey, "page_visibility") == 0)
+		val = cJSON_CreateString(cow_config->page_visibility ==
+		    COW_PAGE_VISIBILITY_OVERLAP ? "overlap" : "origin");
 	else if (strcmp(ckey, "font") == 0)
 		val = cJSON_CreateString(
 		    cow_config->font_name ? cow_config->font_name : "");

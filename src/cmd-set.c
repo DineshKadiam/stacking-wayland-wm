@@ -97,6 +97,7 @@ static bool desk_nr_used_except(struct cow_output *, uint8_t);
 static void set_focus_option(const char *);
 static void set_geometry_window_option(const char *, struct cmd_q *);
 static void set_placement_option(const char *, struct cmd_q *);
+static enum cmd_retval set_page_visibility_option(const char *, struct cmd_q *);
 static void set_font_option(const char *, struct cmd_q *);
 static void set_button_option(const char *, const char *, struct cmd_q *);
 static bool set_key_is_image(const char *);
@@ -170,6 +171,12 @@ static const struct set_enum_option set_placement_options[] = {
 	{ "centre", COW_PLACEMENT_CENTRE },
 	{ "center", COW_PLACEMENT_CENTRE },
 	{ "empty", COW_PLACEMENT_EMPTY },
+	{ NULL, -1 },
+};
+
+static const struct set_enum_option set_page_visibility_options[] = {
+	{ "origin", COW_PAGE_VISIBILITY_ORIGIN },
+	{ "overlap", COW_PAGE_VISIBILITY_OVERLAP },
 	{ NULL, -1 },
 };
 
@@ -746,6 +753,8 @@ set_option_exec(const struct cow_option_entry *opt, const char *key, const char 
 	case COW_OPTION_PLACEMENT:
 		set_placement_option(val, cmdq);
 		return (CMD_RETURN_NORMAL);
+	case COW_OPTION_PAGE_VISIBILITY:
+		return (set_page_visibility_option(val, cmdq));
 	case COW_OPTION_FONT:
 		set_font_option(val, cmdq);
 		return (CMD_RETURN_NORMAL);
@@ -1807,6 +1816,22 @@ set_placement_option(const char *val, struct cmd_q *cmdq)
 		}
 	}
 	cmdq_error(cmdq, "set: placement: unknown mode: %s", val);
+}
+
+static enum cmd_retval
+set_page_visibility_option(const char *val, struct cmd_q *cmdq)
+{
+	for (const struct set_enum_option *opt = set_page_visibility_options;
+	    opt->name != NULL; opt++) {
+		if (strcmp(val, opt->name) != 0)
+			continue;
+		cow_config->page_visibility = opt->value;
+		if (!cow_ipc.startup_mode)
+			cow_wm_request_manage_dirty();
+		return (CMD_RETURN_NORMAL);
+	}
+	cmdq_error(cmdq, "set: page_visibility: unknown mode: %s", val);
+	return (CMD_RETURN_ERROR);
 }
 
 static void

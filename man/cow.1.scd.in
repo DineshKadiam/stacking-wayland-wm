@@ -1022,6 +1022,11 @@ These are listed below:
 |  *cursor.hide\_timeout* _milliseconds_
 :  Hide the pointer after the given period without input. A value of 0,
    disables pointer hiding.  Default value is 0.
+|  *page\_visibility* *origin*|*overlap*
+:  Control window placement on page boundary when edge
+   scrolling is enabled. *origin* assigns the window to the page containing
+   its content origin; this is the default. *overlap* renders the window on
+   every page intersecting its outer frame.
 
 # WINDOW COMMANDS
 
