@@ -36,5 +36,6 @@ int   cow_module_status_connect(const char *, int, unsigned int);
 bool  cow_module_cmd_send(int, const char *, bool);
 char *cow_module_read_response(int, size_t, bool);
 char *cow_module_cmd_request(const char *, const char *, bool);
+bool  cow_module_cmd_execute(const char *, const char *, bool);
 
 #endif

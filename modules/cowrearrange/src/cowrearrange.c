@@ -21,6 +21,7 @@
 
 #include <cJSON.h>
 
+#include "cow/json_util.h"
 #include "cow/module.h"
 
 #define MIN_WIN_W 50
@@ -257,24 +258,28 @@ parse_opts(int argc, char *argv[], struct opts *o)
 static const char *
 js_string(cJSON *obj, const char *key)
 {
-	cJSON *v = cJSON_GetObjectItem(obj, key);
-	return cJSON_IsString(v) ? v->valuestring : NULL;
+	const char *value = NULL;
+
+	(void)cow_json_get_string(obj, key, &value);
+	return value;
 }
 
 static int
 js_int(cJSON *obj, const char *key, int dflt)
 {
-	cJSON *v = cJSON_GetObjectItem(obj, key);
-	return cJSON_IsNumber(v) ? (int)v->valuedouble : dflt;
+	long long value = dflt;
+
+	(void)cow_json_get_int(obj, key, &value);
+	return (int)value;
 }
 
 static bool
 js_bool(cJSON *obj, const char *key, bool dflt)
 {
-	cJSON *v = cJSON_GetObjectItem(obj, key);
-	if (cJSON_IsBool(v))
-		return cJSON_IsTrue(v);
-	return dflt;
+	bool value = dflt;
+
+	(void)cow_json_get_bool(obj, key, &value);
+	return value;
 }
 
 static enum title_pos

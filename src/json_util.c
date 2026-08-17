@@ -17,6 +17,7 @@
 #include "cow/json_util.h"
 
 #include <stddef.h>
+#include <string.h>
 
 bool
 cow_json_get_int(const cJSON *obj, const char *key, long long *out)
@@ -68,5 +69,24 @@ cow_json_get_string(const cJSON *obj, const char *key, const char **out)
 	if (!cJSON_IsString(v) || v->valuestring == NULL)
 		return false;
 	*out = v->valuestring;
+	return true;
+}
+
+bool
+cow_json_copy_string(const cJSON *obj, const char *key, char *dst,
+    size_t dstsz)
+{
+	const char *value;
+
+	if (dst == NULL || dstsz == 0)
+		return false;
+	dst[0] = '\0';
+	if (!cow_json_get_string(obj, key, &value))
+		return false;
+	size_t len = strlen(value);
+	if (len >= dstsz)
+		len = dstsz - 1;
+	memcpy(dst, value, len);
+	dst[len] = '\0';
 	return true;
 }

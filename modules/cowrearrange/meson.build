@@ -2,6 +2,7 @@
 
 executable('cowrearrange',
     ['src/cowrearrange.c'],
+    '../../src/json_util.c',
     '../../src/module.c',
     '../../src/util.c',
     '../../vendor/cJSON.c',

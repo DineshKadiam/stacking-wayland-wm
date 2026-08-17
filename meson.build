@@ -104,6 +104,7 @@ srcs = [
     'src/rule.c',
     'src/seat.c',
     'src/shm.c',
+    'src/shm_util.c',
     'src/stack.c',
     'src/state.c',
     'src/status.c',
@@ -417,6 +418,15 @@ placement_test = executable('test-placement',
 )
 test('placement', placement_test)
 
+config_types_test = executable('test-config-types',
+    'tests/config-types.c',
+    'src/config_types.c',
+    'src/memory.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('config-types', config_types_test)
+
 cow_box_test = executable('test-cow-box',
     'tests/cow-box.c',
     'src/cow_box.c',
@@ -424,6 +434,8 @@ cow_box_test = executable('test-cow-box',
     include_directories: include_dirs,
     dependencies: all_deps,
 )
+test('cow-box', cow_box_test)
+
 module_theme_test = executable('test-module-theme',
     'tests/module-theme.c',
     'src/module_theme.c',
@@ -433,7 +445,6 @@ module_theme_test = executable('test-module-theme',
     include_directories: include_dirs,
     dependencies: all_deps,
 )
-test('cow-box', cow_box_test)
 test('module-theme', module_theme_test)
 
 module_draw_test = executable('test-module-draw',
@@ -445,6 +456,16 @@ module_draw_test = executable('test-module-draw',
     dependencies: all_deps,
 )
 test('module-draw', module_draw_test)
+
+shared_utils_test = executable('test-shared-utils',
+    'tests/shared-utils.c',
+    'src/json_util.c',
+    'src/shm_util.c',
+    'vendor/cJSON.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('shared-utils', shared_utils_test)
 
 subdir('cowbar')
 subdir('modules/cowbuttons')

@@ -25,7 +25,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/mman.h>
 #include <unistd.h>
 #include <event2/event.h>
 #include <wayland-client.h>
@@ -33,10 +32,12 @@
 #include "cow/compat.h"
 #include "cow/colour.h"
 #include "cow/image_cache.h"
+#include "cow/json_util.h"
 #include "cow/module.h"
 #include "cow/module_cursor.h"
 #include "cow/module_draw.h"
 #include "cow/module_theme.h"
+#include "cow/module_shm.h"
 #include "cow/text.h"
 #include "cow/util.h"
 #include "xdg-shell-client-protocol.h"
@@ -183,6 +184,7 @@ static struct cow_module_cursor cursor;
 static struct wl_surface    *surface;
 static struct xdg_surface   *xdg_surface;
 static struct xdg_toplevel  *xdg_toplevel;
+static struct cow_module_shm_buffer buffers[2];
 
 static struct tracked_output tracked[MAX_OUTS];
 static int		     n_tracked;
@@ -256,30 +258,22 @@ usage(void)
 	    "                  [--show-self] [-h]\n");
 }
 
-static void
-copy_jstr(char *dst, size_t dstsz, cJSON *obj, const char *key)
-{
-	cJSON *v = cJSON_GetObjectItem(obj, key);
-
-	if (dstsz == 0)
-		return;
-	dst[0] = '\0';
-	if (cJSON_IsString(v) && v->valuestring != NULL)
-		strlcpy(dst, v->valuestring, dstsz);
-}
-
 static int
 get_jnum(cJSON *obj, const char *key)
 {
-	cJSON *v = cJSON_GetObjectItem(obj, key);
+	long long value = 0;
 
-	return cJSON_IsNumber(v) ? (int)v->valuedouble : 0;
+	(void)cow_json_get_int(obj, key, &value);
+	return (int)value;
 }
 
 static int
 get_jbool(cJSON *obj, const char *key)
 {
-	return cJSON_IsTrue(cJSON_GetObjectItem(obj, key));
+	bool value = false;
+
+	(void)cow_json_get_bool(obj, key, &value);
+	return value;
 }
 
 static int
@@ -1046,40 +1040,6 @@ format_label(char *dst, size_t dstsz, const struct win *w)
 	dst[len] = '\0';
 }
 
-static struct wl_buffer *
-shm_buf(int w, int h, void **px)
-{
-	int size = w * 4 * h;
-#if HAVE_MEMFD_CREATE
-	int fd = memfd_create("cowiconman", MFD_CLOEXEC);
-#else
-	char name[64];
-	snprintf(name, sizeof(name), "/cowiconman-%d", getpid());
-	int fd = shm_open(name, O_RDWR | O_CREAT | O_EXCL, 0600);
-	if (fd >= 0)
-		shm_unlink(name);
-#endif
-
-	if (fd < 0)
-		return NULL;
-	if (ftruncate(fd, size) < 0) {
-		close(fd);
-		return NULL;
-	}
-	*px = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-	if (*px == MAP_FAILED) {
-		close(fd);
-		return NULL;
-	}
-
-	struct wl_shm_pool *pool = wl_shm_create_pool(wl_shm, fd, size);
-	struct wl_buffer   *buf = wl_shm_pool_create_buffer(pool, 0, w, h,
-	      w * 4, WL_SHM_FORMAT_ARGB8888);
-	wl_shm_pool_destroy(pool);
-	close(fd);
-	return buf;
-}
-
 static void
 draw_iconified_marker(cairo_t *cr, const struct win *win, double x,
     double y, double h, const float base[4])
@@ -1118,8 +1078,7 @@ draw_icon(cairo_t *cr, const char *path, int x, int y, int size)
 static void
 do_render(const struct state *st)
 {
-	void		 *px;
-	struct wl_buffer *buf;
+	struct cow_module_shm_buffer *buf;
 	cairo_surface_t *cs;
 	cairo_t		*cr;
 	int		 column_major;
@@ -1145,11 +1104,12 @@ do_render(const struct state *st)
 	if (max_h > 0 && win_h > max_h)
 		win_h = max_h;
 
-	buf = shm_buf(win_w, win_h, &px);
+	buf = cow_module_shm_buffer_next(buffers,
+	    sizeof(buffers) / sizeof(buffers[0]), wl_shm, PROG, win_w, win_h);
 	if (buf == NULL)
 		return;
 
-	cs = cairo_image_surface_create_for_data(px, CAIRO_FORMAT_ARGB32,
+	cs = cairo_image_surface_create_for_data(buf->data, CAIRO_FORMAT_ARGB32,
 	    win_w, win_h, win_w * 4);
 	cr = cairo_create(cs);
 	PangoFontDescription *font =
@@ -1205,11 +1165,10 @@ do_render(const struct state *st)
 	cairo_surface_flush(cs);
 	cairo_surface_destroy(cs);
 
-	wl_surface_attach(surface, buf, 0, 0);
+	buf->busy = true;
+	wl_surface_attach(surface, buf->buffer, 0, 0);
 	wl_surface_damage_buffer(surface, 0, 0, win_w, win_h);
 	wl_surface_commit(surface);
-	wl_buffer_destroy(buf);
-	munmap(px, (size_t)win_w * 4 * (size_t)win_h);
 
 	apply_anchor(st, out);
 }
@@ -1217,15 +1176,7 @@ do_render(const struct state *st)
 static void
 ipc_send(const char *cmd)
 {
-	int fd = cow_module_cmd_connect(PROG);
-
-	if (fd < 0)
-		return;
-	if (cow_module_cmd_send(fd, cmd, true)) {
-		char buf[COW_MODULE_ACK_BUFFER_SIZE];
-		(void)read(fd, buf, sizeof(buf));
-	}
-	close(fd);
+	(void)cow_module_cmd_execute(PROG, cmd, true);
 }
 
 static char *
@@ -1390,8 +1341,8 @@ parse_status(const char *json)
 	{
 		if (n >= MAX_OUTS)
 			break;
-		copy_jstr(st.outs[n].name, sizeof(st.outs[n].name), out,
-		    "name");
+		cow_json_copy_string(out, "name", st.outs[n].name,
+		    sizeof(st.outs[n].name));
 		st.outs[n].number	= get_jnum(out, "number");
 		st.outs[n].x		= get_jnum(out, "x");
 		st.outs[n].y		= get_jnum(out, "y");
@@ -1461,11 +1412,16 @@ fetch_windows(void)
 		if (n >= MAX_WINS)
 			break;
 		memset(&wins[n], 0, sizeof(wins[n]));
-		copy_jstr(wins[n].id, sizeof(wins[n].id), w, "id");
-		copy_jstr(wins[n].app_id, sizeof(wins[n].app_id), w, "app_id");
-		copy_jstr(wins[n].title, sizeof(wins[n].title), w, "title");
-		copy_jstr(wins[n].output, sizeof(wins[n].output), w, "output");
-		copy_jstr(wins[n].icon, sizeof(wins[n].icon), w, "icon");
+		cow_json_copy_string(w, "id", wins[n].id,
+		    sizeof(wins[n].id));
+		cow_json_copy_string(w, "app_id", wins[n].app_id,
+		    sizeof(wins[n].app_id));
+		cow_json_copy_string(w, "title", wins[n].title,
+		    sizeof(wins[n].title));
+		cow_json_copy_string(w, "output", wins[n].output,
+		    sizeof(wins[n].output));
+		cow_json_copy_string(w, "icon", wins[n].icon,
+		    sizeof(wins[n].icon));
 		if (strcmp(wins[n].app_id, PROG) == 0 &&
 		    strcmp(wins[n].title, self_title) == 0)
 			strlcpy(new_self_id, wins[n].id, sizeof(new_self_id));
@@ -2051,6 +2007,8 @@ main(int argc, char **argv)
 	cow_image_cache_clear(&icon_cache);
 	if (seat != NULL)
 		wl_seat_destroy(seat);
+	cow_module_shm_buffers_destroy(buffers,
+	    sizeof(buffers) / sizeof(buffers[0]));
 	wl_display_disconnect(display);
 	return 0;
 }

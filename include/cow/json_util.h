@@ -32,5 +32,6 @@ bool cow_json_get_int(const cJSON *, const char *, long long *);
 bool cow_json_get_double(const cJSON *, const char *, double *);
 bool cow_json_get_bool(const cJSON *, const char *, bool *);
 bool cow_json_get_string(const cJSON *, const char *, const char **);
+bool cow_json_copy_string(const cJSON *, const char *, char *, size_t);
 
 #endif /* COW_JSON_UTIL_H */

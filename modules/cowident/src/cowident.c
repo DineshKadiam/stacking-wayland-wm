@@ -16,7 +16,6 @@
 
 #include <cJSON.h>
 #include <cairo.h>
-#include <fcntl.h>
 #include <pango/pangocairo.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -30,6 +29,8 @@
 
 #include "cow/module.h"
 #include "cow/module_cursor.h"
+#include "cow/module_shm.h"
+#include "cow/json_util.h"
 #include "cow/memory.h"
 #include "cow/text.h"
 
@@ -151,31 +152,14 @@ ipc_query(const char *cmd)
 	return cow_module_cmd_request("cowident", cmd, true);
 }
 
-static bool
-copy_jstr(char *dst, size_t cap, cJSON *obj, const char *key)
-{
-	if (!obj)
-		return false;
-	cJSON *v = cJSON_GetObjectItem(obj, key);
-	if (!v || !cJSON_IsString(v))
-		return false;
-	strncpy(dst, v->valuestring, cap - 1);
-	dst[cap - 1] = '\0';
-	return true;
-}
-
 static char *
 dup_jstr(cJSON *obj, const char *key)
 {
-	if (obj == NULL)
-		return (NULL);
-	cJSON *v = cJSON_GetObjectItem(obj, key);
-	if (v == NULL || !cJSON_IsString(v) || v->valuestring == NULL)
-		return (NULL);
+	const char *value;
 
-	char *copy;
-	xasprintf(&copy, "%s", v->valuestring);
-	return (copy);
+	if (!cow_json_get_string(obj, key, &value))
+		return (NULL);
+	return (xstrdup(value));
 }
 
 static void
@@ -193,21 +177,19 @@ free_views(void)
 static int
 get_jnum(cJSON *obj, const char *key, int def)
 {
-	if (!obj)
-		return def;
-	cJSON *v = cJSON_GetObjectItem(obj, key);
-	if (!v || !cJSON_IsNumber(v))
-		return def;
-	return (int)v->valuedouble;
+	long long value = def;
+
+	(void)cow_json_get_int(obj, key, &value);
+	return (int)value;
 }
 
 static bool
 get_jbool(cJSON *obj, const char *key)
 {
-	if (!obj)
-		return false;
-	cJSON *v = cJSON_GetObjectItem(obj, key);
-	return v && cJSON_IsTrue(v);
+	bool value = false;
+
+	(void)cow_json_get_bool(obj, key, &value);
+	return value;
 }
 
 /* Fetch and store cow's configured font name. */
@@ -267,7 +249,7 @@ fetch_views(void)
 		struct view_info *v = &views[n_views];
 		memset(v, 0, sizeof(*v));
 
-		copy_jstr(v->id, sizeof(v->id), w, "id");
+		cow_json_copy_string(w, "id", v->id, sizeof(v->id));
 		v->app_id = dup_jstr(w, "app_id");
 		v->title = dup_jstr(w, "title");
 		v->output = dup_jstr(w, "output");
@@ -289,9 +271,10 @@ fetch_views(void)
 		v->raise_seq	   = (uint64_t)get_jnum(w, "raise_seq", 0);
 
 		cJSON *sq = cJSON_GetObjectItem(w, "squeeze");
-		copy_jstr(v->squeeze_mode, sizeof(v->squeeze_mode), sq, "mode");
-		copy_jstr(v->squeeze_justify, sizeof(v->squeeze_justify), sq,
-		    "justify");
+		cow_json_copy_string(sq, "mode", v->squeeze_mode,
+		    sizeof(v->squeeze_mode));
+		cow_json_copy_string(sq, "justify", v->squeeze_justify,
+		    sizeof(v->squeeze_justify));
 
 		/*
 		 * Frame box: include borders + titlebar.  Computed from
@@ -309,53 +292,18 @@ fetch_views(void)
 	cJSON_Delete(root);
 }
 
-static struct wl_buffer *
-shm_buffer(int w, int h, void **px)
-{
-	int   stride = w * 4;
-	off_t size   = (off_t)stride * h;
-
-    #if HAVE_MEMFD_CREATE
-	int fd = memfd_create("cowident", MFD_CLOEXEC);
-    #else
-    /* POSIX fallback for systems without memfd_create. */
-    char name[64];
-    snprintf(name, sizeof(name), "/cowident-%d", getpid());
-    int fd = shm_open(name, O_RDWR | O_CREAT | O_EXCL, 0600);
-    if (fd >= 0)
-      shm_unlink(name);
-    #endif
-	if (fd < 0)
-		return NULL;
-	if (ftruncate(fd, size) < 0) {
-		close(fd);
-		return NULL;
-	}
-	*px = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-	if (*px == MAP_FAILED) {
-		close(fd);
-		return NULL;
-	}
-	struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, size);
-	struct wl_buffer *buf = wl_shm_pool_create_buffer(pool, 0, w, h, stride,
-	    WL_SHM_FORMAT_ARGB8888);
-	wl_shm_pool_destroy(pool);
-	close(fd);
-	return buf;
-}
-
 static void
 draw_overlay(struct out *o)
 {
 	if (!o->configured)
 		return;
 
-	void		 *px;
-	struct wl_buffer *buf = shm_buffer(o->surf_w, o->surf_h, &px);
-	if (!buf)
+	struct cow_module_shm_buffer buf = { 0 };
+	if (!cow_module_shm_buffer_create(&buf, shm, "cowident", o->surf_w,
+	    o->surf_h))
 		return;
 
-	cairo_surface_t *cs = cairo_image_surface_create_for_data(px,
+	cairo_surface_t *cs = cairo_image_surface_create_for_data(buf.data,
 	    CAIRO_FORMAT_ARGB32, o->surf_w, o->surf_h, o->surf_w * 4);
 	cairo_t		*cr = cairo_create(cs);
 
@@ -373,12 +321,11 @@ draw_overlay(struct out *o)
 	cairo_destroy(cr);
 	cairo_surface_destroy(cs);
 
-	wl_surface_attach(o->surface, buf, 0, 0);
+	wl_surface_attach(o->surface, buf.buffer, 0, 0);
 	wl_surface_damage_buffer(o->surface, 0, 0, o->surf_w, o->surf_h);
 	wl_surface_commit(o->surface);
 
-	wl_buffer_destroy(buf);
-	munmap(px, (size_t)o->surf_w * o->surf_h * 4);
+	cow_module_shm_buffer_destroy(&buf);
 }
 
 static void
@@ -1227,12 +1174,12 @@ measure_popup(cairo_t *cr, PangoFontDescription *font, int *out_w,
 static void
 draw_popup(void)
 {
-	void		 *px;
-	struct wl_buffer *buf = shm_buffer(popup_w, popup_h, &px);
-	if (!buf)
+	struct cow_module_shm_buffer buf = { 0 };
+	if (!cow_module_shm_buffer_create(&buf, shm, "cowident", popup_w,
+	    popup_h))
 		return;
 
-	cairo_surface_t *cs = cairo_image_surface_create_for_data(px,
+	cairo_surface_t *cs = cairo_image_surface_create_for_data(buf.data,
 	    CAIRO_FORMAT_ARGB32, popup_w, popup_h, popup_w * 4);
 	cairo_t		*cr = cairo_create(cs);
 
@@ -1279,12 +1226,11 @@ draw_popup(void)
 	cairo_destroy(cr);
 	cairo_surface_destroy(cs);
 
-	wl_surface_attach(popup_surface, buf, 0, 0);
+	wl_surface_attach(popup_surface, buf.buffer, 0, 0);
 	wl_surface_damage_buffer(popup_surface, 0, 0, popup_w, popup_h);
 	wl_surface_commit(popup_surface);
 
-	wl_buffer_destroy(buf);
-	munmap(px, (size_t)popup_w * popup_h * 4);
+	cow_module_shm_buffer_destroy(&buf);
 
 	(void)want_w;
 	(void)want_h;

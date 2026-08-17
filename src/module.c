@@ -246,3 +246,14 @@ cow_module_cmd_request(const char *prog, const char *cmd, bool append_newline)
 	close(fd);
 	return resp;
 }
+
+bool
+cow_module_cmd_execute(const char *prog, const char *cmd, bool append_newline)
+{
+	char *response = cow_module_cmd_request(prog, cmd, append_newline);
+
+	if (response == NULL)
+		return false;
+	free(response);
+	return true;
+}

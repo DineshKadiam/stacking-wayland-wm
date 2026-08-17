@@ -26,7 +26,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/mman.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <event2/event.h>
@@ -41,6 +40,7 @@
 #include "cow/module_config.h"
 #include "cow/module_cursor.h"
 #include "cow/module_draw.h"
+#include "cow/module_shm.h"
 #include "cow/text.h"
 #include "cow/vector.h"
 #include "xdg-shell-client-protocol.h"
@@ -244,15 +244,6 @@ struct state {
 	char desk_list[512];
 };
 
-struct shm_buffer {
-	struct wl_buffer *buffer;
-	void		 *data;
-	size_t		  size;
-	int		  w;
-	int		  h;
-	bool		  busy;
-};
-
 static struct wl_display    *display;
 static struct wl_compositor *compositor;
 static struct wl_shm	    *wl_shm;
@@ -283,7 +274,7 @@ static int	   pressed_button = -1;
 static double	   ptr_x;
 static double	   ptr_y;
 static int	   wake_pipe[2];
-static struct shm_buffer buffers[2];
+static struct cow_module_shm_buffer buffers[2];
 static int	   current_row = -1;
 static int	   current_col;
 static int	   current_panel = -1;
@@ -2009,89 +2000,6 @@ text_alignment(enum text_justify justify)
 }
 
 static void
-buffer_release(void *data, __unused struct wl_buffer *buffer)
-{
-	struct shm_buffer *buf = data;
-
-	buf->busy = false;
-}
-
-static const struct wl_buffer_listener buffer_listener = {
-	.release = buffer_release,
-};
-
-static void
-shm_buffer_destroy(struct shm_buffer *buf)
-{
-	if (buf->buffer != NULL)
-		wl_buffer_destroy(buf->buffer);
-	if (buf->data != NULL && buf->data != MAP_FAILED)
-		munmap(buf->data, buf->size);
-	memset(buf, 0, sizeof(*buf));
-}
-
-static bool
-shm_buffer_create(struct shm_buffer *buf, int w, int h)
-{
-	size_t size = (size_t)w * 4 * (size_t)h;
-#if HAVE_MEMFD_CREATE
-	int fd = memfd_create("cowbuttons", MFD_CLOEXEC);
-#else
-	char name[64];
-	snprintf(name, sizeof(name), "/cowbuttons-%d", getpid());
-	int fd = shm_open(name, O_RDWR | O_CREAT | O_EXCL, 0600);
-	if (fd >= 0)
-		shm_unlink(name);
-#endif
-
-	if (fd < 0)
-		return false;
-	if (ftruncate(fd, size) < 0) {
-		close(fd);
-		return false;
-	}
-	buf->data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-	if (buf->data == MAP_FAILED) {
-		close(fd);
-		return false;
-	}
-
-	struct wl_shm_pool *pool = wl_shm_create_pool(wl_shm, fd, size);
-	buf->buffer = wl_shm_pool_create_buffer(pool, 0, w, h,
-	    w * 4, WL_SHM_FORMAT_ARGB8888);
-	wl_shm_pool_destroy(pool);
-	close(fd);
-	if (buf->buffer == NULL) {
-		munmap(buf->data, size);
-		memset(buf, 0, sizeof(*buf));
-		return false;
-	}
-	wl_buffer_add_listener(buf->buffer, &buffer_listener, buf);
-	buf->size = size;
-	buf->w = w;
-	buf->h = h;
-	buf->busy = false;
-	return true;
-}
-
-static struct shm_buffer *
-next_buffer(int w, int h)
-{
-	for (size_t i = 0; i < sizeof(buffers) / sizeof(buffers[0]); i++) {
-		struct shm_buffer *buf = &buffers[i];
-
-		if (buf->busy)
-			continue;
-		if (buf->buffer != NULL && (buf->w != w || buf->h != h))
-			shm_buffer_destroy(buf);
-		if (buf->buffer == NULL && !shm_buffer_create(buf, w, h))
-			return NULL;
-		return buf;
-	}
-	return NULL;
-}
-
-static void
 button_image_rect(const struct cell *c, double x, double y, double w,
     double h, int *ix, int *iy, int *iw, int *ih)
 {
@@ -2316,7 +2224,7 @@ draw_panel_indicator(struct cow_pixbuf *pixbuf, const struct cell *c, int x,
 static void
 render(void)
 {
-	struct shm_buffer *buf;
+	struct cow_module_shm_buffer *buf;
 	struct cow_pixbuf pixbuf;
 	cairo_surface_t *cs;
 	cairo_t *cr;
@@ -2327,7 +2235,8 @@ render(void)
 
 	win_w = target_width();
 	win_h = target_height();
-	buf = next_buffer(win_w, win_h);
+	buf = cow_module_shm_buffer_next(buffers,
+	    sizeof(buffers) / sizeof(buffers[0]), wl_shm, PROG, win_w, win_h);
 	if (buf == NULL)
 		return;
 
@@ -2445,15 +2354,7 @@ render(void)
 static void
 ipc_send(const char *cmd)
 {
-	int fd = cow_module_cmd_connect(PROG);
-
-	if (fd < 0)
-		return;
-	if (cow_module_cmd_send(fd, cmd, true)) {
-		char b[COW_MODULE_ACK_BUFFER_SIZE];
-		read(fd, b, sizeof(b));
-	}
-	close(fd);
+	(void)cow_module_cmd_execute(PROG, cmd, true);
 }
 
 static void
@@ -3752,8 +3653,8 @@ main(int argc, char **argv)
 		xdg_surface_destroy(xdg_surface);
 	if (surface != NULL)
 		wl_surface_destroy(surface);
-	for (size_t i = 0; i < sizeof(buffers) / sizeof(buffers[0]); i++)
-		shm_buffer_destroy(&buffers[i]);
+	cow_module_shm_buffers_destroy(buffers,
+	    sizeof(buffers) / sizeof(buffers[0]));
 	for (int i = 0; i < n_cells; i++) {
 		free(cells[i].style.image);
 		free(cells[i].style.image_pressed);

@@ -42,7 +42,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/mman.h>
 #include <unistd.h>
 #include <event2/event.h>
 #include <wayland-client.h>
@@ -56,6 +55,7 @@
 #include "cow/module_draw.h"
 #include "cow/module_theme.h"
 #include "cow/text.h"
+#include "cow/module_shm.h"
 #include "xdg-shell-client-protocol.h"
 
 #define PROG "cowpager"
@@ -176,6 +176,7 @@ static struct cow_module_cursor cursor;
 static struct wl_surface    *surface;
 static struct xdg_surface   *xdg_surface;
 static struct xdg_toplevel  *xdg_toplevel;
+static struct cow_module_shm_buffer buffers[2];
 
 /*
  * Tracked wl_outputs.  We bind every output the compositor advertises
@@ -478,58 +479,13 @@ ipc_send(const char *cmd)
 {
 	if (opt_verbose)
 		fprintf(stderr, "cowpager: ipc_send: %s\n", cmd);
-
-	int fd = cow_module_cmd_connect("cowpager");
-	if (fd < 0)
-		return;
-
-	if (cow_module_cmd_send(fd, cmd, true)) {
-		char b[COW_MODULE_ACK_BUFFER_SIZE];
-		read(fd, b, sizeof(b));
-	}
-	close(fd);
+	(void)cow_module_cmd_execute("cowpager", cmd, true);
 }
 
 static char *
 ipc_query(const char *cmd)
 {
 	return cow_module_cmd_request("cowpager", cmd, true);
-}
-
-static struct wl_buffer *
-shm_buf(int w, int h, void **px)
-{
-	int size = w * 4 * h;
-    #if HAVE_MEMFD_CREATE
-	int fd	 = memfd_create("cp", MFD_CLOEXEC);
-    #else
-    /* POSIX fallback for systems without memfd_create. */
-    char name[64];
-    snprintf(name, sizeof(name), "/cp-%d", getpid());
-    int fd = shm_open(name, O_RDWR | O_CREAT | O_EXCL, 0600);
-    if (fd >= 0)
-      shm_unlink(name);
-    #endif
-	if (fd < 0)
-		return NULL;
-
-	if (ftruncate(fd, size) < 0) {
-		close(fd);
-		return NULL;
-	}
-
-	*px = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-	if (*px == MAP_FAILED) {
-		close(fd);
-		return NULL;
-	}
-
-	struct wl_shm_pool *p = wl_shm_create_pool(wl_shm, fd, size);
-	struct wl_buffer   *b = wl_shm_pool_create_buffer(p, 0, w, h, w * 4,
-	      WL_SHM_FORMAT_ARGB8888);
-	wl_shm_pool_destroy(p);
-	close(fd);
-	return b;
 }
 
 static void
@@ -1819,12 +1775,12 @@ do_render(const state_t *st)
 	 */
 	n_overlay_handles = 0;
 
-	void		 *px  = NULL;
-	struct wl_buffer *buf = shm_buf(win_w, win_h, &px);
+	struct cow_module_shm_buffer *buf = cow_module_shm_buffer_next(buffers,
+	    sizeof(buffers) / sizeof(buffers[0]), wl_shm, PROG, win_w, win_h);
 	if (!buf)
 		return;
 
-	cairo_surface_t *cs = cairo_image_surface_create_for_data(px,
+	cairo_surface_t *cs = cairo_image_surface_create_for_data(buf->data,
 	    CAIRO_FORMAT_ARGB32, win_w, win_h, win_w * 4);
 	cairo_t		*cr = cairo_create(cs);
 
@@ -1958,11 +1914,10 @@ commit_drag_ghost:
 commit:
 	cairo_destroy(cr);
 	cairo_surface_destroy(cs);
-	wl_surface_attach(surface, buf, 0, 0);
+	buf->busy = true;
+	wl_surface_attach(surface, buf->buffer, 0, 0);
 	wl_surface_damage_buffer(surface, 0, 0, win_w, win_h);
 	wl_surface_commit(surface);
-	munmap(px, (size_t)win_w * win_h * 4);
-	wl_buffer_destroy(buf);
 }
 
 /*
@@ -3680,6 +3635,8 @@ main(int argc, char *argv[])
 		wl_pointer_destroy(pointer);
 	if (seat != NULL)
 		wl_seat_destroy(seat);
+	cow_module_shm_buffers_destroy(buffers,
+	    sizeof(buffers) / sizeof(buffers[0]));
 	wl_display_disconnect(display);
 	cow_image_cache_clear(&icon_cache);
 	pager_selections_free();
