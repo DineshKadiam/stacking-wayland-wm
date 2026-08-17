@@ -1551,7 +1551,9 @@ feel of a window.  All of these can be used with *decor -d*.
    Default: _both_.
 |  *placement*
 :  _cascade_ | _undermouse_ | _centre_ | _center_ | _empty_
-:  New window placement. Default: _cascade_.
+:  New window placement. _empty_ chooses the first available position in
+   top-to-bottom, left-to-right order and falls back to _cascade_ if the full
+   frame cannot fit without overlapping a visible window. Default: _cascade_.
 |  *titlebar.enabled*
 :  _true_ | _1_
 :  Show titlebars.

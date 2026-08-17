@@ -97,6 +97,7 @@ srcs = [
     'src/output.c',
     'src/options-table.c',
     'src/pan_frames.c',
+    'src/placement.c',
     'src/pointer_input.c',
     'src/pointer_op.c',
     'src/rule.c',
@@ -405,6 +406,15 @@ text_test = executable('test-text',
     dependencies: all_deps,
 )
 test('text', text_test)
+
+placement_test = executable('test-placement',
+    'tests/placement.c',
+    'src/placement.c',
+    'src/memory.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('placement', placement_test)
 
 subdir('cowbar')
 subdir('modules/cowbuttons')

@@ -39,8 +39,9 @@
 #include "cow/keybinding.h"
 #include "cow/memory.h"
 #include "cow/output.h"
-#include "cow/rule.h"
+#include "cow/placement.h"
 #include "cow/pointer_op.h"
+#include "cow/rule.h"
 #include "cow/seat.h"
 #include "cow/shm.h"
 #include "cow/stack.h"
@@ -1328,96 +1329,52 @@ view_place_cascade(struct cow_view *view, int content_x, int content_y, int gap)
 	cascade_offset = (cascade_offset + 30) % 150;
 }
 
-
-struct cow_view *
-cow_view_find_inside_box(int min_x, int min_y, int max_x, int max_y, struct cow_output *output)
+static bool
+view_is_placement_obstacle(const struct cow_view *view,
+    const struct cow_output *output)
 {
-	int frame_w, frame_h, cx, cy;
-	struct cow_view *view;
-	wl_list_for_each(view, &cow_wm.views, wm_link)
-	{		
-		
-		if (!view->placed || !cow_view_visible(view, output))
-			continue;
-		int cw = view->content_width;
-		int ch = view->content_height;
-		/* If the window is shaded, only size the match like the empty titlebar */
-		if (view->sd != COW_SHADE_NONE) {
-			cow_view_shaded_content_size(view, view->sd, &cw, &ch);
-		}
-		cow_titlebar_frame_geometry(view, cw, ch, &frame_w, &frame_h, &cx, &cy);
-		
-			
-		// view->x and view->y are the positions of the *content*.
-		// view->x-cx and view->y - cy seem to be the true corner of the rendered frame
-		if ((view->x-cx <= max_x && (view->x+frame_w-cx) >= min_x) && (view->y-cy <= max_y && (view->y+frame_h-cy) >= min_y)) {
-			return view;
-		}
-	}
-	return NULL;	
+	return view->placed && view->has_dimensions &&
+	    cow_view_visible(view, output);
 }
-static void
-view_place_empty(struct cow_view *view, int frame_x, int frame_y, int content_x, int content_y, int gap)
-{
-	struct cow_box *ua	       = &view->output->usable_area;
-	int test_x = ua->x;
-	int test_y = ua->y;
-	int max_x = ua->x + ua->width;
-	int max_y = ua->y + ua->height;
-	int nextrow = INT_MAX;
-	struct cow_view *clash;
-	int frame_w, frame_h, cx, cy;
-	if (gap < 1) gap = 1;
-	
-	// Don't bother if the window is larger than the screen in any dimension, fall back to cascade.
-	if (frame_x < ua->width && frame_y < ua->height) {
-		do {
-			/* Sweep a row at a time:
-			 * - If we're on top of a window, move to right after it, offset by gap
-			 * - Of the windows we know we overlapped, save the nearest "bottom" in nextrow.
-			 * - If we reach far enough over that the window won't fit, move to "nextrow"+gap
-			 *   and scan from the left again
-			 * - If we reach far enough that the window would be off screen, abandon the process
-			 */
-			nextrow = INT_MAX; // Reset "nearest bottom" check
-			while (test_x + frame_x < max_x) {
-				clash = cow_view_find_inside_box(test_x, test_y, test_x+frame_x, test_y+frame_y, view->output);
-				if (clash) {
-					int cw = clash->content_width;
-					int ch = clash->content_height;
-					if (clash->sd != COW_SHADE_NONE) {
-						cow_view_shaded_content_size(clash, clash->sd, &cw, &ch);
-					}
-					cow_titlebar_frame_geometry(clash, cw, ch, &frame_w, &frame_h, &cx, &cy);
-					if (test_x >= clash->x + frame_w - cx + gap) {
-						// If the window info we got would not let us move forward, assume something went wrong
-						// and fall back.
-						view_place_cascade(view, content_x, content_y, gap);
-						return;
-					}
-					// Advance to the right
-					test_x = clash->x + frame_w - cx + gap;
-					
-					// Update the "nearest bottom"
-					if (clash->y + frame_h - cy < nextrow) {
-						nextrow = clash->y + frame_h - cy;
-					}
-				} else {
-					
-					// Clean space found, place and go.
-					view->x = content_x+test_x;
-					view->y = content_y+test_y;
 
-					return;		
-				}
-			}
-			// Slide back to the left and start the next row
-			test_x = ua->x;
-			test_y = nextrow + gap;	
-		} while (nextrow < (max_y - frame_y));
+static void
+view_place_empty(struct cow_view *view, int frame_w, int frame_h,
+    int content_x, int content_y, int gap)
+{
+	const struct cow_box *usable = &view->output->usable_area;
+
+	size_t obstacle_count = 0;
+	struct cow_view *other;
+	wl_list_for_each(other, &cow_wm.views, wm_link)
+	{
+		if (view_is_placement_obstacle(other, view->output))
+			obstacle_count++;
 	}
-	
-	// No great choice, so fall back to cascade.
+
+	struct cow_box *obstacles = NULL;
+	if (obstacle_count > 0)
+		obstacles = xcalloc(obstacle_count, sizeof(*obstacles));
+
+	size_t i = 0;
+	wl_list_for_each(other, &cow_wm.views, wm_link)
+	{
+		if (!view_is_placement_obstacle(other, view->output))
+			continue;
+		obstacles[i++] = cow_view_frame_box(other);
+	}
+
+	int x, y;
+	bool found = cow_placement_find_empty(usable, frame_w, frame_h,
+	    obstacles, obstacle_count, gap, &x, &y);
+	xfree(obstacles);
+	if (found) {
+		view->x = x + content_x;
+		view->y = y + content_y;
+		return;
+	}
+
+	if (gap < 0)
+		gap = 0;
 	view_place_cascade(view, content_x, content_y, gap);
 }
 
