@@ -511,8 +511,7 @@ cow_status_emit(void)
 		cJSON_free(s);
 
 		/* Cache for clients that connect between emits */
-		xfree(last_snapshot);
-		last_snapshot	  = xstrdup(msg);
+		xstrset(&last_snapshot, msg);
 		last_snapshot_len = len + 1;
 
 		status_broadcast(msg, len + 1);

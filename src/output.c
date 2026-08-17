@@ -578,9 +578,8 @@ output_apply_configured_background(struct cow_output *output)
 			&image))
 			output->has_bg_image = true;
 	}
-	xfree(output->bg_image);
-	output->bg_image = output->has_bg_image && image != NULL ?
-	    xstrdup(image) : NULL;
+	xstrset(&output->bg_image,
+	    output->has_bg_image ? image : NULL);
 
 	if (!output_has_background(output)) {
 		output_background_destroy_resources(output);

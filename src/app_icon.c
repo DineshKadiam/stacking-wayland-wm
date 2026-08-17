@@ -322,8 +322,7 @@ icon_theme_walk(const char *dir, const char *name, int wanted, int depth,
 		int score = icon_size_score(path, wanted);
 		if ((best->path == NULL || score < best->score) &&
 		    renderable_image_path(path)) {
-			xfree(best->path);
-			best->path  = xstrdup(path);
+			xstrset(&best->path, path);
 			best->score = score;
 		}
 	}

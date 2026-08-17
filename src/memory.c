@@ -107,6 +107,21 @@ xstrdup(const char *s)
 	return (ptr);
 }
 
+char *
+xstrdup0(const char *s)
+{
+	return s != NULL ? xstrdup(s) : NULL;
+}
+
+void
+xstrset(char **dst, const char *src)
+{
+	char *copy = xstrdup0(src);
+
+	xfree(*dst);
+	*dst = copy;
+}
+
 void *
 xrealloc(void *oldptr, size_t nmemb, size_t size)
 {

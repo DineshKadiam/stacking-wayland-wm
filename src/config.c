@@ -105,35 +105,15 @@ border_colour_set_uniform(struct cow_border_colour *bc, uint32_t colour)
 }
 
 static void
-border_images_free(struct cow_border_colour *bc)
-{
-	xfree(bc->image);
-	xfree(bc->image_n);
-	xfree(bc->image_s);
-	xfree(bc->image_e);
-	xfree(bc->image_w);
-	xfree(bc->image_nw);
-	xfree(bc->image_ne);
-	xfree(bc->image_sw);
-	xfree(bc->image_se);
-}
-
-static void
 config_decor_free(struct cow_config *config)
 {
 	xfree(config->font_name);
 	xfree(config->title_format);
 	xfree(config->icon_image);
-	xfree(config->titlebar.font_name);
-	xfree(config->titlebar.active_image);
-	xfree(config->titlebar.inactive_image);
-	xfree(config->container.tab_active_image);
-	xfree(config->container.tab_inactive_image);
-	border_images_free(&config->border_active);
-	border_images_free(&config->border_inactive);
-	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++) {
-		xfree(config->titlebar.buttons[i].image);
-	}
+	cow_titlebar_config_fini(&config->titlebar);
+	cow_container_config_fini(&config->container);
+	cow_border_colour_fini(&config->border_active);
+	cow_border_colour_fini(&config->border_inactive);
 }
 
 static void
@@ -574,8 +554,7 @@ cow_config_set_output_background_image(struct cow_config *config,
 	{
 		if (strcmp(ob->name, name) != 0)
 			continue;
-		xfree(ob->image);
-		ob->image = image != NULL ? xstrdup(image) : NULL;
+		xstrset(&ob->image, image);
 		ob->has_image = true;
 		return;
 	}

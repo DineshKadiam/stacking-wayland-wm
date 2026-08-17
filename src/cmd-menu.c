@@ -504,8 +504,7 @@ cmd_menu_style_exec(struct cmd *self, struct cmd_q *cmdq)
 			goto out;
 		}
 		if (menu_name == NULL) {
-			xfree(cow_config->menu_style.font);
-			cow_config->menu_style.font = xstrdup(val);
+			xstrset(&cow_config->menu_style.font, val);
 		} else {
 			if (menu == NULL)
 				menu = cow_menu_create(menu_name);
@@ -516,8 +515,7 @@ cmd_menu_style_exec(struct cmd *self, struct cmd_q *cmdq)
 				ret = CMD_RETURN_ERROR;
 				goto out;
 			}
-			xfree(menu->style.font);
-			menu->style.font = xstrdup(val);
+			xstrset(&menu->style.font, val);
 			menu->style_overrides |= field;
 		}
 		if (!cow_ipc.startup_mode)

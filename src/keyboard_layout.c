@@ -69,8 +69,7 @@ keyboard_layout(void *data,
 	keyboard->index = index;
 	keyboard->has_layout = true;
 	if (changed) {
-		xfree(keyboard->name);
-		keyboard->name = name != NULL ? xstrdup(name) : NULL;
+		xstrset(&keyboard->name, name);
 		active_layout = keyboard;
 		cow_status_emit();
 	}

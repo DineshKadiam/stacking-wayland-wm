@@ -72,6 +72,7 @@ srcs = [
     'src/colour.c',
     'src/command.c',
     'src/config.c',
+    'src/config_types.c',
     'src/cow_box.c',
     'src/decoration.c',
     'src/decoration_hit.c',

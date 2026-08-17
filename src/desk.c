@@ -218,8 +218,7 @@ set_name_one(struct cow_output *output, uint8_t nr, const char *name,
 		return (false);
 	}
 
-	xfree(target->name);
-	target->name		= xstrdup(name);
+	xstrset(&target->name, name);
 	output->desk_set.user_named = true;
 	return (true);
 }

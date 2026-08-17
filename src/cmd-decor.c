@@ -247,8 +247,7 @@ cmd_decor_exec(struct cmd *self, struct cmd_q *cmdq)
 	enum cmd_retval ret = decor_apply(app, cmdq);
 	if (ret == CMD_RETURN_NORMAL && cmdq != NULL &&
 	    !cmdq->in_rule && cmdq->target.window == NULL) {
-		xfree(runtime_active_profile);
-		runtime_active_profile = xstrdup(app);
+		xstrset(&runtime_active_profile, app);
 	}
 	return (ret);
 }

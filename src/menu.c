@@ -387,8 +387,7 @@ menu_font(const struct cow_menu_style *style)
 		return (g_font_desc);
 	if (g_font_desc != NULL)
 		pango_font_description_free(g_font_desc);
-	xfree(g_font_name);
-	g_font_name	 = xstrdup(name);
+	xstrset(&g_font_name, name);
 	g_font_desc	 = pango_font_description_from_string(name);
 	/* If the font name had no explicit size, force 11pt. */
 	if (pango_font_description_get_size(g_font_desc) == 0)

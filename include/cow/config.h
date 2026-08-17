@@ -331,6 +331,17 @@ struct cow_titlebar_config {
 	enum cow_titlebar_button_style button_style;
 };
 
+/* Lifecycle helpers for configuration structs containing owned strings. */
+void cow_border_colour_copy(struct cow_border_colour *,
+    const struct cow_border_colour *);
+void cow_border_colour_fini(struct cow_border_colour *);
+void cow_titlebar_config_copy(struct cow_titlebar_config *,
+    const struct cow_titlebar_config *);
+void cow_titlebar_config_fini(struct cow_titlebar_config *);
+void cow_container_config_copy(struct cow_container_config *,
+    const struct cow_container_config *);
+void cow_container_config_fini(struct cow_container_config *);
+
 /*
  * The portable configuration struct for the river-based cow.
  *

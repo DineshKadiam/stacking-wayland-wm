@@ -28,6 +28,8 @@ int   xasprintf(char **, const char *, ...);
 void *xmalloc(size_t);
 void *xcalloc(size_t, size_t);
 char *xstrdup(const char *);
+char *xstrdup0(const char *);
+void  xstrset(char **, const char *);
 void *xrealloc(void *, size_t, size_t);
 void  xfree(void *);
 

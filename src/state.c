@@ -322,8 +322,7 @@ cow_state_restore(void)
 					struct cow_desk *dk = cow_desk_by_nr(
 					    output, (uint8_t)nr);
 					if (dk != NULL && nm[0] != '\0') {
-						xfree(dk->name);
-						dk->name = xstrdup(nm);
+						xstrset(&dk->name, nm);
 					}
 				}
 				output->desk_set.user_named = true;
