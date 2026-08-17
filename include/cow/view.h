@@ -569,6 +569,7 @@ void cow_view_reflow_maximized(struct cow_view *);
  * Shade/unshade a view.
  */
 void cow_view_shaded_content_size(const struct cow_view *, int, int *, int *);
+void cow_view_effective_content_size(const struct cow_view *, int *, int *);
 void cow_view_shade(struct cow_view *, int);
 void cow_view_unshade(struct cow_view *);
 

@@ -44,8 +44,7 @@ static void do_transfer_to_output(struct cow_view *, struct cow_output *,
 static void finish_move(struct cow_view *, bool);
 static struct cow_output *output_neighbour_in_dir(struct cow_output *,
     const char *);
-static int  move_content_width(const struct cow_view *);
-static int  move_content_height(const struct cow_view *);
+static void move_content_size(const struct cow_view *, int *, int *);
 static void move_frame_geometry(const struct cow_view *, int *, int *, int *,
     int *);
 static struct cow_box move_frame_box(const struct cow_view *);
@@ -230,39 +229,27 @@ finish_move(struct cow_view *view, bool warp)
 		cow_view_warp_to(view);
 }
 
-static int
-move_content_width(const struct cow_view *view)
+static void
+move_content_size(const struct cow_view *view, int *width, int *height)
 {
 	if (view->sd != COW_SHADE_NONE) {
-		int cw, ch;
-
-		cow_view_shaded_content_size(view, view->sd, &cw, &ch);
-		return (cw);
+		cow_view_effective_content_size(view, width, height);
+		return;
 	}
-	return (view->pending_resize ? view->pending_width :
-	    view->content_width);
-}
-
-static int
-move_content_height(const struct cow_view *view)
-{
-	if (view->sd != COW_SHADE_NONE) {
-		int cw, ch;
-
-		cow_view_shaded_content_size(view, view->sd, &cw, &ch);
-		return (ch);
-	}
-	return (view->pending_resize ? view->pending_height :
-	    view->content_height);
+	*width = view->pending_resize ? view->pending_width :
+	    view->content_width;
+	*height = view->pending_resize ? view->pending_height :
+	    view->content_height;
 }
 
 static void
 move_frame_geometry(const struct cow_view *view, int *frame_w, int *frame_h,
     int *content_x, int *content_y)
 {
-	cow_titlebar_frame_geometry(view, move_content_width(view),
-	    move_content_height(view), frame_w, frame_h, content_x,
-	    content_y);
+	int content_w, content_h;
+	move_content_size(view, &content_w, &content_h);
+	cow_titlebar_frame_geometry(view, content_w, content_h, frame_w,
+	    frame_h, content_x, content_y);
 }
 
 static struct cow_box

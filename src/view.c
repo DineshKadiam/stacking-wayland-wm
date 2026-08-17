@@ -104,61 +104,6 @@ titlebar_button_image_index(enum cow_view_cfg_option option)
 	    COW_VIEW_CFG_TITLEBAR_BUTTON_0_IMAGE);
 }
 
-static char *
-xstrdup0(const char *s)
-{
-	return s != NULL ? xstrdup(s) : NULL;
-}
-
-static void
-titlebar_button_images_free(struct cow_titlebar_config *tb)
-{
-	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++) {
-		xfree(tb->buttons[i].image);
-		tb->buttons[i].image = NULL;
-	}
-}
-
-static void
-titlebar_button_images_dup(struct cow_titlebar_config *dst,
-    const struct cow_titlebar_config *src)
-{
-	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++)
-		dst->buttons[i].image = xstrdup0(src->buttons[i].image);
-}
-
-static void
-border_images_free(struct cow_border_colour *bc)
-{
-	xfree(bc->image);
-	xfree(bc->image_n);
-	xfree(bc->image_s);
-	xfree(bc->image_e);
-	xfree(bc->image_w);
-	xfree(bc->image_nw);
-	xfree(bc->image_ne);
-	xfree(bc->image_sw);
-	xfree(bc->image_se);
-	bc->image = bc->image_n = bc->image_s = bc->image_e = NULL;
-	bc->image_w = bc->image_nw = bc->image_ne = NULL;
-	bc->image_sw = bc->image_se = NULL;
-}
-
-static void
-border_images_dup(struct cow_border_colour *dst,
-    const struct cow_border_colour *src)
-{
-	dst->image = xstrdup0(src->image);
-	dst->image_n = xstrdup0(src->image_n);
-	dst->image_s = xstrdup0(src->image_s);
-	dst->image_e = xstrdup0(src->image_e);
-	dst->image_w = xstrdup0(src->image_w);
-	dst->image_nw = xstrdup0(src->image_nw);
-	dst->image_ne = xstrdup0(src->image_ne);
-	dst->image_sw = xstrdup0(src->image_sw);
-	dst->image_se = xstrdup0(src->image_se);
-}
-
 static char **
 border_image_slot(struct cow_border_colour *bc, enum cow_view_cfg_option option)
 {
@@ -222,27 +167,12 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 	dst->corner_length   = cow_config->corner_length;
 	dst->handles	     = cow_config->handles;
 	dst->border_style    = cow_config->border_style;
-	dst->border_active   = cow_config->border_active;
-	dst->border_inactive = cow_config->border_inactive;
-	border_images_dup(&dst->border_active, &cow_config->border_active);
-	border_images_dup(&dst->border_inactive, &cow_config->border_inactive);
-	dst->titlebar	     = cow_config->titlebar;
-	/*
-	 * cow_titlebar_config carries an owned char *font_name pointer.
-	 * The struct copy above shares the pointer with cow_config; null
-	 * it so a later free in this snapshot doesn't double-free, then
-	 * dup if the global has one.
-	 */
-	dst->titlebar.font_name = xstrdup0(cow_config->titlebar.font_name);
-	dst->titlebar.active_image = xstrdup0(cow_config->titlebar.active_image);
-	dst->titlebar.inactive_image =
-	    xstrdup0(cow_config->titlebar.inactive_image);
-	titlebar_button_images_dup(&dst->titlebar, &cow_config->titlebar);
-	dst->container		= cow_config->container;
-	dst->container.tab_active_image =
-	    xstrdup0(cow_config->container.tab_active_image);
-	dst->container.tab_inactive_image =
-	    xstrdup0(cow_config->container.tab_inactive_image);
+	cow_border_colour_copy(&dst->border_active,
+	    &cow_config->border_active);
+	cow_border_colour_copy(&dst->border_inactive,
+	    &cow_config->border_inactive);
+	cow_titlebar_config_copy(&dst->titlebar, &cow_config->titlebar);
+	cow_container_config_copy(&dst->container, &cow_config->container);
 	dst->icon_enabled	= cow_config->icon_enabled;
 	dst->icon_size		= cow_config->icon_size;
 	dst->icon_label_area = cow_config->icon_label_area;
@@ -374,9 +304,8 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 	}
 	idx = titlebar_button_image_index(option);
 	if (idx != -1) {
-		xfree(cfg->titlebar.buttons[idx].image);
-		cfg->titlebar.buttons[idx].image =
-		    xstrdup0(cow_config->titlebar.buttons[idx].image);
+		xstrset(&cfg->titlebar.buttons[idx].image,
+		    cow_config->titlebar.buttons[idx].image);
 		return;
 	}
 	idx = titlebar_button_index(option,
@@ -492,10 +421,8 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		char **dst = border_image_slot(&cfg->border_active, option);
 		char **src = border_image_slot(&cow_config->border_active,
 		    option);
-		if (dst != NULL && src != NULL) {
-			xfree(*dst);
-			*dst = xstrdup0(*src);
-		}
+		if (dst != NULL && src != NULL)
+			xstrset(dst, *src);
 		break;
 	}
 	case COW_VIEW_CFG_BORDER_INACTIVE_N:
@@ -536,10 +463,8 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		char **dst = border_image_slot(&cfg->border_inactive, option);
 		char **src = border_image_slot(&cow_config->border_inactive,
 		    option);
-		if (dst != NULL && src != NULL) {
-			xfree(*dst);
-			*dst = xstrdup0(*src);
-		}
+		if (dst != NULL && src != NULL)
+			xstrset(dst, *src);
 		break;
 	}
 	case COW_VIEW_CFG_TITLEBAR_ENABLED:
@@ -562,14 +487,12 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		    cow_config->titlebar.inactive_gradient;
 		break;
 	case COW_VIEW_CFG_TITLEBAR_ACTIVE_IMAGE:
-		xfree(cfg->titlebar.active_image);
-		cfg->titlebar.active_image =
-		    xstrdup0(cow_config->titlebar.active_image);
+		xstrset(&cfg->titlebar.active_image,
+		    cow_config->titlebar.active_image);
 		break;
 	case COW_VIEW_CFG_TITLEBAR_INACTIVE_IMAGE:
-		xfree(cfg->titlebar.inactive_image);
-		cfg->titlebar.inactive_image =
-		    xstrdup0(cow_config->titlebar.inactive_image);
+		xstrset(&cfg->titlebar.inactive_image,
+		    cow_config->titlebar.inactive_image);
 		break;
 	case COW_VIEW_CFG_TITLEBAR_FG_ACTIVE:
 		memcpy(cfg->titlebar.fg_active, cow_config->titlebar.fg_active,
@@ -643,14 +566,12 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		    cow_config->container.tab_inactive_gradient;
 		break;
 	case COW_VIEW_CFG_CONTAINER_TAB_ACTIVE_IMAGE:
-		xfree(cfg->container.tab_active_image);
-		cfg->container.tab_active_image =
-		    xstrdup0(cow_config->container.tab_active_image);
+		xstrset(&cfg->container.tab_active_image,
+		    cow_config->container.tab_active_image);
 		break;
 	case COW_VIEW_CFG_CONTAINER_TAB_INACTIVE_IMAGE:
-		xfree(cfg->container.tab_inactive_image);
-		cfg->container.tab_inactive_image =
-		    xstrdup0(cow_config->container.tab_inactive_image);
+		xstrset(&cfg->container.tab_inactive_image,
+		    cow_config->container.tab_inactive_image);
 		break;
 	case COW_VIEW_CFG_CONTAINER_TAB_FG_ACTIVE:
 		memcpy(cfg->container.tab_fg_active,
@@ -669,12 +590,10 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		    cow_config->container.tab_sunken_inactive;
 		break;
 	case COW_VIEW_CFG_FONT:
-		xfree(cfg->font_name);
-		cfg->font_name = xstrdup0(cow_config->font_name);
+		xstrset(&cfg->font_name, cow_config->font_name);
 		break;
 	case COW_VIEW_CFG_TITLE_FORMAT:
-		xfree(cfg->title_format);
-		cfg->title_format = xstrdup0(cow_config->title_format);
+		xstrset(&cfg->title_format, cow_config->title_format);
 		break;
 	case COW_VIEW_CFG_ICON_ENABLED:
 		cfg->icon_enabled = cow_config->icon_enabled;
@@ -686,8 +605,7 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		cfg->icon_label_area = cow_config->icon_label_area;
 		break;
 	case COW_VIEW_CFG_ICON_IMAGE:
-		xfree(cfg->icon_image);
-		cfg->icon_image = xstrdup0(cow_config->icon_image);
+		xstrset(&cfg->icon_image, cow_config->icon_image);
 		break;
 	case COW_VIEW_CFG_ICON_BACKGROUND:
 		memcpy(cfg->icon_background, cow_config->icon_background,
@@ -730,18 +648,13 @@ cow_view_cfg_fini(struct cow_view_cfg *cfg)
 	xfree(cfg->font_name);
 	xfree(cfg->title_format);
 	xfree(cfg->icon_image);
-	xfree(cfg->titlebar.font_name);
-	xfree(cfg->titlebar.active_image);
-	xfree(cfg->titlebar.inactive_image);
-	xfree(cfg->container.tab_active_image);
-	xfree(cfg->container.tab_inactive_image);
-	border_images_free(&cfg->border_active);
-	border_images_free(&cfg->border_inactive);
-	titlebar_button_images_free(&cfg->titlebar);
+	cow_titlebar_config_fini(&cfg->titlebar);
+	cow_container_config_fini(&cfg->container);
+	cow_border_colour_fini(&cfg->border_active);
+	cow_border_colour_fini(&cfg->border_inactive);
 	cfg->font_name		= NULL;
 	cfg->title_format	= NULL;
 	cfg->icon_image		= NULL;
-	cfg->titlebar.font_name = NULL;
 }
 
 /*
@@ -885,8 +798,7 @@ window_handle_app_id(void *data, __unused struct river_window_v1 *rw,
 {
 	struct cow_view *view = data;
 
-	xfree(view->app_id);
-	view->app_id = app_id ? xstrdup(app_id) : NULL;
+	xstrset(&view->app_id, app_id);
 	xfree(view->application_icon);
 	view->application_icon = cow_app_icon_resolve(view->app_id,
 	    view->cfg.icon_size);
@@ -908,8 +820,7 @@ window_handle_title(void *data, __unused struct river_window_v1 *rw,
 	bool changed = (old == NULL) ? (fresh[0] != '\0') :
 				       (strcmp(old, fresh) != 0);
 
-	xfree(view->title);
-	view->title = title ? xstrdup(title) : NULL;
+	xstrset(&view->title, title);
 	view_mark_title_dirty(view);
 	cow_wm_request_manage_dirty();
 	cow_status_emit();
@@ -1036,8 +947,7 @@ window_handle_identifier(void *data, __unused struct river_window_v1 *rw,
     const char *identifier)
 {
 	struct cow_view *view = data;
-	xfree(view->identifier);
-	view->identifier = identifier ? xstrdup(identifier) : NULL;
+	xstrset(&view->identifier, identifier);
 }
 
 static const struct river_window_v1_listener window_listener = {
@@ -2132,11 +2042,8 @@ struct cow_box
 cow_view_frame_box_at(const struct cow_view *v, int x, int y)
 {
 	int frame_w, frame_h, content_x, content_y;
-	int cw = v->content_width;
-	int ch = v->content_height;
-
-	if (v->sd != COW_SHADE_NONE)
-		cow_view_shaded_content_size(v, v->sd, &cw, &ch);
+	int cw, ch;
+	cow_view_effective_content_size(v, &cw, &ch);
 	cow_titlebar_frame_geometry(v, cw, ch, &frame_w, &frame_h,
 	    &content_x, &content_y);
 	return (struct cow_box) {
@@ -2404,6 +2311,16 @@ cow_view_shaded_content_size(const struct cow_view *view, int direction,
 	} else if (tbr.width > 0) {
 		*cw = tbr.width;
 	}
+}
+
+void
+cow_view_effective_content_size(const struct cow_view *view, int *width,
+    int *height)
+{
+	*width = view->content_width;
+	*height = view->content_height;
+	if (view->sd != COW_SHADE_NONE)
+		cow_view_shaded_content_size(view, view->sd, width, height);
 }
 
 static struct cow_box

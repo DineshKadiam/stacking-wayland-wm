@@ -152,10 +152,8 @@ decoration_cursor_update(struct wl_surface *surface, uint32_t serial,
 
 	int x  = wl_fixed_to_int(sx);
 	int y  = wl_fixed_to_int(sy);
-	int cw = view->content_width;
-	int ch = view->content_height;
-	if (view->sd != COW_SHADE_NONE)
-		cow_view_shaded_content_size(view, view->sd, &cw, &ch);
+	int cw, ch;
+	cow_view_effective_content_size(view, &cw, &ch);
 	cow_keybinding_set_context(cow_seat_primary(),
 	    decoration_binding_context_at(view, x, y, cw, ch), view);
 	decoration_cursor_view = view;
@@ -179,10 +177,8 @@ view_for_global_decoration_point(int gx, int gy, int *dx, int *dy, int *cw,
 		if (!cow_view_visible(view, view->output))
 			continue;
 
-		int vcw = view->content_width;
-		int vch = view->content_height;
-		if (view->sd != COW_SHADE_NONE)
-			cow_view_shaded_content_size(view, view->sd, &vcw, &vch);
+		int vcw, vch;
+		cow_view_effective_content_size(view, &vcw, &vch);
 
 		int content_x, content_y, frame_w, frame_h;
 		cow_titlebar_frame_geometry(view, vcw, vch, &frame_w,

@@ -185,8 +185,7 @@ wl_output_handle_name(void *data, __unused struct wl_output *wl_output,
 {
 	struct cow_wl_output_entry *entry = data;
 
-	xfree(entry->name);
-	entry->name = xstrdup(name);
+	xstrset(&entry->name, name);
 	cow_log_info("output discovered (name=%s)", name);
 
 	/* Try to match to an existing cow_output */
@@ -816,10 +815,8 @@ manage_decoration_click(struct cow_seat *seat, struct cow_view *view)
 {
 	int lx = seat->pointer_x - view->x;
 	int ly = seat->pointer_y - view->y;
-	int cw = view->content_width;
-	int ch = view->content_height;
-	if (view->sd != COW_SHADE_NONE)
-		cow_view_shaded_content_size(view, view->sd, &cw, &ch);
+	int cw, ch;
+	cow_view_effective_content_size(view, &cw, &ch);
 
 	enum cow_dec_region region = COW_DEC_REGION_NONE;
 	uint32_t edges = decoration_corner_edges(view, lx, ly, cw, ch);

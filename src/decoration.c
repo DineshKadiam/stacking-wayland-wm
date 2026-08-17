@@ -54,8 +54,7 @@ get_titlebar_font(void)
 		if (last_font_name != NULL)
 			cow_font_fini(&titlebar_font);
 		cow_font_init(&titlebar_font, name);
-		xfree(last_font_name);
-		last_font_name = xstrdup(name);
+		xstrset(&last_font_name, name);
 	}
 
 	return &titlebar_font;
@@ -846,15 +845,9 @@ cow_decoration_update(struct cow_view *view, bool active)
 	int bw	       = dec->border_width;
 	int tt	       = dec->title_thickness;
 
-	int  cw, ch;
+	int cw, ch;
 	bool shaded = (view->sd != COW_SHADE_NONE);
-
-	if (shaded)
-		cow_view_shaded_content_size(view, view->sd, &cw, &ch);
-	else {
-		cw = view->content_width;
-		ch = view->content_height;
-	}
+	cow_view_effective_content_size(view, &cw, &ch);
 
 	int frame_w, frame_h, content_x, content_y;
 	cow_titlebar_frame_geometry(view, cw, ch, &frame_w, &frame_h,

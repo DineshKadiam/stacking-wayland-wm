@@ -314,11 +314,8 @@ static void
 pointer_op_frame_geometry(const struct cow_view *view, int *frame_w,
     int *frame_h, int *content_x, int *content_y)
 {
-	int cw = view->content_width;
-	int ch = view->content_height;
-
-	if (view->sd != COW_SHADE_NONE)
-		cow_view_shaded_content_size(view, view->sd, &cw, &ch);
+	int cw, ch;
+	cow_view_effective_content_size(view, &cw, &ch);
 	cow_titlebar_frame_geometry(view, cw, ch, frame_w, frame_h,
 	    content_x, content_y);
 }
