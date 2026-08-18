@@ -383,7 +383,6 @@ h1 {
   font-size: clamp(1.6rem, 2.7vw, 2.25rem);
   line-height: 1.02;
   letter-spacing: -0.045em;
-  white-space: nowrap;
 }
 
 h1 span {
