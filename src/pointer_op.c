@@ -603,6 +603,27 @@ clamp_drag_to_output(const struct cow_view *view,
 		*new_y = oy + oh - frame_h + content_y;
 }
 
+static void
+pointer_op_reassign_output(struct cow_view *view, int x, int y, int width,
+    int height, bool has_pointer_position)
+{
+	struct cow_box content = {
+		.x = x,
+		.y = y,
+		.width = width,
+		.height = height,
+	};
+	struct cow_output *owner = cow_output_for_box(&content, view->output);
+
+	if (owner != NULL && owner != view->output) {
+		cow_view_reassign_output(view, owner);
+		cow_view_clear_orphan(view);
+	} else if (owner == NULL && !has_pointer_position) {
+		cow_view_update_output(view);
+	}
+}
+
+
 /*
  * Finalise a pointer op when seat->op_released is set.  Handles
  * resize-end notification, container-drag completion (uncontainerise,
@@ -617,7 +638,6 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 {
 	enum cow_pointer_op_type finished_type = seat->op.type;
 	bool icon_moved     = seat->op.icon_moved;
-	bool container_drag = seat->container_drag;
 
 	if (seat->op.type == COW_POINTER_OP_RESIZE)
 		river_window_v1_inform_resize_end(view->river_window);
@@ -678,15 +698,13 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 	cow_drag_ghost_destroy();
 	cow_geometry_window_hide();
 
-	if (finished_type == COW_POINTER_OP_MOVE && !container_drag) {
-		struct cow_output *target = cow_output_at_exact(view->x, view->y);
-		if (target != NULL && target != view->output) {
-			cow_view_reassign_output(view, target);
-			cow_view_clear_orphan(view);
-		} else if (target == NULL && !seat->has_pointer_position)
-			cow_view_update_output(view);
-	} else if (finished_type != COW_POINTER_OP_ICON_MOVE) {
-		cow_view_update_output(view);
+	if (finished_type != COW_POINTER_OP_ICON_MOVE) {
+		int width = view->proposed_width > 0 ? view->proposed_width :
+		    view->content_width;
+		int height = view->proposed_height > 0 ? view->proposed_height :
+		    view->content_height;
+		pointer_op_reassign_output(view, view->x, view->y, width, height,
+		    seat->has_pointer_position);
 	}
 
 	if (finished_type == COW_POINTER_OP_ICON_MOVE) {
@@ -945,13 +963,13 @@ cow_pointer_op_process(struct cow_seat *seat)
 			 * matters for vertical titlebars, where the pointer and frame
 			 * can cross an output boundary before the content does.
 			 */
-			struct cow_output *owner = cow_output_at_exact(new_x, new_y);
-			if (owner != NULL && owner != view->output) {
-				cow_view_reassign_output(view, owner);
-				cow_view_clear_orphan(view);
-			} else if (!seat->has_pointer_position) {
-				cow_view_update_output(view);
-			}
+			/* Ownership follows the content origin when possible,
+			 * matching page visibility. Overlap provides a deterministic
+			 * fallback when that origin lies in an output gap.
+			 */
+			pointer_op_reassign_output(view, new_x, new_y,
+			    view->content_width, view->content_height,
+			    seat->has_pointer_position);
 			cow_view_sync_vxy_from_global(view);
 			cow_view_sync_container_pos(view);
 			if (position_changed)
@@ -1070,6 +1088,11 @@ cow_pointer_op_process(struct cow_seat *seat)
 		river_window_v1_propose_dimensions(view->river_window, new_w,
 		    new_h);
 
+		/* Use the proposed dimensions: the dimensions event has not
+		 * updated view->content_width/height yet.
+		 */
+		pointer_op_reassign_output(view, new_x, new_y, new_w, new_h,
+		    seat->has_pointer_position);
 		/*
 		 * Sync container position and dimensions so that
 		 * river_node_v1_set_position uses the updated values and lx/ly

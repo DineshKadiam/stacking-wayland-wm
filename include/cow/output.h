@@ -148,6 +148,9 @@ void cow_output_render_background(struct cow_output *);
 
 struct cow_output *cow_output_at(int, int);
 struct cow_output *cow_output_at_exact(int, int);
+struct cow_output *cow_output_for_box(const struct cow_box *,
+    const struct cow_output *);
+bool cow_outputs_box(struct cow_box *);
 struct cow_output *cow_output_find(struct river_output_v1 *);
 struct cow_output *cow_output_find_by_name(const char *);
 struct cow_output *cow_output_find_by_spec(const char *);

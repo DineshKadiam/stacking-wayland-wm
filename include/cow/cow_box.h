@@ -17,6 +17,7 @@
 #define COW_BOX_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include <cJSON.h>
 
@@ -30,6 +31,9 @@ struct cow_box {
 
 bool cow_box_contains_point(const struct cow_box *, double, double);
 void cow_box_intersection(const struct cow_box *, const struct cow_box *, struct cow_box *);
+void cow_box_union(const struct cow_box *, const struct cow_box *,
+    struct cow_box *);
+int64_t cow_box_area(const struct cow_box *);
 
 /*
  * Add {x, y, width, height} number fields for 'box' to 'obj'.

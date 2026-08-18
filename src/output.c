@@ -16,6 +16,7 @@
 #include "cow/output.h"
 #include "cow/log.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -773,6 +774,75 @@ cow_output_at(int x, int y)
 	if (output != NULL)
 		return output;
 	return cow_wm.current_output;
+}
+
+/*
+ * Select an owner for a content box.  Keep origin-based ownership when the
+ * origin lies on an output because page visibility uses the same model.  If
+ * the origin lies in a gap, use the output containing the greatest part of
+ * the box; prefer the current owner when areas are equal.
+ */
+struct cow_output *
+cow_output_for_box(const struct cow_box *box,
+    const struct cow_output *preferred)
+{
+	if (box == NULL || box->width <= 0 || box->height <= 0)
+		return NULL;
+
+	struct cow_output *origin = cow_output_at_exact(box->x, box->y);
+	if (origin != NULL)
+		return origin;
+
+	struct cow_output *best = NULL;
+	int64_t best_area = 0;
+	struct cow_output *output;
+	wl_list_for_each(output, &cow_wm.outputs, wm_link)
+	{
+		struct cow_box output_box = {
+			.x = output->x,
+			.y = output->y,
+			.width = output->width,
+			.height = output->height,
+		};
+		struct cow_box overlap;
+		cow_box_intersection(box, &output_box, &overlap);
+		int64_t area = cow_box_area(&overlap);
+		if (area > best_area ||
+		    (area == best_area && area > 0 && output == preferred)) {
+			best = output;
+			best_area = area;
+		}
+	}
+	return best;
+}
+
+bool
+cow_outputs_box(struct cow_box *box)
+{
+	if (box == NULL || wl_list_empty(&cow_wm.outputs))
+		return false;
+
+	struct cow_output *output =
+	    wl_container_of(cow_wm.outputs.next, output, wm_link);
+	struct cow_box bounds = {
+		.x = output->x,
+		.y = output->y,
+		.width = output->width,
+		.height = output->height,
+	};
+
+	wl_list_for_each(output, &cow_wm.outputs, wm_link)
+	{
+		struct cow_box output_box = {
+			.x = output->x,
+			.y = output->y,
+			.width = output->width,
+			.height = output->height,
+		};
+		cow_box_union(&bounds, &output_box, &bounds);
+	}
+	*box = bounds;
+	return true;
 }
 
 struct cow_output *

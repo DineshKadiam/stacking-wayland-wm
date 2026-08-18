@@ -416,6 +416,15 @@ placement_test = executable('test-placement',
 )
 test('placement', placement_test)
 
+cow_box_test = executable('test-cow-box',
+    'tests/cow-box.c',
+    'src/cow_box.c',
+    'vendor/cJSON.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('cow-box', cow_box_test)
+
 subdir('cowbar')
 subdir('modules/cowbuttons')
 subdir('modules/cowident')

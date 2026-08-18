@@ -39,6 +39,31 @@ cow_box_intersection(const struct cow_box *a, const struct cow_box *b,
 }
 
 void
+cow_box_union(const struct cow_box *a, const struct cow_box *b,
+    struct cow_box *dest)
+{
+	int x1 = a->x < b->x ? a->x : b->x;
+	int y1 = a->y < b->y ? a->y : b->y;
+	int x2 = a->x + a->width > b->x + b->width ?
+	    a->x + a->width : b->x + b->width;
+	int y2 = a->y + a->height > b->y + b->height ?
+	    a->y + a->height : b->y + b->height;
+
+	dest->x = x1;
+	dest->y = y1;
+	dest->width = x2 - x1;
+	dest->height = y2 - y1;
+}
+
+int64_t
+cow_box_area(const struct cow_box *box)
+{
+	if (box == NULL || box->width <= 0 || box->height <= 0)
+		return 0;
+	return (int64_t)box->width * box->height;
+}
+
+void
 cow_box_json_add(cJSON *obj, const struct cow_box *box)
 {
 	cJSON_AddNumberToObject(obj, "x", box->x);
