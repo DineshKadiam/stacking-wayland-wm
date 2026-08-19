@@ -1089,7 +1089,7 @@ Operate on a window.
 	Container members share a single layer: setting *-L* on any
 	member updates every member of the container.
 
-## window-move [-C] [-t target] [-d dir [-n]] [-o output] [-c] [-k 0-9] [-x X] [-y Y]
+## window-move [-C] [-w] [-t target] [-d dir [-n]] [-o output] [-c] [-k 0-9] [-x X] [-y Y]
 
 Move a window. With no flags, begin an interactive move using the mouse.
 
@@ -1100,7 +1100,14 @@ Move a window. With no flags, begin an interactive move using the mouse.
 	Move one step in direction _dir_ (_up_, _down_, _left_, _right_).
 
 *-n*
-	With *-d*, snap to the nearest edge instead of stepping.
+	With *-d*, snap to the nearest edge instead of stepping. It may be
+	combined with *-w* as *-nw*.
+
+*-w*
+	Warp the pointer to the centre of the moved window after a
+	non-interactive move. This is independent of *-n*: *-w* follows a
+	stepped move, while *-nw* follows a snapped move. No warp is performed
+	when the moved window is not visible on its destination.
 
 *-o* _output_
 	Move the window to the named output or output number (*@N*). May be

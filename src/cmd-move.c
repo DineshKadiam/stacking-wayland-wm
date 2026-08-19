@@ -41,6 +41,7 @@ static void do_xy(struct cow_view *, const char *, const char *,
 static void do_desk(struct cow_view *, uint8_t, struct cmd_q *);
 static void do_transfer_to_output(struct cow_view *, struct cow_output *,
     const char *);
+static void finish_move(struct cow_view *, bool);
 static struct cow_output *output_neighbour_in_dir(struct cow_output *,
     const char *);
 static int  move_content_width(const struct cow_view *);
@@ -55,7 +56,7 @@ struct cmd_entry cmd_move_entry = {
 	"t:d:o:cCnwk:x:y:P:",
 	0,
 	0,
-	"[-C] [-d dir [-n]] [-o output] [-c] [-k 0-9] [-x X] [-y Y]",
+	"[-C] [-w] [-d dir [-n]] [-o output] [-c] [-k 0-9] [-x X] [-y Y]",
 	cmd_move_exec,
 	0,
 };
@@ -75,6 +76,7 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	const char *dir_val = args_get(args, 'd');
 	const char *scr_val = args_get(args, 'o');
+	bool warp = args_has(args, 'w');
 
 	if (scr_val != NULL) {
 		do_screen(view, scr_val, cmdq);
@@ -90,24 +92,24 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 			cmdq_error(cmdq, "move: -o only combines with -k");
 			return (CMD_RETURN_ERROR);
 		}
-		if (args_get(args, 'k') == NULL)
+		if (args_get(args, 'k') == NULL) {
+			finish_move(view, warp);
 			return (CMD_RETURN_NORMAL);
+		}
 	}
 
 	if (dir_val != NULL) {
-		if (args_has(args, 'n')) {
+		if (args_has(args, 'n'))
 			do_snap(view, dir_val, cmdq);
-
-			if (args_has(args, 'w')) {
-				cow_view_warp_to_focused();
-			}
-		} else
+		else
 			do_step(view, dir_val, cmdq);
+		finish_move(view, warp);
 		return (CMD_RETURN_NORMAL);
 	}
 
 	if (args_has(args, 'c')) {
 		do_centre(view);
+		finish_move(view, warp);
 		return (CMD_RETURN_NORMAL);
 	}
 
@@ -122,6 +124,7 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 			max, &nr))
 			return (CMD_RETURN_ERROR);
 		do_desk(view, (uint8_t)nr, cmdq);
+		finish_move(view, warp);
 		return (CMD_RETURN_NORMAL);
 	}
 
@@ -137,6 +140,7 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	if (xflag || yflag) {
 		do_xy(view, xp, yp, cmdq);
+		finish_move(view, warp);
 		return (CMD_RETURN_NORMAL);
 	}
 
@@ -161,6 +165,7 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 			row = (int)ll;
 		}
 		cow_view_move_to_page(view, col, row);
+		finish_move(view, warp);
 		return (CMD_RETURN_NORMAL);
 	}
 
@@ -212,6 +217,17 @@ apply_move(struct cow_view *view)
 	cow_view_sync_vxy_from_global(view);
 	cow_view_sync_container_pos(view);
 	cmd_view_dirty(view);
+}
+
+static void
+finish_move(struct cow_view *view, bool warp)
+{
+	if (view->output == NULL || !cow_view_visible(view, view->output))
+		return;
+	if (view == cow_wm.focused_view && cow_view_focusable(view))
+		cow_wm.pending_focus = view;
+	if (warp)
+		cow_view_warp_to(view);
 }
 
 static int
@@ -409,8 +425,6 @@ do_centre(struct cow_view *view)
 	view->x = ua->x + (ua->width - frame_w) / 2 + content_x;
 	view->y = ua->y + (ua->height - frame_h) / 2 + content_y;
 	apply_move(view);
-	if (view == cow_wm.focused_view && cow_view_focusable(view))
-		cow_wm.pending_focus = view;
 }
 
 static void

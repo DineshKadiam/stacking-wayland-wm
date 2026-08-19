@@ -3536,19 +3536,25 @@ cow_view_sync_container_geometry(struct cow_view *view, int x, int y, int w,
 }
 
 void
-cow_view_warp_to_focused(void)
+cow_view_warp_to(const struct cow_view *view)
 {
-	const struct cow_view *v = cow_wm.pending_focus != NULL ?
-	    cow_wm.pending_focus :
-	    cow_wm.focused_view;
-	int		       cx, cy;
+	int cx, cy;
 
-	if (v == NULL)
+	if (view == NULL)
 		return;
 
-	cow_view_centre(v, &cx, &cy);
+	cow_view_centre(view, &cx, &cy);
 	cow_wm_request_pointer_warp(cx, cy);
 	cow_wm_request_manage_dirty();
+}
+
+void
+cow_view_warp_to_focused(void)
+{
+	const struct cow_view *view = cow_wm.pending_focus != NULL ?
+	    cow_wm.pending_focus : cow_wm.focused_view;
+
+	cow_view_warp_to(view);
 }
 
 void
