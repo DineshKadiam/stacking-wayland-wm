@@ -531,6 +531,14 @@ const struct cow_option_entry cow_options_table[] = {
 		.hi = 10000,
 	},
 	{
+		.name = "menu.repeat_keys",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_GLOBAL,
+		.action = COW_OPTION_SCALAR_STRING,
+		.config_offset = offsetof(struct cow_config, menu_repeat_keys),
+		.view_offset = COW_OPTION_NO_OFFSET,
+	},
+	{
 		.name = "raise_on_focus",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_GLOBAL,

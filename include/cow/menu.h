@@ -218,6 +218,9 @@ bool cow_menu_is_open(void);
  */
 bool cow_menu_process_input(void);
 
+/* Milliseconds until a held menu key repeats, or -1 if idle. */
+int cow_menu_next_repeat_ms(void);
+
 /*
  * Called during the render cycle to position and commit all open
  * popup surfaces.

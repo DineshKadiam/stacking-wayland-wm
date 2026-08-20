@@ -29,6 +29,22 @@
 
 struct cow_config *cow_config = NULL;
 
+int
+cow_config_repeat_delay_ms(void)
+{
+	if (cow_config != NULL && cow_config->repeat_delay_ms > 0)
+		return (cow_config->repeat_delay_ms);
+	return (COW_CFG_DEFAULT_REPEAT_DELAY_MS);
+}
+
+int
+cow_config_repeat_interval_ms(void)
+{
+	if (cow_config != NULL && cow_config->repeat_interval_ms > 0)
+		return (cow_config->repeat_interval_ms);
+	return (COW_CFG_DEFAULT_REPEAT_INTERVAL_MS);
+}
+
 struct cow_output_background_config {
 	struct wl_list link;
 	char	      *name;
@@ -264,6 +280,7 @@ cow_config_create(void)
 	config->max_layer	     = COW_CFG_MAX_LAYER;
 	config->repeat_delay_ms	     = COW_CFG_DEFAULT_REPEAT_DELAY_MS;
 	config->repeat_interval_ms   = COW_CFG_DEFAULT_REPEAT_INTERVAL_MS;
+	config->menu_repeat_keys = xstrdup(COW_CFG_DEFAULT_MENU_REPEAT_KEYS);
 	config->cursor_hide_timeout  = 0;
 	config->icon_enabled	     = true;
 	config->icon_size	     = COW_CFG_DEFAULT_ICON_SIZE;
@@ -432,6 +449,7 @@ cow_config_destroy(struct cow_config *config)
 	xfree(config->output_bg_image);
 	xfree(config->menu_style.icon_path);
 	xfree(config->menu_style.font);
+	xfree(config->menu_repeat_keys);
 
 	xfree(config);
 }

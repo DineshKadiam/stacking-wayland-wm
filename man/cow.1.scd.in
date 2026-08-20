@@ -1972,8 +1972,10 @@ items with *menu-add*, then opened with *menu-show*.  Items may be
 	during navigation.
 
 Menus take keyboard focus while open.  Arrow keys navigate, Enter selects,
-Escape closes, and a menu item's alphanumeric hotkey activates it.  Backspace
-edits the search text in menus such as *window-list* which support type-ahead.
+Escape closes, and a menu item's alphanumeric hotkey activates it.  Keys
+listed in *menu.repeat\_keys* repeat while held, using
+*repeat\_delay\_ms* and *repeat\_interval\_ms*.  Backspace edits the search
+text in menus such as *window-list* which support type-ahead.
 
 The *mouse* command can bind a menu to cow's output background with the *R*
 context:
@@ -2383,8 +2385,8 @@ put taskbars, etc.
 
 ## Keyboard Settings
 
-The following options can be used with the *set* command to tune
-keybinding behaviour:
+The following options can be used with the *set* command to tune repeatable
+keyboard input:
 
 [[ *Key*
 :[ *Values*
@@ -2392,11 +2394,18 @@ keybinding behaviour:
 |  *repeat\_delay\_ms*
 :  integer (ms)
 :  Time the user must hold a *bind -r* repeatable key before the
-   action starts repeating after its first fire.  Default: _400_.
+   action starts repeating after its first fire.  This also controls keys
+   listed in *menu.repeat\_keys*.  Default: _400_.
 |  *repeat\_interval\_ms*
 :  integer (ms, >= 1)
 :  Gap between consecutive repeats of a held *bind -r* binding once
-   the initial dwell has elapsed.  Default: _40_ (= 25 fires / s).
+   the initial dwell has elapsed, and between held repeating keys in menus.
+   Default: _40_ (= 25 fires / s).
+|  *menu.repeat\_keys*
+:  comma-separated keysyms
+:  Keys which repeat while held when a menu has keyboard focus.
+   The default is _Up,Down_; for example, use _Up,Down,BackSpace_ to repeat
+   type-ahead deletion, or _none_ to disable menu key repetition.
 
 A binding registered without *-r* fires exactly once per press,
 regardless of either setting.

@@ -160,8 +160,16 @@ static bool		       g_deferred_pick_context;
 static bool		       g_deferred_action_ready;
 static uint32_t		       g_menu_saved_binding_context;
 static struct cow_view      *g_menu_saved_binding_view;
+static bool		       g_menu_repeat_active;
+static bool		       g_menu_first_repeat;
+static uint32_t		       g_menu_repeat_key;
+static xkb_keysym_t	       g_menu_repeat_sym;
+static long		       g_menu_last_fire_ms;
 
+static long mono_ms(void);
+static void menu_keyboard_dispatch(xkb_keysym_t);
 static void menu_navigate(const char *);
+static void menu_repeat_stop(void);
 
 static bool
 menu_view_is_live(const struct cow_view *target)
@@ -220,17 +228,12 @@ menu_keyboard_leave(__unused void *data,
     __unused struct wl_keyboard *keyboard, __unused uint32_t serial,
     __unused struct wl_surface *surface)
 {
+	menu_repeat_stop();
 }
 
 static void
-menu_keyboard_key(__unused void *data, __unused struct wl_keyboard *keyboard,
-    __unused uint32_t serial, __unused uint32_t time, uint32_t key,
-    uint32_t state)
+menu_keyboard_dispatch(xkb_keysym_t sym)
 {
-	if (state != WL_KEYBOARD_KEY_STATE_PRESSED ||
-	    g_menu_xkb_state == NULL || !cow_menu_is_open())
-		return;
-	xkb_keysym_t sym = xkb_state_key_get_one_sym(g_menu_xkb_state, key + 8);
 	const char *direction = NULL;
 	switch (sym) {
 	case XKB_KEY_Up:
@@ -269,6 +272,66 @@ menu_keyboard_key(__unused void *data, __unused struct wl_keyboard *keyboard,
 	}
 }
 
+static bool
+menu_key_repeats(xkb_keysym_t sym)
+{
+	if (sym == XKB_KEY_NoSymbol)
+		return (false);
+	const char *list = cow_config != NULL ? cow_config->menu_repeat_keys :
+	    COW_CFG_DEFAULT_MENU_REPEAT_KEYS;
+	if (list == NULL)
+		return (false);
+
+	const char *p = list;
+	while (*p != '\0') {
+		while (*p == ',' || isspace((unsigned char)*p))
+			p++;
+		const char *start = p;
+		while (*p != '\0' && *p != ',' &&
+		    !isspace((unsigned char)*p))
+			p++;
+		size_t len = (size_t)(p - start);
+		if (len == 0)
+			continue;
+		char name[128];
+		if (len >= sizeof(name))
+			continue;
+		memcpy(name, start, len);
+		name[len] = '\0';
+		xkb_keysym_t configured = xkb_keysym_from_name(name,
+		    XKB_KEYSYM_CASE_INSENSITIVE);
+		if (configured != XKB_KEY_NoSymbol && configured == sym)
+			return (true);
+	}
+	return (false);
+}
+
+static void
+menu_keyboard_key(__unused void *data, __unused struct wl_keyboard *keyboard,
+    __unused uint32_t serial, __unused uint32_t time, uint32_t key,
+    uint32_t state)
+{
+	if (state == WL_KEYBOARD_KEY_STATE_RELEASED) {
+		if (g_menu_repeat_active && key == g_menu_repeat_key)
+			menu_repeat_stop();
+		return;
+	}
+	if (state != WL_KEYBOARD_KEY_STATE_PRESSED ||
+	    g_menu_xkb_state == NULL || !cow_menu_is_open())
+		return;
+	menu_repeat_stop();
+	xkb_keysym_t sym = xkb_state_key_get_one_sym(g_menu_xkb_state, key + 8);
+	bool repeat = menu_key_repeats(sym);
+	menu_keyboard_dispatch(sym);
+	if (repeat && cow_menu_is_open()) {
+		g_menu_repeat_active = true;
+		g_menu_first_repeat = true;
+		g_menu_repeat_key = key;
+		g_menu_repeat_sym = sym;
+		g_menu_last_fire_ms = mono_ms();
+	}
+}
+
 static void
 menu_keyboard_modifiers(__unused void *data,
     __unused struct wl_keyboard *keyboard, __unused uint32_t serial,
@@ -298,6 +361,7 @@ static const struct wl_keyboard_listener menu_keyboard_listener = {
 static void
 menu_keyboard_destroy(void)
 {
+	menu_repeat_stop();
 	if (g_menu_keyboard != NULL)
 		wl_keyboard_release(g_menu_keyboard);
 	if (g_menu_xkb_state != NULL)
@@ -340,6 +404,52 @@ mono_ms(void)
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	return ((long)ts.tv_sec * 1000L + ts.tv_nsec / 1000000L);
+}
+
+static void
+menu_repeat_stop(void)
+{
+	g_menu_repeat_active = false;
+	g_menu_first_repeat = false;
+	g_menu_repeat_key = 0;
+	g_menu_repeat_sym = XKB_KEY_NoSymbol;
+	g_menu_last_fire_ms = 0;
+}
+
+static long
+menu_repeat_wait_ms(void)
+{
+	return (g_menu_first_repeat ? cow_config_repeat_delay_ms() :
+		cow_config_repeat_interval_ms());
+}
+
+static void
+menu_repeat_process(void)
+{
+	if (!g_menu_repeat_active || !cow_menu_is_open())
+		return;
+	if (!menu_key_repeats(g_menu_repeat_sym)) {
+		menu_repeat_stop();
+		return;
+	}
+	long now = mono_ms();
+	if (now - g_menu_last_fire_ms < menu_repeat_wait_ms())
+		return;
+
+	xkb_keysym_t sym = g_menu_repeat_sym;
+	g_menu_last_fire_ms = now;
+	g_menu_first_repeat = false;
+	menu_keyboard_dispatch(sym);
+}
+
+int
+cow_menu_next_repeat_ms(void)
+{
+	if (!g_menu_repeat_active || !cow_menu_is_open())
+		return (-1);
+	long due = g_menu_last_fire_ms + menu_repeat_wait_ms();
+	long delta = due - mono_ms();
+	return (delta <= 0 ? 0 : (int)delta);
 }
 
 static uint32_t
@@ -1861,6 +1971,7 @@ cow_menu_process_input(void)
 {
 	if (!cow_menu_is_open())
 		return (false);
+	menu_repeat_process();
 
 	struct cow_menu_popup *root = wl_container_of(cow_wm.open_menus.next,
 	    root, link);

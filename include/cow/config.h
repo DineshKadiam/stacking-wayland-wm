@@ -48,13 +48,12 @@ struct cow_desk;
 #define COW_CFG_DEFAULT_SQUEEZE_WIDTH 300
 #define COW_CFG_DEFAULT_SQUEEZE_MIN_WIDTH 80
 /*
- * Key-repeat timing for bindings registered with `bind -r`.  Defaults
- * match the X11 / GNOME / KDE consensus (400ms initial dwell, then a
- * repeat every 40ms = 25 Hz).  Both are in milliseconds for
- * consistency with the other `_ms` knobs in the config.
+ * Key-repeat timing for bindings registered with `bind -r` and keys in
+ * menu.repeat_keys.
  */
 #define COW_CFG_DEFAULT_REPEAT_DELAY_MS 400
 #define COW_CFG_DEFAULT_REPEAT_INTERVAL_MS 40
+#define COW_CFG_DEFAULT_MENU_REPEAT_KEYS "Up,Down"
 
 /*
  * Layer model (FvwmLayers-compatible).  Each window lives in a
@@ -365,7 +364,7 @@ struct cow_config {
 	int  edge_scroll_delay_ms; /* dwell duration in ms */
 
 	/*
-	 * Key-repeat timing for bindings declared `bind -r`.
+	 * Key-repeat timing for repeatable bindings and menu navigation.
 	 * repeat_delay_ms: how long the user must hold the key before
 	 *   the action starts repeating after its first fire.
 	 * repeat_interval_ms: gap between consecutive repeats once
@@ -373,6 +372,7 @@ struct cow_config {
 	 */
 	int repeat_delay_ms;
 	int repeat_interval_ms;
+	char *menu_repeat_keys;
 
 	/* Pointer idle hiding.  Zero disables it. */
 	int cursor_hide_timeout;
@@ -477,6 +477,10 @@ void cow_config_reset_decor(struct cow_config *);
  * Free a config and all its lists.
  */
 void cow_config_destroy(struct cow_config *);
+
+/* Effective repeat timings, including defaults before config is loaded. */
+int cow_config_repeat_delay_ms(void);
+int cow_config_repeat_interval_ms(void);
 
 /*
  * Resolve the default config file path.

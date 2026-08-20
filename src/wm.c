@@ -1737,6 +1737,12 @@ cow_wm_schedule_tick(struct event *tick_ev)
 		if (tick_ms < 0 || wait < tick_ms)
 			tick_ms = wait;
 	}
+	int menu_repeat_ms = cow_menu_next_repeat_ms();
+	if (menu_repeat_ms >= 0) {
+		int wait = menu_repeat_ms < 1 ? 1 : menu_repeat_ms;
+		if (tick_ms < 0 || wait < tick_ms)
+			tick_ms = wait;
+	}
 
 	if (cow_menu_is_open() && (tick_ms < 0 || tick_ms > 33))
 		tick_ms = 33;

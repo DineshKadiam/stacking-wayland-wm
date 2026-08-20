@@ -494,15 +494,9 @@ cow_seat_handle_modifiers_update(struct cow_seat *seat, __unused uint32_t old,
 static long
 repeat_wait_ms(const struct cow_keybinding *kb)
 {
-	int delay    = COW_CFG_DEFAULT_REPEAT_DELAY_MS;
-	int interval = COW_CFG_DEFAULT_REPEAT_INTERVAL_MS;
-	if (cow_config != NULL) {
-		if (cow_config->repeat_delay_ms > 0)
-			delay = cow_config->repeat_delay_ms;
-		if (cow_config->repeat_interval_ms > 0)
-			interval = cow_config->repeat_interval_ms;
-	}
-	return kb->first_repeat ? (long)delay : (long)interval;
+	if (kb->first_repeat)
+		return (cow_config_repeat_delay_ms());
+	return (cow_config_repeat_interval_ms());
 }
 
 void
