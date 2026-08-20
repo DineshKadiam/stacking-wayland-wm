@@ -585,6 +585,7 @@ hover_reset_all(void)
 	for (int i = 0; i < POPUP_EXT_MAX; i++) {
 		g_popup_ext[i].hover_started_ms = 0;
 		g_popup_ext[i].hover_item	= -1;
+		g_popup_ext[i].hover_arrow_pending = false;
 	}
 }
 
@@ -1966,6 +1967,29 @@ dispatch_item(struct cow_menu_popup *p, struct cow_menu_item *it)
 	cow_menu_close_all();
 }
 
+static void
+keyboard_submenu_process(void)
+{
+	if (!g_hover_suppressed_until_pointer_moves)
+		return;
+
+	long now = mono_ms();
+	struct cow_menu_popup *p;
+	wl_list_for_each(p, &cow_wm.open_menus, link)
+	{
+		struct popup_ext *e = ext_for(p, false);
+		if (e == NULL || !e->hover_arrow_pending ||
+		    now - e->hover_started_ms < MENU_POPUP_DELAY_MS)
+			continue;
+		e->hover_arrow_pending = false;
+		if (p->selected != e->hover_item || p->child != NULL)
+			continue;
+		struct cow_menu_item *it = item_at_index(p->def, p->selected);
+		if (it != NULL && it->is_popup)
+			dispatch_item(p, it);
+	}
+}
+
 bool
 cow_menu_process_input(void)
 {
@@ -2011,8 +2035,11 @@ cow_menu_process_input(void)
 		last_px_x = px_x;
 		last_px_y = px_y;
 	}
-	if (pointer_moved)
+	if (pointer_moved) {
 		g_hover_suppressed_until_pointer_moves = false;
+		hover_reset_all();
+	}
+	keyboard_submenu_process();
 
 	struct cow_menu_popup *over = have ? popup_under(px_x, px_y) : NULL;
 
@@ -2051,6 +2078,7 @@ cow_menu_process_input(void)
 		struct popup_ext     *e	  = ext_for(over, true);
 		long		      now = mono_ms();
 		if (it != NULL && it->is_popup) {
+			e->hover_arrow_pending = false;
 			if (e->hover_item != over->selected) {
 				e->hover_item	    = over->selected;
 				e->hover_started_ms = now;
@@ -2063,6 +2091,7 @@ cow_menu_process_input(void)
 		} else if (e != NULL) {
 			e->hover_item	    = -1;
 			e->hover_started_ms = 0;
+			e->hover_arrow_pending = false;
 		}
 	}
 
@@ -2111,6 +2140,13 @@ nav_move(struct cow_menu_popup *p, int step)
 		if (menu_item_visible(p->def, it) &&
 		    (item_selectable(it) || (it != NULL && it->is_popup))) {
 			p->selected = idx;
+			struct popup_ext *e = ext_for(p, true);
+			if (e != NULL) {
+				e->hover_item = idx;
+				e->hover_started_ms = mono_ms();
+				e->hover_arrow_pending = it->is_popup &&
+				    p->child == NULL;
+			}
 			cow_menu_popup_redraw(p);
 			return;
 		}

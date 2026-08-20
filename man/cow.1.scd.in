@@ -1976,6 +1976,8 @@ Escape closes, and a menu item's alphanumeric hotkey activates it.  Keys
 listed in *menu.repeat\_keys* repeat while held, using
 *repeat\_delay\_ms* and *repeat\_interval\_ms*.  Backspace edits the search
 text in menus such as *window-list* which support type-ahead.
+Selecting a submenu item with Up or Down opens it after the same short delay
+used for pointer hover; Right continues to open it immediately.
 
 The *mouse* command can bind a menu to cow's output background with the *R*
 context:
