@@ -364,8 +364,16 @@ do_show_config(const char *ckey, int fd, struct cmd_q *cmdq)
 		    COW_GEOMETRY_WINDOW_RESIZE)
 			mode = "resize";
 		val = cJSON_CreateString(mode);
-	}
-	else if (strcmp(ckey, "page_visibility") == 0)
+	} else if (strcmp(ckey, "clamp_mode") == 0) {
+		const char *mode = "output";
+		if (cow_config->clamp_mode == COW_CLAMP_NONE)
+			mode = "none";
+		else if (cow_config->clamp_mode == COW_CLAMP_TO_OUTPUT)
+			mode = "output";
+		else if (cow_config->clamp_mode == COW_CLAMP_TO_ALL_OUTPUTS)
+			mode = "all_outputs";
+		val = cJSON_CreateString(mode);
+	} else if (strcmp(ckey, "page_visibility") == 0)
 		val = cJSON_CreateString(cow_config->page_visibility ==
 		    COW_PAGE_VISIBILITY_OVERLAP ? "overlap" : "origin");
 	else if (strcmp(ckey, "font") == 0)

@@ -591,16 +591,66 @@ clamp_drag_to_output(const struct cow_view *view,
 	bool	 can_top    = (mask & COW_PAN_EDGE_BIT(COW_PAN_TOP)) != 0;
 	bool	 can_bottom = (mask & COW_PAN_EDGE_BIT(COW_PAN_BOTTOM)) != 0;
 
-	if (!can_left && nfb.x < cfb.x && nfb.x < ox)
+	if (!can_left && nfb.x < cfb.x && nfb.x < ox && frame_w <= ow)
 		*new_x = ox + content_x;
 	if (!can_right && (nfb.x + nfb.width) > (cfb.x + cfb.width) &&
-	    (nfb.x + nfb.width) > ox + ow)
+	    (nfb.x + nfb.width) > ox + ow && frame_w <= ow)
 		*new_x = ox + ow - frame_w + content_x;
-	if (!can_top && nfb.y < cfb.y && nfb.y < oy)
+	if (!can_top && nfb.y < cfb.y && nfb.y < oy && frame_h <= oh)
 		*new_y = oy + content_y;
 	if (!can_bottom && (nfb.y + nfb.height) > (cfb.y + cfb.height) &&
-	    (nfb.y + nfb.height) > oy + oh)
+	    (nfb.y + nfb.height) > oy + oh && frame_h <= oh)
 		*new_y = oy + oh - frame_h + content_y;
+}
+
+/*
+ * Clamp to the bounding rectangle containing every output. This permits
+ * uninterrupted movement through rectangular output grids. Deliberate gaps
+ * remain traversable, but cow_output_for_box() never assigns a gap as the
+ * window's owner.
+ */
+static void
+clamp_drag_to_all_outputs(const struct cow_view *view,
+    const struct cow_output *current, int *new_x, int *new_y)
+{
+	if (current == NULL || cow_config == NULL)
+		return;
+
+	int cols    = cow_config->page_cols;
+	int rows    = cow_config->page_rows;
+	int cur_col = cow_page_col(current);
+	int cur_row = cow_page_row(current);
+	struct cow_box bounds;
+	if (!cow_outputs_box(&bounds))
+		return;
+
+	int frame_w, frame_h, content_x, content_y;
+	pointer_op_frame_geometry(view, &frame_w, &frame_h, &content_x,
+	    &content_y);
+
+	struct cow_box nfb = cow_view_frame_box_at(view, *new_x, *new_y);
+	struct cow_box cfb = cow_view_frame_box(view);
+
+	unsigned mask	    = cow_pan_edge_mask(cur_col, cur_row, cols, rows);
+	bool	 can_left   = (mask & COW_PAN_EDGE_BIT(COW_PAN_LEFT)) != 0;
+	bool	 can_right  = (mask & COW_PAN_EDGE_BIT(COW_PAN_RIGHT)) != 0;
+	bool	 can_top    = (mask & COW_PAN_EDGE_BIT(COW_PAN_TOP)) != 0;
+	bool	 can_bottom = (mask & COW_PAN_EDGE_BIT(COW_PAN_BOTTOM)) != 0;
+
+	if (!can_left && nfb.x < cfb.x && nfb.x < bounds.x &&
+	    frame_w <= bounds.width)
+		*new_x = bounds.x + content_x;
+	if (!can_right && nfb.x + nfb.width > cfb.x + cfb.width &&
+	    nfb.x + nfb.width > bounds.x + bounds.width &&
+	    frame_w <= bounds.width)
+		*new_x = bounds.x + bounds.width - frame_w + content_x;
+	if (!can_top && nfb.y < cfb.y && nfb.y < bounds.y &&
+	    frame_h <= bounds.height)
+		*new_y = bounds.y + content_y;
+	if (!can_bottom && nfb.y + nfb.height > cfb.y + cfb.height &&
+	    nfb.y + nfb.height > bounds.y + bounds.height &&
+	    frame_h <= bounds.height)
+		*new_y = bounds.y + bounds.height - frame_h + content_y;
 }
 
 static void
@@ -622,7 +672,6 @@ pointer_op_reassign_output(struct cow_view *view, int x, int y, int width,
 		cow_view_update_output(view);
 	}
 }
-
 
 /*
  * Finalise a pointer op when seat->op_released is set.  Handles
@@ -949,7 +998,12 @@ cow_pointer_op_process(struct cow_seat *seat)
 					clamp_output = exact;
 			}
 
-			clamp_drag_to_output(view, clamp_output, &new_x, &new_y);
+			if (cow_config->clamp_mode == COW_CLAMP_TO_OUTPUT) {
+				clamp_drag_to_output(view, clamp_output, &new_x, &new_y);
+			} else if (cow_config->clamp_mode == COW_CLAMP_TO_ALL_OUTPUTS) {
+				clamp_drag_to_all_outputs(view, clamp_output, &new_x,
+					&new_y);
+			}
 			bool position_changed = new_x != view->x || new_y != view->y;
 
 			view->x = new_x;

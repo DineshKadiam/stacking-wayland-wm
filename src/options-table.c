@@ -318,6 +318,12 @@ const struct cow_option_entry cow_options_table[] = {
 		.action = COW_OPTION_GEOMETRY_WINDOW,
 	},
 	{
+		.name = "clamp_mode",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_GLOBAL,
+		.action = COW_OPTION_CLAMP_MODE,
+	},
+	{
 		.name = "placement",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_GLOBAL,

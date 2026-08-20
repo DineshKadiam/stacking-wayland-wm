@@ -96,6 +96,7 @@ static void set_desktop_config_shared(void);
 static bool desk_nr_used_except(struct cow_output *, uint8_t);
 static void set_focus_option(const char *);
 static void set_geometry_window_option(const char *, struct cmd_q *);
+static enum cmd_retval set_clamp_mode_option(const char *, struct cmd_q *);
 static void set_placement_option(const char *, struct cmd_q *);
 static enum cmd_retval set_page_visibility_option(const char *, struct cmd_q *);
 static void set_font_option(const char *, struct cmd_q *);
@@ -154,6 +155,13 @@ static const struct set_enum_option set_geometry_window_options[] = {
 	{ "move", COW_GEOMETRY_WINDOW_MOVE },
 	{ "resize", COW_GEOMETRY_WINDOW_RESIZE },
 	{ "none", COW_GEOMETRY_WINDOW_NONE },
+	{ NULL, -1 },
+};
+
+static const struct set_enum_option set_clamp_mode_options[] = {
+	{ "none", COW_CLAMP_NONE },
+	{ "all_outputs", COW_CLAMP_TO_ALL_OUTPUTS },
+	{ "output", COW_CLAMP_TO_OUTPUT },
 	{ NULL, -1 },
 };
 
@@ -750,6 +758,8 @@ set_option_exec(const struct cow_option_entry *opt, const char *key, const char 
 	case COW_OPTION_GEOMETRY_WINDOW:
 		set_geometry_window_option(val, cmdq);
 		return (CMD_RETURN_NORMAL);
+	case COW_OPTION_CLAMP_MODE:
+		return (set_clamp_mode_option(val, cmdq));
 	case COW_OPTION_PLACEMENT:
 		set_placement_option(val, cmdq);
 		return (CMD_RETURN_NORMAL);
@@ -1804,6 +1814,21 @@ set_geometry_window_option(const char *val, struct cmd_q *cmdq)
 	}
 	cmdq_error(cmdq, "set: geometry_window: unknown mode: %s", val);
 }
+
+static enum cmd_retval
+set_clamp_mode_option(const char *val, struct cmd_q *cmdq)
+{
+	for (const struct set_enum_option *opt = set_clamp_mode_options;
+	    opt->name != NULL; opt++) {
+		if (strcmp(val, opt->name) == 0) {
+			cow_config->clamp_mode = opt->value;
+			return (CMD_RETURN_NORMAL);
+		}
+	}
+	cmdq_error(cmdq, "set: clamp_mode: unknown mode: %s", val);
+	return (CMD_RETURN_ERROR);
+}
+
 
 static void
 set_placement_option(const char *val, struct cmd_q *cmdq)

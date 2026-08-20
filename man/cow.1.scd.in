@@ -1557,6 +1557,12 @@ feel of a window.  All of these can be used with *decor -d*.
 |  *focus*
 :  _sloppy_ | _click_
 :  Focus model. Default: _click_.
+|  *clamp_mode*
+:  _output_ | _all\_outputs_ | _none_
+:  Constrain interactive window movement to the output under the pointer,
+   the bounding rectangle containing _all\_outputs_, or no boundary. Gaps
+   between outputs are traversable with _all\_outputs_. This setting does not
+   affect edge snapping. Default: _output_.
 |  *geometry\_window*
 :  _both_ | _move_ | _resize_ | _none_
 :  Show the geometry overlay while interactively moving or resizing windows.

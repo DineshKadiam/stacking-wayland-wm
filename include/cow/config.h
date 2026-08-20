@@ -95,6 +95,12 @@ enum cow_relief {
 	COW_RELIEF_FLAT,
 };
 
+enum cow_clamp_mode {
+	COW_CLAMP_TO_OUTPUT,
+	COW_CLAMP_TO_ALL_OUTPUTS,
+	COW_CLAMP_NONE,
+};
+
 /*
  * Window placement mode.
  */
@@ -343,6 +349,7 @@ struct cow_config {
 	enum cow_border_style border_style;
 	enum cow_placement_mode placement;
 	enum cow_geometry_window_mode geometry_window;
+	enum cow_clamp_mode clamp_mode;
 
 	/* Desktop configuration mode */
 	enum {
