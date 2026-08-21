@@ -32,6 +32,8 @@ enum cow_pointer_op_type {
 	COW_POINTER_OP_ICON_MOVE,
 	COW_POINTER_OP_RESIZE,
 	COW_POINTER_OP_DRAW_EXEC,
+	/* Wait for a menu-selection button to be released. */
+	COW_POINTER_OP_MENU_SELECT,
 	/*
 	 * Drag-the-viewport pan (the cow analogue of fvwm3's
 	 * `Scroll reverse`).  No view is involved; pointer motion
@@ -120,6 +122,9 @@ void cow_pointer_op_start_resize(struct cow_seat *, struct cow_view *,
  */
 void cow_pointer_op_start_scroll(struct cow_seat *, struct cow_output *, bool);
 void cow_pointer_op_start_draw_exec(struct cow_seat *);
+void cow_pointer_op_start_menu_select(struct cow_seat *);
+bool cow_pointer_op_finish_menu_select(struct cow_seat *);
+void cow_pointer_op_disarm_attached(struct cow_seat *);
 
 /*
  * Process pointer operation state during a manage sequence.

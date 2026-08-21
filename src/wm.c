@@ -528,10 +528,23 @@ manage_configure_views(void)
 	}
 }
 
-static void
-manage_titlebar_button_single(struct cow_view *view, int idx)
+static bool
+manage_titlebar_button_fire(struct cow_seat *seat, struct cow_view *view,
+    int idx, int clicks)
 {
-	cow_dec_binding_fire(view, cow_dec_region_button(idx), 1);
+	struct cow_seat *old_seat = cow_wm.current_interaction_seat;
+	cow_wm.current_interaction_seat = seat;
+	bool fired = cow_dec_binding_fire(view, cow_dec_region_button(idx),
+	    clicks);
+	cow_wm.current_interaction_seat = old_seat;
+	return (fired);
+}
+
+static void
+manage_titlebar_button_single(struct cow_seat *seat, struct cow_view *view,
+    int idx)
+{
+	manage_titlebar_button_fire(seat, view, idx, 1);
 }
 
 static void
@@ -555,7 +568,7 @@ manage_titlebar_button_pending(struct cow_seat *seat)
 	int idx = seat->pending_button_click_idx;
 	manage_titlebar_button_pending_clear(seat);
 	if (!view->closed)
-		manage_titlebar_button_single(view, idx);
+		manage_titlebar_button_single(seat, view, idx);
 }
 
 static void
@@ -569,8 +582,8 @@ manage_titlebar_button_click(struct cow_seat *seat, struct cow_view *view,
 	    seat->pending_button_click_idx == idx &&
 	    now < seat->pending_button_click_deadline_ms) {
 		manage_titlebar_button_pending_clear(seat);
-		if (!cow_dec_binding_fire(view, region, 2))
-			cow_dec_binding_fire(view, region, 1);
+		if (!manage_titlebar_button_fire(seat, view, idx, 2))
+			manage_titlebar_button_single(seat, view, idx);
 		return;
 	}
 
@@ -580,7 +593,7 @@ manage_titlebar_button_click(struct cow_seat *seat, struct cow_view *view,
 		int pending_idx = seat->pending_button_click_idx;
 		manage_titlebar_button_pending_clear(seat);
 		if (!pending->closed)
-			manage_titlebar_button_single(pending, pending_idx);
+			manage_titlebar_button_single(seat, pending, pending_idx);
 	}
 
 	if (cow_dec_binding_lookup(region, 2) != NULL) {
@@ -588,7 +601,7 @@ manage_titlebar_button_click(struct cow_seat *seat, struct cow_view *view,
 		seat->pending_button_click_idx = idx;
 		seat->pending_button_click_deadline_ms = now + DOUBLE_CLICK_MS;
 	} else {
-		manage_titlebar_button_single(view, idx);
+		manage_titlebar_button_single(seat, view, idx);
 	}
 }
 
@@ -600,17 +613,13 @@ manage_titlebar_button_release(struct cow_seat *seat)
 		return;
 
 	struct cow_view *view = seat->pressed_view;
+	bool click = false;
+	int idx = seat->pressed_button_idx;
 	if (view != NULL && !view->closed) {
-		bool still_on_button = false;
 		if (seat->has_pointer_position) {
 			int lx = seat->pointer_x - view->x;
 			int ly = seat->pointer_y - view->y;
-			still_on_button = cow_titlebar_button_at(view, lx, ly) ==
-			    seat->pressed_button_idx;
-		}
-		if (still_on_button) {
-			manage_titlebar_button_click(seat, view,
-			    seat->pressed_button_idx);
+			click = cow_titlebar_button_at(view, lx, ly) == idx;
 		}
 		view->pressed_button = -1;
 		view->dec.dirty	     = true;
@@ -622,6 +631,14 @@ manage_titlebar_button_release(struct cow_seat *seat)
 	seat->titlebar_press = COW_TITLEBAR_PRESS_NONE;
 	seat->pressed_view   = NULL;
 	cow_pointer_cursor_hold_end();
+
+	/*
+	 * Dispatch after ending the pointer operation used to track the button
+	 * press.  The binding may start another pointer operation itself, or
+	 * open a menu whose action does so later.
+	 */
+	if (click && !view->closed)
+		manage_titlebar_button_click(seat, view, idx);
 }
 
 static void

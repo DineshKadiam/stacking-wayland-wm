@@ -42,6 +42,7 @@
 #include "cow/memory.h"
 #include "cow/menu.h"
 #include "cow/output.h"
+#include "cow/pointer_op.h"
 #include "cow/seat.h"
 #include "cow/shm.h"
 #include "cow/view.h"
@@ -1901,11 +1902,13 @@ cow_menu_run_deferred_action(void)
 {
 	if (!g_deferred_action_ready || g_deferred_action == NULL)
 		return;
+	struct cow_seat *seat = seat_by_name(g_deferred_seat_name);
+	if (!cow_pointer_op_finish_menu_select(seat))
+		return;
 
 	char *action = g_deferred_action;
 	char *context_id = g_deferred_context_id;
 	bool pick_context = g_deferred_pick_context;
-	uint32_t seat_name = g_deferred_seat_name;
 	g_deferred_action = NULL;
 	g_deferred_context_id = NULL;
 	g_deferred_action_ready = false;
@@ -1914,8 +1917,11 @@ cow_menu_run_deferred_action(void)
 
 	struct cow_view *context = context_id != NULL ?
 	    cow_view_find_by_identifier(context_id) : NULL;
-	dispatch_action_with_context(action, context, pick_context,
-	    seat_by_name(seat_name));
+	if (seat != NULL)
+		seat->attach_next_pointer_op = true;
+	dispatch_action_with_context(action, context, pick_context, seat);
+	if (seat != NULL)
+		seat->attach_next_pointer_op = false;
 	xfree(context_id);
 	xfree(action);
 }
@@ -2108,8 +2114,12 @@ cow_menu_process_input(void)
 			return (true);
 		}
 		struct cow_menu_item *it = item_at_index(over->def, idx);
-		if (item_selectable(it) || (it != NULL && it->is_popup))
+		if (item_selectable(it)) {
+			cow_pointer_op_start_menu_select(seat);
 			dispatch_item(over, it);
+		} else if (it != NULL && it->is_popup) {
+			dispatch_item(over, it);
+		}
 	}
 
 	return (true);

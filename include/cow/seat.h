@@ -23,6 +23,8 @@
 #include "cow/pointer_op.h"
 
 struct river_seat_v1;
+struct river_pointer_binding_v1;
+struct river_xkb_binding_v1;
 struct river_xkb_bindings_seat_v1;
 struct cow_view;
 
@@ -92,6 +94,9 @@ struct cow_seat {
 	bool		      cursor_hide_op_active;
 	int		      op_dx, op_dy;
 	bool		      op_released;
+	bool		      attach_next_pointer_op;
+	struct river_pointer_binding_v1 *op_finish_bindings[3];
+	struct river_xkb_binding_v1     *op_escape_binding;
 
 	/* Desk assign mode (ensure_next_key_eaten) */
 	bool awaiting_desk_assign;

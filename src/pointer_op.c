@@ -15,7 +15,9 @@
  */
 #include "cow/pointer_op.h"
 
+#include <linux/input-event-codes.h>
 #include <stdlib.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
 
 #include "cow/compat.h"
 #include "cow/config.h"
@@ -35,6 +37,98 @@
 #include "cow/wm.h"
 
 #include "river-window-management-v1-client-protocol.h"
+#include "river-xkb-bindings-v1-client-protocol.h"
+
+static void
+attached_pointer_pressed(void *data,
+    __unused struct river_pointer_binding_v1 *binding)
+{
+	struct cow_seat *seat = data;
+	seat->op_released = true;
+	cow_wm_request_manage_dirty();
+}
+
+static void
+attached_pointer_released(__unused void *data,
+    __unused struct river_pointer_binding_v1 *binding)
+{
+}
+
+static const struct river_pointer_binding_v1_listener
+    attached_pointer_listener = {
+	    .pressed  = attached_pointer_pressed,
+	    .released = attached_pointer_released,
+    };
+
+static void
+attached_escape_pressed(void *data,
+    __unused struct river_xkb_binding_v1 *binding)
+{
+	struct cow_seat *seat = data;
+	seat->op_released = true;
+	cow_wm_request_manage_dirty();
+}
+
+static void
+attached_escape_released(__unused void *data,
+    __unused struct river_xkb_binding_v1 *binding)
+{
+}
+
+static void
+attached_escape_stop_repeat(__unused void *data,
+    __unused struct river_xkb_binding_v1 *binding)
+{
+}
+
+static const struct river_xkb_binding_v1_listener attached_escape_listener = {
+	.pressed     = attached_escape_pressed,
+	.released    = attached_escape_released,
+	.stop_repeat = attached_escape_stop_repeat,
+};
+
+void
+cow_pointer_op_disarm_attached(struct cow_seat *seat)
+{
+	if (seat == NULL)
+		return;
+	for (size_t i = 0; i < nitems(seat->op_finish_bindings); i++) {
+		if (seat->op_finish_bindings[i] == NULL)
+			continue;
+		river_pointer_binding_v1_destroy(seat->op_finish_bindings[i]);
+		seat->op_finish_bindings[i] = NULL;
+	}
+	if (seat->op_escape_binding != NULL) {
+		river_xkb_binding_v1_destroy(seat->op_escape_binding);
+		seat->op_escape_binding = NULL;
+	}
+}
+
+static void
+pointer_op_arm_attached(struct cow_seat *seat)
+{
+	if (!seat->attach_next_pointer_op)
+		return;
+
+	static const uint32_t buttons[] = { BTN_LEFT, BTN_MIDDLE, BTN_RIGHT };
+	for (size_t i = 0; i < nitems(buttons); i++) {
+		seat->op_finish_bindings[i] =
+		    river_seat_v1_get_pointer_binding(seat->river_seat,
+			buttons[i], RIVER_SEAT_V1_MODIFIERS_NONE);
+		river_pointer_binding_v1_add_listener(
+		    seat->op_finish_bindings[i], &attached_pointer_listener,
+		    seat);
+		river_pointer_binding_v1_enable(seat->op_finish_bindings[i]);
+	}
+	if (cow_wm.xkb_bindings != NULL) {
+		seat->op_escape_binding = river_xkb_bindings_v1_get_xkb_binding(
+		    cow_wm.xkb_bindings, seat->river_seat, XKB_KEY_Escape,
+		    RIVER_SEAT_V1_MODIFIERS_NONE);
+		river_xkb_binding_v1_add_listener(seat->op_escape_binding,
+		    &attached_escape_listener, seat);
+		river_xkb_binding_v1_enable(seat->op_escape_binding);
+	}
+}
 
 static const char *
 pointer_op_type_name(enum cow_pointer_op_type type)
@@ -50,6 +144,8 @@ pointer_op_type_name(enum cow_pointer_op_type type)
 		return ("scroll-drag");
 	case COW_POINTER_OP_DRAW_EXEC:
 		return ("draw-exec");
+	case COW_POINTER_OP_MENU_SELECT:
+		return ("menu-select");
 	case COW_POINTER_OP_NONE:
 	default:
 		return ("none");
@@ -245,6 +341,7 @@ cow_pointer_op_start_move(struct cow_seat *seat, struct cow_view *view)
 
 	cow_pointer_cursor_hold_start();
 	river_seat_v1_op_start_pointer(seat->river_seat);
+	pointer_op_arm_attached(seat);
 }
 
 void
@@ -359,6 +456,39 @@ cow_pointer_op_start_draw_exec(struct cow_seat *seat)
 }
 
 void
+cow_pointer_op_start_menu_select(struct cow_seat *seat)
+{
+	if (seat == NULL || seat->op_in_progress)
+		return;
+
+	seat->op.type	     = COW_POINTER_OP_MENU_SELECT;
+	seat->op.view	     = NULL;
+	seat->op_in_progress = true;
+	seat->op_released    = false;
+	seat->op_dx	     = 0;
+	seat->op_dy	     = 0;
+	river_seat_v1_op_start_pointer(seat->river_seat);
+}
+
+bool
+cow_pointer_op_finish_menu_select(struct cow_seat *seat)
+{
+	if (seat == NULL || !seat->op_in_progress ||
+	    seat->op.type != COW_POINTER_OP_MENU_SELECT)
+		return (true);
+	if (!seat->op_released)
+		return (false);
+
+	river_seat_v1_op_end(seat->river_seat);
+	seat->op.type	     = COW_POINTER_OP_NONE;
+	seat->op_in_progress = false;
+	seat->op_released    = false;
+	seat->op_dx	     = 0;
+	seat->op_dy	     = 0;
+	return (true);
+}
+
+void
 cow_pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
     uint32_t edges)
 {
@@ -394,6 +524,7 @@ cow_pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
 	river_window_v1_inform_resize_start(view->river_window);
 	cow_pointer_cursor_hold_start();
 	river_seat_v1_op_start_pointer(seat->river_seat);
+	pointer_op_arm_attached(seat);
 }
 
 /*
@@ -539,6 +670,7 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 	seat->titlebar_press = COW_TITLEBAR_PRESS_NONE;
 	seat->pressed_view   = NULL;
 
+	cow_pointer_op_disarm_attached(seat);
 	river_seat_v1_op_end(seat->river_seat);
 	seat->op_in_progress = false;
 	seat->op_released    = false;
@@ -572,6 +704,8 @@ void
 cow_pointer_op_process(struct cow_seat *seat)
 {
 	if (!seat->op_in_progress)
+		return;
+	if (seat->op.type == COW_POINTER_OP_MENU_SELECT)
 		return;
 
 	/*
@@ -661,6 +795,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 		seat->container_drag = false;
 		cow_drag_ghost_destroy();
 
+		cow_pointer_op_disarm_attached(seat);
 		river_seat_v1_op_end(seat->river_seat);
 		seat->op_in_progress = false;
 		seat->op_released    = false;
@@ -929,6 +1064,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 	case COW_POINTER_OP_NONE:
 	case COW_POINTER_OP_SCROLL_DRAG:
 	case COW_POINTER_OP_DRAW_EXEC:
+	case COW_POINTER_OP_MENU_SELECT:
 		/* View-less operations are handled above and never reach here.
 		 * Listed for completeness so -Wswitch stays clean. */
 		break;

@@ -300,6 +300,7 @@ cow_seat_destroy(struct cow_seat *seat)
 {
 	wl_list_remove(&seat->wm_link);
 
+	cow_pointer_op_disarm_attached(seat);
 	cow_seat_destroy_bindings(seat);
 	cow_layer_shell_fini_seat(seat);
 
