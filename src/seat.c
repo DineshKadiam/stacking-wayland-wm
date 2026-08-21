@@ -83,7 +83,10 @@ static void
 seat_handle_pointer_leave(void *data, __unused struct river_seat_v1 *river_seat)
 {
 	struct cow_seat *seat	   = data;
+	struct cow_view *view	   = seat->pointer_entered_view;
 	seat->pointer_entered_view = NULL;
+	if (view != NULL && seat->binding_context_view == view)
+		cow_keybinding_set_context(seat, 0, NULL);
 	cow_pointer_cursor_clear();
 
 	/* Arm edge scroll if the pointer is now at a screen edge */

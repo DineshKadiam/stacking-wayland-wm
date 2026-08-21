@@ -35,11 +35,23 @@
 #include "cursor-shape-v1-client-protocol.h"
 
 static struct wl_surface *decoration_cursor_surface;
+static struct cow_view   *decoration_cursor_view;
 static uint32_t		  decoration_cursor_serial;
 static struct cow_output *pan_cursor_output;
 static int		  pan_cursor_edge = -1;
 static bool		  cursor_held;
 static struct cow_output *pointer_focus_background;
+
+static void
+decoration_context_leave(void)
+{
+	struct cow_seat *seat = cow_seat_primary();
+	if (seat != NULL && decoration_cursor_view != NULL &&
+	    seat->pointer_entered_view == decoration_cursor_view)
+		cow_keybinding_set_context(seat, COW_BIND_CONTEXT_WINDOW,
+		    decoration_cursor_view);
+	decoration_cursor_view = NULL;
+}
 
 static struct cow_view *
 view_for_decoration_surface(struct wl_surface *surface)
@@ -146,6 +158,7 @@ decoration_cursor_update(struct wl_surface *surface, uint32_t serial,
 		cow_view_shaded_content_size(view, view->sd, &cw, &ch);
 	cow_keybinding_set_context(cow_seat_primary(),
 	    decoration_binding_context_at(view, x, y, cw, ch), view);
+	decoration_cursor_view = view;
 
 	cow_wm_set_cursor_shape(decoration_cursor_shape_at(view, x, y, cw, ch),
 	    decoration_cursor_serial);
@@ -244,6 +257,7 @@ cow_pointer_cursor_clear(void)
 	if (cursor_held)
 		return;
 
+	decoration_context_leave();
 	decoration_cursor_surface = NULL;
 	pan_cursor_output	  = NULL;
 	pan_cursor_edge		  = -1;
@@ -305,6 +319,7 @@ cow_pointer_cursor_reconcile_position(int x, int y)
 	if (view == NULL) {
 		if (decoration_cursor_surface != NULL ||
 		    pan_cursor_output != NULL) {
+			decoration_context_leave();
 			decoration_cursor_surface = NULL;
 			pan_cursor_output	  = NULL;
 			pan_cursor_edge		  = -1;
@@ -314,6 +329,7 @@ cow_pointer_cursor_reconcile_position(int x, int y)
 	}
 
 	decoration_cursor_surface = view->decoration_surface;
+	decoration_cursor_view = view;
 	cow_keybinding_set_context(cow_seat_primary(),
 	    decoration_binding_context_at(view, dx, dy, cw, ch), view);
 	cow_wm_set_cursor_shape(decoration_cursor_shape_at(view, dx, dy, cw,
@@ -445,6 +461,7 @@ pointer_leave(void *data, struct wl_pointer *pointer, uint32_t serial,
 		if (cow_pick_pointer_leave(surface))
 			return;
 		if (decoration_cursor_surface == surface) {
+			decoration_context_leave();
 			decoration_cursor_surface = NULL;
 			if (!cursor_held)
 				cow_wm_reset_cursor_shape(
