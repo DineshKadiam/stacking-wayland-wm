@@ -2967,7 +2967,7 @@ parse_status(const char *json)
 	if (!root)
 		return;
 
-	state_t st;
+	static state_t st;
 	memset(&st, 0, sizeof(st));
 
 	cJSON *dcfg = cJSON_GetObjectItem(root, "desktop_configuration");
@@ -3104,7 +3104,7 @@ fetch_windows(void)
 		return;
 	}
 
-	pwin_t wins[MAX_WINS];
+	static pwin_t wins[MAX_WINS];
 	int    nw = 0;
 	cJSON *w;
 	cJSON_ArrayForEach(w, data)
@@ -3163,7 +3163,7 @@ status_thread(__unused void *arg)
 		return NULL;
 	}
 	setlinebuf(f);
-	char line[COW_MODULE_STATUS_LINE_MAX];
+	static char line[COW_MODULE_STATUS_LINE_MAX];
 	while (opt_running && fgets(line, sizeof(line), f)) {
 		size_t len = strlen(line);
 		if (len > 0 && line[len - 1] == '\n')

@@ -3293,7 +3293,7 @@ status_thread(__unused void *arg)
 {
 	int fd = cow_module_status_connect(PROG, COW_MODULE_STATUS_RETRIES,
 	    COW_MODULE_STATUS_RETRY_DELAY);
-	char buf[COW_MODULE_STATUS_LINE_MAX];
+	static char buf[COW_MODULE_STATUS_LINE_MAX];
 	size_t len = 0;
 
 	if (fd < 0)

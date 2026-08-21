@@ -1321,7 +1321,7 @@ static void
 parse_status(const char *json)
 {
 	cJSON	     *root = cJSON_Parse(json);
-	struct state  st;
+	static struct state st;
 	cJSON	     *outs, *out;
 	int	      n = 0;
 
@@ -1374,7 +1374,7 @@ fetch_windows(void)
 {
 	char	     *resp = ipc_query("show windows");
 	cJSON	     *root, *data, *w;
-	struct win    wins[MAX_WINS];
+	static struct win wins[MAX_WINS];
 	char	     new_self_id[MAX_NAME] = "";
 	int	      n = 0;
 
@@ -1426,7 +1426,7 @@ status_thread(__unused void *arg)
 	int fd = cow_module_status_connect(PROG, COW_MODULE_STATUS_RETRIES,
 	    COW_MODULE_STATUS_RETRY_DELAY);
 	FILE *f;
-	char  line[COW_MODULE_STATUS_LINE_MAX];
+	static char line[COW_MODULE_STATUS_LINE_MAX];
 
 	if (fd < 0)
 		return NULL;
