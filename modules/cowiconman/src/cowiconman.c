@@ -31,6 +31,7 @@
 #include <wayland-client.h>
 
 #include "cow/compat.h"
+#include "cow/colour.h"
 #include "cow/image_cache.h"
 #include "cow/module.h"
 #include "cow/module_cursor.h"
@@ -126,6 +127,20 @@ struct state {
 	int	      n_outs;
 	struct win    wins[MAX_WINS];
 	int	      n_wins;
+	struct {
+		int   has_background;
+		int   has_active_bg;
+		int   has_inactive_bg;
+		int   has_active_fg;
+		int   has_inactive_fg;
+		float background[4];
+		float active_bg[4];
+		float inactive_bg[4];
+		float active_fg[4];
+		float inactive_fg[4];
+		char font[MAX_NAME];
+		int height;
+	} theme;
 };
 
 struct row {
@@ -427,6 +442,15 @@ parse_positive(const char *s, int *out)
 		return 0;
 	*out = n;
 	return 1;
+}
+
+static int
+parse_theme_colour(cJSON *theme, const char *key, float out[4])
+{
+	cJSON *v = cJSON_GetObjectItem(theme, key);
+	if (!cJSON_IsString(v))
+		return 0;
+	return cow_colour_parse(v->valuestring, out) ? 1 : 0;
 }
 
 static int
@@ -852,7 +876,7 @@ apply_width_limit(int max_w, int *desired_w)
 }
 
 static void
-layout_rows_for_width(int width, int column_major)
+layout_rows_for_width(int width, int column_major, const struct state *st)
 {
 	int cell_w = (width - PAD * 2) / layout_cols;
 	if (cell_w < 1)
@@ -868,9 +892,9 @@ layout_rows_for_width(int width, int column_major)
 			row = i / layout_cols;
 		}
 		rows[i].x = PAD + col * cell_w;
-		rows[i].y = PAD + row * ROW_H;
+		rows[i].y = PAD + row * st->theme.height;
 		rows[i].w = cell_w;
-		rows[i].h = ROW_H;
+		rows[i].h = st->theme.height;
 		if (row + 1 > layout_rows)
 			layout_rows = row + 1;
 	}
@@ -1000,21 +1024,29 @@ shm_buf(int w, int h, void **px)
 }
 
 static void
-draw_relief(cairo_t *cr, double x, double y, double w, double h, int sunken)
+draw_relief(cairo_t *cr, double x, double y, double w, double h, 
+	int sunken, const float *base)
 {
+	
+	float dk[4], lt[4];
+	cow_colour_darken(dk, base);
+	cow_colour_lighten(lt, base);
+	
+	
+	
 	if (sunken)
-		cairo_set_source_rgb(cr, 0.18, 0.18, 0.20);
+		cairo_set_source_rgb(cr, dk[0], dk[1], dk[2]);
 	else
-		cairo_set_source_rgb(cr, 0.78, 0.78, 0.80);
+		cairo_set_source_rgb(cr, lt[0], lt[1], lt[2]);
 	cairo_move_to(cr, x + 0.5, y + h - 0.5);
 	cairo_line_to(cr, x + 0.5, y + 0.5);
 	cairo_line_to(cr, x + w - 0.5, y + 0.5);
 	cairo_stroke(cr);
 
 	if (sunken)
-		cairo_set_source_rgb(cr, 0.78, 0.78, 0.80);
+		cairo_set_source_rgb(cr, lt[0], lt[1], lt[2]);
 	else
-		cairo_set_source_rgb(cr, 0.18, 0.18, 0.20);
+		cairo_set_source_rgb(cr, dk[0], dk[1], dk[2]);
 	cairo_move_to(cr, x + w - 0.5, y + 0.5);
 	cairo_line_to(cr, x + w - 0.5, y + h - 0.5);
 	cairo_line_to(cr, x + 0.5, y + h - 0.5);
@@ -1023,16 +1055,16 @@ draw_relief(cairo_t *cr, double x, double y, double w, double h, int sunken)
 
 static void
 draw_iconified_marker(cairo_t *cr, const struct win *win, double x,
-    double y, double h)
+    double y, double h, const float * base)
 {
 	double marker_y = y + (h - MARKER_SIZE) / 2.0;
 
 	if (!win->iconified)
 		return;
-	cairo_set_source_rgb(cr, 0.62, 0.62, 0.66);
+	cairo_set_source_rgb(cr, base[0], base[1], base[2]);
 	cairo_rectangle(cr, x, marker_y, MARKER_SIZE, MARKER_SIZE);
 	cairo_fill(cr);
-	draw_relief(cr, x, marker_y, MARKER_SIZE, MARKER_SIZE, 0);
+	draw_relief(cr, x, marker_y, MARKER_SIZE, MARKER_SIZE, 0, base);
 }
 
 static void
@@ -1080,8 +1112,8 @@ do_render(const struct state *st)
 	desired_w = PAD * 2 + layout_cols * button_w;
 	apply_width_limit(max_w, &desired_w);
 	win_w	  = desired_w;
-	layout_rows_for_width(win_w, column_major);
-	win_h = PAD * 2 + layout_rows * ROW_H;
+	layout_rows_for_width(win_w, column_major, st);
+	win_h = PAD * 2 + layout_rows * st->theme.height;
 	if (max_h > 0 && win_h > max_h)
 		win_h = max_h;
 
@@ -1092,21 +1124,35 @@ do_render(const struct state *st)
 	cs = cairo_image_surface_create_for_data(px, CAIRO_FORMAT_ARGB32,
 	    win_w, win_h, win_w * 4);
 	cr = cairo_create(cs);
-	PangoFontDescription *font = pango_font_description_new();
-	pango_font_description_set_family(font, "Sans");
-	pango_font_description_set_absolute_size(font, 12 * PANGO_SCALE);
-
-	cairo_set_source_rgb(cr, 0.10, 0.10, 0.11);
+	PangoFontDescription *font = pango_font_description_from_string(st->theme.font);
+	
+	if (st->theme.has_inactive_bg) 
+		cairo_set_source_rgb(cr, st->theme.inactive_bg[0],
+		 st->theme.inactive_bg[1], st->theme.inactive_bg[2]);
+	else
+		cairo_set_source_rgb(cr, 0.10, 0.10, 0.11);
 	cairo_paint(cr);
-
+	
+	float darker[] = {0.34, 0.25, 0.28, 1};
+	if (st->theme.has_inactive_bg)
+		cow_colour_darken(darker, st->theme.inactive_bg);
 	if (n_rows == 0) {
-		cairo_set_source_rgb(cr, 0.26, 0.26, 0.29);
-		cairo_rectangle(cr, PAD, PAD, win_w - PAD * 2, ROW_H);
+		if (st->theme.has_active_bg) 
+			cairo_set_source_rgb(cr, st->theme.active_bg[0],
+			 st->theme.active_bg[1], st->theme.active_bg[2]);
+		else
+			cairo_set_source_rgb(cr, 0.26, 0.26, 0.29);
+		cairo_rectangle(cr, PAD, PAD, win_w - PAD * 2, st->theme.height);
 		cairo_fill(cr);
-		draw_relief(cr, PAD, PAD, win_w - PAD * 2, ROW_H, 0);
-		cairo_set_source_rgb(cr, 0.88, 0.88, 0.90);
+		draw_relief(cr, PAD, PAD, win_w - PAD * 2, st->theme.height, 0 ,
+			st->theme.active_bg);
+		if (st->theme.has_active_fg) 
+			cairo_set_source_rgb(cr, st->theme.active_fg[0],
+			 st->theme.active_fg[1], st->theme.active_fg[2]);
+		else
+			cairo_set_source_rgb(cr, 0.88, 0.88, 0.90);
 		cow_text_render(cr, font, PAD + TEXT_PAD, PAD,
-		    win_w - 2 * (PAD + TEXT_PAD), ROW_H, "cowiconman",
+		    win_w - 2 * (PAD + TEXT_PAD), st->theme.height, "cowiconman",
 		    PANGO_ALIGN_LEFT, NULL);
 	} else {
 		for (int i = 0; i < n_rows; i++) {
@@ -1115,16 +1161,28 @@ do_render(const struct state *st)
 			int	    label_x = r->x + TEXT_PAD;
 			int	    label_w = r->w - 2 * TEXT_PAD;
 
-			if (r->focused)
-				cairo_set_source_rgb(cr, 0.25, 0.38, 0.64);
-			else if (r->all_iconified)
-				cairo_set_source_rgb(cr, 0.34, 0.25, 0.28);
-			else
-				cairo_set_source_rgb(cr, 0.28, 0.28, 0.31);
+			if (r->focused) {
+				if (st->theme.has_active_bg)
+					cairo_set_source_rgb(cr, st->theme.active_bg[0],
+					st->theme.active_bg[1], st->theme.active_bg[2]);
+				else
+					cairo_set_source_rgb(cr, 0.25, 0.38, 0.64);
+			}
+			else if (r->all_iconified) {	
+				cairo_set_source_rgb(cr, darker[0], darker[1],
+				darker[2]);
+			} else {
+				if (st->theme.has_inactive_bg) 
+					cairo_set_source_rgb(cr, st->theme.inactive_bg[0],
+					 st->theme.inactive_bg[1], st->theme.inactive_bg[2]);
+				else
+					cairo_set_source_rgb(cr, 0.28, 0.28, 0.31);
+			}
 			cairo_rectangle(cr, r->x, r->y, r->w - 1, r->h - 1);
 			cairo_fill(cr);
 			draw_relief(cr, r->x, r->y, r->w - 1, r->h - 1,
-			    sunken);
+			    sunken, r->focused ?
+				st->theme.active_bg : st->theme.inactive_bg);
 
 			if (show_icons) {
 				draw_icon(cr, r->win.icon, label_x,
@@ -1134,11 +1192,23 @@ do_render(const struct state *st)
 			}
 			if (iconified_marker) {
 				draw_iconified_marker(cr, &r->win, label_x, r->y,
-				    r->h);
+				    r->h, darker);
 				label_x += MARKER_SIZE + MARKER_GAP;
 				label_w -= MARKER_SIZE + MARKER_GAP;
 			}
-			cairo_set_source_rgb(cr, 0.94, 0.94, 0.96);
+			if (r->focused) {
+				if (st->theme.has_active_fg) 
+					cairo_set_source_rgb(cr, st->theme.active_fg[0], 
+					st->theme.active_fg[1], st->theme.active_fg[2]);
+				else
+					cairo_set_source_rgb(cr, 0.94, 0.94, 0.96);
+			} else {
+				if (st->theme.has_inactive_fg) 
+					cairo_set_source_rgb(cr, st->theme.inactive_fg[0],
+					 st->theme.inactive_fg[1], st->theme.inactive_fg[2]);
+				else
+					cairo_set_source_rgb(cr, 0.94, 0.94, 0.96);
+			}
 			cow_text_render(cr, font, label_x, r->y, label_w, r->h,
 			    r->label, PANGO_ALIGN_LEFT, NULL);
 		}
@@ -1357,6 +1427,27 @@ parse_status(const char *json)
 		n++;
 	}
 	st.n_outs = n;
+	
+	cJSON *theme = cJSON_GetObjectItem(root, "theme");
+	if (cJSON_IsObject(theme)) {
+		st.theme.has_background = parse_theme_colour(theme,
+		    "background", st.theme.background);
+		st.theme.has_active_bg = parse_theme_colour(theme,
+		    "active_bg", st.theme.active_bg);
+		st.theme.has_inactive_bg = parse_theme_colour(theme,
+		    "inactive_bg", st.theme.inactive_bg);
+		st.theme.has_active_fg = parse_theme_colour(theme,
+		    "active_fg", st.theme.active_fg);
+		st.theme.has_inactive_fg = parse_theme_colour(theme,
+		    "inactive_fg", st.theme.inactive_fg);
+		copy_jstr(st.theme.font, sizeof(st.theme.font), theme, "font");
+		if (strlen(st.theme.font) == 0) {
+			strcpy(st.theme.font, "Sans 12");
+		}
+		st.theme.height = get_jnum(theme, "titlebar_height");
+		if (st.theme.height == 0)
+			st.theme.height = ROW_H;
+	}
 
 	pthread_mutex_lock(&lock);
 	st.n_wins = global_state.n_wins;

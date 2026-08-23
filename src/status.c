@@ -332,6 +332,8 @@ status_add_theme(cJSON *root)
 	status_add_colour(theme, "inactive_bg", inactive_bg);
 	status_add_colour(theme, "active_fg", active_fg);
 	status_add_colour(theme, "inactive_fg", inactive_fg);
+	cJSON_AddStringToObject(theme, "font", cow_config->font_name);
+	cJSON_AddNumberToObject(theme, "titlebar_height", cow_config->titlebar.height);
 }
 
 void
