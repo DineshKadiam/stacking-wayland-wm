@@ -13,7 +13,8 @@ cowiconman - CoW Icon Manager
 [*--match* _FIELD_=_TEXT_]++
 [*--format* _FMT_]++
 [*--rows* _N_] [*--cols* _N_] [*--anchor* *none*|*top*|*bottom*]++
-[*--button-width* _N_] [*--min-button-width* _N_]++
+[*--button-width* _N_] [*--button-height* _N_]++
+[*--min-button-width* _N_]++
 [*--icons*] [*--icon-size* _N_]++
 [*--iconified-marker*] [*--show-self*]
 
@@ -27,6 +28,10 @@ and page filter together show only windows matching all three.
 The window size follows the visible button grid, growing or shrinking as
 windows enter or leave the list.  It is capped to the selected output's usable
 area.
+
+# APPEARANCE
+
+Focused and unfocused rows use the active and inactive titlebar colours.
 
 # OPTIONS
 
@@ -71,6 +76,9 @@ area.
 
 *--button-width* _N_
 	Preferred button width in pixels.  The default is 300.
+
+*--button-height* _N_
+	Override the row height derived from cow's current titlebar theme.
 
 *--min-button-width* _N_
 	Minimum button width used when the preferred grid would exceed the

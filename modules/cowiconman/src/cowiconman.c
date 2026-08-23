@@ -35,6 +35,8 @@
 #include "cow/image_cache.h"
 #include "cow/module.h"
 #include "cow/module_cursor.h"
+#include "cow/module_draw.h"
+#include "cow/module_theme.h"
 #include "cow/text.h"
 #include "cow/util.h"
 #include "xdg-shell-client-protocol.h"
@@ -99,14 +101,16 @@ struct match_rule {
 };
 
 struct output {
-	char name[MAX_NAME];
-	int  number;
-	int  x, y, w, h;
-	int  usable_x, usable_y, usable_w, usable_h;
-	int  current;
-	int  current_desk;
-	int  page_vx, page_vy;
-	int  output_w, output_h;
+	char  name[MAX_NAME];
+	int   number;
+	int   x, y, w, h;
+	int   usable_x, usable_y, usable_w, usable_h;
+	int   current;
+	int   current_desk;
+	int   page_vx, page_vy;
+	int   output_w, output_h;
+	bool  has_background;
+	float background[4];
 };
 
 struct win {
@@ -127,21 +131,26 @@ struct state {
 	int	      n_outs;
 	struct win    wins[MAX_WINS];
 	int	      n_wins;
-	struct {
-		int   has_background;
-		int   has_active_bg;
-		int   has_inactive_bg;
-		int   has_active_fg;
-		int   has_inactive_fg;
-		float background[4];
-		float active_bg[4];
-		float inactive_bg[4];
-		float active_fg[4];
-		float inactive_fg[4];
-		char font[MAX_NAME];
-		int height;
-	} theme;
+	struct cow_module_theme theme;
+	struct cow_module_theme titlebar_theme;
 };
+
+struct palette {
+	float background[4];
+	float active_bg[4];
+	float inactive_bg[4];
+	float active_fg[4];
+	float inactive_fg[4];
+	float iconified_bg[4];
+	const char *font;
+	int height;
+};
+
+static const float default_background[4] = { 0.10, 0.10, 0.11, 1.0 };
+static const float default_active_bg[4] = { 0.25, 0.38, 0.64, 1.0 };
+static const float default_inactive_bg[4] = { 0.28, 0.28, 0.31, 1.0 };
+static const float default_active_fg[4] = { 0.94, 0.94, 0.96, 1.0 };
+static const float default_inactive_fg[4] = { 0.94, 0.94, 0.96, 1.0 };
 
 struct row {
 	struct win win;
@@ -213,6 +222,7 @@ static int		 opt_rows;
 static int		 opt_cols;
 static int		 button_w = DEFAULT_BUTTON_W;
 static int		 min_button_w = DEFAULT_MIN_BUTTON_W;
+static int		 button_h;
 static int		 iconified_marker;
 static int		 show_icons;
 static int		 icon_size = DEFAULT_ICON_SIZE;
@@ -239,7 +249,8 @@ usage(void)
 	    "                  [--format FMT]\n"
 	    "                  [--rows N] [--cols N]\n"
 	    "                  [--anchor none|top|bottom]\n"
-	    "                  [--button-width N] [--min-button-width N]\n"
+	    "                  [--button-width N] [--button-height N]\n"
+	    "                  [--min-button-width N]\n"
 	    "                  [--icons] [--icon-size N]\n"
 	    "                  [--iconified-marker]\n"
 	    "                  [--show-self] [-h]\n");
@@ -442,15 +453,6 @@ parse_positive(const char *s, int *out)
 		return 0;
 	*out = n;
 	return 1;
-}
-
-static int
-parse_theme_colour(cJSON *theme, const char *key, float out[4])
-{
-	cJSON *v = cJSON_GetObjectItem(theme, key);
-	if (!cJSON_IsString(v))
-		return 0;
-	return cow_colour_parse(v->valuestring, out) ? 1 : 0;
 }
 
 static int
@@ -777,6 +779,61 @@ single_row_anchor(void)
 }
 
 static void
+copy_colour(float dst[4], const float src[4])
+{
+	memcpy(dst, src, sizeof(float) * 4);
+}
+
+static const float *
+theme_colour(bool primary_set, const float primary[4], bool fallback_set,
+    const float fallback[4], const float defaults[4])
+{
+	if (primary_set)
+		return (primary);
+	if (fallback_set)
+		return (fallback);
+	return (defaults);
+}
+
+static void
+resolve_palette(const struct state *st, const struct output *output,
+    struct palette *palette)
+{
+	const struct cow_module_theme *generic = &st->theme;
+	const struct cow_module_theme *titlebar = &st->titlebar_theme;
+
+	const float *inactive_bg = theme_colour(titlebar->has_inactive_bg,
+	    titlebar->inactive_bg, generic->has_inactive_bg,
+	    generic->inactive_bg, default_inactive_bg);
+	if (output != NULL && output->has_background)
+		copy_colour(palette->background, output->background);
+	else
+		copy_colour(palette->background, generic->has_background ?
+		    generic->background : default_background);
+	copy_colour(palette->active_bg, theme_colour(titlebar->has_active_bg,
+	    titlebar->active_bg, generic->has_active_bg, generic->active_bg,
+	    default_active_bg));
+	copy_colour(palette->inactive_bg, inactive_bg);
+	copy_colour(palette->active_fg, theme_colour(titlebar->has_active_fg,
+	    titlebar->active_fg, generic->has_active_fg, generic->active_fg,
+	    default_active_fg));
+	copy_colour(palette->inactive_fg,
+	    theme_colour(titlebar->has_inactive_fg, titlebar->inactive_fg,
+		generic->has_inactive_fg, generic->inactive_fg,
+		default_inactive_fg));
+	cow_colour_darken(palette->iconified_bg, palette->inactive_bg);
+	palette->font = titlebar->has_font ? titlebar->font :
+	    generic->has_font ? generic->font : "Sans 12";
+	palette->height = titlebar->has_height ? titlebar->height : ROW_H;
+	if (button_h > 0)
+		palette->height = button_h;
+	if (show_icons && palette->height < icon_size + 4)
+		palette->height = icon_size + 4;
+	if (iconified_marker && palette->height < MARKER_SIZE + 4)
+		palette->height = MARKER_SIZE + 4;
+}
+
+static void
 clamp_scroll(void)
 {
 	int max_first;
@@ -876,7 +933,7 @@ apply_width_limit(int max_w, int *desired_w)
 }
 
 static void
-layout_rows_for_width(int width, int column_major, const struct state *st)
+layout_rows_for_width(int width, int column_major, int row_height)
 {
 	int cell_w = (width - PAD * 2) / layout_cols;
 	if (cell_w < 1)
@@ -892,9 +949,9 @@ layout_rows_for_width(int width, int column_major, const struct state *st)
 			row = i / layout_cols;
 		}
 		rows[i].x = PAD + col * cell_w;
-		rows[i].y = PAD + row * st->theme.height;
+		rows[i].y = PAD + row * row_height;
 		rows[i].w = cell_w;
-		rows[i].h = st->theme.height;
+		rows[i].h = row_height;
 		if (row + 1 > layout_rows)
 			layout_rows = row + 1;
 	}
@@ -1024,47 +1081,16 @@ shm_buf(int w, int h, void **px)
 }
 
 static void
-draw_relief(cairo_t *cr, double x, double y, double w, double h, 
-	int sunken, const float *base)
-{
-	
-	float dk[4], lt[4];
-	cow_colour_darken(dk, base);
-	cow_colour_lighten(lt, base);
-	
-	
-	
-	if (sunken)
-		cairo_set_source_rgb(cr, dk[0], dk[1], dk[2]);
-	else
-		cairo_set_source_rgb(cr, lt[0], lt[1], lt[2]);
-	cairo_move_to(cr, x + 0.5, y + h - 0.5);
-	cairo_line_to(cr, x + 0.5, y + 0.5);
-	cairo_line_to(cr, x + w - 0.5, y + 0.5);
-	cairo_stroke(cr);
-
-	if (sunken)
-		cairo_set_source_rgb(cr, lt[0], lt[1], lt[2]);
-	else
-		cairo_set_source_rgb(cr, dk[0], dk[1], dk[2]);
-	cairo_move_to(cr, x + w - 0.5, y + 0.5);
-	cairo_line_to(cr, x + w - 0.5, y + h - 0.5);
-	cairo_line_to(cr, x + 0.5, y + h - 0.5);
-	cairo_stroke(cr);
-}
-
-static void
 draw_iconified_marker(cairo_t *cr, const struct win *win, double x,
-    double y, double h, const float * base)
+    double y, double h, const float base[4])
 {
 	double marker_y = y + (h - MARKER_SIZE) / 2.0;
 
 	if (!win->iconified)
 		return;
-	cairo_set_source_rgb(cr, base[0], base[1], base[2]);
-	cairo_rectangle(cr, x, marker_y, MARKER_SIZE, MARKER_SIZE);
-	cairo_fill(cr);
-	draw_relief(cr, x, marker_y, MARKER_SIZE, MARKER_SIZE, 0, base);
+	cow_module_cairo_fill(cr, base, x, marker_y, MARKER_SIZE, MARKER_SIZE);
+	cow_module_cairo_relief(cr, x, marker_y, MARKER_SIZE, MARKER_SIZE,
+	    false, base);
 }
 
 static void
@@ -1099,11 +1125,13 @@ do_render(const struct state *st)
 	int		 column_major;
 	int		 desired_w;
 	const struct output *out;
+	struct palette	 palette;
 	int		 max_w = 0, max_h = 0;
 
 	collect_rows(st, &column_major);
 
 	out = sizing_output(st);
+	resolve_palette(st, out, &palette);
 	if (out != NULL) {
 		max_w = out->usable_w > 0 ? out->usable_w : out->w;
 		max_h = out->usable_h > 0 ? out->usable_h : out->h;
@@ -1112,8 +1140,8 @@ do_render(const struct state *st)
 	desired_w = PAD * 2 + layout_cols * button_w;
 	apply_width_limit(max_w, &desired_w);
 	win_w	  = desired_w;
-	layout_rows_for_width(win_w, column_major, st);
-	win_h = PAD * 2 + layout_rows * st->theme.height;
+	layout_rows_for_width(win_w, column_major, palette.height);
+	win_h = PAD * 2 + layout_rows * palette.height;
 	if (max_h > 0 && win_h > max_h)
 		win_h = max_h;
 
@@ -1124,65 +1152,35 @@ do_render(const struct state *st)
 	cs = cairo_image_surface_create_for_data(px, CAIRO_FORMAT_ARGB32,
 	    win_w, win_h, win_w * 4);
 	cr = cairo_create(cs);
-	PangoFontDescription *font = pango_font_description_from_string(st->theme.font);
-	
-	if (st->theme.has_inactive_bg) 
-		cairo_set_source_rgb(cr, st->theme.inactive_bg[0],
-		 st->theme.inactive_bg[1], st->theme.inactive_bg[2]);
-	else
-		cairo_set_source_rgb(cr, 0.10, 0.10, 0.11);
-	cairo_paint(cr);
-	
-	float darker[] = {0.34, 0.25, 0.28, 1};
-	if (st->theme.has_inactive_bg)
-		cow_colour_darken(darker, st->theme.inactive_bg);
+	PangoFontDescription *font =
+	    pango_font_description_from_string(palette.font);
+	cow_module_cairo_fill(cr, palette.background, 0, 0, win_w, win_h);
+
 	if (n_rows == 0) {
-		if (st->theme.has_active_bg) 
-			cairo_set_source_rgb(cr, st->theme.active_bg[0],
-			 st->theme.active_bg[1], st->theme.active_bg[2]);
-		else
-			cairo_set_source_rgb(cr, 0.26, 0.26, 0.29);
-		cairo_rectangle(cr, PAD, PAD, win_w - PAD * 2, st->theme.height);
-		cairo_fill(cr);
-		draw_relief(cr, PAD, PAD, win_w - PAD * 2, st->theme.height, 0 ,
-			st->theme.active_bg);
-		if (st->theme.has_active_fg) 
-			cairo_set_source_rgb(cr, st->theme.active_fg[0],
-			 st->theme.active_fg[1], st->theme.active_fg[2]);
-		else
-			cairo_set_source_rgb(cr, 0.88, 0.88, 0.90);
+		cow_module_cairo_fill(cr, palette.active_bg, PAD, PAD,
+		    win_w - PAD * 2, palette.height);
+		cow_module_cairo_relief(cr, PAD, PAD, win_w - PAD * 2,
+		    palette.height, false, palette.active_bg);
+		cow_module_cairo_set_source(cr, palette.active_fg);
 		cow_text_render(cr, font, PAD + TEXT_PAD, PAD,
-		    win_w - 2 * (PAD + TEXT_PAD), st->theme.height, "cowiconman",
+		    win_w - 2 * (PAD + TEXT_PAD), palette.height, "cowiconman",
 		    PANGO_ALIGN_LEFT, NULL);
 	} else {
 		for (int i = 0; i < n_rows; i++) {
 			struct row *r = &rows[i];
-			int	    sunken = r->focused || r->any_iconified;
+			bool	    sunken = r->focused || r->any_iconified;
 			int	    label_x = r->x + TEXT_PAD;
 			int	    label_w = r->w - 2 * TEXT_PAD;
+			const float *bg = r->focused ? palette.active_bg :
+			    r->all_iconified ? palette.iconified_bg :
+			    palette.inactive_bg;
+			const float *fg = r->focused ? palette.active_fg :
+			    palette.inactive_fg;
 
-			if (r->focused) {
-				if (st->theme.has_active_bg)
-					cairo_set_source_rgb(cr, st->theme.active_bg[0],
-					st->theme.active_bg[1], st->theme.active_bg[2]);
-				else
-					cairo_set_source_rgb(cr, 0.25, 0.38, 0.64);
-			}
-			else if (r->all_iconified) {	
-				cairo_set_source_rgb(cr, darker[0], darker[1],
-				darker[2]);
-			} else {
-				if (st->theme.has_inactive_bg) 
-					cairo_set_source_rgb(cr, st->theme.inactive_bg[0],
-					 st->theme.inactive_bg[1], st->theme.inactive_bg[2]);
-				else
-					cairo_set_source_rgb(cr, 0.28, 0.28, 0.31);
-			}
-			cairo_rectangle(cr, r->x, r->y, r->w - 1, r->h - 1);
-			cairo_fill(cr);
-			draw_relief(cr, r->x, r->y, r->w - 1, r->h - 1,
-			    sunken, r->focused ?
-				st->theme.active_bg : st->theme.inactive_bg);
+			cow_module_cairo_fill(cr, bg, r->x, r->y, r->w - 1,
+			    r->h - 1);
+			cow_module_cairo_relief(cr, r->x, r->y, r->w - 1,
+			    r->h - 1, sunken, bg);
 
 			if (show_icons) {
 				draw_icon(cr, r->win.icon, label_x,
@@ -1192,23 +1190,11 @@ do_render(const struct state *st)
 			}
 			if (iconified_marker) {
 				draw_iconified_marker(cr, &r->win, label_x, r->y,
-				    r->h, darker);
+				    r->h, palette.iconified_bg);
 				label_x += MARKER_SIZE + MARKER_GAP;
 				label_w -= MARKER_SIZE + MARKER_GAP;
 			}
-			if (r->focused) {
-				if (st->theme.has_active_fg) 
-					cairo_set_source_rgb(cr, st->theme.active_fg[0], 
-					st->theme.active_fg[1], st->theme.active_fg[2]);
-				else
-					cairo_set_source_rgb(cr, 0.94, 0.94, 0.96);
-			} else {
-				if (st->theme.has_inactive_fg) 
-					cairo_set_source_rgb(cr, st->theme.inactive_fg[0],
-					 st->theme.inactive_fg[1], st->theme.inactive_fg[2]);
-				else
-					cairo_set_source_rgb(cr, 0.94, 0.94, 0.96);
-			}
+			cow_module_cairo_set_source(cr, fg);
 			cow_text_render(cr, font, label_x, r->y, label_w, r->h,
 			    r->label, PANGO_ALIGN_LEFT, NULL);
 		}
@@ -1424,29 +1410,22 @@ parse_status(const char *json)
 			st.outs[n].usable_w = get_jnum(usable, "width");
 			st.outs[n].usable_h = get_jnum(usable, "height");
 		}
+		struct cow_module_theme output_theme;
+		(void)cow_module_theme_parse(out, &output_theme);
+		st.outs[n].has_background = output_theme.has_background;
+		if (output_theme.has_background) {
+			copy_colour(st.outs[n].background,
+			    output_theme.background);
+		}
 		n++;
 	}
 	st.n_outs = n;
-	
+
 	cJSON *theme = cJSON_GetObjectItem(root, "theme");
+	(void)cow_module_theme_parse(theme, &st.theme);
 	if (cJSON_IsObject(theme)) {
-		st.theme.has_background = parse_theme_colour(theme,
-		    "background", st.theme.background);
-		st.theme.has_active_bg = parse_theme_colour(theme,
-		    "active_bg", st.theme.active_bg);
-		st.theme.has_inactive_bg = parse_theme_colour(theme,
-		    "inactive_bg", st.theme.inactive_bg);
-		st.theme.has_active_fg = parse_theme_colour(theme,
-		    "active_fg", st.theme.active_fg);
-		st.theme.has_inactive_fg = parse_theme_colour(theme,
-		    "inactive_fg", st.theme.inactive_fg);
-		copy_jstr(st.theme.font, sizeof(st.theme.font), theme, "font");
-		if (strlen(st.theme.font) == 0) {
-			strcpy(st.theme.font, "Sans 12");
-		}
-		st.theme.height = get_jnum(theme, "titlebar_height");
-		if (st.theme.height == 0)
-			st.theme.height = ROW_H;
+		cJSON *titlebar = cJSON_GetObjectItem(theme, "titlebar");
+		(void)cow_module_theme_parse(titlebar, &st.titlebar_theme);
 	}
 
 	pthread_mutex_lock(&lock);
@@ -1892,6 +1871,7 @@ parse_args(int argc, char **argv)
 		{ "cols",      required_argument, NULL, 'c' },
 		{ "anchor",    required_argument, NULL, 'a' },
 		{ "button-width", required_argument, NULL, 'b' },
+		{ "button-height", required_argument, NULL, 'B' },
 		{ "min-button-width", required_argument, NULL, 'm' },
 		{ "icons",     no_argument,       NULL, 'i' },
 		{ "icon-size", required_argument, NULL, 'z' },
@@ -1944,6 +1924,10 @@ parse_args(int argc, char **argv)
 			break;
 		case 'b':
 			if (!parse_positive(optarg, &button_w))
+				return 0;
+			break;
+		case 'B':
+			if (!parse_positive(optarg, &button_h))
 				return 0;
 			break;
 		case 'm':

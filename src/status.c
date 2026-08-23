@@ -30,12 +30,14 @@
 
 #include "cow/compat.h"
 #include "cow/config.h"
+#include "cow/decoration.h"
 #include "cow/desk_ops.h"
 #include "cow/event.h"
 #include "cow/keyboard_layout.h"
 #include "cow/memory.h"
 #include "cow/module_protocol.h"
 #include "cow/output.h"
+#include "cow/titlebar.h"
 #include "cow/util.h"
 #include "cow/view.h"
 #include "cow/wm.h"
@@ -332,8 +334,28 @@ status_add_theme(cJSON *root)
 	status_add_colour(theme, "inactive_bg", inactive_bg);
 	status_add_colour(theme, "active_fg", active_fg);
 	status_add_colour(theme, "inactive_fg", inactive_fg);
-	cJSON_AddStringToObject(theme, "font", cow_config->font_name);
-	cJSON_AddNumberToObject(theme, "titlebar_height", cow_config->titlebar.height);
+
+	cJSON *titlebar = cJSON_AddObjectToObject(theme, "titlebar");
+	if (titlebar == NULL)
+		return;
+	status_add_colour(titlebar, "active_bg",
+	    cow_config->titlebar.active_colour);
+	status_add_colour(titlebar, "inactive_bg",
+	    cow_config->titlebar.inactive_colour);
+	status_add_colour(titlebar, "active_fg",
+	    cow_config->titlebar.fg_active);
+	status_add_colour(titlebar, "inactive_fg",
+	    cow_config->titlebar.fg_inactive);
+	const char *font = cow_config->font_name != NULL ?
+	    cow_config->font_name : "monospace 10";
+	cJSON_AddStringToObject(titlebar, "font", font);
+
+	int height = cow_config->titlebar.height;
+	if (height == 0) {
+		height = cow_titlebar_compute_thickness(
+		    cow_decoration_titlebar_font());
+	}
+	cJSON_AddNumberToObject(titlebar, "height", height);
 }
 
 void
