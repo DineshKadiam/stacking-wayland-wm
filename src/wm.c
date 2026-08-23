@@ -116,6 +116,7 @@ static void manage_store_click(struct cow_seat *, struct cow_view *,
     enum cow_dec_region, struct timespec *, int);
 static bool manage_titlebar_button_press(struct cow_seat *, struct cow_view *,
     int, int);
+static void manage_titlebar_button_raw_press(struct cow_seat *);
 static void manage_titlebar_button_pending(struct cow_seat *);
 static int  manage_next_button_click_ms(void);
 static struct cow_view *manage_container_drag_target(struct cow_seat *);
@@ -610,6 +611,9 @@ manage_titlebar_button_release(struct cow_seat *seat)
 	if (!seat->op_released ||
 	    seat->titlebar_press != COW_TITLEBAR_PRESS_BUTTON)
 		return;
+	/* Focus and raise the interacted window before running its action. */
+	if (seat->consumed_titlebar_button_interaction == seat->pressed_view)
+		return;
 
 	struct cow_view *view = seat->pressed_view;
 	bool click = false;
@@ -624,8 +628,10 @@ manage_titlebar_button_release(struct cow_seat *seat)
 		view->dec.dirty	     = true;
 	}
 
-	river_seat_v1_op_end(seat->river_seat);
-	seat->op_in_progress = false;
+	if (seat->op_in_progress) {
+		river_seat_v1_op_end(seat->river_seat);
+		seat->op_in_progress = false;
+	}
 	seat->op_released    = false;
 	seat->titlebar_press = COW_TITLEBAR_PRESS_NONE;
 	seat->pressed_view   = NULL;
@@ -787,8 +793,30 @@ manage_titlebar_button_press(struct cow_seat *seat, struct cow_view *view,
 	cow_pointer_cursor_hold_start();
 	river_seat_v1_op_start_pointer(seat->river_seat);
 	seat->op_in_progress = true;
-	seat->op_released    = false;
+	seat->op_released = false;
 	return (true);
+}
+
+static void
+manage_titlebar_button_raw_press(struct cow_seat *seat)
+{
+	struct cow_view *view = seat->pending_titlebar_button_press_view;
+	if (view == NULL)
+		return;
+
+	int idx = seat->pending_titlebar_button_press_idx;
+	bool released = seat->pending_titlebar_button_release;
+	seat->pending_titlebar_button_press_view = NULL;
+	seat->pending_titlebar_button_release = false;
+	if (view->closed)
+		return;
+
+	view->pressed_button = idx;
+	view->dec.dirty = true;
+	seat->titlebar_press = COW_TITLEBAR_PRESS_BUTTON;
+	seat->pressed_button_idx = idx;
+	seat->pressed_view = view;
+	seat->op_released = released;
 }
 
 static enum cow_dec_region
@@ -855,8 +883,14 @@ manage_interacted_view(struct cow_seat *seat)
 	struct cow_view *view = seat->interacted_view;
 	cow_seat_focus_view(seat, view);
 	cow_wm.current_interaction_seat = seat;
-	if (seat->has_pointer_position && view->use_ssd && !seat->op_in_progress)
+	if (seat->consumed_titlebar_button_interaction == view) {
+		seat->consumed_titlebar_button_interaction = NULL;
+	} else if (seat->has_pointer_position && view->use_ssd &&
+	    !seat->op_in_progress) {
 		manage_decoration_click(seat, view);
+	}
+	/* Complete a raw button click after focusing and raising its window. */
+	manage_titlebar_button_release(seat);
 	seat->interacted_view = NULL;
 	cow_wm.current_interaction_seat = NULL;
 }
@@ -883,6 +917,7 @@ static void
 manage_process_seat(struct cow_seat *seat)
 {
 	manage_titlebar_button_pending(seat);
+	manage_titlebar_button_raw_press(seat);
 	/* A triggered binding may itself cause pointer focus, and therefore
 	 * binding context, to change.  Run it before context reconciliation so
 	 * disabling the old context cannot discard the pending action.

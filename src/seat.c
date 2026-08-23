@@ -421,6 +421,12 @@ cow_seat_forget_view(struct cow_seat *seat, struct cow_view *view)
 		seat->pointer_entered_view = NULL;
 	if (seat->interacted_view == view)
 		seat->interacted_view = NULL;
+	if (seat->consumed_titlebar_button_interaction == view)
+		seat->consumed_titlebar_button_interaction = NULL;
+	if (seat->pending_titlebar_button_press_view == view) {
+		seat->pending_titlebar_button_press_view = NULL;
+		seat->pending_titlebar_button_release = false;
+	}
 	if (seat->pending_icon_interaction == view)
 		seat->pending_icon_interaction = NULL;
 	if (seat->consumed_icon_interaction == view)

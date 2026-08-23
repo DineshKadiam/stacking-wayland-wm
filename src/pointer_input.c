@@ -21,6 +21,7 @@
 
 #include "cow/compat.h"
 #include "cow/decoration.h"
+#include "cow/input-event-codes.h"
 #include "cow/keybinding.h"
 #include "cow/menu.h"
 #include "cow/output.h"
@@ -37,6 +38,8 @@
 static struct wl_surface *decoration_cursor_surface;
 static struct cow_view   *decoration_cursor_view;
 static uint32_t		  decoration_cursor_serial;
+static int		  decoration_cursor_x;
+static int		  decoration_cursor_y;
 static struct cow_output *pan_cursor_output;
 static int		  pan_cursor_edge = -1;
 static bool		  cursor_held;
@@ -139,6 +142,15 @@ decoration_binding_context_at(struct cow_view *view, int x, int y, int cw,
 	return (COW_BIND_CONTEXT_WINDOW);
 }
 
+static int
+decoration_button_at(struct cow_view *view, int x, int y, int cw, int ch)
+{
+	int content_x, content_y, frame_w, frame_h;
+	cow_titlebar_frame_geometry(view, cw, ch, &frame_w, &frame_h,
+	    &content_x, &content_y);
+	return (cow_titlebar_button_at(view, x - content_x, y - content_y));
+}
+
 static bool
 decoration_cursor_update(struct wl_surface *surface, uint32_t serial,
     wl_fixed_t sx, wl_fixed_t sy)
@@ -157,6 +169,8 @@ decoration_cursor_update(struct wl_surface *surface, uint32_t serial,
 	cow_keybinding_set_context(cow_seat_primary(),
 	    decoration_binding_context_at(view, x, y, cw, ch), view);
 	decoration_cursor_view = view;
+	decoration_cursor_x = x;
+	decoration_cursor_y = y;
 
 	cow_wm_set_cursor_shape(decoration_cursor_shape_at(view, x, y, cw, ch),
 	    decoration_cursor_serial);
@@ -326,6 +340,8 @@ cow_pointer_cursor_reconcile_position(int x, int y)
 
 	decoration_cursor_surface = view->decoration_surface;
 	decoration_cursor_view = view;
+	decoration_cursor_x = dx;
+	decoration_cursor_y = dy;
 	cow_keybinding_set_context(cow_seat_primary(),
 	    decoration_binding_context_at(view, dx, dy, cw, ch), view);
 	cow_wm_set_cursor_shape(decoration_cursor_shape_at(view, dx, dy, cw,
@@ -523,6 +539,37 @@ pointer_button(void *data, struct wl_pointer *pointer, uint32_t serial,
 	(void)pointer;
 	(void)time;
 
+	struct cow_seat *seat = cow_seat_primary();
+	if (button == BTN_LEFT && seat != NULL) {
+		if (state == WL_POINTER_BUTTON_STATE_PRESSED &&
+		    decoration_cursor_view != NULL) {
+			struct cow_view *view = decoration_cursor_view;
+			int cw = view->content_width;
+			int ch = view->content_height;
+			if (view->sd != COW_SHADE_NONE)
+				cow_view_shaded_content_size(view, view->sd, &cw,
+				    &ch);
+			int idx = decoration_button_at(view,
+			    decoration_cursor_x, decoration_cursor_y, cw, ch);
+			if (idx >= 0) {
+				seat->pending_titlebar_button_press_view = view;
+				seat->pending_titlebar_button_press_idx = idx;
+				seat->pending_titlebar_button_release = false;
+				seat->consumed_titlebar_button_interaction =
+				    view;
+				cow_wm_request_manage_dirty();
+			}
+		} else if (state == WL_POINTER_BUTTON_STATE_RELEASED &&
+		    seat->pending_titlebar_button_press_view != NULL) {
+			seat->pending_titlebar_button_release = true;
+			cow_wm_request_manage_dirty();
+		} else if (state == WL_POINTER_BUTTON_STATE_RELEASED &&
+		    seat->titlebar_press == COW_TITLEBAR_PRESS_BUTTON) {
+			seat->op_released = true;
+			cow_wm_request_manage_dirty();
+		}
+	}
+
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED &&
 	    (decoration_cursor_surface != NULL || pan_cursor_output != NULL))
 		cow_pointer_cursor_hold_start();
@@ -530,12 +577,10 @@ pointer_button(void *data, struct wl_pointer *pointer, uint32_t serial,
 		cow_pointer_cursor_hold_end();
 
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED && cow_menu_is_open()) {
-		struct cow_seat *seat = cow_seat_primary();
 		if (seat != NULL)
 			seat->menu_click_pending = true;
 		cow_wm.needs_manage_dirty = true;
 	}
-	struct cow_seat *seat = cow_seat_primary();
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED && seat != NULL &&
 	    seat->binding_context == COW_BIND_CONTEXT_ICON &&
 	    seat->binding_context_view != NULL && !cow_menu_is_open()) {

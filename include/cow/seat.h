@@ -65,6 +65,10 @@ struct cow_seat {
 
 	/* The window that was last interacted with */
 	struct cow_view *interacted_view;
+	struct cow_view *consumed_titlebar_button_interaction;
+	struct cow_view *pending_titlebar_button_press_view;
+	int		 pending_titlebar_button_press_idx;
+	bool		 pending_titlebar_button_release;
 	struct cow_view *pending_icon_interaction;
 	struct cow_view *consumed_icon_interaction;
 
