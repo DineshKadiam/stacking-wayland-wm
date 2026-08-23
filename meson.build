@@ -423,7 +423,27 @@ cow_box_test = executable('test-cow-box',
     include_directories: include_dirs,
     dependencies: all_deps,
 )
+module_theme_test = executable('test-module-theme',
+    'tests/module-theme.c',
+    'src/module_theme.c',
+    'src/colour.c',
+    'src/memory.c',
+    'vendor/cJSON.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
 test('cow-box', cow_box_test)
+test('module-theme', module_theme_test)
+
+module_draw_test = executable('test-module-draw',
+    'tests/module-draw.c',
+    'src/module_draw.c',
+    'src/colour.c',
+    'src/memory.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('module-draw', module_draw_test)
 
 subdir('cowbar')
 subdir('modules/cowbuttons')

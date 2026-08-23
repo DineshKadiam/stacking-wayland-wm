@@ -40,6 +40,7 @@
 #include "cow/module.h"
 #include "cow/module_config.h"
 #include "cow/module_cursor.h"
+#include "cow/module_draw.h"
 #include "cow/text.h"
 #include "cow/vector.h"
 #include "xdg-shell-client-protocol.h"
@@ -2008,28 +2009,6 @@ text_alignment(enum text_justify justify)
 }
 
 static void
-draw_relief(cairo_t *cr, double x, double y, double w, double h, int sunken)
-{
-	if (sunken)
-		cairo_set_source_rgb(cr, 0.18, 0.18, 0.20);
-	else
-		cairo_set_source_rgb(cr, 0.78, 0.78, 0.80);
-	cairo_move_to(cr, x + 0.5, y + h - 0.5);
-	cairo_line_to(cr, x + 0.5, y + 0.5);
-	cairo_line_to(cr, x + w - 0.5, y + 0.5);
-	cairo_stroke(cr);
-
-	if (sunken)
-		cairo_set_source_rgb(cr, 0.78, 0.78, 0.80);
-	else
-		cairo_set_source_rgb(cr, 0.18, 0.18, 0.20);
-	cairo_move_to(cr, x + w - 0.5, y + 0.5);
-	cairo_line_to(cr, x + w - 0.5, y + h - 0.5);
-	cairo_line_to(cr, x + 0.5, y + h - 0.5);
-	cairo_stroke(cr);
-}
-
-static void
 buffer_release(void *data, __unused struct wl_buffer *buffer)
 {
 	struct shm_buffer *buf = data;
@@ -2110,24 +2089,6 @@ next_buffer(int w, int h)
 		return buf;
 	}
 	return NULL;
-}
-
-static void
-set_source_colour(cairo_t *cr, const float *colour)
-{
-	cairo_set_source_rgba(cr, colour[0], colour[1], colour[2], colour[3]);
-}
-
-static void
-fill_source_colour(cairo_t *cr, const float *colour, double x, double y,
-    double w, double h)
-{
-	cairo_save(cr);
-	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-	set_source_colour(cr, colour);
-	cairo_rectangle(cr, x, y, w, h);
-	cairo_fill(cr);
-	cairo_restore(cr);
 }
 
 static void
@@ -2389,7 +2350,7 @@ render(void)
 	pango_font_description_set_absolute_size(font, 12 * PANGO_SCALE);
 
 	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-	set_source_colour(cr, style.bg);
+	cow_module_cairo_set_source(cr, style.bg);
 	cairo_paint(cr);
 	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
@@ -2428,12 +2389,14 @@ render(void)
 			} else if (c != NULL && c->type == CELL_STATUS)
 				label = status_text(c, &st);
 
-			fill_source_colour(cr, c == NULL ? style.bg :
-			    cell_bg_colour(c, sunken), x, y, cell_w, cell_h);
+			const float *cell_bg = c == NULL ? style.bg :
+			    cell_bg_colour(c, sunken);
+			cow_module_cairo_fill(cr, cell_bg, x, y, cell_w, cell_h);
 			if (c != NULL)
 				draw_button_image(c, image, &pixbuf, x, y, cell_w,
 				    cell_h);
-			draw_relief(cr, x, y, cell_w, cell_h, sunken);
+			cow_module_cairo_relief(cr, x, y, cell_w, cell_h, sunken,
+			    cell_bg);
 
 			if (c != NULL && image != NULL &&
 			    cell_image_position(c) == IMAGE_LEFT) {
@@ -2444,7 +2407,7 @@ render(void)
 			    IMAGE_RIGHT) {
 				tw -= cell_image_size(c) + TEXT_PAD;
 			}
-			set_source_colour(cr, c == NULL ? style.fg :
+			cow_module_cairo_set_source(cr, c == NULL ? style.fg :
 			    cell_fg_colour(c, sunken));
 			cow_text_render(cr, font, tx, y, tw, cell_h, label,
 			    text_alignment(c == NULL ? style.justify :

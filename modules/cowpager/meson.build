@@ -25,6 +25,8 @@ executable('cowpager',
     '../../src/module.c',
     '../../src/module_cursor.c',
     '../../src/module_config.c',
+    '../../src/module_draw.c',
+    '../../src/module_theme.c',
     '../../src/util.c',
     '../../vendor/cJSON.c',
     include_directories: [

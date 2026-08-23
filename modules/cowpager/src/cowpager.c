@@ -53,6 +53,8 @@
 #include "cow/module.h"
 #include "cow/module_config.h"
 #include "cow/module_cursor.h"
+#include "cow/module_draw.h"
+#include "cow/module_theme.h"
 #include "xdg-shell-client-protocol.h"
 
 #define PROG "cowpager"
@@ -121,18 +123,7 @@ typedef struct {
 	int    n_wins;
 	char   desktop_config[32]; /* "global" | "per-output" | "Shared" */
 	char   user_output[64];
-	struct {
-		int   has_background;
-		int   has_active_bg;
-		int   has_inactive_bg;
-		int   has_active_fg;
-		int   has_inactive_fg;
-		float background[4];
-		float active_bg[4];
-		float inactive_bg[4];
-		float active_fg[4];
-		float inactive_fg[4];
-	} theme;
+	struct cow_module_theme theme;
 } state_t;
 
 struct pager_config {
@@ -303,24 +294,6 @@ pager_config_init(struct pager_config *pc)
 	config_colour(pc->label_fg, 0x000000);
 	config_colour(pc->label_inactive_fg, 0x000000);
 	config_colour(pc->window_focused_bg, 0xf7c733);
-}
-
-static void
-set_source_colour(cairo_t *cr, const float c[4])
-{
-	cairo_set_source_rgba(cr, c[0], c[1], c[2], c[3]);
-}
-
-static void
-fill_source_colour(cairo_t *cr, const float c[4], double x, double y,
-    double w, double h)
-{
-	cairo_save(cr);
-	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-	set_source_colour(cr, c);
-	cairo_rectangle(cr, x, y, w, h);
-	cairo_fill(cr);
-	cairo_restore(cr);
 }
 
 static void
@@ -1258,7 +1231,7 @@ fill_output_backgrounds(cairo_t *cr, const state_t *st, const canvas_t *cv,
 		if (aw <= 0.0 || ah <= 0.0)
 			continue;
 
-		fill_source_colour(cr, o->background, ax, ay, aw, ah);
+		cow_module_cairo_fill(cr, o->background, ax, ay, aw, ah);
 	}
 }
 
@@ -1317,7 +1290,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 				}
 			}
 
-			fill_source_colour(cr,
+			cow_module_cairo_fill(cr,
 			    is_cur ? cfg.page_active_bg : cfg.page_bg, cx, cy,
 			    cw, ch);
 			fill_output_backgrounds(cr, st, cv, cx, cy, cw, ch);
@@ -1687,11 +1660,11 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 	    L->mon_tab_h <= 0;
 
 	if (L->desk_label_h > 0) {
-		fill_source_colour(cr,
+		cow_module_cairo_fill(cr,
 		    desk_hilight ? cfg.label_active_bg : cfg.label_bg, dx,
 		    dy, L->cell_w, L->desk_label_h);
 
-		set_source_colour(cr, cfg.label_fg);
+		cow_module_cairo_set_source(cr, cfg.label_fg);
 		set_font(cr, L->desk_font_px, 1);
 
 		char nr_label[16];
@@ -1724,7 +1697,7 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 	for (int i = 0; i < n_tab; i++) {
 		double tx = dx + i * tw;
 		int active = cfg.label_highlight && tab[i]->current_desk == d->nr;
-		fill_source_colour(cr,
+		cow_module_cairo_fill(cr,
 		    active ? cfg.label_active_bg : cfg.label_bg, tx, tab_y,
 		    tw, L->mon_tab_h);
 
@@ -1752,9 +1725,9 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 		}
 
 		if (active)
-			set_source_colour(cr, cfg.label_fg);
+			cow_module_cairo_set_source(cr, cfg.label_fg);
 		else
-			set_source_colour(cr, cfg.label_inactive_fg);
+			cow_module_cairo_set_source(cr, cfg.label_inactive_fg);
 		draw_text_centered_clipped(cr, tx, tab_y, tw, L->mon_tab_h,
 		    tab_y + L->mon_tab_h - L->mon_tab_h * 0.22, name);
 	}
@@ -1851,7 +1824,7 @@ do_render(const state_t *st)
 
 	/* Outer background */
 	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-	set_source_colour(cr, cfg.background);
+	cow_module_cairo_set_source(cr, cfg.background);
 	cairo_paint(cr);
 	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
@@ -1888,7 +1861,7 @@ do_render(const state_t *st)
 		    d->nr == ref->current_desk;
 
 		/* Desk cell background */
-		fill_source_colour(cr, cfg.desk_bg, dx, dy, L.cell_w,
+		cow_module_cairo_fill(cr, cfg.desk_bg, dx, dy, L.cell_w,
 		    L.cell_h);
 
 		/* Chrome: desk label + monitor-label row. */
@@ -2951,15 +2924,6 @@ cp_host_output(void)
 	return NULL;
 }
 
-static int
-parse_theme_colour(cJSON *theme, const char *key, float out[4])
-{
-	cJSON *v = cJSON_GetObjectItem(theme, key);
-	if (!cJSON_IsString(v))
-		return 0;
-	return cow_colour_parse(v->valuestring, out) ? 1 : 0;
-}
-
 static void
 parse_status(const char *json)
 {
@@ -2979,18 +2943,7 @@ parse_status(const char *json)
 		    sizeof(st.desktop_config));
 
 	cJSON *theme = cJSON_GetObjectItem(root, "theme");
-	if (cJSON_IsObject(theme)) {
-		st.theme.has_background = parse_theme_colour(theme,
-		    "background", st.theme.background);
-		st.theme.has_active_bg = parse_theme_colour(theme,
-		    "active_bg", st.theme.active_bg);
-		st.theme.has_inactive_bg = parse_theme_colour(theme,
-		    "inactive_bg", st.theme.inactive_bg);
-		st.theme.has_active_fg = parse_theme_colour(theme,
-		    "active_fg", st.theme.active_fg);
-		st.theme.has_inactive_fg = parse_theme_colour(theme,
-		    "inactive_fg", st.theme.inactive_fg);
-	}
+	(void)cow_module_theme_parse(theme, &st.theme);
 
 	cJSON *outs = cJSON_GetObjectItem(root, "outputs");
 	cJSON *out;
@@ -3027,8 +2980,10 @@ parse_status(const char *json)
 		GN("output_h", output_h)
 #undef GN
 #undef GS
-		po->has_background = parse_theme_colour(out, "background",
-		    po->background);
+		cJSON *background = cJSON_GetObjectItem(out, "background");
+		po->has_background = cJSON_IsString(background) &&
+		    background->valuestring != NULL &&
+		    cow_colour_parse(background->valuestring, po->background);
 		cJSON *desks = cJSON_GetObjectItem(out, "desks");
 		cJSON *dk;
 		int    di = 0;
