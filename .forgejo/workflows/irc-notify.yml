@@ -1,13 +1,23 @@
 name: IRC Notifications
 
 on:
+  workflow_call:
+    inputs:
+      release_version:
+        description: Version of the release to announce
+        required: true
+        type: string
+      release_draft:
+        description: Whether the release is a draft
+        required: true
+        type: boolean
   issues:
     types: [opened, edited, closed, reopened]
   pull_request:
     types: [opened, edited, synchronize, closed, reopened]
   push:
     tags:
-      - 'v*'
+      - '[0-9]*'
 
 env:
   IRC_SERVER:  "irc.libera.chat:6697"
@@ -148,33 +158,47 @@ jobs:
           /tmp/notify-irc
         continue-on-error: true
 
-  tag_notify:
-    name: Tag IRC notification
+  tag_release_notify:
+    name: Tag/release IRC notification
     runs-on: codeberg-tiny
-    if: ${{ forgejo.event_name == 'push' }}
+    if: >-
+      ${{ forgejo.event_name == 'push' ||
+          inputs.release_version != '' }}
     timeout-minutes: 2
     steps:
       - name: Compose IRC message
         id: compose
         shell: bash
         env:
-          TAG:        ${{ forgejo.ref_name }}
+          TAG:        ${{ inputs.release_version || forgejo.ref_name }}
+          DRAFT:      ${{ inputs.release_draft }}
           ACTOR:      ${{ forgejo.actor }}
           REPO:       ${{ forgejo.repository }}
           SERVER_URL: ${{ forgejo.server_url }}
         run: |
           # mIRC colour/formatting codes
           BOLD=$'\x02'; RESET=$'\x0F'
-          YELLOW=$'\x0308'; PURPLE=$'\x0306'
+          GREY=$'\x0314'; YELLOW=$'\x0308'; PURPLE=$'\x0306'
 
           TAG_FMT="${BOLD}${YELLOW}${TAG}${RESET}"
           ACTOR_FMT="${PURPLE}${ACTOR}${RESET}"
           URL="${SERVER_URL}/${REPO}/releases/tag/${TAG}"
           URL_FMT="${BOLD}${URL}${RESET}"
 
-          printf 'message=TAG: cow %s tagged by @%s \xe2\x80\x94 %s\n' \
-            "$TAG_FMT" "$ACTOR_FMT" "$URL_FMT" \
-            >> "$FORGEJO_OUTPUT"
+          if [ -n "${{ inputs.release_version }}" ]; then
+            if [ "$DRAFT" = true ]; then
+              DRAFT_FMT=" ${GREY}[draft]${RESET}"
+            else
+              DRAFT_FMT=
+            fi
+            printf 'message=RELEASE:%s cow %s released by @%s \xe2\x80\x94 %s\n' \
+              "$DRAFT_FMT" "$TAG_FMT" "$ACTOR_FMT" "$URL_FMT" \
+              >> "$FORGEJO_OUTPUT"
+          else
+            printf 'message=TAG: cow %s tagged by @%s \xe2\x80\x94 %s\n' \
+              "$TAG_FMT" "$ACTOR_FMT" "$URL_FMT" \
+              >> "$FORGEJO_OUTPUT"
+          fi
 
       - name: Send IRC notification
         shell: bash

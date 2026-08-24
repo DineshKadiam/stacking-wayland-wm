@@ -1,0 +1,203 @@
+name: Create release
+
+on:
+  workflow_dispatch:
+    inputs:
+      next_version:
+        description: Version to begin developing after this release
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Prepare and publish release
+    if: ${{ forgejo.ref == 'refs/heads/main' }}
+    runs-on: codeberg-small
+    timeout-minutes: 5
+    outputs:
+      release_version: ${{ steps.validate.outputs.release_version }}
+    env:
+      RNA_VERSION: 1.7.3
+      RNA_SHA256: 3e7442dec237d092683b025521747c1a2ddb13613f79cafaeb558823ece34c7d
+      COW_RELEASE_TMP: /tmp/cow-release
+      RELEASE_DIR: dist/release
+      RELEASE_NOTES: dist/cow-release-notes.md
+
+    steps:
+      - name: Require release token
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo 'The RELEASE_TOKEN repository secret is not configured' >&2
+            exit 1
+          fi
+
+      - name: Check out main
+        uses: https://code.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          ref: main
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            bison \
+            build-essential \
+            curl \
+            flex \
+            jq \
+            libbsd-dev \
+            libcairo2-dev \
+            libevent-dev \
+            libpango1.0-dev \
+            libwayland-bin \
+            libwayland-dev \
+            libxkbcommon-dev \
+            meson \
+            ninja-build \
+            pkg-config \
+            scdoc \
+            wayland-protocols
+
+      - name: Install release-notes-assistant
+        run: |
+          mkdir -p "$COW_RELEASE_TMP"
+          assistant="${COW_RELEASE_TMP}/release-notes-assistant"
+          url="https://code.forgejo.org/forgejo/release-notes-assistant/releases/download/v${RNA_VERSION}/release-notes-assistant"
+          curl -fsSL -o "$assistant" "$url"
+          printf '%s  %s\n' "$RNA_SHA256" "$assistant" | sha256sum -c -
+          chmod +x "$assistant"
+
+      - name: Validate release versions
+        id: validate
+        env:
+          NEXT_VERSION: ${{ inputs.next_version }}
+        run: |
+          set -eu
+
+          release_version=$(sed -n 's/^VERSION=//p' \
+            tools/cow-version-str.sh)
+          release_state=$(sed -n 's/^COW_RELEASE=//p' \
+            tools/cow-version-str.sh)
+
+          if ! printf '%s\n' "$release_version" |
+            grep -Eq '^[0-9]+(\.[0-9]+){1,2}$'; then
+            echo "Invalid release version: $release_version" >&2
+            exit 1
+          fi
+          if ! printf '%s\n' "$NEXT_VERSION" |
+            grep -Eq '^[0-9]+(\.[0-9]+){1,2}$'; then
+            echo "Invalid next version: $NEXT_VERSION" >&2
+            exit 1
+          fi
+          if [ "$release_version" = "$NEXT_VERSION" ]; then
+            echo 'The release and next development versions must differ' >&2
+            exit 1
+          fi
+          if [ "$release_state" != no ]; then
+            echo 'tools/cow-version-str.sh already describes a release' >&2
+            exit 1
+          fi
+          if git show-ref --verify --quiet \
+            "refs/tags/${release_version}"; then
+            echo "Tag ${release_version} already exists" >&2
+            exit 1
+          fi
+          if [ "$(git rev-parse HEAD)" != \
+            "$(git rev-parse origin/main)" ]; then
+            echo 'The checkout is not at the tip of origin/main' >&2
+            exit 1
+          fi
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            echo 'The checkout is not clean' >&2
+            exit 1
+          fi
+
+          printf 'RELEASE_VERSION=%s\n' "$release_version" \
+            >> "$FORGEJO_ENV"
+          printf 'release_version=%s\n' "$release_version" \
+            >> "$FORGEJO_OUTPUT"
+          printf 'NEXT_VERSION=%s\n' "$NEXT_VERSION" >> "$FORGEJO_ENV"
+
+      - name: Generate release notes and changelog
+        env:
+          GITEA_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          tools/generate-changelog.sh "$RELEASE_VERSION" \
+            "$COW_RELEASE_TMP/release-notes-assistant" \
+            "$RELEASE_NOTES"
+          test -s "$RELEASE_NOTES"
+
+      - name: Create release commit and tag
+        id: release_commit
+        run: |
+          git config user.name 'Thomas Adam'
+          git config user.email 'thomas.adam22@gmail.com'
+          sed -i 's/^COW_RELEASE=.*/COW_RELEASE=yes/' \
+            tools/cow-version-str.sh
+          git add CHANGELOG.md tools/cow-version-str.sh
+          git commit -m "release: ${RELEASE_VERSION}"
+          release_commit=$(git rev-parse HEAD)
+          git tag -a -m "Release ${RELEASE_VERSION}" \
+            "$RELEASE_VERSION" "$release_commit"
+          printf 'release_commit=%s\n' "$release_commit" \
+            >> "$FORGEJO_OUTPUT"
+
+      - name: Build and test distribution archive
+        run: |
+          meson setup build --buildtype=release
+          meson compile -C build
+          meson test -C build --print-errorlogs
+          meson dist -C build --formats gztar
+          source_archive="build/meson-dist/cow-${RELEASE_VERSION}.tar.gz"
+          test -f "$source_archive"
+          mkdir -p "$RELEASE_DIR"
+          archive="${RELEASE_DIR}/$(basename "$source_archive")"
+          cp "$source_archive" "$archive"
+          archive_dir=$(dirname "$archive")
+          archive_name=$(basename "$archive")
+          (cd "$archive_dir" &&
+            sha256sum "$archive_name" > "${archive_name}.sha256")
+          printf 'RELEASE_ARCHIVE=%s\n' "$archive" >> "$FORGEJO_ENV"
+
+      - name: Start next development version
+        run: |
+          sed -i 's/^COW_RELEASE=.*/COW_RELEASE=no/' \
+            tools/cow-version-str.sh
+          sed -i "s/^VERSION=.*/VERSION=${NEXT_VERSION}/" \
+            tools/cow-version-str.sh
+          git add tools/cow-version-str.sh
+          git commit -m 'build: set next version'
+
+      - name: Push release commits and tag
+        run: |
+          git push --atomic origin HEAD:main \
+            "refs/tags/${RELEASE_VERSION}"
+
+      - name: Create Codeberg release and upload assets
+        uses: https://code.forgejo.org/actions/forgejo-release@98265452477dafb3f0f27ba9c462c90b18cb44fd
+        with:
+          direction: upload
+          tag: ${{ steps.validate.outputs.release_version }}
+          title: CoW ${{ steps.validate.outputs.release_version }}
+          sha: ${{ steps.release_commit.outputs.release_commit }}
+          release-dir: ${{ env.RELEASE_DIR }}
+          release-notes-file: ${{ env.RELEASE_NOTES }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+  # Announce only after the release and its assets have been published.
+  notify_release:
+    name: Announce release
+    needs: release
+    uses: ./.forgejo/workflows/irc-notify.yml
+    with:
+      release_version: ${{ needs.release.outputs.release_version }}
+      release_draft: false

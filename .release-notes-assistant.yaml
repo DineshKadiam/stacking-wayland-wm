@@ -1,0 +1,2 @@
+branch-development: main
+categorize: ./tools/release-notes-category.sh
