@@ -48,6 +48,17 @@ cow_text_measure(cairo_t *cr, const PangoFontDescription *font,
 	g_free(valid);
 }
 
+int cow_text_baseline(cairo_t *cr, const PangoFontDescription *font,
+    const char *text)
+{
+	char		*valid;
+	PangoLayout	*layout = text_layout(cr, font, text, &valid);
+	int baseline = pango_layout_get_baseline(layout) / PANGO_SCALE;
+	g_object_unref(layout);
+	g_free(valid);
+	return baseline;
+}
+
 void
 cow_text_render(cairo_t *cr, const PangoFontDescription *font, double x,
     double y, double width, double height, const char *text,

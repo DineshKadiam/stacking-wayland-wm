@@ -20,6 +20,9 @@
 
 void cow_text_measure(cairo_t *, const PangoFontDescription *, const char *,
     int *, int *);
+    
+int cow_text_baseline(cairo_t *, const PangoFontDescription *, 
+	const char *);
 
 /*
  * Draw a single line of validated UTF-8 in the supplied rectangle.  Text

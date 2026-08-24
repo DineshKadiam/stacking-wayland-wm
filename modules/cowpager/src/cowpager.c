@@ -55,6 +55,7 @@
 #include "cow/module_cursor.h"
 #include "cow/module_draw.h"
 #include "cow/module_theme.h"
+#include "cow/text.h"
 #include "xdg-shell-client-protocol.h"
 
 #define PROG "cowpager"
@@ -1118,28 +1119,33 @@ desk_index_to_rc(const layout_t *L, int idx, int *row, int *col)
 	*col = idx % L->cols;
 }
 
-static void
-set_font(cairo_t *cr, double size, int bold)
+static PangoFontDescription *
+get_font(const char * base_font, double size, int bold)
 {
-	cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL,
-	    bold ? CAIRO_FONT_WEIGHT_BOLD : CAIRO_FONT_WEIGHT_NORMAL);
-	cairo_set_font_size(cr, size);
+	PangoFontDescription *desc = pango_font_description_from_string(
+		base_font);	
+	/* The old "Cairo Toy Font" rendering was slightly smaller than
+	 * Pango's default scaling, so make the font 80% of size */
+	pango_font_description_set_size(desc, size * PANGO_SCALE * 0.8);
+	pango_font_description_set_weight(desc, 
+		(bold ? PANGO_WEIGHT_BOLD : PANGO_WEIGHT_MEDIUM));
+	return desc;
 }
 
 static void
-draw_text_centered(cairo_t *cr, double x, double w, double baseline_y,
-    const char *txt)
+draw_text_centered(cairo_t *cr, PangoFontDescription *font, double x, 
+	double y, double w, double h, const char *txt)
 {
-	cairo_text_extents_t te;
-	cairo_text_extents(cr, txt, &te);
-	double tx = x + (w - te.width) / 2.0 - te.x_bearing;
-	cairo_move_to(cr, tx, baseline_y);
-	cairo_show_text(cr, txt);
+	int outwidth;
+	y += (h - cow_text_baseline(cr, font, txt)) / 2;
+	cow_text_render(cr, font, x, y, w, h, txt, PANGO_ALIGN_CENTER, 
+		&outwidth);
 }
 
 static void
-draw_text_centered_clipped(cairo_t *cr, double x, double y, double w,
-    double h, double baseline_y, const char *txt)
+draw_text_centered_clipped(cairo_t *cr, PangoFontDescription *font,
+	double x, double y, double w, double h,
+	const char *txt)
 {
 	if (w <= 1 || h <= 1)
 		return;
@@ -1147,7 +1153,7 @@ draw_text_centered_clipped(cairo_t *cr, double x, double y, double w,
 	cairo_save(cr);
 	cairo_rectangle(cr, x, y, w, h);
 	cairo_clip(cr);
-	draw_text_centered(cr, x, w, baseline_y, txt);
+	draw_text_centered(cr, font, x, y, w, h, txt);
 	cairo_restore(cr);
 }
 
@@ -1266,6 +1272,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 	} icons[MAX_WINS];
 	int n_icons = 0;
 
+	PangoFontDescription *font = get_font(st->theme.font, 10.0, 1);
 	/*
 	 * Fill page-cell backgrounds.  A cell is "current" if any
 	 * monitor whose current_desk == this desk has its page_col /
@@ -1533,7 +1540,6 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 	/*
 	 * Caption pass.  Skip wh*/
 	if (mon_tab_count(st) > 1) {
-		set_font(cr, 10.0, 1);
 		const double label_pad_x = 3.0;
 		const double label_pad_y = 3.0;
 		const double inter_gap	 = 2.0;
@@ -1544,16 +1550,15 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 				continue;
 			if (ovi->aw < 28 || ovi->ah < 14)
 				continue;
-
-			cairo_text_extents_t te;
-			cairo_text_extents(cr, ovi->o->name, &te);
-			if (te.width > ovi->aw - 2 * label_pad_x)
+			int twidth, theight;
+			cow_text_measure(cr, font, ovi->o->name, &twidth, &theight);
+			if (twidth > ovi->aw - 2 * label_pad_x)
 				continue;
-			if (te.height > ovi->ah - 2 * label_pad_y)
+			if (theight > ovi->ah - 2 * label_pad_y)
 				continue;
 
-			double plate_w = te.width + 2 * label_pad_x;
-			double plate_h = te.height + 4;
+			double plate_w = twidth + 2 * label_pad_x;
+			double plate_h = theight + 4;
 
 			/* Count earlier captions sharing this overlay
 			 * position so this one slides below them. */
@@ -1574,13 +1579,16 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 			if (plate_y + plate_h > ovi->ay + ovi->ah - 1)
 				continue;
 
+			int baseline_adjust = (theight - cow_text_baseline(cr, font,
+				ovi->o->name)) / 2;
 			cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.6);
 			cairo_rectangle(cr, plate_x, plate_y, plate_w, plate_h);
 			cairo_fill(cr);
 			cairo_set_source_rgba(cr, 0.98, 0.98, 0.98, 0.98);
-			cairo_move_to(cr, plate_x + label_pad_x - te.x_bearing,
-			    plate_y + plate_h - 2);
-			cairo_show_text(cr, ovi->o->name);
+			int outwidth;
+			cow_text_render(cr, font, plate_x, plate_y + baseline_adjust,
+				plate_w, plate_h, ovi->o->name,
+				PANGO_ALIGN_CENTER, &outwidth);
 
 			/*
 			 * Publish a draggable handle for this plate.
@@ -1665,20 +1673,19 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 		    dy, L->cell_w, L->desk_label_h);
 
 		cow_module_cairo_set_source(cr, cfg.label_fg);
-		set_font(cr, L->desk_font_px, 1);
+		PangoFontDescription *font = get_font(st->theme.font, L->desk_font_px, 1);
 
 		char nr_label[16];
 		snprintf(nr_label, sizeof(nr_label), "%d", d->nr);
 		const char *text = nr_label;
+		int twidth, theight;
 		if (d->name[0] != '\0') {
-			cairo_text_extents_t te;
-			cairo_text_extents(cr, d->name, &te);
-			if (te.width <= L->cell_w - 4)
+			cow_text_measure(cr, font, d->name, &twidth, &theight);
+			if (twidth <= L->cell_w - 4)
 				text = d->name;
 		}
-		draw_text_centered_clipped(cr, dx, dy, L->cell_w,
-		    L->desk_label_h,
-		    dy + L->desk_label_h - L->desk_label_h * 0.22, text);
+		draw_text_centered_clipped(cr, font, dx, dy, L->cell_w,
+		    L->desk_label_h, text);
 	}
 
 	if (L->mon_tab_h <= 0)
@@ -1691,8 +1698,8 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 
 	int    tab_y = dy + L->desk_label_h;
 	double tw    = (double)L->cell_w / n_tab;
-
-	set_font(cr, L->tab_font_px, 1);
+	PangoFontDescription * font = get_font(st->theme.font,
+		L->tab_font_px, 1);
 
 	for (int i = 0; i < n_tab; i++) {
 		double tx = dx + i * tw;
@@ -1716,9 +1723,9 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 
 		const char	    *name = tab[i]->name;
 		char		     short_name[16];
-		cairo_text_extents_t te;
-		cairo_text_extents(cr, name, &te);
-		if (te.width > tw - 4) {
+		int twidth, theight;
+		cow_text_measure(cr, font, d->name, &twidth, &theight);
+		if (twidth > tw - 4) {
 			int n = tab[i]->number > 0 ? tab[i]->number : i + 1;
 			snprintf(short_name, sizeof(short_name), "%d", n);
 			name = short_name;
@@ -1728,8 +1735,7 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 			cow_module_cairo_set_source(cr, cfg.label_fg);
 		else
 			cow_module_cairo_set_source(cr, cfg.label_inactive_fg);
-		draw_text_centered_clipped(cr, tx, tab_y, tw, L->mon_tab_h,
-		    tab_y + L->mon_tab_h - L->mon_tab_h * 0.22, name);
+		draw_text_centered_clipped(cr, font, tx, tab_y, tw, L->mon_tab_h, name);
 	}
 }
 
@@ -2944,6 +2950,15 @@ parse_status(const char *json)
 
 	cJSON *theme = cJSON_GetObjectItem(root, "theme");
 	(void)cow_module_theme_parse(theme, &st.theme);
+		
+	cJSON *titlebar = cJSON_GetObjectItem(theme, "titlebar");
+	cJSON  *v = cJSON_GetObjectItem(titlebar, "font");
+	if (cJSON_IsString(v))
+		strlcpy(st.theme.font, v->valuestring,
+			sizeof(st.theme.font));
+	else
+		strlcpy(st.theme.font, "Sans 8",
+			sizeof(st.theme.font));
 
 	cJSON *outs = cJSON_GetObjectItem(root, "outputs");
 	cJSON *out;

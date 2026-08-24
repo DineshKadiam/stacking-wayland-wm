@@ -12,6 +12,7 @@ pager_deps = [
     dependency('cairo'),
     dependency('threads'),
     dependency('libevent'),
+    dependency('pangocairo'),
     m_dep,
 ]
 
@@ -27,6 +28,7 @@ executable('cowpager',
     '../../src/module_config.c',
     '../../src/module_draw.c',
     '../../src/module_theme.c',
+    '../../src/text.c',
     '../../src/util.c',
     '../../vendor/cJSON.c',
     include_directories: [
