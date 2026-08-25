@@ -550,7 +550,7 @@ The following details those commands which operate globally within *cow*.
 Note that the same command might also contain window/output settings, which will
 be also be added under the relevant section in this man page.
 
-## bind [-r] [contexts:]modifier+key action ... | bind -d pattern
+## bind [-r] [-x action] [contexts:]modifier+key action ... | bind -d pattern
 
 Key bindings are specified as a modifier string immediately followed by *+* and
 a keysym name, or *-* and a numeric keycode:
@@ -590,6 +590,11 @@ rather than whichever window was previously focused.
 	matches the shell-style _pattern_.  Quote patterns in configuration files,
 	for example *bind -d "L+[0-9]"*.  This is useful before regenerating a
 	group of bindings from a script.
+	
+*-x* _action_
+	Perform this action when the key is released.  The definition still requires
+	a key-press action (even if _nop_).  You can pair actions (for example,
+	opening a popup menu on key press, and then destroying it on release)
 
 *Modifier characters:*
 

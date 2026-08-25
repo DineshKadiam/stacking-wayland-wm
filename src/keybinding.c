@@ -66,6 +66,7 @@ xkb_binding_handle_released(void	 *data,
 	 * will stop scheduling further fires. */
 	kb->held	 = false;
 	kb->first_repeat = false;
+	kb->releasing = true;
 }
 
 static void
@@ -128,7 +129,8 @@ static const struct river_pointer_binding_v1_listener
 struct cow_keybinding *
 cow_keybinding_create(struct cow_seat *seat, xkb_keysym_t keysym,
     uint32_t modifiers, uint32_t context_mask, cow_action_fn action,
-    void *action_arg, bool repeatable)
+    void *action_arg, bool repeatable, cow_action_fn release_fn,
+    void *release_arg)
 {
 	struct cow_keybinding *kb = xcalloc(1, sizeof(*kb));
 
@@ -137,6 +139,8 @@ cow_keybinding_create(struct cow_seat *seat, xkb_keysym_t keysym,
 	kb->context_mask = context_mask;
 	kb->action	 = action;
 	kb->action_arg	 = action_arg;
+	kb->release_action = release_fn;
+	kb->release_action_arg = release_arg;
 	kb->seat	 = seat;
 	kb->enabled	 = false;
 	kb->pending	 = false;
@@ -528,6 +532,11 @@ cow_seat_process_bindings(struct cow_seat *seat)
 				fire_repeat = true;
 		}
 
+		if (kb->releasing) {
+			kb->releasing = false;
+			if (kb->release_action != NULL)
+				kb->release_action(kb->release_action_arg);
+		}
 		if (fire_press || fire_repeat) {
 			kb->pending = false;
 			struct cow_seat *old_seat =
@@ -930,14 +939,19 @@ register_config_keyboard_bindings(struct cow_seat *seat)
 			&context))
 			continue;
 
-		cow_action_fn fn;
-		void	     *arg;
+		cow_action_fn fn, release_fn;
+		void	     *arg, *release_arg;
 		if (!cow_resolve_action(entry->action_string, &fn, &arg))
 			continue;
 
+		if (entry->release_action_string) {
+			cow_resolve_action(entry->release_action_string,
+				&release_fn, &release_arg);
+			}
 		cow_keybinding_create(seat, keysym, modifiers, context, fn, arg,
-		    entry->repeatable);
+		    entry->repeatable, release_fn, release_arg);
 	}
+
 }
 
 static void
@@ -1055,7 +1069,7 @@ register_default_bindings(struct cow_seat *seat)
 		else
 			cow_keybinding_create(seat, db->key, mods,
 			    COW_BIND_CONTEXT_GLOBAL, fn, arg,
-			    /* repeatable = */ false);
+			    /* repeatable = */ false, NULL, NULL);
 	}
 
 	/* Desk switching: Super+1..9 -> desk -d N
@@ -1070,11 +1084,11 @@ register_default_bindings(struct cow_seat *seat)
 		cow_keybinding_create(seat, desk_syms[i], super,
 		    COW_BIND_CONTEXT_GLOBAL,
 		    action_execute_cmd_string, switch_cmd,
-		    /* repeatable = */ false);
+		    /* repeatable = */ false, NULL, NULL);
 		cow_keybinding_create(seat, desk_syms[i], super_shift,
 		    COW_BIND_CONTEXT_GLOBAL,
 		    action_execute_cmd_string, move_cmd,
-		    /* repeatable = */ false);
+		    /* repeatable = */ false, NULL, NULL);
 	}
 }
 

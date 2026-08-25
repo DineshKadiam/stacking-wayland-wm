@@ -50,10 +50,10 @@ static enum cmd_retval cmd_bind_exec(struct cmd *, struct cmd_q *);
  */
 struct cmd_entry cmd_bind_entry = {
 	"bind",
-	"+dr",
+	"+drx:",
 	1,
 	-1,
-	"bind [-r] [contexts:]key action ...\n"
+	"bind [-r] [contexts:]key [-x release-action] action ...\n"
 	"bind -d pattern",
 	cmd_bind_exec,
 	0,
@@ -79,6 +79,7 @@ cmd_bind_exec(struct cmd *self, struct cmd_q *cmdq)
 			wl_list_remove(&existing->link);
 			xfree(existing->key_string);
 			xfree(existing->action_string);
+			xfree(existing->release_action_string);
 			xfree(existing);
 		}
 		cow_rebind_all_seats();
@@ -86,7 +87,7 @@ cmd_bind_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	if (args->argc < 2) {
-		cmdq_error(cmdq, "usage: bind [-r] [contexts:]key action ...");
+		cmdq_error(cmdq, "usage: bind [-r] [-x release-action] [contexts:]key action ...");
 		return (CMD_RETURN_ERROR);
 	}
 
@@ -114,19 +115,27 @@ cmd_bind_exec(struct cmd *self, struct cmd_q *cmdq)
 			wl_list_remove(&existing->link);
 			xfree(existing->key_string);
 			xfree(existing->action_string);
+			xfree(existing->release_action_string);
 			xfree(existing);
 		}
 	}
 
 	struct cow_binding_entry *entry = xcalloc(1, sizeof(*entry));
+	
 	entry->key_string		= xstrdup(args->argv[0]);
+	if (args_has(args, 'x')) {	
+		entry->release_action_string = xstrdup(args_get(args, 'x'));
+	}
+	
 	entry->action_string =
 	    cmd_argv_to_action_string(args->argc, args->argv, 1);
 	entry->repeatable    = args_has(args, 'r');
-
+	
 	wl_list_insert(cow_config->keyboard_bindings.prev, &entry->link);
 
 	cow_rebind_all_seats();
 
 	return (CMD_RETURN_NORMAL);
 }
+
+

@@ -159,6 +159,7 @@ struct cow_binding_entry {
 	struct wl_list link;
 	char	      *key_string; /* e.g. "L+Return", "T:LS+q" */
 	char *action_string; /* e.g. "action-terminal", "quit", "view-quit" */
+	char *release_action_string; /* e.g. "action-terminal", "quit", "view-quit" */
 	bool  repeatable;
 };
 

@@ -415,6 +415,7 @@ cow_config_destroy(struct cow_config *config)
 		wl_list_remove(&kb->link);
 		xfree(kb->key_string);
 		xfree(kb->action_string);
+		xfree(kb->release_action_string);
 		xfree(kb);
 	}
 

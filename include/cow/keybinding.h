@@ -82,6 +82,9 @@ struct cow_keybinding {
 
 	cow_action_fn action;
 	void	     *action_arg;
+	
+	cow_action_fn release_action;
+	void	     *release_action_arg;
 
 	struct cow_seat *seat;
 	bool		 enabled;
@@ -90,6 +93,7 @@ struct cow_keybinding {
 	bool repeatable;
 	bool held;
 	bool first_repeat;
+	bool releasing;
 	long last_fire_ms;
 };
 
@@ -122,7 +126,8 @@ struct cow_pointer_binding {
  * repeat_interval_ms.
  */
 struct cow_keybinding *cow_keybinding_create(struct cow_seat *, xkb_keysym_t,
-    uint32_t, uint32_t, cow_action_fn, void *, bool repeatable);
+    uint32_t, uint32_t, cow_action_fn, void *, bool repeatable,
+    cow_action_fn, void *);
 
 /* Split optional CONTEXT: from a key or pointer-binding specification. */
 bool cow_binding_parse_context(const char *, uint32_t *, const char **,
