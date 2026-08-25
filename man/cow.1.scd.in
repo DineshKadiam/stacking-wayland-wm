@@ -1014,11 +1014,19 @@ Set a configuration option at runtime. *-v* prints the resulting value.
 The specific keys/values for this command are detailed under relevant section
 in this man page.
 
-However, there are global settings which don'r fit into other command settings.
+However, there are global settings which don't fit into other command settings.
 These are listed below:
 
 [[ *Key*
 :< *Description*
+|  *cursor.theme* _name_
+:  Set the XCursor theme. CoW applies the theme immediately. The
+   *XCURSOR\_THEME* environment variable supplies the initial value; if it is
+   unset, the default is *default*. Already-running native Wayland clients
+   which draw their own cursor may not update it.
+|  *cursor.size* _pixels_
+:  Set the XCursor size from 1 to 1024 pixels. The initial value comes from
+   *XCURSOR\_SIZE*, or defaults to 24.
 |  *cursor.hide\_timeout* _milliseconds_
 :  Hide the pointer after the given period without input. A value of 0,
    disables pointer hiding.  Default value is 0.

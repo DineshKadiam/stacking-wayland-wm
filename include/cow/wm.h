@@ -298,6 +298,7 @@ void cow_wm_note_cursor_focus(uint32_t, bool);
 void cow_wm_set_cursor_hidden(bool);
 bool cow_wm_cursor_hidden(void);
 void cow_wm_cursor_hide_configure(void);
+void cow_wm_cursor_theme_configure(void);
 
 /*
  * Request that the pointer be warped to (x, y) at the next manage

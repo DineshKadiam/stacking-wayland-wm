@@ -1515,6 +1515,7 @@ handle_wm_seat(__unused void		    *data,
     struct river_seat_v1		    *seat)
 {
 	cow_seat_create(seat);
+	cow_wm_cursor_theme_configure();
 }
 
 bool
@@ -2018,18 +2019,14 @@ cow_wm_ensure_cursor_theme(void)
 	    cow_wm.compositor == NULL)
 		return;
 
-	const char *theme  = getenv("XCURSOR_THEME");
-	const char *size_s = getenv("XCURSOR_SIZE");
-	int	    size   = 24;
-	if (size_s != NULL) {
-		char *end = NULL;
-		long  n	  = strtol(size_s, &end, 10);
-		if (end != size_s && *end == '\0' && n > 0 && n <= 1024)
-			size = (int)n;
-	}
+	const char *theme = cow_config != NULL ? cow_config->cursor_theme :
+	    COW_CFG_DEFAULT_CURSOR_THEME;
+	int size = cow_config != NULL ? cow_config->cursor_size :
+	    COW_CFG_DEFAULT_CURSOR_SIZE;
 
 	cow_wm.wl_cursor_theme = wl_cursor_theme_load(theme, size, cow_wm.shm);
-	if (cow_wm.wl_cursor_theme != NULL)
+	if (cow_wm.wl_cursor_theme != NULL &&
+	    cow_wm.wl_cursor_surface == NULL)
 		cow_wm.wl_cursor_surface =
 		    wl_compositor_create_surface(cow_wm.compositor);
 }
@@ -2100,6 +2097,42 @@ cow_wm_set_cursor_shape_internal(uint32_t shape, uint32_t serial, bool force)
 		    cow_wm.wl_cursor_serial, shape);
 	cow_wm_set_cursor_surface(shape);
 	cow_wm.wl_cursor_shape = shape;
+}
+
+void
+cow_wm_cursor_theme_configure(void)
+{
+	if (cow_config == NULL || cow_config->cursor_theme == NULL)
+		return;
+
+	char size[32];
+	snprintf(size, sizeof(size), "%d", cow_config->cursor_size);
+	setenv("XCURSOR_THEME", cow_config->cursor_theme, 1);
+	setenv("XCURSOR_SIZE", size, 1);
+
+	if (cow_wm.manager != NULL) {
+		struct cow_seat *seat;
+		wl_list_for_each(seat, &cow_wm.seats, wm_link)
+		{
+			if (!seat->removed &&
+			    river_seat_v1_get_version(seat->river_seat) >= 2)
+				river_seat_v1_set_xcursor_theme(
+				    seat->river_seat, cow_config->cursor_theme,
+				    (uint32_t)cow_config->cursor_size);
+		}
+	}
+
+	if (cow_wm.wl_cursor_theme != NULL) {
+		wl_cursor_theme_destroy(cow_wm.wl_cursor_theme);
+		cow_wm.wl_cursor_theme = NULL;
+	}
+
+	if (cow_wm.wl_pointer_has_focus && cow_wm.wl_cursor_serial != 0) {
+		uint32_t shape = cow_wm.wl_cursor_shape != 0 ?
+		    cow_wm.wl_cursor_shape :
+		    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT;
+		cow_wm_set_cursor_shape_internal(shape, 0, true);
+	}
 }
 
 void

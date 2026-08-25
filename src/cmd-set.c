@@ -660,6 +660,8 @@ set_option_post_update(const struct cow_option_entry *opt)
 	if ((opt->post & COW_OPTION_POST_CURSOR_HIDE) != 0 &&
 	    !cow_ipc.startup_mode)
 		cow_wm_cursor_hide_configure();
+	if ((opt->post & COW_OPTION_POST_CURSOR_THEME) != 0)
+		cow_wm_cursor_theme_configure();
 }
 
 static enum cmd_retval
@@ -724,6 +726,11 @@ static enum cmd_retval
 set_scalar_string(const struct cow_option_entry *opt, const char *val,
     struct cmd_q *cmdq)
 {
+	if (strcmp(opt->name, "cursor.theme") == 0 && val[0] == '\0') {
+		cmdq_error(cmdq, "set: cursor.theme: expected a theme name");
+		return (CMD_RETURN_ERROR);
+	}
+
 	struct cow_view_cfg *cfg = cfg_target(cmdq);
 
 	if (cfg != NULL && opt->view_offset != COW_OPTION_NO_OFFSET) {

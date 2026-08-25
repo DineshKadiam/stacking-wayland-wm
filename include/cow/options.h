@@ -68,6 +68,7 @@ enum cow_option_post {
 	COW_OPTION_POST_PAN_FRAMES	  = 1 << 1,
 	COW_OPTION_POST_ZERO_DISABLE_HANDLES = 1 << 2,
 	COW_OPTION_POST_CURSOR_HIDE	  = 1 << 3,
+	COW_OPTION_POST_CURSOR_THEME	  = 1 << 4,
 };
 
 #define COW_OPTION_NO_OFFSET ((size_t)-1)

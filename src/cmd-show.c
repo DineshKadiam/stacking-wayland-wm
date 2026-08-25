@@ -382,6 +382,11 @@ do_show_config(const char *ckey, int fd, struct cmd_q *cmdq)
 	else if (strcmp(ckey, "title_format") == 0)
 		val = cJSON_CreateString(
 		    cow_config->title_format ? cow_config->title_format : "");
+	else if (strcmp(ckey, "cursor.theme") == 0)
+		val = cJSON_CreateString(cow_config->cursor_theme != NULL ?
+		    cow_config->cursor_theme : "");
+	else if (strcmp(ckey, "cursor.size") == 0)
+		val = cJSON_CreateNumber(cow_config->cursor_size);
 	else if (strcmp(ckey, "preserve_desk_on_output_loss") == 0)
 		val = cJSON_CreateBool(cow_config->preserve_desk_on_output_loss);
 	else if (strcmp(ckey, "desks.count") == 0) {

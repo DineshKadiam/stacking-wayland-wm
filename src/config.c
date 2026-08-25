@@ -263,6 +263,20 @@ cow_config_create(void)
 	config->repeat_delay_ms	     = COW_CFG_DEFAULT_REPEAT_DELAY_MS;
 	config->repeat_interval_ms   = COW_CFG_DEFAULT_REPEAT_INTERVAL_MS;
 	config->menu_repeat_keys = xstrdup(COW_CFG_DEFAULT_MENU_REPEAT_KEYS);
+	const char *cursor_theme = getenv("XCURSOR_THEME");
+	config->cursor_theme = xstrdup(cursor_theme != NULL &&
+	    cursor_theme[0] != '\0' ? cursor_theme :
+	    COW_CFG_DEFAULT_CURSOR_THEME);
+	config->cursor_size = COW_CFG_DEFAULT_CURSOR_SIZE;
+	const char *cursor_size = getenv("XCURSOR_SIZE");
+	if (cursor_size != NULL) {
+		char *end = NULL;
+		long  size = strtol(cursor_size, &end, 10);
+
+		if (end != cursor_size && *end == '\0' && size > 0 &&
+		    size <= 1024)
+			config->cursor_size = (int)size;
+	}
 	config->cursor_hide_timeout  = 0;
 	config->icon_enabled	     = true;
 	config->icon_size	     = COW_CFG_DEFAULT_ICON_SIZE;
@@ -432,6 +446,7 @@ cow_config_destroy(struct cow_config *config)
 	xfree(config->menu_style.icon_path);
 	xfree(config->menu_style.font);
 	xfree(config->menu_repeat_keys);
+	xfree(config->cursor_theme);
 
 	xfree(config);
 }

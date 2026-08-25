@@ -54,6 +54,8 @@ struct cow_desk;
 #define COW_CFG_DEFAULT_REPEAT_DELAY_MS 400
 #define COW_CFG_DEFAULT_REPEAT_INTERVAL_MS 40
 #define COW_CFG_DEFAULT_MENU_REPEAT_KEYS "Up,Down"
+#define COW_CFG_DEFAULT_CURSOR_THEME "default"
+#define COW_CFG_DEFAULT_CURSOR_SIZE 24
 
 /*
  * Layer model (FvwmLayers-compatible).  Each window lives in a
@@ -399,6 +401,8 @@ struct cow_config {
 	char *menu_repeat_keys;
 
 	/* Pointer idle hiding.  Zero disables it. */
+	char *cursor_theme;
+	int   cursor_size;
 	int cursor_hide_timeout;
 
 	/* Automatic placement of iconified-window icons. */
