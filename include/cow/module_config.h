@@ -27,6 +27,14 @@ struct cow_module_config_line {
 	int	      nfields;
 };
 
+struct cow_module_config_instances {
+	const char *prog;
+	const char *index_env;
+	int	    index;
+	int	    count;
+	bool	    child;
+};
+
 typedef bool (*cow_module_config_cb)(const struct cow_module_config_line *,
     const char **, void *);
 
@@ -43,5 +51,12 @@ bool cow_module_config_parse_bool(const char *, bool *);
 
 bool cow_module_config_load(const char *, const char *, int,
     cow_module_config_cb, void *);
+
+bool cow_module_config_instances_init(struct cow_module_config_instances *,
+    const char *, const char *);
+bool cow_module_config_instances_select_next(
+    struct cow_module_config_instances *);
+void cow_module_config_instances_spawn(
+    const struct cow_module_config_instances *, char *const []);
 
 #endif /* COW_MODULE_CONFIG_H */

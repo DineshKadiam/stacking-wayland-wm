@@ -34,6 +34,7 @@
 #include "cow/image_cache.h"
 #include "cow/json_util.h"
 #include "cow/module.h"
+#include "cow/module_config.h"
 #include "cow/module_cursor.h"
 #include "cow/module_draw.h"
 #include "cow/module_theme.h"
@@ -43,12 +44,15 @@
 #include "xdg-shell-client-protocol.h"
 
 #define PROG "cowiconman"
+#define SHOW_INDEX_ENV "COWICONMAN_SHOW_INDEX"
 
 #define MAX_WINS 512
 #define MAX_OUTS 32
 #define MAX_ROWS 512
 #define MAX_NAME 128
 #define MAX_MATCHES 16
+#define MAX_FIELDS 16
+#define MAX_SELECTED_ICONMANS 32
 #define MAX_ICON_PATH 1024
 #define DEFAULT_BUTTON_W 300
 #define DEFAULT_MIN_BUTTON_W 80
@@ -99,6 +103,16 @@ struct match_rule {
 	enum match_field field;
 	int		 negate;
 	char		 value[MAX_NAME];
+};
+
+struct iconman_selection {
+	char *name;
+	bool  seen;
+};
+
+struct iconman_load_ctx {
+	int depth;
+	bool in_selected_iconman;
 };
 
 struct output {
@@ -233,6 +247,9 @@ static char		 self_title[MAX_NAME];
 static char		 self_id[MAX_NAME];
 static struct match_rule matches[MAX_MATCHES];
 static int		 n_matches;
+static struct iconman_selection selected_iconmans[MAX_SELECTED_ICONMANS];
+static int n_selected_iconmans;
+static struct cow_module_config_instances config_instances;
 
 static void do_render(const struct state *);
 static void ipc_send(const char *);
@@ -242,20 +259,7 @@ static const char *group_key(const struct win *, char *, size_t);
 static void
 usage(void)
 {
-	fprintf(stderr,
-	    "usage: cowiconman [--output NAME|@N|current|self]\n"
-	    "                  [--desk current|N] [--page current|X,Y]\n"
-	    "                  [--sort none|title|app|id]\n"
-	    "                  [--group-by none|app|title|output|desk]\n"
-	    "                  [--match title|app|id=TEXT]\n"
-	    "                  [--format FMT]\n"
-	    "                  [--rows N] [--cols N]\n"
-	    "                  [--anchor none|top|bottom]\n"
-	    "                  [--button-width N] [--button-height N]\n"
-	    "                  [--min-button-width N]\n"
-	    "                  [--icons] [--icon-size N]\n"
-	    "                  [--iconified-marker]\n"
-	    "                  [--show-self] [-h]\n");
+	fprintf(stderr, "usage: cowiconman [-c path] [-h]\n");
 }
 
 static int
@@ -279,17 +283,7 @@ get_jbool(cJSON *obj, const char *key)
 static int
 parse_int(const char *s, int *out)
 {
-	char *end;
-	long  n;
-
-	if (s == NULL || *s == '\0')
-		return 0;
-	errno = 0;
-	n = strtol(s, &end, 10);
-	if (errno != 0 || *end != '\0')
-		return 0;
-	*out = (int)n;
-	return 1;
+	return cow_module_config_parse_int(s, out);
 }
 
 static int
@@ -298,6 +292,10 @@ parse_page(const char *s)
 	char *comma, *dup;
 	int   x, y;
 
+	if (strcmp(s, "all") == 0) {
+		page_filter = FILTER_ANY;
+		return 1;
+	}
 	if (strcmp(s, "current") == 0) {
 		page_filter = FILTER_CURRENT;
 		return 1;
@@ -326,7 +324,10 @@ parse_page(const char *s)
 static void
 parse_output_filter(const char *s)
 {
-	if (strcmp(s, "current") == 0)
+	if (strcmp(s, "all") == 0) {
+		output_filter = FILTER_ANY;
+		output_arg[0] = '\0';
+	} else if (strcmp(s, "current") == 0)
 		output_filter = FILTER_CURRENT;
 	else if (strcmp(s, "self") == 0)
 		output_filter = FILTER_SELF;
@@ -339,6 +340,10 @@ parse_output_filter(const char *s)
 static int
 parse_desk_filter(const char *s)
 {
+	if (strcmp(s, "all") == 0) {
+		desk_filter = FILTER_ANY;
+		return 1;
+	}
 	if (strcmp(s, "current") == 0) {
 		desk_filter = FILTER_CURRENT;
 		return 1;
@@ -447,6 +452,295 @@ parse_positive(const char *s, int *out)
 		return 0;
 	*out = n;
 	return 1;
+}
+
+static int
+iconman_selection_find(const char *name)
+{
+	for (int i = 0; i < n_selected_iconmans; i++)
+		if (strcmp(selected_iconmans[i].name, name) == 0)
+			return i;
+	return -1;
+}
+
+static bool
+iconman_selection_add(const char *name)
+{
+	if (iconman_selection_find(name) != -1)
+		return true;
+	if (n_selected_iconmans >= MAX_SELECTED_ICONMANS)
+		return false;
+	selected_iconmans[n_selected_iconmans].name = strdup(name);
+	if (selected_iconmans[n_selected_iconmans].name == NULL)
+		return false;
+	selected_iconmans[n_selected_iconmans].seen = false;
+	n_selected_iconmans++;
+	return true;
+}
+
+static void
+iconman_selections_free(void)
+{
+	for (int i = 0; i < n_selected_iconmans; i++) {
+		free(selected_iconmans[i].name);
+		selected_iconmans[i].name = NULL;
+		selected_iconmans[i].seen = false;
+	}
+	n_selected_iconmans = 0;
+}
+
+static bool
+load_show_iconman(char **fields, int n, const char **why, bool collect)
+{
+	if (n < 3 || strcmp(fields[1], "iconman") != 0) {
+		*why = "bad show";
+		return false;
+	}
+	if (!collect)
+		return true;
+	for (int i = 2; i < n; i++) {
+		if (!iconman_selection_add(fields[i])) {
+			*why = "too many icon managers";
+			return false;
+		}
+	}
+	return true;
+}
+
+static bool
+scan_iconman_config_line(const struct cow_module_config_line *line,
+    const char **why, void *data)
+{
+	struct iconman_load_ctx *ctx = data;
+	char **fields = line->fields;
+	int n = line->nfields;
+
+	if (ctx->depth == 0 && strcmp(fields[0], "show") == 0) {
+		bool collect =
+		    cow_module_config_instances_select_next(&config_instances);
+
+		if (!load_show_iconman(fields, n, why, collect))
+			return false;
+	}
+	if (strcmp(fields[0], "}") == 0 && n == 1) {
+		if (ctx->depth > 0)
+			ctx->depth--;
+	} else if (strcmp(fields[n - 1], "{") == 0)
+		ctx->depth++;
+	return true;
+}
+
+static bool
+load_iconman_option(char **fields, int n, const char **why)
+{
+	int value;
+	bool enabled;
+
+	if (strcmp(fields[0], "output") == 0) {
+		if (n != 2) {
+			*why = "bad output";
+			return false;
+		}
+		parse_output_filter(fields[1]);
+	} else if (strcmp(fields[0], "desk") == 0) {
+		if (n != 2 || !parse_desk_filter(fields[1])) {
+			*why = "bad desk";
+			return false;
+		}
+	} else if (strcmp(fields[0], "page") == 0) {
+		if (n != 2 || !parse_page(fields[1])) {
+			*why = "bad page";
+			return false;
+		}
+	} else if (strcmp(fields[0], "sort") == 0) {
+		if (n != 2 || !parse_sort(fields[1])) {
+			*why = "bad sort";
+			return false;
+		}
+	} else if (strcmp(fields[0], "group-by") == 0) {
+		if (n != 2 || !parse_group(fields[1])) {
+			*why = "bad group-by";
+			return false;
+		}
+	} else if (strcmp(fields[0], "match") == 0) {
+		if (n != 2 || !parse_match(fields[1])) {
+			*why = "bad match";
+			return false;
+		}
+	} else if (strcmp(fields[0], "format") == 0) {
+		if (n != 2) {
+			*why = "bad format";
+			return false;
+		}
+		strlcpy(label_format, fields[1], sizeof(label_format));
+	} else if (strcmp(fields[0], "rows") == 0) {
+		if (n != 2 || !parse_positive(fields[1], &opt_rows)) {
+			*why = "bad rows";
+			return false;
+		}
+	} else if (strcmp(fields[0], "columns") == 0) {
+		if (n != 2 || !parse_positive(fields[1], &opt_cols)) {
+			*why = "bad columns";
+			return false;
+		}
+	} else if (strcmp(fields[0], "anchor") == 0) {
+		if (n != 2 || !parse_anchor(fields[1])) {
+			*why = "bad anchor";
+			return false;
+		}
+	} else if (strcmp(fields[0], "button-width") == 0) {
+		if (n != 2 || !parse_positive(fields[1], &button_w)) {
+			*why = "bad button-width";
+			return false;
+		}
+	} else if (strcmp(fields[0], "button-height") == 0) {
+		if (n != 2 || !parse_positive(fields[1], &button_h)) {
+			*why = "bad button-height";
+			return false;
+		}
+	} else if (strcmp(fields[0], "min-button-width") == 0) {
+		if (n != 2 || !parse_positive(fields[1], &min_button_w)) {
+			*why = "bad min-button-width";
+			return false;
+		}
+	} else if (strcmp(fields[0], "icons") == 0) {
+		if (n != 2 ||
+		    !cow_module_config_parse_bool(fields[1], &enabled)) {
+			*why = "bad icons";
+			return false;
+		}
+		show_icons = enabled;
+	} else if (strcmp(fields[0], "icon-size") == 0) {
+		if (n != 2 || !parse_positive(fields[1], &value) ||
+		    value > ROW_H - 4) {
+			*why = "bad icon-size";
+			return false;
+		}
+		icon_size = value;
+	} else if (strcmp(fields[0], "iconified-marker") == 0) {
+		if (n != 2 ||
+		    !cow_module_config_parse_bool(fields[1], &enabled)) {
+			*why = "bad iconified-marker";
+			return false;
+		}
+		iconified_marker = enabled;
+	} else if (strcmp(fields[0], "show-self") == 0) {
+		if (n != 2 ||
+		    !cow_module_config_parse_bool(fields[1], &enabled)) {
+			*why = "bad show-self";
+			return false;
+		}
+		show_self = enabled;
+	} else {
+		*why = "unknown command";
+		return false;
+	}
+	return true;
+}
+
+static bool
+load_iconman_config_line(const struct cow_module_config_line *line,
+    const char **why, void *data)
+{
+	struct iconman_load_ctx *ctx = data;
+	char **fields = line->fields;
+	int n = line->nfields;
+
+	if (strcmp(fields[0], "}") == 0) {
+		if (n != 1 || ctx->depth == 0) {
+			*why = "bad block close";
+			return false;
+		}
+		ctx->depth--;
+		if (ctx->depth == 0)
+			ctx->in_selected_iconman = false;
+		return true;
+	}
+	if (strcmp(fields[0], "show") == 0)
+		return load_show_iconman(fields, n, why, false);
+	if (strcmp(fields[0], "iconman") == 0) {
+		if (n != 3 || strcmp(fields[2], "{") != 0) {
+			*why = "bad iconman";
+			return false;
+		}
+		if (ctx->depth != 0) {
+			*why = "nested iconman";
+			return false;
+		}
+
+		int idx = iconman_selection_find(fields[1]);
+		ctx->depth = 1;
+		ctx->in_selected_iconman = idx != -1;
+		if (idx != -1)
+			selected_iconmans[idx].seen = true;
+		return true;
+	}
+	if (ctx->depth > 0 && !ctx->in_selected_iconman)
+		return true;
+	return load_iconman_option(fields, n, why);
+}
+
+static bool
+load_iconman_config(const char *path)
+{
+	struct iconman_load_ctx scan_ctx = { 0 };
+	struct iconman_load_ctx load_ctx = { 0 };
+
+	iconman_selections_free();
+	config_instances.count = 0;
+	if (!cow_module_config_load(PROG, path, MAX_FIELDS,
+		scan_iconman_config_line, &scan_ctx))
+		return false;
+	if (config_instances.count > 0 && n_selected_iconmans == 0) {
+		fprintf(stderr, "%s: %s: no show iconman line %d\n", PROG,
+		    path, config_instances.index);
+		return false;
+	}
+	if (!cow_module_config_load(PROG, path, MAX_FIELDS,
+		load_iconman_config_line, &load_ctx))
+		return false;
+	if (load_ctx.depth != 0) {
+		fprintf(stderr, "%s: %s: unclosed block\n", PROG, path);
+		return false;
+	}
+	for (int i = 0; i < n_selected_iconmans; i++) {
+		if (selected_iconmans[i].seen)
+			continue;
+		fprintf(stderr, "%s: %s: iconman not found: %s\n", PROG,
+		    path, selected_iconmans[i].name);
+		return false;
+	}
+	if (min_button_w > button_w) {
+		fprintf(stderr, "%s: %s: min-button-width exceeds "
+		    "button-width\n", PROG, path);
+		return false;
+	}
+	return true;
+}
+
+static void
+build_instance_title(void)
+{
+	size_t len;
+
+	if (n_selected_iconmans == 0) {
+		snprintf(self_title, sizeof(self_title), "%s-%ld", PROG,
+		    (long)getpid());
+		return;
+	}
+	snprintf(self_title, sizeof(self_title), "%s:%s",
+	    PROG, selected_iconmans[0].name);
+	len = strlen(self_title);
+	for (int i = 1; i < n_selected_iconmans; i++) {
+		int n = snprintf(self_title + len, sizeof(self_title) - len,
+		    "+%s", selected_iconmans[i].name);
+		if (n < 0 || (size_t)n >= sizeof(self_title) - len)
+			break;
+		len += (size_t)n;
+	}
+	if (len < sizeof(self_title))
+		snprintf(self_title + len, sizeof(self_title) - len, "-%ld",
+		    (long)getpid());
 }
 
 static int
@@ -1813,96 +2107,17 @@ static const struct wl_registry_listener reg_listener = {
 };
 
 static int
-parse_args(int argc, char **argv)
+parse_args(int argc, char **argv, char **config_path)
 {
-	static const struct option opts[] = {
-		{ "output",    required_argument, NULL, 'o' },
-		{ "desk",      required_argument, NULL, 'd' },
-		{ "page",      required_argument, NULL, 'p' },
-		{ "sort",      required_argument, NULL, 's' },
-		{ "group-by",  required_argument, NULL, 'g' },
-		{ "match",     required_argument, NULL, 'M' },
-		{ "format",    required_argument, NULL, 'f' },
-		{ "rows",      required_argument, NULL, 'r' },
-		{ "cols",      required_argument, NULL, 'c' },
-		{ "anchor",    required_argument, NULL, 'a' },
-		{ "button-width", required_argument, NULL, 'b' },
-		{ "button-height", required_argument, NULL, 'B' },
-		{ "min-button-width", required_argument, NULL, 'm' },
-		{ "icons",     no_argument,       NULL, 'i' },
-		{ "icon-size", required_argument, NULL, 'z' },
-		{ "iconified-marker", no_argument, NULL, 'I' },
-		{ "show-self", no_argument,       NULL, 'S' },
-		{ "help",      no_argument,       NULL, 'h' },
-		{ NULL,	       0,		    NULL, 0   },
-	};
 	int ch;
 
-	while ((ch = getopt_long(argc, argv, "h", opts, NULL)) != -1) {
+	while ((ch = getopt(argc, argv, "c:h")) != -1) {
 		switch (ch) {
-		case 'o':
-			parse_output_filter(optarg);
-			break;
-		case 'd':
-			if (!parse_desk_filter(optarg))
-				return 0;
-			break;
-		case 'p':
-			if (!parse_page(optarg))
-				return 0;
-			break;
-		case 's':
-			if (!parse_sort(optarg))
-				return 0;
-			break;
-		case 'g':
-			if (!parse_group(optarg))
-				return 0;
-			break;
-		case 'M':
-			if (!parse_match(optarg))
-				return 0;
-			break;
-		case 'f':
-			strlcpy(label_format, optarg, sizeof(label_format));
-			break;
-		case 'r':
-			if (!parse_positive(optarg, &opt_rows))
-				return 0;
-			break;
 		case 'c':
-			if (!parse_positive(optarg, &opt_cols))
+			free(*config_path);
+			*config_path = strdup(optarg);
+			if (*config_path == NULL)
 				return 0;
-			break;
-		case 'a':
-			if (!parse_anchor(optarg))
-				return 0;
-			break;
-		case 'b':
-			if (!parse_positive(optarg, &button_w))
-				return 0;
-			break;
-		case 'B':
-			if (!parse_positive(optarg, &button_h))
-				return 0;
-			break;
-		case 'm':
-			if (!parse_positive(optarg, &min_button_w))
-				return 0;
-			break;
-		case 'i':
-			show_icons = 1;
-			break;
-		case 'z':
-			if (!parse_positive(optarg, &icon_size) ||
-			    icon_size > ROW_H - 4)
-				return 0;
-			break;
-		case 'I':
-			iconified_marker = 1;
-			break;
-		case 'S':
-			show_self = 1;
 			break;
 		case 'h':
 			usage();
@@ -1911,24 +2126,42 @@ parse_args(int argc, char **argv)
 			return 0;
 		}
 	}
-	if (min_button_w > button_w)
-		return 0;
 	return optind == argc;
 }
 
 int
 main(int argc, char **argv)
 {
+	char		   *config_path = NULL;
+	bool		    explicit_config;
+	bool		    config_loaded = false;
 	struct wl_registry *reg;
 	pthread_t	    tid;
 	struct event_base  *base;
 	struct event	   *wl_ev = NULL, *wake_ev = NULL;
 
-	if (!parse_args(argc, argv)) {
+	if (!cow_module_config_instances_init(&config_instances, PROG,
+		SHOW_INDEX_ENV))
+		return 1;
+	if (!parse_args(argc, argv, &config_path)) {
 		usage();
 		return 1;
 	}
-	snprintf(self_title, sizeof(self_title), "%s-%ld", PROG, (long)getpid());
+	explicit_config = config_path != NULL;
+	if (config_path == NULL)
+		config_path = cow_module_config_default_path(PROG);
+	if (config_path != NULL &&
+	    (explicit_config || access(config_path, R_OK) == 0)) {
+		if (!load_iconman_config(config_path)) {
+			free(config_path);
+			return 1;
+		}
+		config_loaded = true;
+	}
+	if (config_loaded)
+		cow_module_config_instances_spawn(&config_instances, argv);
+	free(config_path);
+	build_instance_title();
 
 	if (pipe(wake_pipe) < 0) {
 		perror("pipe");

@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "cow/util.h"
 
@@ -213,4 +214,57 @@ cow_module_config_load(const char *prog, const char *path, int max_fields,
 	free(line);
 	fclose(f);
 	return ok;
+}
+
+bool
+cow_module_config_instances_init(struct cow_module_config_instances *instances,
+    const char *prog, const char *index_env)
+{
+	const char *value;
+	int index;
+
+	memset(instances, 0, sizeof(*instances));
+	instances->prog = prog;
+	instances->index_env = index_env;
+	value = getenv(index_env);
+	if (value == NULL || *value == '\0')
+		return true;
+	if (!cow_module_config_parse_int(value, &index) || index < 0) {
+		fprintf(stderr, "%s: bad %s\n", prog, index_env);
+		return false;
+	}
+	instances->index = index;
+	instances->child = true;
+	return true;
+}
+
+bool
+cow_module_config_instances_select_next(
+    struct cow_module_config_instances *instances)
+{
+	return instances->count++ == instances->index;
+}
+
+void
+cow_module_config_instances_spawn(
+    const struct cow_module_config_instances *instances, char *const argv[])
+{
+	if (instances->child)
+		return;
+	for (int i = 1; i < instances->count; i++) {
+		pid_t pid = fork();
+
+		if (pid < 0) {
+			fprintf(stderr, "%s: fork: %s\n", instances->prog,
+			    strerror(errno));
+			continue;
+		}
+		if (pid != 0)
+			continue;
+		char index[32];
+		snprintf(index, sizeof(index), "%d", i);
+		setenv(instances->index_env, index, 1);
+		execvp(argv[0], argv);
+		_exit(127);
+	}
 }

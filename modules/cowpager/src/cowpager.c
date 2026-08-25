@@ -261,9 +261,7 @@ static char opt_monitors[MAX_OPT_MONITORS][64];
 static int  opt_n_monitors;
 static struct pager_selection selected_pagers[MAX_SELECTED_PAGERS];
 static int n_selected_pagers;
-static int instance_index;
-static int show_group_count;
-static bool spawn_extra_instances = true;
+static struct cow_module_config_instances config_instances;
 static char instance_title[256] = PROG;
 
 struct pager_load_ctx {
@@ -3186,11 +3184,11 @@ scan_pager_config_line(const struct cow_module_config_line *line,
 	int n = line->nfields;
 
 	if (ctx->depth == 0 && strcmp(fields[0], "show") == 0) {
-		bool collect = show_group_count == instance_index;
+		bool collect =
+		    cow_module_config_instances_select_next(&config_instances);
 
 		if (!load_show_pager(fields, n, why, collect))
 			return false;
-		show_group_count++;
 	}
 
 	if (strcmp(fields[0], "}") == 0 && n == 1) {
@@ -3342,13 +3340,13 @@ load_pager_config(const char *path)
 	struct pager_load_ctx load_ctx = { 0 };
 
 	pager_selections_free();
-	show_group_count = 0;
+	config_instances.count = 0;
 	if (!cow_module_config_load(PROG, path, MAX_FIELDS,
 		scan_pager_config_line, &scan_ctx))
 		return false;
-	if (show_group_count > 0 && n_selected_pagers == 0) {
+	if (config_instances.count > 0 && n_selected_pagers == 0) {
 		fprintf(stderr, "%s: %s: no show pager line %d\n", PROG, path,
-		    instance_index);
+		    config_instances.index);
 		return false;
 	}
 
@@ -3364,23 +3362,6 @@ load_pager_config(const char *path)
 		return false;
 	}
 
-	return true;
-}
-
-static bool
-parse_instance_index(void)
-{
-	const char *value = getenv(SHOW_INDEX_ENV);
-	int idx;
-
-	if (value == NULL || *value == '\0')
-		return true;
-	spawn_extra_instances = false;
-	if (!cow_module_config_parse_int(value, &idx) || idx < 0) {
-		fprintf(stderr, "%s: bad %s\n", PROG, SHOW_INDEX_ENV);
-		return false;
-	}
-	instance_index = idx;
 	return true;
 }
 
@@ -3409,24 +3390,6 @@ build_instance_title(void)
 		if (n < 0 || (size_t)n >= sizeof(instance_title) - len)
 			break;
 		len += (size_t)n;
-	}
-}
-
-static void
-spawn_config_instances(char *argv[])
-{
-	if (!spawn_extra_instances)
-		return;
-	for (int i = 1; i < show_group_count; i++) {
-		pid_t pid = fork();
-
-		if (pid != 0)
-			continue;
-		char idx[32];
-		snprintf(idx, sizeof(idx), "%d", i);
-		setenv(SHOW_INDEX_ENV, idx, 1);
-		execvp(argv[0], argv);
-		_exit(127);
 	}
 }
 
@@ -3483,7 +3446,8 @@ main(int argc, char *argv[])
 		}
 	}
 
-	if (!parse_instance_index())
+	if (!cow_module_config_instances_init(&config_instances, PROG,
+		SHOW_INDEX_ENV))
 		return 1;
 
 	pager_config_init(&cfg);
@@ -3494,7 +3458,7 @@ main(int argc, char *argv[])
 				free(config_path);
 				return 1;
 			}
-			spawn_config_instances(argv);
+			cow_module_config_instances_spawn(&config_instances, argv);
 		} else if (explicit_config) {
 			fprintf(stderr, "%s: %s: %s\n", PROG, config_path,
 			    strerror(errno));

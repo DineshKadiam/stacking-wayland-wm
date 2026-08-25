@@ -286,9 +286,7 @@ static pthread_mutex_t state_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct state    current_state;
 static int	       dirty = 1;
 static char	      *config_dir;
-static int	       instance_index;
-static int	       show_group_count;
-static bool	       spawn_extra_instances = true;
+static struct cow_module_config_instances config_instances;
 static char	       instance_title[256] = PROG;
 static struct panel_selection selected_panels[MAX_SELECTED_PANELS];
 static int	       n_selected_panels;
@@ -313,8 +311,6 @@ static bool load_cell_props(struct cell *, char **, int, int, const char **);
 static bool parse_cell_style_prop(struct cell_style *, const char *,
     const char *, const char **);
 static void build_instance_title(void);
-static bool parse_instance_index(void);
-static void spawn_config_instances(const char *, const char *);
 static bool external_panels_exist(void);
 static void update_toplevel_size(void);
 static bool script_cells_start(struct event_base *);
@@ -1321,7 +1317,6 @@ scan_selected_panels(const char *path)
 	size_t cap = 0;
 	unsigned int lineno = 0;
 	int depth = 0;
-	int group = 0;
 	bool selected = false;
 
 	f = fopen(path, "r");
@@ -1329,6 +1324,7 @@ scan_selected_panels(const char *path)
 		fprintf(stderr, "%s: %s: %s\n", PROG, path, strerror(errno));
 		return 0;
 	}
+	config_instances.count = 0;
 	while (getline(&line, &cap, f) != -1) {
 		char *fields[MAX_FIELDS] = { 0 };
 		char err[128] = "";
@@ -1349,7 +1345,8 @@ scan_selected_panels(const char *path)
 			continue;
 		}
 		if (depth == 0 && strcmp(fields[0], "show") == 0) {
-			bool collect = group == instance_index;
+			bool collect =
+			    cow_module_config_instances_select_next(&config_instances);
 
 			if (!load_show(fields, n, &why, collect)) {
 				fprintf(stderr, "%s: %s:%u: %s\n", PROG, path,
@@ -1361,7 +1358,6 @@ scan_selected_panels(const char *path)
 			}
 			if (collect)
 				selected = true;
-			group++;
 		}
 		if (strcmp(fields[0], "}") == 0 && n == 1) {
 			if (depth > 0)
@@ -1372,14 +1368,13 @@ scan_selected_panels(const char *path)
 	}
 	free(line);
 	fclose(f);
-	show_group_count = group;
-	if (group == 0) {
+	if (config_instances.count == 0) {
 		fprintf(stderr, "%s: %s: no show panel lines\n", PROG, path);
 		return 0;
 	}
 	if (!selected) {
 		fprintf(stderr, "%s: %s: no show panel line %d\n", PROG, path,
-		    instance_index);
+		    config_instances.index);
 		return 0;
 	}
 	return 1;
@@ -1583,23 +1578,6 @@ default_config_path(void)
 	return cow_module_config_default_path(PROG);
 }
 
-static bool
-parse_instance_index(void)
-{
-	const char *value = getenv(SHOW_INDEX_ENV);
-	int idx;
-
-	if (value == NULL || *value == '\0')
-		return true;
-	spawn_extra_instances = false;
-	if (!parse_int(value, &idx) || idx < 0) {
-		fprintf(stderr, "%s: bad %s\n", PROG, SHOW_INDEX_ENV);
-		return false;
-	}
-	instance_index = idx;
-	return true;
-}
-
 static void
 build_instance_title(void)
 {
@@ -1618,24 +1596,6 @@ build_instance_title(void)
 		if (n < 0 || (size_t)n >= sizeof(instance_title) - len)
 			break;
 		len += (size_t)n;
-	}
-}
-
-static void
-spawn_config_instances(const char *path, const char *prog)
-{
-	if (!spawn_extra_instances)
-		return;
-	for (int i = 1; i < show_group_count; i++) {
-		pid_t pid = fork();
-
-		if (pid != 0)
-			continue;
-		char idx[32];
-		snprintf(idx, sizeof(idx), "%d", i);
-		setenv(SHOW_INDEX_ENV, idx, 1);
-		execlp(prog, prog, "-c", path, (char *)NULL);
-		_exit(127);
 	}
 }
 
@@ -3533,7 +3493,8 @@ main(int argc, char **argv)
 	};
 
 	style_init();
-	if (!parse_instance_index())
+	if (!cow_module_config_instances_init(&config_instances, PROG,
+		SHOW_INDEX_ENV))
 		return 1;
 	if (!parse_args(argc, argv, &config_path)) {
 		usage();
@@ -3551,7 +3512,7 @@ main(int argc, char **argv)
 		free(config_path);
 		return 1;
 	}
-	spawn_config_instances(config_path, argv[0]);
+	cow_module_config_instances_spawn(&config_instances, argv);
 	free(config_path);
 
 	if (pipe(wake_pipe) < 0) {
