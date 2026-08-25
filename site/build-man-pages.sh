@@ -2,16 +2,61 @@
 
 set -eu
 
-if [ "$#" -ne 2 ]; then
-	echo "usage: $0 output-directory base-url" >&2
-	exit 1
-fi
-
-output=$1
-base_url=$2
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
-version=$("$repo_root/tools/cow-version-str.sh")
+source_root=$repo_root
+git_root=$repo_root
+git_ref=HEAD
+version=
+channel="the current CoW source tree"
+link_prefix=../
+manuals_href=./
+
+usage()
+{
+	echo "usage: $0 [options] output-directory base-url" >&2
+	echo "  --source-root directory" >&2
+	echo "  --git-root directory" >&2
+	echo "  --git-ref ref" >&2
+	echo "  --version version" >&2
+	echo "  --channel description" >&2
+	echo "  --link-prefix prefix" >&2
+	echo "  --manuals-href href" >&2
+	exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--source-root|--git-root|--git-ref|--version|--channel|--link-prefix|--manuals-href)
+		[ "$#" -ge 2 ] || usage
+		case "$1" in
+		--source-root) source_root=$2 ;;
+		--git-root) git_root=$2 ;;
+		--git-ref) git_ref=$2 ;;
+		--version) version=$2 ;;
+		--channel) channel=$2 ;;
+		--link-prefix) link_prefix=$2 ;;
+		--manuals-href) manuals_href=$2 ;;
+		esac
+		shift 2
+		;;
+	--)
+		shift
+		break
+		;;
+	-*) usage ;;
+	*) break ;;
+	esac
+done
+
+[ "$#" -eq 2 ] || usage
+output=$1
+base_url=$2
+
+if [ -z "$version" ]; then
+	version=$("$source_root/tools/cow-version-str.sh")
+fi
+
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT HUP INT TERM
 
@@ -28,17 +73,17 @@ page_start()
 	  <meta name="viewport" content="width=device-width, initial-scale=1">
 	  <meta name="theme-color" content="#b8b8b8">
 	  <title>${title} — CoW manual</title>
-	  <link rel="icon" href="../assets/Only-CoW.svg" type="image/svg+xml">
-	  <link rel="stylesheet" href="../styles.css">
-	  <link rel="stylesheet" href="../man.css">
-	  <script src="../script.js" defer></script>
+	  <link rel="icon" href="${link_prefix}assets/Only-CoW.svg" type="image/svg+xml">
+	  <link rel="stylesheet" href="${link_prefix}styles.css">
+	  <link rel="stylesheet" href="${link_prefix}man.css">
+	  <script src="${link_prefix}script.js" defer></script>
 	</head>
 	<body class="manual-page">
 	  <a class="skip-link" href="#manual-content">Skip to manual</a>
 	  <header class="desktop-panel">
 	    <nav aria-label="Primary navigation">
-	      <a href="../">Home</a>
-	      <a href="./">Manuals</a>
+	      <a href="${link_prefix}">Home</a>
+	      <a href="${manuals_href}">Manuals</a>
 	      <a href="https://codeberg.org/thomasadam/cow">Source</a>
 	      <a href="https://codeberg.org/thomasadam/cow/wiki/Home">Documentation</a>
 	    </nav>
@@ -75,14 +120,14 @@ page_start "Manual pages" > "$index"
 cat >> "$index" <<-EOF
 	<header class="manual-index-header">
 	  <h2>CoW manual pages</h2>
-	  <p>Manuals generated from the current CoW source tree, version ${version}.</p>
+	  <p>Manuals generated from ${channel}, version ${version}.</p>
 	</header>
 	<ul class="manual-index">
 	EOF
 
-for source in "$repo_root"/man/*.scd.in; do
+for source in "$source_root"/man/*.scd.in; do
 	filename=$(basename -- "$source")
-	source_relative=${source#"$repo_root"/}
+	source_relative=${source#"$source_root"/}
 	page=${filename%.scd.in}
 	name=${page%.*}
 	section=${page##*.}
@@ -91,8 +136,8 @@ for source in "$repo_root"/man/*.scd.in; do
 	raw_fragment=$tmpdir/$page.raw.html
 	fragment=$tmpdir/$page.html
 
-	if ! source_date_epoch=$(git -C "$repo_root" log -1 --format=%ct \
-	    -- "$source_relative"); then
+	if ! source_date_epoch=$(git -C "$git_root" log -1 --format=%ct \
+	    "$git_ref" -- "$source_relative") || [ -z "$source_date_epoch" ]; then
 		source_date_epoch=$(date +%s)
 	fi
 	awk -v version="$version" '{ gsub(/@VERSION@/, version); print }' \

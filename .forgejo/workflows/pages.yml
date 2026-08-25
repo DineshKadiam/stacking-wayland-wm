@@ -1,6 +1,11 @@
 name: Publish website
 
 on:
+  workflow_call:
+  workflow_dispatch:
+  release:
+    types:
+      - published
   push:
     branches:
       - main
@@ -21,6 +26,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: https://code.forgejo.org/actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
 
       - name: Install Hugo
         run: |

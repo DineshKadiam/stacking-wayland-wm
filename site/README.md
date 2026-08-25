@@ -8,7 +8,15 @@ It follows the usual Hugo structure, see: `static/`
 
 `site/build.sh` is the entry point for both local and published builds. It
 first runs Hugo to generate the main website, then runs
-`site/build-man-pages.sh` to add the manual pages.
+`site/build-man-pages.sh` to add two sets of manual pages:
+
+- `man/development/`, generated from the checked-out source tree.
+- `man/release/`, generated from the newest stable version tag reachable
+  from the current branch.
+
+The page at `man/` links to both sets and shows the version represented by
+each. Pre-release tags containing a suffix, such as `0.2-rc`, do not replace
+the stable release manuals.
 
 The manual-page build performs the following steps for each
 `man/*.scd.in` file:
@@ -18,8 +26,8 @@ The manual-page build performs the following steps for each
    commit which changed that source file.
 2. Run `scdoc` to produce a roff manual page.
 3. Run `mandoc` to convert the roff into an HTML fragment.
-4. Wrap the fragment in the website's window decor and write it beneath
-   `man/` in the output directory.
+4. Wrap the fragment in the website's window decor and write it beneath the
+   selected version directory.
 
 There is a small `awk` script which runs when man pages are generated.
 
@@ -48,7 +56,15 @@ Or use `hugo` if it's already installed on your machine.
 
 The Forgejo workflow in `.forgejo/workflows/pages.yml` runs on pushes to
 `main` which change the website, manual sources, version script, or workflow.
-It installs Hugo, `scdoc`, and `mandoc`, builds into `public/`, and publishes
-that directory to Codeberg Pages.
+It also runs when a release is published and can be started manually. The
+checkout includes the complete tag history so the released manual sources
+can be extracted from their tag. The workflow installs Hugo, `scdoc`, and
+`mandoc`, builds into `public/`, and publishes that directory to Codeberg
+Pages.
+
+The workflow also accepts `workflow_call`. An automated release workflow
+which publishes through the automatic Forgejo token must call the Pages
+workflow directly: events caused by that token do not start another
+workflow.
 
 This has been cobbled together from various other bits of Hugo themes, etc.

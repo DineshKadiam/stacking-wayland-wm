@@ -199,7 +199,29 @@
   outline-offset: 2px;
 }
 
+.manual-versions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.manual-versions a {
+  box-sizing: border-box;
+  height: 100%;
+  white-space: nowrap;
+}
+
+.manual-versions span {
+  font-family: monospace;
+}
+
+.manual-versions span::before {
+  content: " — ";
+}
+
 @media (max-width: 680px) {
+  .manual-versions {
+    grid-template-columns: 1fr;
+  }
+
   .manual-content dl.Bl-tag,
   .manual-content dl.Bl-diag {
     display: block;

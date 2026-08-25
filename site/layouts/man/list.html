@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="{{ .Description }}">
+  <meta name="theme-color" content="#b8b8b8">
+  <title>{{ .Title }} — CoW</title>
+  <link rel="icon" href="{{ "assets/Only-CoW.svg" | relURL }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ "styles.css" | relURL }}">
+  <link rel="stylesheet" href="{{ "man.css" | relURL }}">
+  <script src="{{ "script.js" | relURL }}" defer></script>
+</head>
+<body class="manual-page">
+  <a class="skip-link" href="#manual-content">Skip to manuals</a>
+  <header class="desktop-panel">
+    <nav aria-label="Primary navigation">
+      <a href="{{ "" | relURL }}">Home</a>
+      <a href="{{ "man/" | relURL }}">Manuals</a>
+      <a href="{{ .Site.Params.repository }}">Source</a>
+      <a href="{{ .Site.Params.documentation }}">Documentation</a>
+    </nav>
+  </header>
+  <main class="manual-main" id="manual-content">
+    {{ partial "window-start.html" (dict "class" "manual-window" "title" "Manual pages" "heading_id" "manual-title") }}
+      <div class="window-content manual-content">
+        <header class="manual-index-header">
+          <h2>Choose a version</h2>
+          <p>The development manuals track <code>main</code>; the release
+            manuals remain at the latest stable release.</p>
+        </header>
+        <ul class="manual-index manual-versions">
+          <li>
+            <a href="{{ "man/development/" | relURL }}">
+              <strong>Development</strong>
+              <span>{{ .Site.Params.developmentVersion }}</span>
+            </a>
+          </li>
+          {{ with .Site.Params.releaseVersion }}
+          <li>
+            <a href="{{ "man/release/" | relURL }}">
+              <strong>Latest release</strong>
+              <span>{{ . }}</span>
+            </a>
+          </li>
+          {{ end }}
+        </ul>
+      </div>
+    {{ partial "window-end.html" . }}
+  </main>
+  <aside class="window-tray" aria-label="Closed sections" hidden>
+    <span>Windows:</span>
+    <div class="window-tray-items"></div>
+  </aside>
+</body>
+</html>

@@ -3,6 +3,7 @@
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 output=${1:-_site}
 base_url=${2:-http://localhost:8000/}
 hugo=${HUGO:-hugo}
@@ -19,11 +20,41 @@ case "$output" in
 	*) destination=$(pwd)/$output ;;
 esac
 
+development_version=$(CDPATH= cd -- "$repo_root" && \
+	"$repo_root/tools/cow-version-str.sh")
+release_tag=$(git -C "$repo_root" for-each-ref --merged=HEAD \
+	--sort=-creatordate --format='%(refname:short)' refs/tags |
+	awk '/^[0-9]+(\.[0-9]+)*$/ { print; exit }')
+
+HUGO_PARAMS_DEVELOPMENTVERSION=$development_version \
+HUGO_PARAMS_RELEASEVERSION=$release_tag \
 "$hugo" \
 	--source site \
 	--destination "$destination" \
 	--baseURL "$base_url" \
+	--cleanDestinationDir \
 	--gc \
 	--minify
 
-sh "$script_dir/build-man-pages.sh" "$destination/man" "$base_url"
+sh "$script_dir/build-man-pages.sh" \
+	--version "$development_version" \
+	--channel "the development branch" \
+	--link-prefix ../../ \
+	--manuals-href ../ \
+	"$destination/man/development" "$base_url"
+
+if [ -n "$release_tag" ]; then
+	release_source=$(mktemp -d)
+	trap 'rm -rf "$release_source"' EXIT HUP INT TERM
+	git -C "$repo_root" archive "$release_tag" man |
+		tar -x -C "$release_source"
+	sh "$script_dir/build-man-pages.sh" \
+		--source-root "$release_source" \
+		--git-root "$repo_root" \
+		--git-ref "$release_tag" \
+		--version "$release_tag" \
+		--channel "release ${release_tag}" \
+		--link-prefix ../../ \
+		--manuals-href ../ \
+		"$destination/man/release" "$base_url"
+fi
