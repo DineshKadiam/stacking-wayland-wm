@@ -24,6 +24,7 @@
 %option noinput
 %option yylineno
 %option stack
+%option extra-type="struct dsl_lexer_ctx *"
 
 %{
 #include <stdio.h>
@@ -42,51 +43,42 @@
 #define YY_USER_ACTION                                                         \
 	do {                                                                   \
 		yylloc->first_line   = yylineno;                               \
-		yylloc->first_column = yycol_start;                            \
+		yylloc->first_column = yyextra->col;                            \
 		yylloc->last_line    = yylineno;                               \
-		yylloc->last_column  = yycol_start + (int)yyleng;              \
-		yycol_start += (int)yyleng;                                    \
+		yylloc->last_column  = yyextra->col + (int)yyleng;              \
+		yyextra->col += (int)yyleng;                                    \
 	} while (0);
 
-static __thread int yycol_start = 1;
-
-struct str_accum {
-	char  *buf;
-	size_t len;
-	size_t cap;
-};
-
-static __thread struct str_accum strbuf;
-
 static void
-strbuf_reset(void)
+strbuf_reset(struct dsl_lexer_ctx *lexer)
 {
-	strbuf.len = 0;
-	if (strbuf.cap == 0) {
-		strbuf.cap = 32;
-		strbuf.buf = xmalloc(strbuf.cap);
+	lexer->strbuf_len = 0;
+	if (lexer->strbuf_cap == 0) {
+		lexer->strbuf_cap = 32;
+		lexer->strbuf = xmalloc(lexer->strbuf_cap);
 	}
-	strbuf.buf[0] = '\0';
+	lexer->strbuf[0] = '\0';
 }
 
 static void
-strbuf_putc(int c)
+strbuf_putc(struct dsl_lexer_ctx *lexer, int c)
 {
-	if (strbuf.len + 2 > strbuf.cap) {
-		strbuf.cap *= 2;
-		strbuf.buf = xrealloc(strbuf.buf, strbuf.cap, 1);
+	if (lexer->strbuf_len + 2 > lexer->strbuf_cap) {
+		lexer->strbuf_cap *= 2;
+		lexer->strbuf = xrealloc(lexer->strbuf,
+		    lexer->strbuf_cap, 1);
 	}
-	strbuf.buf[strbuf.len++] = (char)c;
-	strbuf.buf[strbuf.len]	 = '\0';
+	lexer->strbuf[lexer->strbuf_len++] = (char)c;
+	lexer->strbuf[lexer->strbuf_len] = '\0';
 }
 
 static char *
-strbuf_take(void)
+strbuf_take(struct dsl_lexer_ctx *lexer)
 {
-	char *out  = xstrdup(strbuf.buf != NULL ? strbuf.buf : "");
-	strbuf.len = 0;
-	if (strbuf.buf != NULL)
-		strbuf.buf[0] = '\0';
+	char *out = xstrdup(lexer->strbuf != NULL ? lexer->strbuf : "");
+	lexer->strbuf_len = 0;
+	if (lexer->strbuf != NULL)
+		lexer->strbuf[0] = '\0';
 	return (out);
 }
 
@@ -171,14 +163,14 @@ DEC	[0-9]+\.[0-9]+
 
 <INITIAL,INTERP>{
 	[ \t]+			{ /* skip */ }
-	\n			{ yycol_start = 1; }
+	\n			{ yyextra->col = 1; }
 	"#"[^\n]*		{ /* line comment */ }
 }
 
 <CMDARG>{
 	[ \t]+			{ /* skip inter-arg whitespace */ }
 	\n			{
-				yycol_start = 1;
+				yyextra->col = 1;
 				yy_pop_state(yyscanner);
 			}
 	";"			{
@@ -230,7 +222,7 @@ DEC	[0-9]+\.[0-9]+
 			}
 	\n			{
 				/* unterminated string -- close it */
-				yycol_start = 1;
+				yyextra->col = 1;
 				yy_pop_state(yyscanner);
 				return (STR_END);
 			}
@@ -296,7 +288,7 @@ DEC	[0-9]+\.[0-9]+
 			}
 
 	\"			{
-				strbuf_reset();
+				strbuf_reset(yyextra);
 				yy_push_state(STRLIT, yyscanner);
 			}
 
@@ -316,25 +308,25 @@ DEC	[0-9]+\.[0-9]+
 }
 
 <STRLIT>{
-	\\n			{ strbuf_putc('\n'); }
-	\\t			{ strbuf_putc('\t'); }
-	\\r			{ strbuf_putc('\r'); }
-	\\\"			{ strbuf_putc('"'); }
-	\\\\			{ strbuf_putc('\\'); }
-	\\.			{ strbuf_putc(yytext[1]); }
+	\\n			{ strbuf_putc(yyextra, '\n'); }
+	\\t			{ strbuf_putc(yyextra, '\t'); }
+	\\r			{ strbuf_putc(yyextra, '\r'); }
+	\\\"			{ strbuf_putc(yyextra, '"'); }
+	\\\\			{ strbuf_putc(yyextra, '\\'); }
+	\\.			{ strbuf_putc(yyextra, yytext[1]); }
 	\"			{
 				yy_pop_state(yyscanner);
-				yylval->str = strbuf_take();
+				yylval->str = strbuf_take(yyextra);
 				return (STRING_LIT);
 			}
 	\n			{
 				/* unterminated string -- treat as end */
-				yycol_start = 1;
+				yyextra->col = 1;
 				yy_pop_state(yyscanner);
-				yylval->str = strbuf_take();
+				yylval->str = strbuf_take(yyextra);
 				return (STRING_LIT);
 			}
-	.			{ strbuf_putc(yytext[0]); }
+	.			{ strbuf_putc(yyextra, yytext[0]); }
 }
 
 %%

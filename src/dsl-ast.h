@@ -296,4 +296,14 @@ struct dsl_parse_ctx {
 	struct dsl_node	 *current_cmd;
 };
 
+/*
+ * Per-scanner state used by the reentrant Flex lexer.
+ */
+struct dsl_lexer_ctx {
+	int	 col;
+	char	*strbuf;
+	size_t	 strbuf_len;
+	size_t	 strbuf_cap;
+};
+
 #endif /* COW_DSL_AST_H */

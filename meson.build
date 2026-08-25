@@ -66,6 +66,7 @@ srcs = [
     'src/cmd-window-list.c',
     'src/cmd.c',
     'src/dsl-ast.c',
+    'src/dsl-parse.c',
     'src/dsl-eval.c',
     'src/dsl-sources.c',
     'src/dsl-value.c',
@@ -391,6 +392,28 @@ command_quote_test = executable('test-command-quote',
     dependencies: all_deps,
 )
 test('command-quote', command_quote_test)
+
+command_parse_test = executable('test-command-parse',
+    'tests/command-parse.c',
+    'src/cmd-string.c',
+    'src/cmd-scan.c',
+    'src/memory.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('command-parse', command_parse_test)
+
+dsl_parse_test = executable('test-dsl-parse',
+    'tests/dsl-parse.c',
+    'src/dsl-ast.c',
+    'src/dsl-parse.c',
+    'src/memory.c',
+    dsl_parser_gen,
+    dsl_lexer_gen,
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('dsl-parse', dsl_parse_test)
 
 colour_test = executable('test-colour',
     'tests/colour.c',

@@ -27,67 +27,8 @@
 #include "cow/view.h"
 
 #include "dsl-ast.h"
-#include "dsl-parser.h"
-#include "dsl-lexer.h"
 #include "dsl-sources.h"
 #include "dsl-value.h"
-
-void
-dsl_error_fini(struct dsl_error *error)
-{
-	if (error == NULL)
-		return;
-	xfree(error->file);
-	xfree(error->message);
-	error->file = NULL;
-	error->message = NULL;
-}
-
-struct dsl_ast *
-dsl_parse(const char *src, const char *file, struct dsl_error *err)
-{
-	if (src == NULL) {
-		if (err != NULL) {
-			err->file    = NULL;
-			err->line    = 0;
-			err->col     = 0;
-			err->message = xstrdup("null source");
-		}
-		return (NULL);
-	}
-
-	yyscan_t scanner;
-	if (dsl_yylex_init(&scanner) != 0) {
-		if (err != NULL) {
-			err->file    = NULL;
-			err->line    = 0;
-			err->col     = 0;
-			err->message = xstrdup("lexer init failed");
-		}
-		return (NULL);
-	}
-
-	YY_BUFFER_STATE buf = dsl_yy_scan_string(src, scanner);
-
-	dsl_yyset_lineno(1, scanner);
-
-	struct dsl_parse_ctx ctx = { 0 };
-	ctx.err			 = err;
-	ctx.file		 = file;
-	ctx.ast			 = dsl_ast_new();
-
-	int rc = dsl_yyparse(&ctx, scanner);
-
-	dsl_yy_delete_buffer(buf, scanner);
-	dsl_yylex_destroy(scanner);
-
-	if (rc != 0) {
-		dsl_free(ctx.ast);
-		return (NULL);
-	}
-
-	return (ctx.ast);
-}
 
 struct dsl_env_entry {
 	char		 *name;

@@ -36,6 +36,23 @@ int   cmd_string_getc(const char *, size_t *);
 void  cmd_string_ungetc(size_t *);
 void  cmd_string_copy(char **, char *, size_t *);
 char *cmd_string_string(const char *, size_t *, char, int);
+static void cmd_string_add_arg(char ***, int *, char **, size_t *);
+
+static void
+cmd_string_add_arg(char ***argv, int *argc, char **buf, size_t *len)
+{
+	if (*buf == NULL)
+		return;
+
+	*buf = xrealloc(*buf, 1, *len + 1);
+	(*buf)[*len] = '\0';
+
+	*argv = xrealloc(*argv, *argc + 1, sizeof **argv);
+	(*argv)[(*argc)++] = *buf;
+
+	*buf = NULL;
+	*len = 0;
+}
 
 int
 cmd_string_getc(const char *s, size_t *p)
@@ -93,6 +110,12 @@ cmd_string_parse(const char *s, struct cmd_list **cmdlist, const char *file,
 			break;
 		case '{': {
 			size_t start = p - 1, end;
+
+			/*
+			 * A brace group starts a new argument even when it is
+			 * adjacent to the preceding command name.
+			 */
+			cmd_string_add_arg(&argv, &argc, &buf, &len);
 			if (cow_cmd_find_matching_brace(s + start,
 				strlen(s + start), &end) !=
 			    COW_CMD_SCAN_COMPLETE)
@@ -101,6 +124,7 @@ cmd_string_parse(const char *s, struct cmd_list **cmdlist, const char *file,
 			memcpy(buf + len, s + start, end + 1);
 			len += end + 1;
 			p = start + end + 1;
+			cmd_string_add_arg(&argv, &argc, &buf, &len);
 			break;
 		}
 		case '#':
@@ -111,16 +135,7 @@ cmd_string_parse(const char *s, struct cmd_list **cmdlist, const char *file,
 		case EOF:
 		case ' ':
 		case '\t':
-			if (buf != NULL) {
-				buf	 = xrealloc(buf, 1, len + 1);
-				buf[len] = '\0';
-
-				argv = xrealloc(argv, argc + 1, sizeof *argv);
-				argv[argc++] = buf;
-
-				buf = NULL;
-				len = 0;
-			}
+			cmd_string_add_arg(&argv, &argc, &buf, &len);
 
 			if (ch != EOF)
 				break;
