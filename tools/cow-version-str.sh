@@ -11,8 +11,8 @@
 # Intended to be called from meson.
 set -e
 
-COW_RELEASE=yes
-VERSION=0.2
+COW_RELEASE=no
+VERSION=0.3
 
 [ -d ".git" -a "$COW_RELEASE" = "no" ] || { echo "$VERSION" && exit 0 ; }
 
