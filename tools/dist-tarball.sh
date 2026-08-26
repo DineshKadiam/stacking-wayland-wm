@@ -9,6 +9,7 @@ FILES_TO_IGNORE=".clang-format
 .gitignore
 .builds
 .forgejo
+.release-notes-assistant.yaml
 "
 
 (
