@@ -44,6 +44,13 @@ xkb_binding_handle_pressed(void		 *data,
 {
 	struct cow_keybinding *kb = data;
 	kb->pending		  = true;
+	kb->main_key_held	  = true;
+	if (kb->release_action != NULL && !kb->release_armed) {
+		kb->release_armed = true;
+		kb->release_action_view =
+		    (kb->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0 ?
+		    NULL : kb->seat->binding_context_view;
+	}
 	/*
 	 * Track the press for repeat scheduling.  The action is fired
 	 * the next manage cycle (via the `pending` flag); we'll stamp
@@ -66,7 +73,13 @@ xkb_binding_handle_released(void	 *data,
 	 * will stop scheduling further fires. */
 	kb->held	 = false;
 	kb->first_repeat = false;
-	kb->releasing = true;
+	kb->main_key_held = false;
+	if (kb->release_armed &&
+	    (kb->modifiers == RIVER_SEAT_V1_MODIFIERS_NONE ||
+		kb->seat->xkb_seat == NULL || cow_wm.xkb_bindings_version < 3 ||
+		(kb->seat->active_modifiers & kb->modifiers) == 0)) {
+		kb->release_pending = true;
+	}
 }
 
 static void
@@ -156,7 +169,8 @@ cow_keybinding_create(struct cow_seat *seat, xkb_keysym_t keysym,
 	    &xkb_binding_listener, kb);
 
 	wl_list_insert(&seat->keybindings, &kb->link);
-	if (repeatable && modifiers != RIVER_SEAT_V1_MODIFIERS_NONE) {
+	if ((repeatable || release_fn != NULL) &&
+	    modifiers != RIVER_SEAT_V1_MODIFIERS_NONE) {
 		seat->modifier_watch_dirty = true;
 		cow_wm_request_manage_dirty();
 	}
@@ -452,7 +466,7 @@ cow_seat_update_modifier_watch(struct cow_seat *seat)
 	struct cow_keybinding *kb;
 	wl_list_for_each(kb, &seat->keybindings, link)
 	{
-		if (kb->repeatable)
+		if (kb->repeatable || kb->release_action != NULL)
 			modifiers |= kb->modifiers;
 	}
 	struct cow_pointer_binding *pb;
@@ -468,24 +482,45 @@ cow_seat_update_modifier_watch(struct cow_seat *seat)
 }
 
 void
-cow_seat_handle_modifiers_update(struct cow_seat *seat, __unused uint32_t old,
+cow_seat_handle_modifiers_update(struct cow_seat *seat, uint32_t old,
     uint32_t new)
 {
 	if (seat == NULL)
 		return;
 	seat->active_modifiers = new;
 
+	bool release_due = false;
 	struct cow_keybinding *kb;
 	wl_list_for_each(kb, &seat->keybindings, link)
 	{
-		if (!kb->held || !kb->repeatable ||
-		    kb->modifiers == RIVER_SEAT_V1_MODIFIERS_NONE)
-			continue;
-		if ((new & kb->modifiers) == kb->modifiers)
-			continue;
-		kb->held	 = false;
-		kb->first_repeat = false;
+		if (kb->held && kb->repeatable &&
+		    kb->modifiers != RIVER_SEAT_V1_MODIFIERS_NONE &&
+		    (new & kb->modifiers) != kb->modifiers) {
+			kb->held = false;
+			kb->first_repeat = false;
+		}
+		if (kb->release_armed && !kb->main_key_held &&
+		    (old & kb->modifiers) != 0 &&
+		    (new & kb->modifiers) == 0) {
+			kb->release_pending = true;
+			release_due = true;
+		}
 	}
+	if (release_due)
+		cow_wm_request_manage_dirty();
+}
+
+static void
+run_binding_action(struct cow_seat *seat, struct cow_view *view,
+    cow_action_fn action, void *arg)
+{
+	struct cow_seat *old_seat = cow_wm.current_interaction_seat;
+	cow_wm.current_interaction_seat = seat;
+	seat->binding_action_view = view;
+	if (action != NULL)
+		action(arg);
+	seat->binding_action_view = NULL;
+	cow_wm.current_interaction_seat = old_seat;
 }
 
 /*
@@ -532,23 +567,13 @@ cow_seat_process_bindings(struct cow_seat *seat)
 				fire_repeat = true;
 		}
 
-		if (kb->releasing) {
-			kb->releasing = false;
-			if (kb->release_action != NULL)
-				kb->release_action(kb->release_action_arg);
-		}
 		if (fire_press || fire_repeat) {
 			kb->pending = false;
-			struct cow_seat *old_seat =
-			    cow_wm.current_interaction_seat;
-			cow_wm.current_interaction_seat = seat;
-			seat->binding_action_view =
+			struct cow_view *target =
 			    (kb->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0 ?
 			    NULL : seat->binding_context_view;
-			if (kb->action != NULL)
-				kb->action(kb->action_arg);
-			seat->binding_action_view = NULL;
-			cow_wm.current_interaction_seat = old_seat;
+			run_binding_action(seat, target, kb->action,
+			    kb->action_arg);
 			/*
 			 * Stamp the fire time AFTER the action runs so
 			 * the delay clock counts from the user-visible
@@ -561,6 +586,14 @@ cow_seat_process_bindings(struct cow_seat *seat)
 			if (fire_repeat)
 				kb->first_repeat = false;
 		}
+		if (kb->release_pending) {
+			struct cow_view *target = kb->release_action_view;
+			kb->release_pending = false;
+			kb->release_armed = false;
+			kb->release_action_view = NULL;
+			run_binding_action(seat, target, kb->release_action,
+			    kb->release_action_arg);
+		}
 	}
 
 	struct cow_pointer_binding *pb, *pb_tmp;
@@ -570,16 +603,11 @@ cow_seat_process_bindings(struct cow_seat *seat)
 			pb->pending = false;
 			struct cow_view *target = pb->pending_view;
 			pb->pending_view = NULL;
-			struct cow_seat *old_seat =
-			    cow_wm.current_interaction_seat;
-			cow_wm.current_interaction_seat = seat;
-			seat->binding_action_view =
+			struct cow_view *action_view =
 			    (pb->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0 ?
 			    NULL : target;
-			if (pb->action != NULL)
-				pb->action(pb->action_arg);
-			seat->binding_action_view = NULL;
-			cow_wm.current_interaction_seat = old_seat;
+			run_binding_action(seat, action_view, pb->action,
+			    pb->action_arg);
 		}
 	}
 }
@@ -939,19 +967,22 @@ register_config_keyboard_bindings(struct cow_seat *seat)
 			&context))
 			continue;
 
-		cow_action_fn fn, release_fn;
-		void	     *arg, *release_arg;
+		cow_action_fn fn;
+		cow_action_fn release_fn = NULL;
+		void	     *arg;
+		void	     *release_arg = NULL;
 		if (!cow_resolve_action(entry->action_string, &fn, &arg))
 			continue;
 
-		if (entry->release_action_string) {
-			cow_resolve_action(entry->release_action_string,
-				&release_fn, &release_arg);
-			}
+		if (entry->release_action_string != NULL &&
+		    !cow_resolve_action(entry->release_action_string, &release_fn,
+			&release_arg)) {
+			xfree(arg);
+			continue;
+		}
 		cow_keybinding_create(seat, keysym, modifiers, context, fn, arg,
 		    entry->repeatable, release_fn, release_arg);
 	}
-
 }
 
 static void
@@ -1116,6 +1147,8 @@ cow_seat_destroy_bindings(struct cow_seat *seat)
 	{
 		wl_list_remove(&kb->link);
 		river_xkb_binding_v1_destroy(kb->river_binding);
+		xfree(kb->action_arg);
+		xfree(kb->release_action_arg);
 		xfree(kb);
 	}
 
@@ -1124,6 +1157,7 @@ cow_seat_destroy_bindings(struct cow_seat *seat)
 	{
 		wl_list_remove(&pb->link);
 		river_pointer_binding_v1_destroy(pb->river_binding);
+		xfree(pb->action_arg);
 		xfree(pb);
 	}
 

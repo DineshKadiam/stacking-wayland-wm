@@ -16,13 +16,16 @@
 /*
  * Command: bind -- add a keyboard binding.
  *
- * usage: bind [-r] [contexts:]key action ...
+ * usage: bind [-r] [-x release-action] [contexts:]key action ...
  *        bind -d pattern
  *
  *   -r  mark the binding as repeatable: while the triggering key is
  *       held the action re-fires every set repeat_interval_ms after
  *       an initial set repeat_delay_ms dwell.  Without -r the action
  *       fires once per press.
+ *
+ *   -x  run an action once the key and all of the binding's modifiers
+ *       have been released.  Options must precede the key specification.
  *
  *   -d  delete bindings whose complete key specification matches pattern.
  */
@@ -53,7 +56,7 @@ struct cmd_entry cmd_bind_entry = {
 	"+drx:",
 	1,
 	-1,
-	"bind [-r] [contexts:]key [-x release-action] action ...\n"
+	"bind [-r] [-x release-action] [contexts:]key action ...\n"
 	"bind -d pattern",
 	cmd_bind_exec,
 	0,
@@ -65,7 +68,8 @@ cmd_bind_exec(struct cmd *self, struct cmd_q *cmdq)
 	struct args *args = self->args;
 
 	if (args_has(args, 'd')) {
-		if (args_has(args, 'r') || args->argc != 1) {
+		if (args_has(args, 'r') || args_has(args, 'x') ||
+		    args->argc != 1) {
 			cmdq_error(cmdq, "usage: bind -d pattern");
 			return (CMD_RETURN_ERROR);
 		}
@@ -121,21 +125,18 @@ cmd_bind_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	struct cow_binding_entry *entry = xcalloc(1, sizeof(*entry));
-	
-	entry->key_string		= xstrdup(args->argv[0]);
-	if (args_has(args, 'x')) {	
+
+	entry->key_string = xstrdup(args->argv[0]);
+	if (args_has(args, 'x'))
 		entry->release_action_string = xstrdup(args_get(args, 'x'));
-	}
-	
+
 	entry->action_string =
 	    cmd_argv_to_action_string(args->argc, args->argv, 1);
-	entry->repeatable    = args_has(args, 'r');
-	
+	entry->repeatable = args_has(args, 'r');
+
 	wl_list_insert(cow_config->keyboard_bindings.prev, &entry->link);
 
 	cow_rebind_all_seats();
 
 	return (CMD_RETURN_NORMAL);
 }
-
-

@@ -550,7 +550,7 @@ The following details those commands which operate globally within *cow*.
 Note that the same command might also contain window/output settings, which will
 be also be added under the relevant section in this man page.
 
-## bind [-r] [-x action] [contexts:]modifier+key action ... | bind -d pattern
+## bind [-r] [-x release-action] [contexts:]modifier+key action ... | bind -d pattern
 
 Key bindings are specified as a modifier string immediately followed by *+* and
 a keysym name, or *-* and a numeric keycode:
@@ -590,11 +590,20 @@ rather than whichever window was previously focused.
 	matches the shell-style _pattern_.  Quote patterns in configuration files,
 	for example *bind -d "L+[0-9]"*.  This is useful before regenerating a
 	group of bindings from a script.
-	
+
 *-x* _action_
-	Perform this action when the key is released.  The definition still requires
-	a key-press action (even if _nop_).  You can pair actions (for example,
-	opening a popup menu on key press, and then destroying it on release)
+	Perform this action after the key and every modifier named by the binding
+	have been released. The definition still requires a key-press action (even
+	if _nop_). This allows a menu opened by *A+Tab*, for example, to remain open
+	through repeated Tab presses and be destroyed when Alt is released:
+
+	```
+	bind -x "menu-destroy AllWindows" A+Tab menu-show AllWindows
+	```
+
+	All *bind* options must appear before the key specification. On versions of
+	the River XKB bindings protocol before version 3, modifier release cannot be
+	observed, so the action instead runs when the main key is released.
 
 *Modifier characters:*
 

@@ -456,6 +456,12 @@ cow_seat_forget_view(struct cow_seat *seat, struct cow_view *view)
 	}
 	if (seat->binding_action_view == view)
 		seat->binding_action_view = NULL;
+	struct cow_keybinding *kb;
+	wl_list_for_each(kb, &seat->keybindings, link)
+	{
+		if (kb->release_action_view == view)
+			kb->release_action_view = NULL;
+	}
 	struct cow_pointer_binding *pb;
 	wl_list_for_each(pb, &seat->pointer_bindings, link)
 	{

@@ -158,8 +158,8 @@ struct cow_border_colour {
 struct cow_binding_entry {
 	struct wl_list link;
 	char	      *key_string; /* e.g. "L+Return", "T:LS+q" */
-	char *action_string; /* e.g. "action-terminal", "quit", "view-quit" */
-	char *release_action_string; /* e.g. "action-terminal", "quit", "view-quit" */
+	char *action_string; /* e.g. "exec foot", "quit", "focus -n" */
+	char *release_action_string; /* optional action for chord release */
 	bool  repeatable;
 };
 

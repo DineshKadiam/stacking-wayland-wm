@@ -82,9 +82,10 @@ struct cow_keybinding {
 
 	cow_action_fn action;
 	void	     *action_arg;
-	
+
 	cow_action_fn release_action;
 	void	     *release_action_arg;
+	struct cow_view *release_action_view;
 
 	struct cow_seat *seat;
 	bool		 enabled;
@@ -93,7 +94,9 @@ struct cow_keybinding {
 	bool repeatable;
 	bool held;
 	bool first_repeat;
-	bool releasing;
+	bool main_key_held;
+	bool release_armed;
+	bool release_pending;
 	long last_fire_ms;
 };
 
@@ -123,7 +126,8 @@ struct cow_pointer_binding {
  * Create a key binding for the given seat.  When `repeatable` is
  * true the binding's action will be re-fired while the triggering
  * key is held, paced by cow_config->repeat_delay_ms /
- * repeat_interval_ms.
+ * repeat_interval_ms.  The binding takes ownership of action_arg and
+ * release_action_arg.
  */
 struct cow_keybinding *cow_keybinding_create(struct cow_seat *, xkb_keysym_t,
     uint32_t, uint32_t, cow_action_fn, void *, bool repeatable,
