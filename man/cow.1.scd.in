@@ -1116,7 +1116,7 @@ Operate on a window.
 	Container members share a single layer: setting *-L* on any
 	member updates every member of the container.
 
-## window-move [-C] [-w] [-t target] [-d dir [-n]] [-o output] [-c] [-k 0-9] [-x X] [-y Y]
+## window-move [-C] [-w] [-t target] [-d dir [-n]] [-o output] [-c] [-k 0-9] [-x X] [-y Y] [-P col [row]]
 
 Move a window. With no flags, begin an interactive move using the mouse.
 
@@ -1151,7 +1151,10 @@ Move a window. With no flags, begin an interactive move using the mouse.
 
 *-P* _col_ [_row_]
 	Move the window to the page at column _col_, row _row_ (0-indexed),
-	preserving its within-page position.  _row_ defaults to 0.
+	preserving its within-page position. Negative indices count from the end
+	of the corresponding axis. A signed value suffixed with *p* is relative
+	to the window's current page, for example *-P +1p +0p* moves it one page
+	to the right. _row_ defaults to 0.
 	Only meaningful when _desktop\_size_ is larger than 1×1.
 
 *-c*

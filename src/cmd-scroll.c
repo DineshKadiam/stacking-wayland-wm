@@ -85,8 +85,6 @@
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_scroll_exec(struct cmd *, struct cmd_q *);
-static bool parse_page_axis(struct cmd_q *, const char *, const char *, int,
-    int, long long *);
 
 struct cmd_entry cmd_scroll_entry = {
 	"scroll",
@@ -228,9 +226,11 @@ cmd_scroll_exec(struct cmd *self, struct cmd_q *cmdq)
 		int cur_col = desk->page_vx / w;
 		int cur_row = desk->page_vy / h;
 
-		if (!parse_page_axis(cmdq, "col", col_buf, cur_col, cols, &lc))
+		if (!cmd_parse_page_axis(cmdq, "scroll", "col", col_buf,
+			cur_col, cols, &lc))
 			return (CMD_RETURN_ERROR);
-		if (!parse_page_axis(cmdq, "row", row_str, cur_row, rows, &lr))
+		if (!cmd_parse_page_axis(cmdq, "scroll", "row", row_str,
+			cur_row, rows, &lr))
 			return (CMD_RETURN_ERROR);
 		cow_page_scroll_to(output, (int)lc * w, (int)lr * h, false);
 		return (CMD_RETURN_NORMAL);
@@ -369,39 +369,4 @@ cmd_scroll_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	cow_page_scroll_to(output, (int)new_vx, (int)new_vy, wrap);
 	return (CMD_RETURN_NORMAL);
-}
-
-static bool
-parse_page_axis(struct cmd_q *cmdq, const char *name, const char *value,
-    int current, int count, long long *out)
-{
-	size_t len = strlen(value);
-	bool relative = len > 1 && value[len - 1] == 'p' &&
-	    (value[0] == '+' || value[0] == '-');
-	char buf[64];
-	long long v, page;
-
-	if (relative) {
-		if (len >= sizeof(buf)) {
-			cmdq_error(cmdq, "scroll: %s value too long", name);
-			return false;
-		}
-		memcpy(buf, value, len - 1);
-		buf[len - 1] = '\0';
-		if (!cmd_parse_int(cmdq, "scroll", name, buf, INT_MIN,
-			INT_MAX, &v))
-			return false;
-		page = current + v;
-	} else {
-		if (!cmd_parse_int(cmdq, "scroll", name, value, -count,
-			count - 1, &v))
-			return false;
-		page = v < 0 ? count + v : v;
-	}
-	if (page < 0 || page >= count) {
-		cmdq_error(cmdq, "scroll: %s out of range: %lld", name, page);
-		return false;
-	}
-	*out = page;
-	return true;
 }

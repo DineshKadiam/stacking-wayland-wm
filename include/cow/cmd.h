@@ -180,6 +180,12 @@ struct cow_desk *cmd_require_target_desk(struct cmd_q *, const char *);
 bool cmd_parse_int(struct cmd_q *, const char *, const char *, const char *,
     long long, long long, long long *);
 
+/*
+ * Parse an absolute page index or a signed relative offset suffixed by p.
+ */
+bool cmd_parse_page_axis(struct cmd_q *, const char *, const char *,
+    const char *, int, int, long long *);
+
 enum cmd_length_unit {
 	CMD_LENGTH_PIXELS,
 	CMD_LENGTH_VW,

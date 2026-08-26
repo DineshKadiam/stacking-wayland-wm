@@ -86,6 +86,44 @@ cmd_parse_int(struct cmd_q *cmdq, const char *cmd_name, const char *field,
 }
 
 bool
+cmd_parse_page_axis(struct cmd_q *cmdq, const char *cmd_name,
+    const char *field, const char *value, int current, int count,
+    long long *out)
+{
+	size_t	  len = strlen(value);
+	bool	  relative = len > 1 && value[len - 1] == 'p' &&
+	    (value[0] == '+' || value[0] == '-');
+	char	  buf[64];
+	long long v, page;
+
+	if (relative) {
+		if (len >= sizeof(buf)) {
+			cmdq_error(cmdq, "%s: %s value too long", cmd_name,
+			    field);
+			return false;
+		}
+		memcpy(buf, value, len - 1);
+		buf[len - 1] = '\0';
+		if (!cmd_parse_int(cmdq, cmd_name, field, buf, INT_MIN,
+			INT_MAX, &v))
+			return false;
+		page = current + v;
+	} else {
+		if (!cmd_parse_int(cmdq, cmd_name, field, value, -count,
+			count - 1, &v))
+			return false;
+		page = v < 0 ? count + v : v;
+	}
+	if (page < 0 || page >= count) {
+		cmdq_error(cmdq, "%s: %s out of range: %lld", cmd_name,
+		    field, page);
+		return false;
+	}
+	*out = page;
+	return true;
+}
+
+bool
 cmd_parse_length(struct cmd_q *cmdq, const char *cmd_name, const char *field,
     const char *val, long long lo, long long hi, struct cmd_length *out)
 {
