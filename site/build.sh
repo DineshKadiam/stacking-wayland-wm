@@ -25,9 +25,16 @@ development_version=$(CDPATH= cd -- "$repo_root" && \
 release_tag=$(git -C "$repo_root" for-each-ref --merged=HEAD \
 	--sort=-creatordate --format='%(refname:short)' refs/tags |
 	awk '/^[0-9]+(\.[0-9]+)*$/ { print; exit }')
+release_date=
+if [ -n "$release_tag" ]; then
+	release_date=$(git -C "$repo_root" for-each-ref \
+		--format='%(creatordate:format:%B %Y)' \
+		"refs/tags/$release_tag")
+fi
 
 HUGO_PARAMS_DEVELOPMENTVERSION=$development_version \
 HUGO_PARAMS_RELEASEVERSION=$release_tag \
+HUGO_PARAMS_RELEASEDATE=$release_date \
 "$hugo" \
 	--source site \
 	--destination "$destination" \

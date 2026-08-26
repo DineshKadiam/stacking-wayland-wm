@@ -17,7 +17,7 @@ jobs:
     name: Prepare and publish release
     if: ${{ forgejo.ref == 'refs/heads/main' }}
     runs-on: codeberg-small
-    timeout-minutes: 5
+    timeout-minutes: 10
     outputs:
       release_version: ${{ steps.validate.outputs.release_version }}
     env:
@@ -201,3 +201,8 @@ jobs:
     with:
       release_version: ${{ needs.release.outputs.release_version }}
       release_draft: false
+
+  publish_pages:
+    name: Publish updated website
+    needs: release
+    uses: ./.forgejo/workflows/pages.yml

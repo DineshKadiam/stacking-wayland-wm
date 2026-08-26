@@ -37,7 +37,11 @@
 
     {{ partial "window-start.html" (dict "id" "release" "class" "release-window" "title" .Params.release.heading "heading_id" "release-title") }}
       <div class="window-content release-content">
-        <p>{{ .Params.release.text }}</p>
+        {{ with .Site.Params.releaseVersion }}
+          <p>The latest release of CoW is {{ . }}{{ with $.Site.Params.releaseDate }} ({{ . }}){{ end }}.</p>
+        {{ else }}
+          <p>CoW does not have a published release yet.</p>
+        {{ end }}
         <a class="wm-button" href="{{ .Site.Params.changelog }}">View the changelog</a>
       </div>
     {{ partial "window-end.html" . }}
