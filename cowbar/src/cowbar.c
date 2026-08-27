@@ -428,6 +428,23 @@ emit(cJSON *obj)
 	}
 }
 
+/* Emit only when OBJ differs from the last value emitted through PREVIOUS. */
+static void
+emit_changed(cJSON *obj, char **previous)
+{
+	char *s = cJSON_PrintUnformatted(obj);
+	if (s == NULL)
+		return;
+	if (*previous != NULL && strcmp(*previous, s) == 0) {
+		cJSON_free(s);
+		return;
+	}
+	puts(s);
+	fflush(stdout);
+	cJSON_free(*previous);
+	*previous = s;
+}
+
 /* Append printf-style to a dynamic buffer.  *buf is realloc'd as needed.
  * On success, *len is the new length (excluding NUL). */
 static void
@@ -712,7 +729,8 @@ waybar_title(const cJSON *state, const char *output_name)
 
 static bool
 process_state(const char *line, const char *waybar_mod,
-    const char *output_filter, const char *field, bool show_names)
+    const char *output_filter, const char *field, bool show_names,
+    char **last_language)
 {
 	cJSON *state = cJSON_Parse(line);
 	if (state == NULL)
@@ -765,7 +783,7 @@ process_state(const char *line, const char *waybar_mod,
 			    cJSON_IsTrue(caps_lock));
 		else
 			cJSON_AddNullToObject(result, "caps_lock");
-		emit(result);
+		emit_changed(result, last_language);
 		cJSON_Delete(result);
 	} else if (field != NULL && strcmp(field, "outputs") == 0) {
 		cJSON *outputs = cJSON_GetObjectItem(state, "outputs");
@@ -868,6 +886,7 @@ main(int argc, char *argv[])
 
 	char  line[COW_MODULE_RESPONSE_INITIAL];
 	char *last_line = NULL;
+	char *last_language = NULL;
 	for (;;) {
 		struct pollfd fds[] = {
 			{ .fd = sockfd, .events = POLLIN },
@@ -893,7 +912,8 @@ main(int argc, char *argv[])
 				fprintf(stderr, "%s: configuration reloaded\n", PROG);
 				if (waybar_mod != NULL && last_line != NULL)
 					process_state(last_line, waybar_mod,
-					    output_filter, field, show_names);
+					    output_filter, field, show_names,
+					    &last_language);
 			} else {
 				fprintf(stderr, "%s: reload failed; keeping current "
 				    "configuration\n", PROG);
@@ -910,7 +930,7 @@ main(int argc, char *argv[])
 		if (len > 0 && line[len - 1] == '\n')
 			line[len - 1] = '\0';
 		if (!process_state(line, waybar_mod, output_filter, field,
-		    show_names))
+		    show_names, &last_language))
 			continue;
 		char *copy = strdup(line);
 		if (copy != NULL) {
@@ -920,6 +940,7 @@ main(int argc, char *argv[])
 	}
 
 	free(last_line);
+	cJSON_free(last_language);
 	fclose(f);
 	close(reload_pipe[0]);
 	close(reload_pipe[1]);
