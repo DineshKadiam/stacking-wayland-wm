@@ -31,13 +31,11 @@ void cow_status_init(void);
 void cow_status_fini(void);
 
 /*
- * Emit a full state snapshot to all connected status clients.
- * Contains: per-output desk state, focused window info, window count.
- *
- * Call this on any meaningful state change (focus, desk switch,
- * window open/close, title change).
+ * Request a full state snapshot.  Requests are coalesced until
+ * cow_status_flush() is called at a stable event-loop boundary.
  */
-void cow_status_emit(void);
+void cow_status_request(void);
+void cow_status_flush(void);
 
 void cow_status_add_output_geometry(struct cJSON *, const struct cow_output *);
 void cow_status_add_output_desks(struct cJSON *, const struct cow_output *);

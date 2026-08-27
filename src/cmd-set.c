@@ -746,7 +746,7 @@ set_scalar_string(const struct cow_option_entry *opt, const char *val,
 			propagate_global_option(opt->id);
 	}
 	set_option_post_update(opt);
-	cow_status_emit();
+	cow_status_request();
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -899,7 +899,7 @@ set_desks_count(const char *val, struct cmd_q *cmdq)
 	cow_config->desk_count = (uint8_t)n;
 	xfree(cause);
 	cow_rule_fire(COW_RULE_ON_DESKS_CHANGED, NULL, NULL, NULL);
-	cow_status_emit();
+	cow_status_request();
 	cow_wm_request_manage_dirty();
 	return (CMD_RETURN_NORMAL);
 }
@@ -1718,7 +1718,7 @@ set_desktop_config_option(const char *val, struct cmd_q *cmdq)
 		return;
 	}
 	cow_wm_request_manage_dirty();
-	cow_status_emit();
+	cow_status_request();
 }
 
 static void

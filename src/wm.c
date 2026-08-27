@@ -908,7 +908,7 @@ manage_sloppy_focus(struct cow_seat *seat)
 		cow_wm.focused_view = view;
 		if (view->output != NULL)
 			cow_output_set_current(view->output);
-		cow_status_emit();
+		cow_status_request();
 	}
 	seat->sloppy_focus_view = NULL;
 }
@@ -1463,7 +1463,7 @@ handle_wm_session_unlocked(__unused void    *data,
 				cow_output_set_current(target->output);
 		}
 	}
-	cow_status_emit();
+	cow_status_request();
 	cow_wm_request_manage_dirty();
 }
 
@@ -1623,7 +1623,8 @@ cow_wm_init(void)
 
 	/* Initialize status FIFO */
 	cow_status_init();
-	cow_status_emit();
+	cow_status_request();
+	cow_status_flush();
 
 	return true;
 
@@ -1856,6 +1857,7 @@ static void
 cow_wm_after_event(void)
 {
 	cow_wm_fire_outputs_changed();
+	cow_status_flush();
 
 	if (cow_wm.needs_manage_dirty) {
 		cow_wm.needs_manage_dirty = false;

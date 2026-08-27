@@ -61,6 +61,7 @@ static struct status_client clients[MAX_STATUS_CLIENTS];
 static int    nclients		= 0;
 static char  *last_snapshot	= NULL;
 static size_t last_snapshot_len = 0;
+static bool   status_pending	= false;
 
 static void status_accept_cb(evutil_socket_t, short, void *);
 static void status_client_cb(evutil_socket_t, short, void *);
@@ -119,6 +120,7 @@ cow_status_fini(void)
 	xfree(last_snapshot);
 	last_snapshot	  = NULL;
 	last_snapshot_len = 0;
+	status_pending	  = false;
 
 	if (server_ev != NULL) {
 		event_free(server_ev);
@@ -451,8 +453,8 @@ cow_status_add_output_pages(cJSON *out, const struct cow_output *output)
 	cJSON_AddNumberToObject(out, "output_h", ph);
 }
 
-void
-cow_status_emit(void)
+static void
+status_emit(void)
 {
 	if (server_fd < 0)
 		return;
@@ -517,4 +519,20 @@ cow_status_emit(void)
 		status_broadcast(msg, len + 1);
 		xfree(msg);
 	}
+}
+
+void
+cow_status_request(void)
+{
+	if (server_fd >= 0)
+		status_pending = true;
+}
+
+void
+cow_status_flush(void)
+{
+	if (!status_pending)
+		return;
+	status_pending = false;
+	status_emit();
 }

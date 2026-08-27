@@ -146,6 +146,6 @@ do_collect(struct cow_output *output, uint8_t nr)
 			v->dec.dirty = true;
 	}
 
-	cow_status_emit();
+	cow_status_request();
 	cow_wm_request_manage_dirty();
 }

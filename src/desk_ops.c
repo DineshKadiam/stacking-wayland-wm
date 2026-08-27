@@ -231,7 +231,7 @@ cow_desk_switch(struct cow_output *output, uint8_t desk_nr)
 		break;
 	}
 
-	cow_status_emit();
+	cow_status_request();
 	cow_wm_request_manage_dirty();
 }
 
@@ -394,7 +394,7 @@ cow_page_switch(struct cow_output *output, int col, int row)
 		break;
 	}
 
-	cow_status_emit();
+	cow_status_request();
 	cow_wm_request_manage_dirty();
 	/* Scrollable edges change after a page switch */
 	pan_frames_update_all();
@@ -451,7 +451,7 @@ cow_page_scroll_to(struct cow_output *output, int new_vx, int new_vy, bool wrap)
 	if (cow_config != NULL)
 		cow_config->page_scroll_animate = saved_animate;
 
-	cow_status_emit();
+	cow_status_request();
 	cow_wm_request_manage_dirty();
 	pan_frames_update_all();
 }

@@ -87,7 +87,7 @@ cmd_desk_name_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (args_has(args, 'r')) {
 		cow_desk_set_reset(output);
 		cow_wm_request_manage_dirty();
-		cow_status_emit();
+		cow_status_request();
 		return (CMD_RETURN_NORMAL);
 	}
 
@@ -109,7 +109,7 @@ cmd_desk_name_exec(struct cmd *self, struct cmd_q *cmdq)
 		}
 		xfree(cause);
 		cow_wm_request_manage_dirty();
-		cow_status_emit();
+		cow_status_request();
 		return (CMD_RETURN_NORMAL);
 	}
 
@@ -130,6 +130,6 @@ cmd_desk_name_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 	xfree(cause);
 	cow_wm_request_manage_dirty();
-	cow_status_emit();
+	cow_status_request();
 	return (CMD_RETURN_NORMAL);
 }

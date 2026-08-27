@@ -777,7 +777,7 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 	 * needlessly re-broadcast the entire snapshot.
 	 */
 	if (changed)
-		cow_status_emit();
+		cow_status_request();
 }
 
 static void
@@ -805,7 +805,7 @@ window_handle_app_id(void *data, __unused struct river_window_v1 *rw,
 	if (cow_view_is_iconified(view))
 		cow_view_icon_refresh(view);
 	view_mark_title_dirty(view);
-	cow_status_emit();
+	cow_status_request();
 	cow_wm_request_manage_dirty();
 }
 
@@ -823,7 +823,7 @@ window_handle_title(void *data, __unused struct river_window_v1 *rw,
 	xstrset(&view->title, title);
 	view_mark_title_dirty(view);
 	cow_wm_request_manage_dirty();
-	cow_status_emit();
+	cow_status_request();
 
 	if (changed)
 		cow_rule_fire(COW_RULE_ON_TITLE_CHANGE, view, view->desk,
@@ -1006,7 +1006,7 @@ cow_view_create(struct river_window_v1 *rw)
 	river_window_v1_add_listener(rw, &window_listener, view);
 
 	wl_list_insert(&cow_wm.views, &view->wm_link);
-	cow_status_emit();
+	cow_status_request();
 
 	return view;
 }
@@ -1075,7 +1075,7 @@ cow_view_destroy(struct cow_view *view)
 	struct cow_output *output = view->output;
 	bool		   was_iconified = cow_view_is_iconified(view);
 
-	cow_status_emit();
+	cow_status_request();
 	view_clear_wm_refs(view);
 	view_clear_seat_refs(view);
 	view_detach_container_silent(view);
@@ -1935,7 +1935,7 @@ cow_view_set_maximized(struct cow_view *view, bool max)
 	 * resize; that's fine, status snapshots are cheap.
 	 */
 	if (changed)
-		cow_status_emit();
+		cow_status_request();
 }
 
 void

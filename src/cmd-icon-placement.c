@@ -122,7 +122,7 @@ cmd_icon_placement_exec(struct cmd *self, struct cmd_q *cmdq)
 				reflow_all(true);
 			else
 				reflow_output(output, true);
-			cow_status_emit();
+			cow_status_request();
 		}
 		return CMD_RETURN_NORMAL;
 	}
@@ -189,7 +189,7 @@ cmd_icon_placement_exec(struct cmd *self, struct cmd_q *cmdq)
 		else
 			reflow_output(output,
 			    field != COW_ICON_PLACEMENT_COMPACT);
-		cow_status_emit();
+		cow_status_request();
 	}
 	return CMD_RETURN_NORMAL;
 }

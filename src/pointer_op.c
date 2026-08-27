@@ -461,7 +461,7 @@ resize_clear_maximized_axes(struct cow_view *view, uint32_t edges)
 		view->icon_inverted_button = -1;
 	}
 	view->dec.dirty = true;
-	cow_status_emit();
+	cow_status_request();
 }
 
 void
@@ -789,7 +789,7 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 		return;
 	}
 	if (finished_type == COW_POINTER_OP_ICON_MOVE)
-		cow_status_emit();
+		cow_status_request();
 
 	/* Fire lifecycle rules for the completed op.  Skipped if the
 	 * view was destroyed during the op (caller has already returned
@@ -803,7 +803,7 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 			    view->output);
 	}
 	if (finished_type == COW_POINTER_OP_MOVE)
-		cow_status_emit();
+		cow_status_request();
 }
 
 void
@@ -1024,7 +1024,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 			cow_view_sync_vxy_from_global(view);
 			cow_view_sync_container_pos(view);
 			if (position_changed)
-				cow_status_emit();
+				cow_status_request();
 			if (!seat->container_drag &&
 			    cow_config->geometry_window !=
 				COW_GEOMETRY_WINDOW_NONE &&

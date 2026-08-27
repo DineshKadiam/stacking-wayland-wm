@@ -245,7 +245,7 @@ finish_move(struct cow_view *view, bool warp)
 	 * pass does not itself guarantee a snapshot, particularly when the
 	 * window has moved away from the current page.
 	 */
-	cow_status_emit();
+	cow_status_request();
 	if (view->output == NULL || !cow_view_visible(view, view->output))
 		return;
 	if (view == cow_wm.focused_view && cow_view_focusable(view))

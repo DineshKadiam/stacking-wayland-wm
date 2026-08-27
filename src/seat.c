@@ -76,7 +76,7 @@ seat_handle_pointer_enter(void *data, __unused struct river_seat_v1 *river_seat,
 	    !view->closed && view != seat->focused_view) {
 		seat->sloppy_focus_view = view;
 	}
-	cow_status_emit();
+	cow_status_request();
 }
 
 static void
@@ -93,7 +93,7 @@ seat_handle_pointer_leave(void *data, __unused struct river_seat_v1 *river_seat)
 	if (seat->has_pointer_position)
 		cow_output_pan_pointer_leave(seat->pointer_x, seat->pointer_y);
 
-	cow_status_emit();
+	cow_status_request();
 }
 
 static void
@@ -335,7 +335,7 @@ cow_seat_focus_view(struct cow_seat *seat, struct cow_view *view)
 	if (view->output != NULL)
 		cow_output_set_current(view->output);
 
-	cow_status_emit();
+	cow_status_request();
 }
 
 void
@@ -357,7 +357,7 @@ cow_seat_focus_view_no_raise(struct cow_seat *seat, struct cow_view *view)
 	if (view->output != NULL)
 		cow_output_set_current(view->output);
 
-	cow_status_emit();
+	cow_status_request();
 }
 
 struct cow_seat *
