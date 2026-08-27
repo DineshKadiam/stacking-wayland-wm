@@ -26,6 +26,7 @@
 #include "cow/output.h"
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
+#include "cow/status.h"
 #include "cow/titlebar.h"
 #include "cow/view.h"
 #include "cow/wm.h"
@@ -239,6 +240,12 @@ apply_move(struct cow_view *view)
 static void
 finish_move(struct cow_view *view, bool warp)
 {
+	/*
+	 * Notify status consumers after every non-interactive move.  A manage
+	 * pass does not itself guarantee a snapshot, particularly when the
+	 * window has moved away from the current page.
+	 */
+	cow_status_emit();
 	if (view->output == NULL || !cow_view_visible(view, view->output))
 		return;
 	if (view == cow_wm.focused_view && cow_view_focusable(view))
