@@ -392,7 +392,7 @@ pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 		pointer_focus_background = NULL;
 		raw_pointer_set_cow_surface(popup->x + wl_fixed_to_int(sx),
 		    popup->y + wl_fixed_to_int(sy));
-		cow_wm.needs_manage_dirty = true;
+		cow_wm_request_manage_dirty();
 		return;
 	}
 
@@ -418,7 +418,7 @@ pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 	}
 
 	if (cow_wm.pointer_focus_menu != NULL)
-		cow_wm.needs_manage_dirty = true;
+		cow_wm_request_manage_dirty();
 	cow_wm.pointer_focus_menu = NULL;
 	pointer_focus_background = NULL;
 
@@ -454,7 +454,7 @@ pointer_leave(void *data, struct wl_pointer *pointer, uint32_t serial,
 	if (cow_wm.pointer_focus_menu != NULL &&
 	    cow_wm.pointer_focus_menu->surface == surface) {
 		cow_wm.pointer_focus_menu = NULL;
-		cow_wm.needs_manage_dirty = true;
+		cow_wm_request_manage_dirty();
 	}
 	if (pointer_focus_background != NULL &&
 	    pointer_focus_background->bg_surface == surface) {
@@ -503,7 +503,7 @@ pointer_motion(void *data, struct wl_pointer *pointer, uint32_t time,
 			wl_fixed_to_int(sx),
 		    cow_wm.pointer_focus_menu->y + wl_fixed_to_int(sy));
 		if (cow_menu_is_open())
-			cow_wm.needs_manage_dirty = true;
+			cow_wm_request_manage_dirty();
 		cow_pick_pointer_motion(time, sx, sy);
 		return;
 	}
@@ -513,7 +513,7 @@ pointer_motion(void *data, struct wl_pointer *pointer, uint32_t time,
 			wl_fixed_to_int(sx),
 		    pointer_focus_background->y + wl_fixed_to_int(sy));
 		if (cow_menu_is_open())
-			cow_wm.needs_manage_dirty = true;
+			cow_wm_request_manage_dirty();
 		cow_pick_pointer_motion(time, sx, sy);
 		return;
 	}
@@ -527,7 +527,7 @@ pointer_motion(void *data, struct wl_pointer *pointer, uint32_t time,
 
 	raw_pointer_set_absolute(wl_fixed_to_int(sx), wl_fixed_to_int(sy));
 	if (cow_menu_is_open())
-		cow_wm.needs_manage_dirty = true;
+		cow_wm_request_manage_dirty();
 	cow_pick_pointer_motion(time, sx, sy);
 }
 
@@ -579,7 +579,7 @@ pointer_button(void *data, struct wl_pointer *pointer, uint32_t serial,
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED && cow_menu_is_open()) {
 		if (seat != NULL)
 			seat->menu_click_pending = true;
-		cow_wm.needs_manage_dirty = true;
+		cow_wm_request_manage_dirty();
 	}
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED && seat != NULL &&
 	    seat->binding_context == COW_BIND_CONTEXT_ICON &&
@@ -588,7 +588,7 @@ pointer_button(void *data, struct wl_pointer *pointer, uint32_t serial,
 		seat->consumed_icon_interaction = icon_view;
 		if (cow_seat_dispatch_pointer_binding(seat, button,
 			COW_BIND_CONTEXT_ICON, icon_view)) {
-			cow_wm.needs_manage_dirty = true;
+			cow_wm_request_manage_dirty();
 		} else if (seat->consumed_icon_interaction == icon_view)
 			seat->consumed_icon_interaction = NULL;
 	}
@@ -597,7 +597,7 @@ pointer_button(void *data, struct wl_pointer *pointer, uint32_t serial,
 		seed_seat_pointer_from_background();
 		if (cow_seat_dispatch_pointer_binding(seat, button,
 			COW_BIND_CONTEXT_ROOT, NULL))
-			cow_wm.needs_manage_dirty = true;
+			cow_wm_request_manage_dirty();
 	}
 
 	cow_pick_pointer_button(serial, button, state);

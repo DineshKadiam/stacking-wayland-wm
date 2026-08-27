@@ -1358,7 +1358,7 @@ cow_menu_popup_redraw(struct cow_menu_popup *popup)
 	if (popup == NULL)
 		return;
 	popup->needs_redraw	  = true;
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 void
@@ -1376,7 +1376,7 @@ cow_menu_style_refresh(struct cow_menu *menu, bool geometry_changed)
 		if (geometry_changed)
 			p->needs_layout = true;
 	}
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 static struct cow_menu_popup *
@@ -1430,14 +1430,14 @@ cow_menu_popup_close(struct cow_menu_popup *popup)
 		popup->parent->child_item = -1;
 	if (popup->parent != NULL) {
 		popup->parent->needs_redraw = true;
-		cow_wm.needs_manage_dirty   = true;
+		cow_wm_request_manage_dirty();
 	}
 
 	/* Defer surface/node teardown to the render hook. */
 	wl_list_remove(&popup->link);
 	popup->needs_destroy = true;
 	wl_list_insert(cow_wm.menu_graveyard.prev, &popup->link);
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 void
@@ -1466,7 +1466,7 @@ cow_menu_close_all(void)
 	g_menu_saved_binding_view = NULL;
 	g_hover_suppressed_until_pointer_moves = false;
 	hover_reset_all();
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 void
@@ -1544,7 +1544,7 @@ cow_menu_popup_open(struct cow_menu *menu, int x, int y,
 	(void)ext_for(p, true);
 
 	p->needs_create		  = true;
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 
 	return (p);
 }
@@ -1586,7 +1586,7 @@ cow_menu_popup_open_centered(struct cow_menu *menu, int cx, int cy,
 	wl_list_insert(cow_wm.open_menus.prev, &p->link);
 	(void)ext_for(p, true);
 	p->needs_create = true;
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 	return (p);
 }
 
@@ -2068,7 +2068,7 @@ cow_menu_process_input(void)
 			if (want != p->selected) {
 				p->selected = want;
 				p->needs_redraw		  = true;
-				cow_wm.needs_manage_dirty = true;
+				cow_wm_request_manage_dirty();
 			}
 		}
 
@@ -2092,7 +2092,7 @@ cow_menu_process_input(void)
 			    over->child == NULL) {
 				dispatch_item(over, it);
 			}
-			cow_wm.needs_manage_dirty = true;
+			cow_wm_request_manage_dirty();
 		} else if (e != NULL) {
 			e->hover_item	    = -1;
 			e->hover_started_ms = 0;

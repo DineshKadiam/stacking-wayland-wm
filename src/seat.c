@@ -151,7 +151,7 @@ seat_handle_shell_surface_interaction(void *data,
 				struct cow_seat *seat = data;
 				if (seat != NULL)
 					seat->menu_click_pending = true;
-				cow_wm.needs_manage_dirty = true;
+				cow_wm_request_manage_dirty();
 				return;
 			}
 		}

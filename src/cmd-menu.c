@@ -297,7 +297,7 @@ cmd_menu_show_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	cow_menu_popup_open(m, x, y, cmdq->target.window, NULL,
 	    centre_title_on_pointer);
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 	return (CMD_RETURN_NORMAL);
 }
 

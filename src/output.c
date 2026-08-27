@@ -244,7 +244,7 @@ background_layer_configure(void *data, struct zwlr_layer_surface_v1 *lsurf,
 
 	output->bg_configured = true;
 	output->bg_dirty      = true;
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 }
 
 static void

@@ -434,7 +434,7 @@ show_window_list(const char *filter_expr, const char *format,
 		}
 		cow_menu_popup_open_centered(menu, cx, cy, NULL);
 	}
-	cow_wm.needs_manage_dirty = true;
+	cow_wm_request_manage_dirty();
 	return (CMD_RETURN_NORMAL);
 }
 
