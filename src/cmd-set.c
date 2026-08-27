@@ -1961,7 +1961,7 @@ refresh_visuals(void)
 	wl_list_for_each(output, &cow_wm.outputs, wm_link)
 		refresh_output_visuals(output);
 
-	cow_wm_manage_dirty_now();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 static int

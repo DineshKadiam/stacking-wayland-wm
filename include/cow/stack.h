@@ -49,7 +49,7 @@ void cow_stack_mark_dirty(void);
  * requests to bring the compositor's stack in line.  Iconified views'
  * icon_nodes are written first (lowest), pinned to layer 0.
  *
- * Called from the tail of cow_wm_manage_dirty_now().
+ * Called during River's render sequence.
  */
 void cow_stack_apply(void);
 

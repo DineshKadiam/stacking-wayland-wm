@@ -1696,6 +1696,7 @@ cow_wm_fini(void)
 static void cow_wm_after_event(void);
 static void cow_wm_schedule_tick(struct event *);
 static bool cow_wm_flush_display(void);
+static void cow_wm_send_manage_dirty(void);
 
 static void
 cow_wm_signal_cb(evutil_socket_t sig, __unused short events,
@@ -1853,7 +1854,7 @@ cow_wm_after_event(void)
 		cow_status_emit();
 	if ((updates & COW_UPDATE_MANAGE) != 0) {
 		wl_display_roundtrip(cow_wm.display);
-		cow_wm_manage_dirty_now();
+		cow_wm_send_manage_dirty();
 	}
 
 	if (cow_wm_shutdown_requested || cow_wm_restart_requested)
@@ -1913,8 +1914,8 @@ out:
 		event_free(sigusr2_ev);
 }
 
-void
-cow_wm_manage_dirty_now(void)
+static void
+cow_wm_send_manage_dirty(void)
 {
 	if (cow_wm.manager != NULL) {
 		cow_log_trace("requesting immediate manage cycle");

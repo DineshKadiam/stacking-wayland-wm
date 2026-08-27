@@ -18,7 +18,7 @@
  * Global stacking pass.
  *
  * Everything that touches z-order ultimately sets a "dirty" flag here.
- * Once per manage cycle (called from cow_wm_manage_dirty_now()) we
+ * During each render sequence we
  * gather every non-closed view, sort by (effective_layer, raise_seq),
  * and walk the sorted list from bottom to top issuing
  * river_node_v1_place_above(prev) chains.  Output backgrounds are

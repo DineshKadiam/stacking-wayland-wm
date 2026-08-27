@@ -261,13 +261,6 @@ void cow_wm_run(void);
  */
 void cow_wm_fini(void);
 
-/*
- * Issue a manage_dirty protocol request to the compositor immediately.
- * Most callers should request COW_UPDATE_MANAGE instead.  This immediate
- * form is for code that has just finished a roundtrip and cannot wait for
- * the next run-loop pass.
- */
-void cow_wm_manage_dirty_now(void);
 void cow_drag_ghost_destroy(void);
 
 /*
