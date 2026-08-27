@@ -121,7 +121,7 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 		if (target != currently) {
 			view->flags ^= COW_VIEW_STICKY_DESK_FLAG;
 			view->dec.dirty = true;
-			cow_update_request(COW_UPDATE_MANAGE);
+			cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 			/* Becoming non-sticky: assign view back to the
 			 * output's current desk so it's actually on the
 			 * desk it appears to be on.
@@ -287,7 +287,7 @@ cmd_window_maximize_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (!ok)
 		return (CMD_RETURN_ERROR);
 
-	cow_update_request(COW_UPDATE_MANAGE);
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 	view->dec.dirty = true;
 
 	return (CMD_RETURN_NORMAL);
@@ -436,10 +436,14 @@ do_set_circulate_skip(struct cow_view *view, const char *arg,
 		return (CMD_RETURN_ERROR);
 	}
 
+	if (target == currently)
+		return (CMD_RETURN_NORMAL);
+
 	if (target)
 		view->flags |= COW_VIEW_CIRCULATE_SKIP_FLAG;
 	else
 		view->flags &= ~COW_VIEW_CIRCULATE_SKIP_FLAG;
+	cow_update_request(COW_UPDATE_STATUS);
 
 	return (CMD_RETURN_NORMAL);
 }
@@ -799,7 +803,6 @@ do_shade(struct cow_view *view, const char *dir_str)
 	enum shade_direction sd = resolve_shade_direction(view, dir_str);
 
 	cow_view_shade(view, sd);
-	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 static bool

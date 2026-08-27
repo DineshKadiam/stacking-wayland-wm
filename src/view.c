@@ -776,7 +776,7 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 	 * Skip the no-op case so identical-size redraws don't
 	 * needlessly re-broadcast the entire snapshot.
 	 */
-	if (changed)
+	if (changed || applied_deferred_position)
 		cow_update_request(COW_UPDATE_STATUS);
 }
 
@@ -1443,6 +1443,7 @@ view_apply_node_position(struct cow_view *view)
 		}
 		view->needs_raise = false;
 		cow_stack_mark_dirty();
+		cow_update_request(COW_UPDATE_STATUS);
 	}
 	if (view->pending_lower && view->node != NULL) {
 		/* Push raise_seq to one below the layer's current floor so
@@ -1453,6 +1454,7 @@ view_apply_node_position(struct cow_view *view)
 		view->raise_seq	    = (floor > 0) ? floor - 1 : 0;
 		view->pending_lower = false;
 		cow_stack_mark_dirty();
+		cow_update_request(COW_UPDATE_STATUS);
 	}
 
 	/*
@@ -1573,6 +1575,7 @@ cow_view_reassign_output(struct cow_view *view, struct cow_output *output)
 	wl_list_insert(&output->visible_views, &view->output_views);
 
 	view->dec.dirty = true;
+	cow_update_request(COW_UPDATE_STATUS);
 }
 
 void
@@ -1801,7 +1804,7 @@ cow_view_set_page_sticky(struct cow_view *view, bool sticky)
 	else
 		view->flags &= ~COW_VIEW_STICKY_PAGE_FLAG;
 	view->dec.dirty = true;
-	cow_update_request(COW_UPDATE_MANAGE);
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 }
 
 bool
@@ -1890,7 +1893,7 @@ cow_view_set_layer(struct cow_view *view, int requested)
 
 	if (any_changed) {
 		cow_stack_mark_dirty();
-		cow_update_request(COW_UPDATE_MANAGE);
+		cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 	}
 	return new_layer;
 }
@@ -1929,8 +1932,8 @@ cow_view_set_maximized(struct cow_view *view, bool max)
 	 * Notify status clients of the flip so per-window UI (the
 	 * pager's maximized hint, status bars, etc.) update without
 	 * having to wait for an unrelated status event.  The
-	 * dimensions handler will emit again once the client acks the
-	 * resize; that's fine, status snapshots are cheap.
+	 * dimensions handler will request another update once the client
+	 * acknowledges the resize; requests in one loop turn are coalesced.
 	 */
 	if (changed)
 		cow_update_request(COW_UPDATE_STATUS);
@@ -2106,7 +2109,7 @@ view_refit_maximized(struct cow_view *view)
 	cow_view_sync_vxy_from_global(view);
 	cow_view_sync_container_pos(view);
 	view->dec.dirty = true;
-	cow_update_request(COW_UPDATE_MANAGE);
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 }
 
 /* ================================================================
@@ -2436,11 +2439,11 @@ cow_view_shade(struct cow_view *view, int direction)
 	view->clip_y	   = 0;
 	view->clip_w	   = 1;
 	view->clip_h	   = 1;
-	cow_update_request(COW_UPDATE_MANAGE);
 
 	view->dec.dirty = true;
 	if (had_focus)
 		view->needs_focus = true;
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 
 	cow_rule_fire(COW_RULE_ON_SHADE, view, view->desk, view->output);
 }
@@ -2483,7 +2486,7 @@ cow_view_unshade(struct cow_view *view)
 		view->dec.buffer = NULL;
 	}
 
-	cow_update_request(COW_UPDATE_MANAGE);
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 
 	cow_rule_fire(COW_RULE_ON_UNSHADE, view, view->desk, view->output);
 }
@@ -2520,6 +2523,7 @@ cow_view_fullscreen(struct cow_view *view)
 	cow_view_inform_fullscreen_state(view, true);
 	view->fullscreen = true;
 	view->use_ssd	 = false;
+	cow_update_request(COW_UPDATE_STATUS);
 }
 
 void
@@ -2545,6 +2549,7 @@ cow_view_exit_fullscreen(struct cow_view *view)
 	cow_view_inform_fullscreen_state(view, false);
 	view->fullscreen = false;
 	view->use_ssd	 = true;
+	cow_update_request(COW_UPDATE_STATUS);
 }
 
 /* ================================================================
@@ -3005,7 +3010,7 @@ cow_view_iconify(struct cow_view *view)
 			cow_seat_forget_view(seat, view);
 	}
 
-	cow_update_request(COW_UPDATE_MANAGE);
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 
 	cow_rule_fire(COW_RULE_ON_ICONIFY, view, view->desk, view->output);
 }
@@ -3030,7 +3035,7 @@ cow_view_deiconify(struct cow_view *view)
 	/* Focus the restored window */
 	view->needs_raise    = true;
 	cow_wm.pending_focus = view;
-	cow_update_request(COW_UPDATE_MANAGE);
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 
 	cow_rule_fire(COW_RULE_ON_DEICONIFY, view, view->desk, view->output);
 }

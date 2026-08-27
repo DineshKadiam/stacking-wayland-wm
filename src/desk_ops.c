@@ -261,7 +261,7 @@ cow_view_assign_desk(struct cow_view *view, uint8_t desk_nr)
 	view->dec.dirty = true;
 
 	/* Visibility recomputed in render callback */
-	cow_update_request(COW_UPDATE_MANAGE);
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 }
 
 int
@@ -485,7 +485,7 @@ cow_view_move_to_page(struct cow_view *view, int col, int row)
 	view->vy = row * h + within_y;
 
 	view->dec.dirty = true;
-	cow_update_request(COW_UPDATE_MANAGE);
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 }
 
 void

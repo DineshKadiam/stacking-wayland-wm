@@ -137,6 +137,7 @@ cow_output_recompute_usable_area(struct cow_output *output)
 	}
 	cow_view_invalidate_auto_icon_positions(output);
 	cow_view_layout_icons_on_output(output);
+	cow_update_request(COW_UPDATE_STATUS);
 
 	return (true);
 }
@@ -188,6 +189,7 @@ output_handle_position(void	    *data,
     __unused struct river_output_v1 *river_output, int32_t x, int32_t y)
 {
 	struct cow_output *output  = data;
+	bool changed = output->x != x || output->y != y;
 	output->x		   = x;
 	output->y		   = y;
 	cow_log_debug("output position changed (name=%s x=%d y=%d)",
@@ -197,6 +199,8 @@ output_handle_position(void	    *data,
 
 	/* A monitor moved -- the raster-scan order may have changed. */
 	cow_outputs_renumber();
+	if (changed)
+		cow_update_request(COW_UPDATE_STATUS);
 }
 
 static void
@@ -205,6 +209,7 @@ output_handle_dimensions(void	    *data,
     int32_t height)
 {
 	struct cow_output *output  = data;
+	bool changed = output->width != width || output->height != height;
 	output->width		   = width;
 	output->height		   = height;
 	cow_log_debug("output dimensions changed (name=%s width=%d height=%d)",
@@ -224,6 +229,8 @@ output_handle_dimensions(void	    *data,
 	/* Startup creates pan frames once at the end of exec_pending. */
 	if (!cow_wm.exec_pending)
 		pan_frames_update_output(output);
+	if (changed)
+		cow_update_request(COW_UPDATE_STATUS);
 }
 
 static const struct river_output_v1_listener output_listener = {
@@ -547,6 +554,7 @@ cow_output_name_known(struct cow_output *output)
 	output_apply_configured_background(output);
 	output_session_restore(output);
 	output_adopt_orphan_views(output);
+	cow_update_request(COW_UPDATE_STATUS);
 }
 
 static void

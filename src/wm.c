@@ -1840,6 +1840,7 @@ cow_wm_fire_outputs_changed(void)
 
 	cow_wm.outputs_changed_deadline_ms = -1;
 	cow_rule_fire(COW_RULE_ON_OUTPUTS_CHANGED, NULL, NULL, NULL);
+	cow_update_request(COW_UPDATE_STATUS);
 }
 
 static void
