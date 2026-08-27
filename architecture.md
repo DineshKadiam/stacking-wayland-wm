@@ -84,22 +84,23 @@ updated.
 
 For example, when a command asks to move a window, CoW records the desired
 position on the `cow_view`.  It does not directly mutate River's scene graph.
-Instead, CoW requests another management pass.  River later calls back into CoW
-with `manage_start`; CoW applies all pending policy decisions and replies with
-`manage_finish`.  River can then schedule a render pass, during which CoW
-updates decoration surfaces, node positions, and stacking before returning
-`render_finish`.
+Instead, CoW registers that another management pass is required.  At the end of
+the current event-loop turn, the update scheduler sends the coalesced request
+to River.  River later calls back into CoW with `manage_start`; CoW applies all
+pending policy decisions and replies with `manage_finish`.  River can then
+schedule a render pass, during which CoW updates decoration surfaces, node
+positions, and stacking before returning `render_finish`.
 
-That gives CoW a transactional shape:
+That gives CoW the following:
 
 ```
 Command / input / rule
         |
         v
-Update CoW state and mark dirty
+Update CoW state and register required updates
         |
         v
-Request River manage pass
+Event-loop drain requests River manage pass
         |
         v
 River manage_start -> CoW applies policy -> manage_finish
@@ -115,19 +116,18 @@ from the compositor arrive asynchronously.  A round trip flushes pending
 requests, asks the compositor to reply, and dispatches all events needed to get
 to that reply.  In code this is `wl_display_roundtrip()`.
 
-CoW uses round trips in two main places:
+CoW uses round trips at lifecycle boundaries:
 
 - during startup, to discover globals and then process the initial events from
   the globals it binds;
-- before issuing `river_window_manager_v1_manage_dirty()` from the event loop,
-  so earlier requests/events have settled before River starts a new management
-  sequence.
+- during shutdown, to let River process the window-manager stop request before
+  the protocol objects are destroyed.
 
-This matters because CoW often acts on objects River has just announced or
-changed.  Without a synchronization point, CoW could ask for a manage pass while
-it still has unread output, seat, or window events queued locally.  The round
-trip lets CoW catch up with River's current protocol state first, then request a
-new manage cycle.
+Runtime updates do not perform a round trip before requesting a manage pass.
+Wayland preserves request order, so `manage_dirty` follows any earlier requests
+already queued by CoW.  Avoiding a synchronous round trip keeps the main loop
+responsive.  CoW flushes the display normally and, if the socket would block,
+temporarily watches it for writability before continuing the flush.
 
 A round trip is not a frame render and it is not an acknowledgement that every
 CoW policy decision has been applied to the screen.  It is a protocol
@@ -151,13 +151,46 @@ alongside command/status sockets, timers, and signals.
               |      +-- parse command -> cmd_q -> mutate CoW state
               |
               +-- timers/signals
+              |      |
+              |      +-- restart, shutdown, logging, output debounce
+              |
+              +-- end of event-loop turn
                      |
-                     +-- manage_dirty, restart, shutdown, output debounce
+                     +-- emit status snapshot / request manage pass
 ```
 
 Mutating commands generally mark state dirty rather than directly forcing all
-Wayland updates immediately.  The actual compositor synchronization happens at
-River's manage/render sequence boundaries.
+Wayland updates immediately.  Once the triggering callback has completed, CoW
+drains the accumulated update mask.  The actual compositor synchronization
+happens at River's manage/render sequence boundaries.
+
+## Update Scheduling
+
+State mutations register one or both update classes through the shared update
+scheduler:
+
+- `COW_UPDATE_MANAGE` means pending policy must be applied in a River manage
+  sequence;
+- `COW_UPDATE_STATUS` means canonical state represented by the module status
+  snapshot has changed.
+
+Requests are bitwise flags and therefore coalesce naturally during an
+event-loop turn.  At the end of that turn, CoW emits at most one status snapshot
+and sends at most one `manage_dirty` request.  This keeps modules from observing
+intermediate state when a command or River callback changes several related
+fields.
+
+Status updates are registered where authoritative fields actually change, not
+where an operation merely records an intention to change them.  Manage updates
+are registered when an operation creates work which River must apply.  Keeping
+that distinction at mutation sites makes propagation part of the state change
+rather than an easily missed responsibility of its caller.
+
+An incoming `manage_start` satisfies any manage request queued before that
+sequence began.  If processing the sequence creates more manage work, that new
+request remains pending and the event-loop drain asks River for a follow-up
+sequence.  A compositor-initiated manage sequence is handled the same way even
+when CoW has no outstanding request.
 
 ## Manage And Render Sequences
 
@@ -201,7 +234,10 @@ The split is easiest to read as a small state machine:
               command, input, rule, timer
                          |
                          v
-                    CoW state dirty
+              register COW_UPDATE_MANAGE
+                         |
+                         v
+                  event-loop drain
                          |
                          v
       river_window_manager_v1_manage_dirty()
@@ -237,7 +273,7 @@ command contexts when possible; it records intent and lets the next
 manage/render cycle make it visible.
 
 This split is why many commands set flags such as `needs_raise`,
-`pending_focus`, `pending_lower`, `dec.dirty`, or request `manage_dirty`.
+`pending_focus`, `pending_lower`, or `dec.dirty`, then register a manage update.
 It keeps command execution, River event handling, and compositor commits in a
 predictable order.
 
@@ -305,7 +341,7 @@ cmd_list -> cmd_q
 command exec function
      |
      v
-CoW state mutation / IPC response / manage_dirty
+CoW state mutation / IPC response / update registration
 ```
 
 Commands can be loaded from:
@@ -357,7 +393,8 @@ the shared module helpers in `src/module.c` to connect to the sockets.
 ```
 
 This keeps modules small: they do not need to bind River protocols or duplicate
-window-management state.  They observe CoW's status stream and ask CoW to act.
+window-management state.  They observe CoW's coalesced status snapshots and ask
+CoW to act.
 
 ## Decorations
 

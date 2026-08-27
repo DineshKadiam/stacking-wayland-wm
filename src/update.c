@@ -61,6 +61,13 @@ cow_update_take(void)
 void
 cow_update_manage_begin(void)
 {
+	/*
+	 * The new River sequence satisfies any manage update queued before it.
+	 * Requests made by work within the sequence are registered afterwards
+	 * and therefore remain pending for a follow-up sequence.
+	 */
+	update_state.pending &= ~COW_UPDATE_MANAGE;
+
 	if (update_state.manage_requests == 0) {
 		cow_log_trace("manage cycle begin (trigger=compositor)");
 	} else {

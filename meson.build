@@ -460,6 +460,15 @@ cow_box_test = executable('test-cow-box',
 )
 test('cow-box', cow_box_test)
 
+update_test = executable('test-update',
+    'tests/update.c',
+    'src/update.c',
+    'vendor/cow_log.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('update', update_test)
+
 module_theme_test = executable('test-module-theme',
     'tests/module-theme.c',
     'src/module_theme.c',
