@@ -1312,6 +1312,11 @@ popup_render(struct cow_menu_popup *p)
 					cow_draw_relieve_rect(&buf, x + 1, y,
 					    innerw - 2, rh, 2,
 					    hl_px, hl_px, sh_px, sh_px);
+				} else if (st->selection_relief ==
+				    COW_MENU_SELECTION_RELIEF_SUNKEN) {
+					cow_draw_relieve_rect(&buf, x + 1, y,
+					    innerw - 2, rh, 2,
+					    sh_px, sh_px, hl_px, hl_px);
 				} else {
 					cow_draw_fill_rect(&buf, x, y, innerw, rh,
 					    hl_px);

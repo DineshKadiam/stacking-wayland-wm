@@ -600,9 +600,11 @@ cmd_menu_style_exec(struct cmd *self, struct cmd_q *cmdq)
 			st->selection_relief = COW_MENU_SELECTION_RELIEF_NONE;
 		} else if (strcmp(val, "raised") == 0) {
 			st->selection_relief = COW_MENU_SELECTION_RELIEF_RAISED;
+		} else if (strcmp(val, "sunken") == 0) {
+			st->selection_relief = COW_MENU_SELECTION_RELIEF_SUNKEN;
 		} else {
 			cmdq_error(cmdq,
-			    "menu-style: %s: expected none|raised", key);
+			    "menu-style: %s: expected none|raised|sunken", key);
 			ret = CMD_RETURN_ERROR;
 		}
 		goto out;

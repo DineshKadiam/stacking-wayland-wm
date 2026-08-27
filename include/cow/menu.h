@@ -30,6 +30,7 @@ struct cow_view;
 enum cow_menu_selection_relief {
 	COW_MENU_SELECTION_RELIEF_NONE,
 	COW_MENU_SELECTION_RELIEF_RAISED,
+	COW_MENU_SELECTION_RELIEF_SUNKEN,
 };
 
 enum cow_menu_relief {
