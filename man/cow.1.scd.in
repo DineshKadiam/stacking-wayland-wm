@@ -928,8 +928,9 @@ When used via *moocow*(1) the JSON is printed to standard output.
 	_width_, _height_, and a _usable_ sub-object reflecting reserved areas.
 
 *show keyboard-layout*
-	Return the name of the active keyboard layout, or _null_ if one is not
-	set.
+	Return the active keyboard layout's _name_ and _caps\_lock_ state, or
+	_null_ if no layout is set. _caps\_lock_ is _null_ until River has
+	reported its state.
 
 *show config* _key_
 	Return the current value of a configuration key. Supported keys:

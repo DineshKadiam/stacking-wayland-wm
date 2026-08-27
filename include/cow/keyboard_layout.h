@@ -30,13 +30,15 @@ struct cow_keyboard_layout {
 	uint32_t		 index;
 	char			*name;
 	bool			 has_layout;
+	bool			 caps_lock;
+	bool			 has_caps_lock;
 };
 
 void cow_keyboard_layout_init(void);
 void cow_keyboard_layout_bind(struct wl_registry *, uint32_t, uint32_t);
 void cow_keyboard_layout_fini(void);
 void cow_keyboard_layout_add_status(struct cJSON *);
-const char *cow_keyboard_layout_active_name(void);
+struct cJSON *cow_keyboard_layout_active_json(void);
 bool cow_keyboard_layout_set_name(const char *);
 
 #endif

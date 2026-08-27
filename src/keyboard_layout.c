@@ -44,8 +44,8 @@ keyboard_removed(void *data, struct river_xkb_keyboard_v1 *river_keyboard)
 		if (!wl_list_empty(&cow_wm.keyboard_layouts))
 			active_layout = wl_container_of(
 			    cow_wm.keyboard_layouts.next, active_layout, link);
-		cow_update_request(COW_UPDATE_STATUS);
 	}
+	cow_update_request(COW_UPDATE_STATUS);
 }
 
 static void
@@ -76,15 +76,28 @@ keyboard_layout(void *data,
 }
 
 static void
-keyboard_capslock_enabled(__unused void *data,
-    __unused struct river_xkb_keyboard_v1 *river_keyboard)
+keyboard_set_caps_lock(struct cow_keyboard_layout *keyboard, bool enabled)
 {
+	if (keyboard->has_caps_lock && keyboard->caps_lock == enabled)
+		return;
+
+	keyboard->caps_lock = enabled;
+	keyboard->has_caps_lock = true;
+	cow_update_request(COW_UPDATE_STATUS);
 }
 
 static void
-keyboard_capslock_disabled(__unused void *data,
+keyboard_capslock_enabled(void *data,
     __unused struct river_xkb_keyboard_v1 *river_keyboard)
 {
+	keyboard_set_caps_lock(data, true);
+}
+
+static void
+keyboard_capslock_disabled(void *data,
+    __unused struct river_xkb_keyboard_v1 *river_keyboard)
+{
+	keyboard_set_caps_lock(data, false);
 }
 
 static void
@@ -182,15 +195,8 @@ cow_keyboard_layout_fini(void)
 void
 cow_keyboard_layout_add_status(cJSON *root)
 {
-	if (active_layout != NULL && active_layout->has_layout) {
-		if (active_layout->name != NULL)
-			cJSON_AddStringToObject(root, "language",
-			    active_layout->name);
-		else
-			cJSON_AddNullToObject(root, "language");
-	} else {
-		cJSON_AddNullToObject(root, "language");
-	}
+	cJSON_AddItemToObject(root, "language",
+	    cow_keyboard_layout_active_json());
 
 	cJSON *layouts = cJSON_AddArrayToObject(root, "keyboard_layouts");
 	struct cow_keyboard_layout *keyboard;
@@ -209,13 +215,24 @@ cow_keyboard_layout_add_status(cJSON *root)
 	}
 }
 
-const char *
-cow_keyboard_layout_active_name(void)
+cJSON *
+cow_keyboard_layout_active_json(void)
 {
-	if (active_layout == NULL || !active_layout->has_layout)
-		return (NULL);
-
-	return (active_layout->name);
+	if (active_layout != NULL && active_layout->has_layout) {
+		cJSON *language = cJSON_CreateObject();
+		if (active_layout->name != NULL)
+			cJSON_AddStringToObject(language, "name",
+			    active_layout->name);
+		else
+			cJSON_AddNullToObject(language, "name");
+		if (active_layout->has_caps_lock)
+			cJSON_AddBoolToObject(language, "caps_lock",
+			    active_layout->caps_lock);
+		else
+			cJSON_AddNullToObject(language, "caps_lock");
+		return language;
+	}
+	return cJSON_CreateNull();
 }
 
 bool

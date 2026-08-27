@@ -283,10 +283,7 @@ do_show_output(int fd)
 static void
 do_show_keyboard_layout(int fd)
 {
-	const char *name = cow_keyboard_layout_active_name();
-
-	cow_ipc_respond_data(fd, name != NULL ?
-	    cJSON_CreateString(name) : cJSON_CreateNull());
+	cow_ipc_respond_data(fd, cow_keyboard_layout_active_json());
 }
 
 static void

@@ -755,8 +755,18 @@ process_state(const char *line, const char *waybar_mod,
 			emit(focused);
 	} else if (field != NULL && strcmp(field, "language") == 0) {
 		cJSON *language = cJSON_GetObjectItem(state, "language");
-		emit_waybar(cJSON_IsString(language) ? language->valuestring : "",
-		    NULL);
+		cJSON *name = cJSON_GetObjectItem(language, "name");
+		cJSON *caps_lock = cJSON_GetObjectItem(language, "caps_lock");
+		cJSON *result = cJSON_CreateObject();
+		cJSON_AddStringToObject(result, "text",
+		    cJSON_IsString(name) ? name->valuestring : "");
+		if (cJSON_IsBool(caps_lock))
+			cJSON_AddBoolToObject(result, "caps_lock",
+			    cJSON_IsTrue(caps_lock));
+		else
+			cJSON_AddNullToObject(result, "caps_lock");
+		emit(result);
+		cJSON_Delete(result);
 	} else if (field != NULL && strcmp(field, "outputs") == 0) {
 		cJSON *outputs = cJSON_GetObjectItem(state, "outputs");
 		if (outputs != NULL)
