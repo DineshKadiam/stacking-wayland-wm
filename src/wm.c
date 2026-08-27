@@ -1695,8 +1695,14 @@ cow_wm_fini(void)
 
 static void cow_wm_after_event(void);
 static void cow_wm_schedule_tick(struct event *);
-static bool cow_wm_flush_display(void);
 static void cow_wm_send_manage_dirty(void);
+
+struct cow_wm_wayland_events {
+	struct event *write_ev;
+	bool	      write_pending;
+};
+
+static bool cow_wm_flush_display(struct cow_wm_wayland_events *);
 
 static void
 cow_wm_signal_cb(evutil_socket_t sig, __unused short events,
@@ -1722,6 +1728,17 @@ cow_wm_wayland_cb(__unused evutil_socket_t fd, __unused short events,
 }
 
 static void
+cow_wm_wayland_write_cb(__unused evutil_socket_t fd, __unused short events,
+    void *data)
+{
+	struct cow_wm_wayland_events *wayland_events = data;
+
+	wayland_events->write_pending = false;
+	if (!cow_wm_flush_display(wayland_events))
+		cow_wm.running = false;
+}
+
+static void
 cow_wm_tick_cb(__unused evutil_socket_t fd, __unused short events,
     __unused void *data)
 {
@@ -1729,10 +1746,22 @@ cow_wm_tick_cb(__unused evutil_socket_t fd, __unused short events,
 }
 
 static bool
-cow_wm_flush_display(void)
+cow_wm_flush_display(struct cow_wm_wayland_events *wayland_events)
 {
-	if (wl_display_flush(cow_wm.display) >= 0 || errno == EAGAIN)
+	if (wl_display_flush(cow_wm.display) >= 0) {
+		if (wayland_events->write_pending) {
+			event_del(wayland_events->write_ev);
+			wayland_events->write_pending = false;
+		}
 		return true;
+	}
+	if (errno == EAGAIN) {
+		if (!wayland_events->write_pending &&
+		    event_add(wayland_events->write_ev, NULL) < 0)
+			return false;
+		wayland_events->write_pending = true;
+		return true;
+	}
 
 	int err = wl_display_get_error(cow_wm.display);
 	if (err != 0) {
@@ -1852,10 +1881,12 @@ cow_wm_after_event(void)
 	uint32_t updates = cow_update_take();
 	if ((updates & COW_UPDATE_STATUS) != 0)
 		cow_status_emit();
-	if ((updates & COW_UPDATE_MANAGE) != 0) {
-		wl_display_roundtrip(cow_wm.display);
+	/* Wayland preserves request order, so manage_dirty naturally follows
+	 * requests already queued for River; no synchronising roundtrip is
+	 * required here.
+	 */
+	if ((updates & COW_UPDATE_MANAGE) != 0)
 		cow_wm_send_manage_dirty();
-	}
 
 	if (cow_wm_shutdown_requested || cow_wm_restart_requested)
 		cow_wm.running = false;
@@ -1868,16 +1899,21 @@ cow_wm_run(void)
 	struct event	  *wl_ev = NULL, *tick_ev = NULL, *sigint_ev = NULL;
 	struct event	  *sigterm_ev = NULL, *sigusr1_ev = NULL;
 	struct event	  *sigusr2_ev = NULL;
+	struct cow_wm_wayland_events wayland_events = { 0 };
 
 	wl_ev = event_new(base, wl_display_get_fd(cow_wm.display),
 	    EV_READ | EV_PERSIST, cow_wm_wayland_cb, NULL);
+	wayland_events.write_ev = event_new(base,
+	    wl_display_get_fd(cow_wm.display), EV_WRITE,
+	    cow_wm_wayland_write_cb, &wayland_events);
 	tick_ev = evtimer_new(base, cow_wm_tick_cb, NULL);
 	sigint_ev = evsignal_new(base, SIGINT, cow_wm_signal_cb, NULL);
 	sigterm_ev = evsignal_new(base, SIGTERM, cow_wm_signal_cb, NULL);
 	sigusr1_ev = evsignal_new(base, SIGUSR1, cow_wm_signal_cb, NULL);
 	sigusr2_ev = evsignal_new(base, SIGUSR2, cow_wm_signal_cb, NULL);
 
-	if (wl_ev == NULL || tick_ev == NULL || sigint_ev == NULL ||
+	if (wl_ev == NULL || wayland_events.write_ev == NULL || tick_ev == NULL ||
+	    sigint_ev == NULL ||
 	    sigterm_ev == NULL || sigusr1_ev == NULL || sigusr2_ev == NULL)
 		goto out;
 
@@ -1888,7 +1924,7 @@ cow_wm_run(void)
 	event_add(sigusr2_ev, NULL);
 
 	while (cow_wm.running) {
-		if (!cow_wm_flush_display())
+		if (!cow_wm_flush_display(&wayland_events))
 			break;
 		wl_display_dispatch_pending(cow_wm.display);
 		cow_wm_schedule_tick(tick_ev);
@@ -1902,6 +1938,8 @@ cow_wm_run(void)
 out:
 	if (wl_ev != NULL)
 		event_free(wl_ev);
+	if (wayland_events.write_ev != NULL)
+		event_free(wayland_events.write_ev);
 	if (tick_ev != NULL)
 		event_free(tick_ev);
 	if (sigint_ev != NULL)
