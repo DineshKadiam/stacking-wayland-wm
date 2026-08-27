@@ -1914,6 +1914,7 @@ void
 cow_view_set_maximized(struct cow_view *view, bool max)
 {
 	bool changed = (view->maximized != max);
+	int maximize_button = max ? cow_view_maximize_button_index() : -1;
 
 	/* Keep the per-axis flags in step with the unified one for
 	 * call sites that don't model an axis -- drag-to-unmax,
@@ -1927,6 +1928,10 @@ cow_view_set_maximized(struct cow_view *view, bool max)
 	view->maximized_v_ignore_reserved = false;
 	view->maximized_h_keep_geometry = false;
 	view->maximized_v_keep_geometry = false;
+	if (view->icon_inverted_button != maximize_button) {
+		view->icon_inverted_button = maximize_button;
+		view->dec.dirty = true;
+	}
 
 	/*
 	 * Notify status clients of the flip so per-window UI (the
@@ -2179,11 +2184,6 @@ cow_view_maximize(struct cow_view *view)
 	 */
 	cow_view_sync_container_geometry(view, view->x, view->y, w, h);
 
-	int mbi = cow_view_maximize_button_index();
-	if (mbi >= 0) {
-		view->icon_inverted_button = mbi;
-		view->dec.dirty		   = true;
-	}
 }
 
 void
@@ -2270,8 +2270,7 @@ cow_view_unmaximize(struct cow_view *view)
 	cow_view_sync_container_geometry(view, view->x, view->y,
 	    view->saved_width, view->saved_height);
 
-	view->icon_inverted_button = -1;
-	view->dec.dirty		   = true;
+	view->dec.dirty = true;
 }
 
 void
