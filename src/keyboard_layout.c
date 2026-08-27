@@ -76,13 +76,13 @@ keyboard_layout(void *data,
 }
 
 static void
-keyboard_set_caps_lock(struct cow_keyboard_layout *keyboard, bool enabled)
+keyboard_set_lock(bool *lock, bool *has_lock, bool enabled)
 {
-	if (keyboard->has_caps_lock && keyboard->caps_lock == enabled)
+	if (*has_lock && *lock == enabled)
 		return;
 
-	keyboard->caps_lock = enabled;
-	keyboard->has_caps_lock = true;
+	*lock = enabled;
+	*has_lock = true;
 	cow_update_request(COW_UPDATE_STATUS);
 }
 
@@ -90,26 +90,36 @@ static void
 keyboard_capslock_enabled(void *data,
     __unused struct river_xkb_keyboard_v1 *river_keyboard)
 {
-	keyboard_set_caps_lock(data, true);
+	struct cow_keyboard_layout *keyboard = data;
+	keyboard_set_lock(&keyboard->caps_lock, &keyboard->has_caps_lock,
+	    true);
 }
 
 static void
 keyboard_capslock_disabled(void *data,
     __unused struct river_xkb_keyboard_v1 *river_keyboard)
 {
-	keyboard_set_caps_lock(data, false);
+	struct cow_keyboard_layout *keyboard = data;
+	keyboard_set_lock(&keyboard->caps_lock, &keyboard->has_caps_lock,
+	    false);
 }
 
 static void
-keyboard_numlock_enabled(__unused void *data,
+keyboard_numlock_enabled(void *data,
     __unused struct river_xkb_keyboard_v1 *river_keyboard)
 {
+	struct cow_keyboard_layout *keyboard = data;
+	keyboard_set_lock(&keyboard->num_lock, &keyboard->has_num_lock,
+	    true);
 }
 
 static void
-keyboard_numlock_disabled(__unused void *data,
+keyboard_numlock_disabled(void *data,
     __unused struct river_xkb_keyboard_v1 *river_keyboard)
 {
+	struct cow_keyboard_layout *keyboard = data;
+	keyboard_set_lock(&keyboard->num_lock, &keyboard->has_num_lock,
+	    false);
 }
 
 static void
@@ -230,6 +240,11 @@ cow_keyboard_layout_active_json(void)
 			    active_layout->caps_lock);
 		else
 			cJSON_AddNullToObject(language, "caps_lock");
+		if (active_layout->has_num_lock)
+			cJSON_AddBoolToObject(language, "num_lock",
+			    active_layout->num_lock);
+		else
+			cJSON_AddNullToObject(language, "num_lock");
 		return language;
 	}
 	return cJSON_CreateNull();

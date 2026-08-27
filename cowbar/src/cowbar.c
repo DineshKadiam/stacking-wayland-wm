@@ -775,6 +775,7 @@ process_state(const char *line, const char *waybar_mod,
 		cJSON *language = cJSON_GetObjectItem(state, "language");
 		cJSON *name = cJSON_GetObjectItem(language, "name");
 		cJSON *caps_lock = cJSON_GetObjectItem(language, "caps_lock");
+		cJSON *num_lock = cJSON_GetObjectItem(language, "num_lock");
 		cJSON *result = cJSON_CreateObject();
 		cJSON_AddStringToObject(result, "text",
 		    cJSON_IsString(name) ? name->valuestring : "");
@@ -783,6 +784,11 @@ process_state(const char *line, const char *waybar_mod,
 			    cJSON_IsTrue(caps_lock));
 		else
 			cJSON_AddNullToObject(result, "caps_lock");
+		if (cJSON_IsBool(num_lock))
+			cJSON_AddBoolToObject(result, "num_lock",
+			    cJSON_IsTrue(num_lock));
+		else
+			cJSON_AddNullToObject(result, "num_lock");
 		emit_changed(result, last_language);
 		cJSON_Delete(result);
 	} else if (field != NULL && strcmp(field, "outputs") == 0) {

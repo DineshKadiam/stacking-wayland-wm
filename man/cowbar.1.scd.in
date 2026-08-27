@@ -48,7 +48,7 @@ without requiring ordering guarantees.
 		*cow*(1)'s _title\_format_ setting.
 
 	*language*
-		Emit the active keyboard layout and Caps Lock state as a
+		Emit the active keyboard layout and keyboard lock states as a
 		Waybar-compatible _text_ object.
 
 	*outputs*
@@ -145,7 +145,8 @@ Each line of output is a self-contained JSON object, suitable for parsing with
   },
   "language": {
     "name": "English (UK)",
-    "caps_lock": false
+    "caps_lock": false,
+    "num_lock": true
   },
   "keyboard_layouts": [
     {
@@ -156,8 +157,8 @@ Each line of output is a self-contained JSON object, suitable for parsing with
 }
 ```
 
-The _language.caps\_lock_ value is _null_ until River has reported the state
-for the keyboard providing the active layout.
+The _language.caps\_lock_ and _language.num\_lock_ values are _null_ until
+River has reported those states for the keyboard providing the active layout.
 
 *-f desks* output:
 
@@ -174,7 +175,7 @@ for the keyboard providing the active layout.
 *-f language* output:
 
 ```
-{"text": "English (UK)", "caps_lock": false}
+{"text": "English (UK)", "caps_lock": false, "num_lock": true}
 ```
 
 *-f outputs* output:
