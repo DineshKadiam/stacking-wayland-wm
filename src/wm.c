@@ -73,6 +73,12 @@
 
 struct cow_wm cow_wm;
 
+/*
+ * Signal events only set flags; shutdown and restart run after the loop.
+ */
+static volatile sig_atomic_t cow_wm_shutdown_requested = 0;
+volatile sig_atomic_t cow_wm_restart_requested = 0;
+
 /* Forward declarations for protocol listeners */
 static void handle_wm_unavailable(void *, struct river_window_manager_v1 *);
 static void handle_wm_finished(void *, struct river_window_manager_v1 *);
@@ -2237,28 +2243,6 @@ cow_wm_request_pointer_warp(int x, int y)
 	cow_wm.pending_warp = true;
 	cow_wm.warp_x	    = x;
 	cow_wm.warp_y	    = y;
-}
-
-/*
- * Shutdown / restart are signalled into the run loop via two
- * sig_atomic_t flags rather than executed directly from the signal
- * handler.  The flag-only design keeps the handler bodies trivial and
- * lets cow_wm_run drain shutdown the same way it drains restart, with
- * normal teardown via cow_wm_fini in main().
- */
-volatile sig_atomic_t cow_wm_shutdown_requested = 0;
-volatile sig_atomic_t cow_wm_restart_requested	= 0;
-
-void
-cow_wm_signal_handler(__unused int sig)
-{
-	cow_wm_shutdown_requested = 1;
-}
-
-void
-cow_wm_restart_handler(__unused int sig)
-{
-	cow_wm_restart_requested = 1;
 }
 
 void

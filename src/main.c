@@ -145,13 +145,6 @@ main(int argc, char *argv[])
 	/* Ignore SIGPIPE -- child processes (xterm etc.) may cause this */
 	signal(SIGPIPE, SIG_IGN);
 
-	/* Handle SIGTERM/SIGINT for clean shutdown (saves state) */
-	signal(SIGTERM, cow_wm_signal_handler);
-	signal(SIGINT, cow_wm_signal_handler);
-
-	/* Handle SIGUSR1 for restart */
-	signal(SIGUSR1, cow_wm_restart_handler);
-
 	if (!cow_wm_init()) {
 		cow_config_destroy(cow_config);
 		cow_log_fini();

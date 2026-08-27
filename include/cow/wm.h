@@ -283,26 +283,7 @@ void cow_wm_cursor_theme_configure(void);
  */
 void cow_wm_request_pointer_warp(int, int);
 
-/*
- * Signal handler for SIGTERM/SIGINT -- triggers clean shutdown.
- */
-void cow_wm_signal_handler(int);
-
-/*
- * Signal handler for SIGUSR1 -- triggers a clean restart via execv().
- */
-void cow_wm_restart_handler(int);
-
-/*
- * Set by SIGTERM/SIGINT handler; checked in the event loop.  When true,
- * the run loop exits and main() proceeds with normal teardown via
- * cow_wm_fini.  Async-signal-safe to write from a signal handler.
- */
-extern volatile sig_atomic_t cow_wm_shutdown_requested;
-
-/*
- * Set by SIGUSR1 handler; checked in the event loop.
- */
+/* Set by the event loop's SIGUSR1 event and checked after it exits. */
 extern volatile sig_atomic_t cow_wm_restart_requested;
 
 /*
