@@ -22,6 +22,7 @@
 #include "cow/output.h"
 #include "cow/pointer_input.h"
 #include "cow/seat.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 #include "river-layer-shell-v1-client-protocol.h"
@@ -47,7 +48,7 @@ ls_output_handle_non_exclusive_area(void *data,
 	output->has_layer_usable_area = true;
 
 	if (cow_output_recompute_usable_area(output))
-		cow_wm_request_manage_dirty();
+		cow_update_request(COW_UPDATE_MANAGE);
 }
 
 static const struct river_layer_shell_output_v1_listener ls_output_listener = {
@@ -86,7 +87,7 @@ ls_seat_handle_focus_none(void		      *data,
 	lss->has_exclusive_focus	 = false;
 	if (had_exclusive) {
 		lss->seat->needs_refocus = true;
-		cow_wm_request_manage_dirty();
+		cow_update_request(COW_UPDATE_MANAGE);
 	}
 }
 

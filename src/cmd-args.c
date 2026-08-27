@@ -30,6 +30,7 @@
 #include "cow/ipc.h"
 #include "cow/output.h"
 #include "cow/view.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 #include <cJSON.h>
@@ -258,7 +259,7 @@ cmd_view_dirty(struct cow_view *view)
 	if (view == NULL)
 		return;
 	view->dec.dirty = true;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 void

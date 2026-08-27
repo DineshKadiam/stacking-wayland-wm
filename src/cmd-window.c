@@ -28,6 +28,7 @@
 #include "cow/output.h"
 #include "cow/titlebar.h"
 #include "cow/view.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 #include "river-window-management-v1-client-protocol.h"
@@ -101,7 +102,7 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 	/* Close -- deferred to manage callback */
 	if (args_has(args, 'c')) {
 		view->pending_close = true;
-		cow_wm_request_manage_dirty();
+		cow_update_request(COW_UPDATE_MANAGE);
 		return (CMD_RETURN_NORMAL);
 	}
 
@@ -120,7 +121,7 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 		if (target != currently) {
 			view->flags ^= COW_VIEW_STICKY_DESK_FLAG;
 			view->dec.dirty = true;
-			cow_wm_request_manage_dirty();
+			cow_update_request(COW_UPDATE_MANAGE);
 			/* Becoming non-sticky: assign view back to the
 			 * output's current desk so it's actually on the
 			 * desk it appears to be on.
@@ -202,7 +203,7 @@ cmd_window_tile_exec(struct cmd *self, struct cmd_q *cmdq)
 	view->expanded = false;
 	cow_view_set_tiled_edges(view, edges);
 	view->dec.dirty = true;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 
 	return (CMD_RETURN_NORMAL);
 }
@@ -238,7 +239,7 @@ cmd_window_expand_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	do_expand(view, dir, toggle);
 
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 	view->dec.dirty = true;
 
 	return (CMD_RETURN_NORMAL);
@@ -286,7 +287,7 @@ cmd_window_maximize_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (!ok)
 		return (CMD_RETURN_ERROR);
 
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 	view->dec.dirty = true;
 
 	return (CMD_RETURN_NORMAL);
@@ -325,14 +326,14 @@ static void
 do_raise(struct cow_view *view)
 {
 	view->needs_raise = true;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 static void
 do_lower(struct cow_view *view)
 {
 	view->pending_lower = true;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 /*
@@ -798,7 +799,7 @@ do_shade(struct cow_view *view, const char *dir_str)
 	enum shade_direction sd = resolve_shade_direction(view, dir_str);
 
 	cow_view_shade(view, sd);
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 static bool

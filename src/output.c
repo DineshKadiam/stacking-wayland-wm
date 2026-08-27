@@ -30,6 +30,7 @@
 #include "cow/memory.h"
 #include "cow/shm.h"
 #include "cow/util.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 #include "cow/desk_ops.h"
 #include "cow/pan_frames.h"
@@ -244,7 +245,7 @@ background_layer_configure(void *data, struct zwlr_layer_surface_v1 *lsurf,
 
 	output->bg_configured = true;
 	output->bg_dirty      = true;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 static void

@@ -42,10 +42,10 @@
 #include "cow/rule.h"
 #include "cow/shm.h"
 #include "cow/stack.h"
-#include "cow/status.h"
 #include "cow/titlebar.h"
 #include "cow/util.h"
 #include "cow/view.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_set_exec(struct cmd *, struct cmd_q *);
@@ -746,7 +746,7 @@ set_scalar_string(const struct cow_option_entry *opt, const char *val,
 			propagate_global_option(opt->id);
 	}
 	set_option_post_update(opt);
-	cow_status_request();
+	cow_update_request(COW_UPDATE_STATUS);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -899,8 +899,7 @@ set_desks_count(const char *val, struct cmd_q *cmdq)
 	cow_config->desk_count = (uint8_t)n;
 	xfree(cause);
 	cow_rule_fire(COW_RULE_ON_DESKS_CHANGED, NULL, NULL, NULL);
-	cow_status_request();
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -933,7 +932,7 @@ set_desktop_size(struct args *args, struct cmd_q *cmdq)
 			struct cow_output *out;
 			wl_list_for_each(out, &cow_wm.outputs, wm_link)
 			    cow_page_clamp_views(out);
-			cow_wm_request_manage_dirty();
+			cow_update_request(COW_UPDATE_MANAGE);
 			pan_frames_update_all();
 		}
 	}
@@ -1154,7 +1153,7 @@ set_layer(const char *key, const char *val, struct cmd_q *cmdq)
 	}
 	if (any) {
 		cow_stack_mark_dirty();
-		cow_wm_request_manage_dirty();
+		cow_update_request(COW_UPDATE_MANAGE);
 	}
 	return (CMD_RETURN_NORMAL);
 }
@@ -1717,8 +1716,7 @@ set_desktop_config_option(const char *val, struct cmd_q *cmdq)
 		    "global|per-output|shared");
 		return;
 	}
-	cow_wm_request_manage_dirty();
-	cow_status_request();
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 }
 
 static void
@@ -1838,7 +1836,7 @@ set_page_visibility_option(const char *val, struct cmd_q *cmdq)
 	}
 	cow_config->page_visibility = parsed;
 	if (!cow_ipc.startup_mode)
-		cow_wm_request_manage_dirty();
+		cow_update_request(COW_UPDATE_MANAGE);
 	return (CMD_RETURN_NORMAL);
 }
 

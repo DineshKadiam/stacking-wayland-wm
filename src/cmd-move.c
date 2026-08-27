@@ -26,9 +26,9 @@
 #include "cow/output.h"
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
-#include "cow/status.h"
 #include "cow/titlebar.h"
 #include "cow/view.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_move_exec(struct cmd *, struct cmd_q *);
@@ -245,7 +245,7 @@ finish_move(struct cow_view *view, bool warp)
 	 * pass does not itself guarantee a snapshot, particularly when the
 	 * window has moved away from the current page.
 	 */
-	cow_status_request();
+	cow_update_request(COW_UPDATE_STATUS);
 	if (view->output == NULL || !cow_view_visible(view, view->output))
 		return;
 	if (view == cow_wm.focused_view && cow_view_focusable(view))
@@ -789,5 +789,5 @@ do_desk(struct cow_view *view, uint8_t nr, struct cmd_q *cmdq)
 
 	cow_view_assign_desk(view, nr);
 
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }

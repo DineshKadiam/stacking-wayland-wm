@@ -24,7 +24,7 @@
 #include "cow/ipc.h"
 #include "cow/memory.h"
 #include "cow/output.h"
-#include "cow/status.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_desk_name_exec(struct cmd *, struct cmd_q *);
@@ -86,8 +86,7 @@ cmd_desk_name_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	if (args_has(args, 'r')) {
 		cow_desk_set_reset(output);
-		cow_wm_request_manage_dirty();
-		cow_status_request();
+		cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 		return (CMD_RETURN_NORMAL);
 	}
 
@@ -108,8 +107,7 @@ cmd_desk_name_exec(struct cmd *self, struct cmd_q *cmdq)
 			return (CMD_RETURN_ERROR);
 		}
 		xfree(cause);
-		cow_wm_request_manage_dirty();
-		cow_status_request();
+		cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 		return (CMD_RETURN_NORMAL);
 	}
 
@@ -129,7 +127,6 @@ cmd_desk_name_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_ERROR);
 	}
 	xfree(cause);
-	cow_wm_request_manage_dirty();
-	cow_status_request();
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 	return (CMD_RETURN_NORMAL);
 }

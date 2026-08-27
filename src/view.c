@@ -45,9 +45,9 @@
 #include "cow/seat.h"
 #include "cow/shm.h"
 #include "cow/stack.h"
-#include "cow/status.h"
 #include "cow/titlebar.h"
 #include "cow/util.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 #include "river-window-management-v1-client-protocol.h"
@@ -696,7 +696,7 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 	 * gets redrawn on the next render cycle. */
 	if (changed) {
 		view->dec.dirty = true;
-		cow_wm_request_manage_dirty();
+		cow_update_request(COW_UPDATE_MANAGE);
 	}
 
 	view->content_width  = width;
@@ -777,7 +777,7 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 	 * needlessly re-broadcast the entire snapshot.
 	 */
 	if (changed)
-		cow_status_request();
+		cow_update_request(COW_UPDATE_STATUS);
 }
 
 static void
@@ -805,8 +805,7 @@ window_handle_app_id(void *data, __unused struct river_window_v1 *rw,
 	if (cow_view_is_iconified(view))
 		cow_view_icon_refresh(view);
 	view_mark_title_dirty(view);
-	cow_status_request();
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 }
 
 static void
@@ -822,8 +821,7 @@ window_handle_title(void *data, __unused struct river_window_v1 *rw,
 
 	xstrset(&view->title, title);
 	view_mark_title_dirty(view);
-	cow_wm_request_manage_dirty();
-	cow_status_request();
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 
 	if (changed)
 		cow_rule_fire(COW_RULE_ON_TITLE_CHANGE, view, view->desk,
@@ -939,7 +937,7 @@ window_handle_presentation_hint(void *data,
 		hint = RIVER_OUTPUT_V1_PRESENTATION_MODE_VSYNC;
 
 	view->presentation_hint = hint;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 static void
@@ -1006,7 +1004,7 @@ cow_view_create(struct river_window_v1 *rw)
 	river_window_v1_add_listener(rw, &window_listener, view);
 
 	wl_list_insert(&cow_wm.views, &view->wm_link);
-	cow_status_request();
+	cow_update_request(COW_UPDATE_STATUS);
 
 	return view;
 }
@@ -1075,7 +1073,7 @@ cow_view_destroy(struct cow_view *view)
 	struct cow_output *output = view->output;
 	bool		   was_iconified = cow_view_is_iconified(view);
 
-	cow_status_request();
+	cow_update_request(COW_UPDATE_STATUS);
 	view_clear_wm_refs(view);
 	view_clear_seat_refs(view);
 	view_detach_container_silent(view);
@@ -1153,7 +1151,7 @@ cow_view_configure(struct cow_view *view)
 	/* Focus and raise new windows on the next manage cycle */
 	view->needs_raise = true;
 	view->needs_focus = true;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 /* Forward declaration: defined later, used by view_cleanup_stale_decoration. */
@@ -1619,7 +1617,7 @@ cow_view_set_pending_geometry_anchored(struct cow_view *view, int x, int y,
 	view->deferred_anchor_right_x = view->x + view->content_width;
 	view->deferred_anchor_bottom_y = view->y + view->content_height;
 	view->dec.dirty	     = true;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 struct cow_view *
@@ -1803,7 +1801,7 @@ cow_view_set_page_sticky(struct cow_view *view, bool sticky)
 	else
 		view->flags &= ~COW_VIEW_STICKY_PAGE_FLAG;
 	view->dec.dirty = true;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 bool
@@ -1892,7 +1890,7 @@ cow_view_set_layer(struct cow_view *view, int requested)
 
 	if (any_changed) {
 		cow_stack_mark_dirty();
-		cow_wm_request_manage_dirty();
+		cow_update_request(COW_UPDATE_MANAGE);
 	}
 	return new_layer;
 }
@@ -1935,7 +1933,7 @@ cow_view_set_maximized(struct cow_view *view, bool max)
 	 * resize; that's fine, status snapshots are cheap.
 	 */
 	if (changed)
-		cow_status_request();
+		cow_update_request(COW_UPDATE_STATUS);
 }
 
 void
@@ -1946,7 +1944,7 @@ cow_view_set_pending_maximized_hint(struct cow_view *view, bool maximized)
 
 	view->pending_maximized_hint = true;
 	view->pending_maximized_hint_value = maximized;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 void
@@ -1967,7 +1965,7 @@ cow_view_inform_fullscreen_state(struct cow_view *view, bool fullscreen)
 
 	view->pending_fullscreen_state = true;
 	view->pending_fullscreen	     = fullscreen;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 void
@@ -1981,7 +1979,7 @@ cow_view_set_tiled_edges(struct cow_view *view, uint32_t edges)
 
 	view->pending_tiled_edges	= true;
 	view->pending_tiled_edges_value	= edges;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 void
@@ -2108,7 +2106,7 @@ view_refit_maximized(struct cow_view *view)
 	cow_view_sync_vxy_from_global(view);
 	cow_view_sync_container_pos(view);
 	view->dec.dirty = true;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 /* ================================================================
@@ -2438,7 +2436,7 @@ cow_view_shade(struct cow_view *view, int direction)
 	view->clip_y	   = 0;
 	view->clip_w	   = 1;
 	view->clip_h	   = 1;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 
 	view->dec.dirty = true;
 	if (had_focus)
@@ -2485,7 +2483,7 @@ cow_view_unshade(struct cow_view *view)
 		view->dec.buffer = NULL;
 	}
 
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 
 	cow_rule_fire(COW_RULE_ON_UNSHADE, view, view->desk, view->output);
 }
@@ -3007,7 +3005,7 @@ cow_view_iconify(struct cow_view *view)
 			cow_seat_forget_view(seat, view);
 	}
 
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 
 	cow_rule_fire(COW_RULE_ON_ICONIFY, view, view->desk, view->output);
 }
@@ -3032,7 +3030,7 @@ cow_view_deiconify(struct cow_view *view)
 	/* Focus the restored window */
 	view->needs_raise    = true;
 	cow_wm.pending_focus = view;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 
 	cow_rule_fire(COW_RULE_ON_DEICONIFY, view, view->desk, view->output);
 }
@@ -3093,7 +3091,7 @@ cow_container_create(struct cow_view *first, struct cow_view *second)
 	/* first (the drop target) is the active tab */
 	c->active = wl_container_of(c->members.next, c->active, link);
 
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 	return c;
 }
 
@@ -3172,7 +3170,7 @@ cow_container_activate(struct cow_container *c,
 	}
 
 	cow_wm.pending_focus = member->view;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 static void
@@ -3180,7 +3178,7 @@ container_redraw(struct cow_container *c)
 {
 	if (c->active != NULL && c->active->view->use_ssd)
 		c->active->view->dec.dirty = true;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 void
@@ -3320,7 +3318,7 @@ cow_container_remove_view(struct cow_view *view)
 		cow_container_activate(c, next);
 	}
 
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 void
@@ -3462,7 +3460,7 @@ cow_view_warp_to(const struct cow_view *view)
 
 	cow_view_centre(view, &cx, &cy);
 	cow_wm_request_pointer_warp(cx, cy);
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 void

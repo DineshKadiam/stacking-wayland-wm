@@ -31,6 +31,7 @@
 #include "cow/output.h"
 #include "cow/seat.h"
 #include "cow/view.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 #define WINDOW_LIST_MENU "\037cow-window-list"
@@ -326,7 +327,7 @@ select_window(const char *id, bool warp, struct cmd_q *cmdq)
 		cow_container_activate(view->container_member->container,
 		    view->container_member);
 	cow_wm.pending_focus = view;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 	if (warp)
 		cow_view_warp_to_focused();
 	return (true);
@@ -434,7 +435,7 @@ show_window_list(const char *filter_expr, const char *format,
 		}
 		cow_menu_popup_open_centered(menu, cx, cy, NULL);
 	}
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 	return (CMD_RETURN_NORMAL);
 }
 

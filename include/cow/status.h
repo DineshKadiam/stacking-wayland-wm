@@ -30,12 +30,8 @@ void cow_status_init(void);
  */
 void cow_status_fini(void);
 
-/*
- * Request a full state snapshot.  Requests are coalesced until
- * cow_status_flush() is called at a stable event-loop boundary.
- */
-void cow_status_request(void);
-void cow_status_flush(void);
+/* Emit a full state snapshot to connected clients. */
+void cow_status_emit(void);
 
 void cow_status_add_output_geometry(struct cJSON *, const struct cow_output *);
 void cow_status_add_output_desks(struct cJSON *, const struct cow_output *);

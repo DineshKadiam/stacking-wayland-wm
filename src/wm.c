@@ -55,6 +55,7 @@
 #include "cow/titlebar.h"
 #include "cow/shm.h"
 #include "cow/view.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 #include "cursor-shape-v1-client-protocol.h"
@@ -403,19 +404,8 @@ handle_wm_manage_start(__unused void *data,
     struct river_window_manager_v1   *manager)
 {
 	struct timespec started, finished;
-	unsigned requests = cow_wm.manage_dirty_requests;
-	const char *request_file = cow_wm.last_manage_request_file;
-	const char *request_function = cow_wm.last_manage_request_function;
-	int request_line = cow_wm.last_manage_request_line;
-	cow_wm.manage_dirty_requests = 0;
 	clock_gettime(CLOCK_MONOTONIC, &started);
-	if (requests == 0) {
-		cow_log_trace("manage cycle begin (trigger=compositor)");
-	} else {
-		cow_log_trace("manage cycle begin (requests=%u "
-		    "last_request=%s:%d %s)", requests, request_file,
-		    request_line, request_function);
-	}
+	cow_update_manage_begin();
 	cow_wm.sequence = COW_WM_SEQUENCE_MANAGE;
 
 	manage_destroy_removed();
@@ -908,7 +898,7 @@ manage_sloppy_focus(struct cow_seat *seat)
 		cow_wm.focused_view = view;
 		if (view->output != NULL)
 			cow_output_set_current(view->output);
-		cow_status_request();
+		cow_update_request(COW_UPDATE_STATUS);
 	}
 	seat->sloppy_focus_view = NULL;
 }
@@ -1463,8 +1453,7 @@ handle_wm_session_unlocked(__unused void    *data,
 				cow_output_set_current(target->output);
 		}
 	}
-	cow_status_request();
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 }
 
 static struct cow_view *
@@ -1524,6 +1513,7 @@ cow_wm_init(void)
 	struct wl_list saved_menus = cow_wm.menus;
 
 	memset(&cow_wm, 0, sizeof(cow_wm));
+	cow_update_reset();
 
 	const char *restart_pid = getenv(COW_RESTART_ENV);
 	if (restart_pid != NULL) {
@@ -1623,8 +1613,7 @@ cow_wm_init(void)
 
 	/* Initialize status FIFO */
 	cow_status_init();
-	cow_status_request();
-	cow_status_flush();
+	cow_status_emit();
 
 	return true;
 
@@ -1735,7 +1724,7 @@ static void
 cow_wm_tick_cb(__unused evutil_socket_t fd, __unused short events,
     __unused void *data)
 {
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 static bool
@@ -1857,10 +1846,11 @@ static void
 cow_wm_after_event(void)
 {
 	cow_wm_fire_outputs_changed();
-	cow_status_flush();
 
-	if (cow_wm.needs_manage_dirty) {
-		cow_wm.needs_manage_dirty = false;
+	uint32_t updates = cow_update_take();
+	if ((updates & COW_UPDATE_STATUS) != 0)
+		cow_status_emit();
+	if ((updates & COW_UPDATE_MANAGE) != 0) {
 		wl_display_roundtrip(cow_wm.display);
 		cow_wm_manage_dirty_now();
 	}
@@ -1929,19 +1919,6 @@ cow_wm_manage_dirty_now(void)
 		cow_log_trace("requesting immediate manage cycle");
 		river_window_manager_v1_manage_dirty(cow_wm.manager);
 	}
-}
-
-void
-cow_wm_request_manage_dirty_at(const char *file, int line,
-    const char *function)
-{
-	cow_wm.manage_dirty_requests++;
-	cow_wm.last_manage_request_file = file;
-	cow_wm.last_manage_request_line = line;
-	cow_wm.last_manage_request_function = function;
-	cow_log_trace("manage cycle requested by %s:%d %s", file, line,
-	    function);
-	cow_wm.needs_manage_dirty = true;
 }
 
 void
@@ -2175,7 +2152,7 @@ cow_wm_set_cursor_hidden(bool hidden)
 		    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT;
 		cow_wm_set_cursor_shape_internal(shape, 0, true);
 	}
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 bool

@@ -21,7 +21,7 @@
 #include "cow/keyboard_layout.h"
 #include "cow/log.h"
 #include "cow/memory.h"
-#include "cow/status.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 #include "river-xkb-config-v1-client-protocol.h"
@@ -44,7 +44,7 @@ keyboard_removed(void *data, struct river_xkb_keyboard_v1 *river_keyboard)
 		if (!wl_list_empty(&cow_wm.keyboard_layouts))
 			active_layout = wl_container_of(
 			    cow_wm.keyboard_layouts.next, active_layout, link);
-		cow_status_request();
+		cow_update_request(COW_UPDATE_STATUS);
 	}
 }
 
@@ -71,7 +71,7 @@ keyboard_layout(void *data,
 	if (changed) {
 		xstrset(&keyboard->name, name);
 		active_layout = keyboard;
-		cow_status_request();
+		cow_update_request(COW_UPDATE_STATUS);
 	}
 }
 

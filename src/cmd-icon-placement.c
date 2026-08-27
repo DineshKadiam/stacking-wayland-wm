@@ -24,8 +24,8 @@
 #include "cow/icon_placement.h"
 #include "cow/ipc.h"
 #include "cow/output.h"
-#include "cow/status.h"
 #include "cow/view.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_icon_placement_exec(struct cmd *, struct cmd_q *);
@@ -49,7 +49,7 @@ reflow_output(struct cow_output *output, bool invalidate)
 	if (invalidate)
 		cow_view_invalidate_auto_icon_positions(output);
 	cow_view_layout_icons_on_output(output);
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 static void
@@ -122,7 +122,7 @@ cmd_icon_placement_exec(struct cmd *self, struct cmd_q *cmdq)
 				reflow_all(true);
 			else
 				reflow_output(output, true);
-			cow_status_request();
+			cow_update_request(COW_UPDATE_STATUS);
 		}
 		return CMD_RETURN_NORMAL;
 	}
@@ -189,7 +189,7 @@ cmd_icon_placement_exec(struct cmd *self, struct cmd_q *cmdq)
 		else
 			reflow_output(output,
 			    field != COW_ICON_PLACEMENT_COMPACT);
-		cow_status_request();
+		cow_update_request(COW_UPDATE_STATUS);
 	}
 	return CMD_RETURN_NORMAL;
 }

@@ -24,6 +24,7 @@
 #include "cow/compat.h"
 #include "cow/output.h"
 #include "cow/view.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_icon_reset_exec(struct cmd *, struct cmd_q *);
@@ -161,7 +162,7 @@ cmd_icon_reset_exec(struct cmd *self, struct cmd_q *cmdq)
 		if (changed && output != NULL)
 			cow_view_layout_icons_on_output(output);
 		if (changed)
-			cow_wm_request_manage_dirty();
+			cow_update_request(COW_UPDATE_MANAGE);
 		return (CMD_RETURN_NORMAL);
 	}
 	if (target != NULL && cmdq->target.desk != NULL) {
@@ -174,7 +175,7 @@ cmd_icon_reset_exec(struct cmd *self, struct cmd_q *cmdq)
 		}
 		cmd_filter_free(&filter);
 		if (changed)
-			cow_wm_request_manage_dirty();
+			cow_update_request(COW_UPDATE_MANAGE);
 		return (CMD_RETURN_NORMAL);
 	}
 
@@ -197,7 +198,7 @@ cmd_icon_reset_exec(struct cmd *self, struct cmd_q *cmdq)
 		struct cow_output *output;
 		wl_list_for_each(output, &cow_wm.outputs, wm_link)
 			cow_view_layout_icons_on_output(output);
-		cow_wm_request_manage_dirty();
+		cow_update_request(COW_UPDATE_MANAGE);
 	}
 	return (CMD_RETURN_NORMAL);
 }

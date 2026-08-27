@@ -23,8 +23,8 @@
 #include "cow/output.h"
 #include "cow/seat.h"
 #include "cow/desk_ops.h"
-#include "cow/status.h"
 #include "cow/view.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_desk_exec(struct cmd *, struct cmd_q *);
@@ -146,6 +146,5 @@ do_collect(struct cow_output *output, uint8_t nr)
 			v->dec.dirty = true;
 	}
 
-	cow_status_request();
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 }

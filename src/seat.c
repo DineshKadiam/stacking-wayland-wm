@@ -30,8 +30,8 @@
 #include "cow/menu.h"
 #include "cow/memory.h"
 #include "cow/desk_ops.h"
-#include "cow/status.h"
 #include "cow/view.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 #include "river-window-management-v1-client-protocol.h"
@@ -76,7 +76,7 @@ seat_handle_pointer_enter(void *data, __unused struct river_seat_v1 *river_seat,
 	    !view->closed && view != seat->focused_view) {
 		seat->sloppy_focus_view = view;
 	}
-	cow_status_request();
+	cow_update_request(COW_UPDATE_STATUS);
 }
 
 static void
@@ -93,7 +93,7 @@ seat_handle_pointer_leave(void *data, __unused struct river_seat_v1 *river_seat)
 	if (seat->has_pointer_position)
 		cow_output_pan_pointer_leave(seat->pointer_x, seat->pointer_y);
 
-	cow_status_request();
+	cow_update_request(COW_UPDATE_STATUS);
 }
 
 static void
@@ -151,7 +151,7 @@ seat_handle_shell_surface_interaction(void *data,
 				struct cow_seat *seat = data;
 				if (seat != NULL)
 					seat->menu_click_pending = true;
-				cow_wm_request_manage_dirty();
+				cow_update_request(COW_UPDATE_MANAGE);
 				return;
 			}
 		}
@@ -335,7 +335,7 @@ cow_seat_focus_view(struct cow_seat *seat, struct cow_view *view)
 	if (view->output != NULL)
 		cow_output_set_current(view->output);
 
-	cow_status_request();
+	cow_update_request(COW_UPDATE_STATUS);
 }
 
 void
@@ -357,7 +357,7 @@ cow_seat_focus_view_no_raise(struct cow_seat *seat, struct cow_view *view)
 	if (view->output != NULL)
 		cow_output_set_current(view->output);
 
-	cow_status_request();
+	cow_update_request(COW_UPDATE_STATUS);
 }
 
 struct cow_seat *
@@ -448,7 +448,7 @@ cow_seat_forget_view(struct cow_seat *seat, struct cow_view *view)
 		seat->binding_context_view = NULL;
 		seat->binding_context = 0;
 		seat->binding_context_dirty = true;
-		cow_wm_request_manage_dirty();
+		cow_update_request(COW_UPDATE_MANAGE);
 	}
 	if (seat->binding_context_deferred_view == view) {
 		seat->binding_context_deferred_value = 0;

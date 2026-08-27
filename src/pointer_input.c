@@ -31,6 +31,7 @@
 #include "cow/seat.h"
 #include "cow/titlebar.h"
 #include "cow/view.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 #include "cursor-shape-v1-client-protocol.h"
@@ -392,7 +393,7 @@ pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 		pointer_focus_background = NULL;
 		raw_pointer_set_cow_surface(popup->x + wl_fixed_to_int(sx),
 		    popup->y + wl_fixed_to_int(sy));
-		cow_wm_request_manage_dirty();
+		cow_update_request(COW_UPDATE_MANAGE);
 		return;
 	}
 
@@ -418,7 +419,7 @@ pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 	}
 
 	if (cow_wm.pointer_focus_menu != NULL)
-		cow_wm_request_manage_dirty();
+		cow_update_request(COW_UPDATE_MANAGE);
 	cow_wm.pointer_focus_menu = NULL;
 	pointer_focus_background = NULL;
 
@@ -454,7 +455,7 @@ pointer_leave(void *data, struct wl_pointer *pointer, uint32_t serial,
 	if (cow_wm.pointer_focus_menu != NULL &&
 	    cow_wm.pointer_focus_menu->surface == surface) {
 		cow_wm.pointer_focus_menu = NULL;
-		cow_wm_request_manage_dirty();
+		cow_update_request(COW_UPDATE_MANAGE);
 	}
 	if (pointer_focus_background != NULL &&
 	    pointer_focus_background->bg_surface == surface) {
@@ -503,7 +504,7 @@ pointer_motion(void *data, struct wl_pointer *pointer, uint32_t time,
 			wl_fixed_to_int(sx),
 		    cow_wm.pointer_focus_menu->y + wl_fixed_to_int(sy));
 		if (cow_menu_is_open())
-			cow_wm_request_manage_dirty();
+			cow_update_request(COW_UPDATE_MANAGE);
 		cow_pick_pointer_motion(time, sx, sy);
 		return;
 	}
@@ -513,7 +514,7 @@ pointer_motion(void *data, struct wl_pointer *pointer, uint32_t time,
 			wl_fixed_to_int(sx),
 		    pointer_focus_background->y + wl_fixed_to_int(sy));
 		if (cow_menu_is_open())
-			cow_wm_request_manage_dirty();
+			cow_update_request(COW_UPDATE_MANAGE);
 		cow_pick_pointer_motion(time, sx, sy);
 		return;
 	}
@@ -527,7 +528,7 @@ pointer_motion(void *data, struct wl_pointer *pointer, uint32_t time,
 
 	raw_pointer_set_absolute(wl_fixed_to_int(sx), wl_fixed_to_int(sy));
 	if (cow_menu_is_open())
-		cow_wm_request_manage_dirty();
+		cow_update_request(COW_UPDATE_MANAGE);
 	cow_pick_pointer_motion(time, sx, sy);
 }
 
@@ -557,16 +558,16 @@ pointer_button(void *data, struct wl_pointer *pointer, uint32_t serial,
 				seat->pending_titlebar_button_release = false;
 				seat->consumed_titlebar_button_interaction =
 				    view;
-				cow_wm_request_manage_dirty();
+				cow_update_request(COW_UPDATE_MANAGE);
 			}
 		} else if (state == WL_POINTER_BUTTON_STATE_RELEASED &&
 		    seat->pending_titlebar_button_press_view != NULL) {
 			seat->pending_titlebar_button_release = true;
-			cow_wm_request_manage_dirty();
+			cow_update_request(COW_UPDATE_MANAGE);
 		} else if (state == WL_POINTER_BUTTON_STATE_RELEASED &&
 		    seat->titlebar_press == COW_TITLEBAR_PRESS_BUTTON) {
 			seat->op_released = true;
-			cow_wm_request_manage_dirty();
+			cow_update_request(COW_UPDATE_MANAGE);
 		}
 	}
 
@@ -579,7 +580,7 @@ pointer_button(void *data, struct wl_pointer *pointer, uint32_t serial,
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED && cow_menu_is_open()) {
 		if (seat != NULL)
 			seat->menu_click_pending = true;
-		cow_wm_request_manage_dirty();
+		cow_update_request(COW_UPDATE_MANAGE);
 	}
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED && seat != NULL &&
 	    seat->binding_context == COW_BIND_CONTEXT_ICON &&
@@ -588,7 +589,7 @@ pointer_button(void *data, struct wl_pointer *pointer, uint32_t serial,
 		seat->consumed_icon_interaction = icon_view;
 		if (cow_seat_dispatch_pointer_binding(seat, button,
 			COW_BIND_CONTEXT_ICON, icon_view)) {
-			cow_wm_request_manage_dirty();
+			cow_update_request(COW_UPDATE_MANAGE);
 		} else if (seat->consumed_icon_interaction == icon_view)
 			seat->consumed_icon_interaction = NULL;
 	}
@@ -597,7 +598,7 @@ pointer_button(void *data, struct wl_pointer *pointer, uint32_t serial,
 		seed_seat_pointer_from_background();
 		if (cow_seat_dispatch_pointer_binding(seat, button,
 			COW_BIND_CONTEXT_ROOT, NULL))
-			cow_wm_request_manage_dirty();
+			cow_update_request(COW_UPDATE_MANAGE);
 	}
 
 	cow_pick_pointer_button(serial, button, state);

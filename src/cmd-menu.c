@@ -31,6 +31,7 @@
 #include "cow/menu.h"
 #include "cow/seat.h"
 #include "cow/util.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 static char *
@@ -297,7 +298,7 @@ cmd_menu_show_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	cow_menu_popup_open(m, x, y, cmdq->target.window, NULL,
 	    centre_title_on_pointer);
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 	return (CMD_RETURN_NORMAL);
 }
 

@@ -24,10 +24,10 @@
 #include "cow/pointer_op.h"
 #include "cow/rule.h"
 #include "cow/seat.h"
-#include "cow/status.h"
 #include "cow/titlebar.h"
 #include "cow/util.h"
 #include "cow/view.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 #include "river-window-management-v1-client-protocol.h"
@@ -231,8 +231,7 @@ cow_desk_switch(struct cow_output *output, uint8_t desk_nr)
 		break;
 	}
 
-	cow_status_request();
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 }
 
 void
@@ -262,7 +261,7 @@ cow_view_assign_desk(struct cow_view *view, uint8_t desk_nr)
 	view->dec.dirty = true;
 
 	/* Visibility recomputed in render callback */
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 int
@@ -394,8 +393,7 @@ cow_page_switch(struct cow_output *output, int col, int row)
 		break;
 	}
 
-	cow_status_request();
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 	/* Scrollable edges change after a page switch */
 	pan_frames_update_all();
 }
@@ -451,8 +449,7 @@ cow_page_scroll_to(struct cow_output *output, int new_vx, int new_vy, bool wrap)
 	if (cow_config != NULL)
 		cow_config->page_scroll_animate = saved_animate;
 
-	cow_status_request();
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 	pan_frames_update_all();
 }
 
@@ -488,7 +485,7 @@ cow_view_move_to_page(struct cow_view *view, int col, int row)
 	view->vy = row * h + within_y;
 
 	view->dec.dirty = true;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 void
@@ -543,7 +540,7 @@ cow_page_clamp_views(struct cow_output *output)
 		}
 		view->dec.dirty = true;
 	}
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 /* Advance one output's smooth page-scroll animation. */
@@ -567,7 +564,7 @@ cow_page_scroll_tick(struct cow_output *output)
 		desk->page_vx	= desk->scroll_to_vx;
 		desk->page_vy	= desk->scroll_to_vy;
 		desk->scrolling = false;
-		cow_wm_request_manage_dirty();
+		cow_update_request(COW_UPDATE_MANAGE);
 		/* Update pan frames now that the final page position is
 		 * committed — scrollable edges may have changed. */
 		pan_frames_update_all();
@@ -581,6 +578,6 @@ cow_page_scroll_tick(struct cow_output *output)
 	desk->page_vy = desk->scroll_from_vy +
 	    (int)(t * (desk->scroll_to_vy - desk->scroll_from_vy));
 
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 	return true;
 }

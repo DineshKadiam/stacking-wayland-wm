@@ -32,6 +32,7 @@
 #include "cow/rule.h"
 #include "cow/seat.h"
 #include "cow/view.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 #include "river-window-management-v1-client-protocol.h"
@@ -149,6 +150,6 @@ do_reload(struct cmd_q *cmdq)
 			    output->current_desk, output);
 	}
 
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 	cow_log_info("configuration reloaded from %s", path);
 }

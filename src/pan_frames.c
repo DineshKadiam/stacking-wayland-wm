@@ -27,6 +27,7 @@
 #include "cow/shm.h"
 #include "cow/util.h"
 #include "cow/view.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 
@@ -172,7 +173,7 @@ pan_arm_edge(struct cow_output *output, int edge)
 	cow_wm.pan_lock_output	   = output;
 	cow_wm.pan_lock_edge	   = edge;
 
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 void
@@ -874,7 +875,7 @@ cow_output_pan_pointer_leave(int px, int py)
 			output->pan_edge = -1;
 		}
 	}
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 void
@@ -886,7 +887,7 @@ cow_output_pan_pointer_enter(void)
 	struct cow_output *output;
 	wl_list_for_each(output, &cow_wm.outputs, wm_link)
 	    output->pan_edge = -1;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 /* Drag-mode arming: when a window is being moved, the cursor's

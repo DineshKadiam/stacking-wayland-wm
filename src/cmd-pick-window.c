@@ -33,6 +33,7 @@
 #include "cow/seat.h"
 #include "cow/shm.h"
 #include "cow/view.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 #include "cursor-shape-v1-client-protocol.h"
@@ -447,7 +448,7 @@ pick_command_defer(char *cmd_str, struct cow_view *view)
 	cmd->target_output   = view->output;
 	cmd->seat	     = cow_seat_first_with_pointer();
 	wl_list_insert(deferred_pick_commands.prev, &cmd->link);
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 static void

@@ -33,6 +33,7 @@
 #include "cow/seat.h"
 #include "cow/util.h"
 #include "cow/view.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 #include "river-window-management-v1-client-protocol.h"
@@ -172,7 +173,7 @@ cow_keybinding_create(struct cow_seat *seat, xkb_keysym_t keysym,
 	if ((repeatable || release_fn != NULL) &&
 	    modifiers != RIVER_SEAT_V1_MODIFIERS_NONE) {
 		seat->modifier_watch_dirty = true;
-		cow_wm_request_manage_dirty();
+		cow_update_request(COW_UPDATE_MANAGE);
 	}
 
 	return kb;
@@ -269,7 +270,7 @@ cow_keybinding_set_context(struct cow_seat *seat, uint32_t context,
 	seat->binding_context = context;
 	seat->binding_context_view = view;
 	seat->binding_context_dirty = true;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 void
@@ -348,7 +349,7 @@ cow_pointer_binding_create(struct cow_seat *seat, uint32_t button,
 	wl_list_insert(&seat->pointer_bindings, &pb->link);
 	if (modifiers != RIVER_SEAT_V1_MODIFIERS_NONE) {
 		seat->modifier_watch_dirty = true;
-		cow_wm_request_manage_dirty();
+		cow_update_request(COW_UPDATE_MANAGE);
 	}
 
 	return pb;
@@ -507,7 +508,7 @@ cow_seat_handle_modifiers_update(struct cow_seat *seat, uint32_t old,
 		}
 	}
 	if (release_due)
-		cow_wm_request_manage_dirty();
+		cow_update_request(COW_UPDATE_MANAGE);
 }
 
 static void
@@ -1177,5 +1178,5 @@ cow_rebind_all_seats(void)
 		cow_seat_destroy_bindings(seat);
 		cow_seat_register_default_bindings(seat);
 	}
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }

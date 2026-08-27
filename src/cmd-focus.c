@@ -32,6 +32,7 @@ t*
 #include "cow/output.h"
 #include "cow/seat.h"
 #include "cow/view.h"
+#include "cow/update.h"
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_focus_exec(struct cmd *, struct cmd_q *);
@@ -256,7 +257,7 @@ static void
 defer_focus(struct cow_view *view)
 {
 	cow_wm.pending_focus = view;
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 /*
@@ -560,5 +561,5 @@ do_screen(const char *name, struct cmd_q *cmdq)
 
 	cow_wm_request_pointer_warp(target->x + (int)(rx * target->width),
 	    target->y + (int)(ry * target->height));
-	cow_wm_request_manage_dirty();
+	cow_update_request(COW_UPDATE_MANAGE);
 }
