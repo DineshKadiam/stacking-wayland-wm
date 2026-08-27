@@ -207,22 +207,6 @@ cow_keyboard_layout_add_status(cJSON *root)
 {
 	cJSON_AddItemToObject(root, "language",
 	    cow_keyboard_layout_active_json());
-
-	cJSON *layouts = cJSON_AddArrayToObject(root, "keyboard_layouts");
-	struct cow_keyboard_layout *keyboard;
-	wl_list_for_each(keyboard, &cow_wm.keyboard_layouts, link)
-	{
-		if (!keyboard->has_layout)
-			continue;
-		cJSON *layout = cJSON_CreateObject();
-		if (keyboard->name != NULL)
-			cJSON_AddStringToObject(layout, "name", keyboard->name);
-		else
-			cJSON_AddNullToObject(layout, "name");
-		cJSON_AddBoolToObject(layout, "active",
-		    keyboard == active_layout);
-		cJSON_AddItemToArray(layouts, layout);
-	}
 }
 
 cJSON *

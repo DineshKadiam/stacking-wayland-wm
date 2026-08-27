@@ -147,13 +147,7 @@ Each line of output is a self-contained JSON object, suitable for parsing with
     "name": "English (UK)",
     "caps_lock": false,
     "num_lock": true
-  },
-  "keyboard_layouts": [
-    {
-      "name": "English (UK)",
-      "active": true
-    }
-  ]
+  }
 }
 ```
 
