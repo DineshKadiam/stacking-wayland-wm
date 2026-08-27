@@ -186,6 +186,12 @@ bool cmd_parse_int(struct cmd_q *, const char *, const char *, const char *,
 bool cmd_parse_page_axis(struct cmd_q *, const char *, const char *,
     const char *, int, int, long long *);
 
+/*
+ * Parse a comma-separated pair of page axes.
+ */
+bool cmd_parse_page_spec(struct cmd_q *, const char *, const char *, int, int,
+    int, int, long long *, long long *);
+
 enum cmd_length_unit {
 	CMD_LENGTH_PIXELS,
 	CMD_LENGTH_VW,

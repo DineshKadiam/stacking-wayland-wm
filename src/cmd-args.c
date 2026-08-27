@@ -124,6 +124,35 @@ cmd_parse_page_axis(struct cmd_q *cmdq, const char *cmd_name,
 }
 
 bool
+cmd_parse_page_spec(struct cmd_q *cmdq, const char *cmd_name,
+    const char *spec, int current_col, int current_row, int cols, int rows,
+    long long *col, long long *row)
+{
+	const char *comma = strchr(spec, ',');
+	if (comma == NULL) {
+		cmdq_error(cmdq, "%s: expected col,row (got '%s')", cmd_name,
+		    spec);
+		return false;
+	}
+
+	size_t col_len = (size_t)(comma - spec);
+	if (col_len >= 64 || strlen(comma + 1) >= 64) {
+		cmdq_error(cmdq, "%s: page value too long", cmd_name);
+		return false;
+	}
+	char col_buf[64];
+	memcpy(col_buf, spec, col_len);
+	col_buf[col_len] = '\0';
+
+	if (!cmd_parse_page_axis(cmdq, cmd_name, "col", col_buf,
+		current_col, cols, col) ||
+	    !cmd_parse_page_axis(cmdq, cmd_name, "row", comma + 1,
+		current_row, rows, row))
+		return false;
+	return true;
+}
+
+bool
 cmd_parse_length(struct cmd_q *cmdq, const char *cmd_name, const char *field,
     const char *val, long long lo, long long hi, struct cmd_length *out)
 {

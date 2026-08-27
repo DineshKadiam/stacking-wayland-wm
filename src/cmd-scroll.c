@@ -202,35 +202,15 @@ cmd_scroll_exec(struct cmd *self, struct cmd_q *cmdq)
 			    "scroll: -a takes no positional arguments");
 			return (CMD_RETURN_ERROR);
 		}
-		const char *spec  = args_has(args, 'a') ? args_get(args, 'a') :
-							args->argv[0];
-		const char *comma = strchr(spec, ',');
-		if (comma == NULL) {
-			cmdq_error(cmdq,
-			    "scroll: expected col,row (got '%s')", spec);
-			return (CMD_RETURN_ERROR);
-		}
-		/* Split into two NUL-terminated halves on a local copy so
-		 * cmd_parse_int sees clean strings. */
-		size_t prefix_len = (size_t)(comma - spec);
-		if (prefix_len >= 64 || strlen(comma + 1) >= 64) {
-			cmdq_error(cmdq, "scroll: -a: value too long");
-			return (CMD_RETURN_ERROR);
-		}
-		char col_buf[64];
-		memcpy(col_buf, spec, prefix_len);
-		col_buf[prefix_len] = '\0';
-		const char *row_str = comma + 1;
-		long long   lc, lr;
+		const char     *spec = args_has(args, 'a') ? args_get(args, 'a') :
+							  args->argv[0];
+		long long	lc, lr;
 		struct cow_desk *desk = output->current_desk;
-		int cur_col = desk->page_vx / w;
-		int cur_row = desk->page_vy / h;
+		int		cur_col = desk->page_vx / w;
+		int		cur_row = desk->page_vy / h;
 
-		if (!cmd_parse_page_axis(cmdq, "scroll", "col", col_buf,
-			cur_col, cols, &lc))
-			return (CMD_RETURN_ERROR);
-		if (!cmd_parse_page_axis(cmdq, "scroll", "row", row_str,
-			cur_row, rows, &lr))
+		if (!cmd_parse_page_spec(cmdq, "scroll", spec, cur_col,
+			cur_row, cols, rows, &lc, &lr))
 			return (CMD_RETURN_ERROR);
 		cow_page_scroll_to(output, (int)lc * w, (int)lr * h, false);
 		return (CMD_RETURN_NORMAL);

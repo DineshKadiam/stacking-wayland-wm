@@ -56,7 +56,7 @@ struct cmd_entry cmd_move_entry = {
 	0,
 	1,
 	"[-C] [-w] [-t target] [-d dir [-n]] [-o output] [-c] "
-	"[-k 0-9] [-x X] [-y Y] [-P col [row]]",
+	"[-k 0-9] [-x X] [-y Y] [-P col[,row]]",
 	cmd_move_exec,
 	0,
 };
@@ -150,25 +150,37 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	if (args_get(args, 'P') != NULL) {
-		/* -P col [row] : move window to the given page.
-		 * col is the -P argument; row follows as positional argv[0]. */
-		const char *col_s = args_get(args, 'P');
+		const char *page_s = args_get(args, 'P');
 		int	    col = 0, row = 0;
 		int	    cols = cow_config ? cow_config->page_cols :
 						COW_CFG_DEFAULT_PAGE_COLS;
 		int	    rows = cow_config ? cow_config->page_rows :
 						COW_CFG_DEFAULT_PAGE_ROWS;
 		long long   lc, lr;
-		if (!cmd_parse_page_axis(cmdq, "window-move", "col", col_s,
-			cow_view_page_col(view), cols, &lc))
-			return (CMD_RETURN_ERROR);
-		col = (int)lc;
-		if (args->argc >= 1) {
-			if (!cmd_parse_page_axis(cmdq, "window-move", "row",
-				args->argv[0], cow_view_page_row(view), rows, &lr))
+		if (strchr(page_s, ',') != NULL) {
+			if (args->argc != 0) {
+				cmdq_error(cmdq,
+				    "window-move: -P col,row takes no row argument");
+				return (CMD_RETURN_ERROR);
+			}
+			if (!cmd_parse_page_spec(cmdq, "window-move", page_s,
+				cow_view_page_col(view), cow_view_page_row(view),
+				cols, rows, &lc, &lr))
 				return (CMD_RETURN_ERROR);
 			row = (int)lr;
+		} else {
+			if (!cmd_parse_page_axis(cmdq, "window-move", "col",
+				page_s, cow_view_page_col(view), cols, &lc))
+				return (CMD_RETURN_ERROR);
+			if (args->argc >= 1) {
+				if (!cmd_parse_page_axis(cmdq, "window-move", "row",
+					args->argv[0], cow_view_page_row(view), rows,
+					&lr))
+					return (CMD_RETURN_ERROR);
+				row = (int)lr;
+			}
 		}
+		col = (int)lc;
 		cow_view_move_to_page(view, col, row);
 		finish_move(view, warp);
 		return (CMD_RETURN_NORMAL);

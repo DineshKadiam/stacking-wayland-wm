@@ -19,6 +19,10 @@ response, and prints it as formatted JSON to standard output.
 All arguments are joined with spaces and sent as a single newline-terminated
 line. The full command language is described in *cow*(1).
 
+Options belonging to *moocow* must precede _command_. Once _command_ is seen,
+all remaining options are passed to *cow* unchanged. An optional *--* may still
+be used before _command_, but is not required.
+
 With *-p*, *moocow* stays running and reads commands from standard input.  When
 run interactively it prints a connection banner containing the *moocow* version
 and client ID, then the prompt *>>> * before each command.  Incomplete commands

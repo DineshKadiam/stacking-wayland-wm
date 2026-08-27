@@ -21,9 +21,9 @@
  *
  * Usage:
  *   moocow decor -a default
- *   moocow view-close
- *   moocow get windows
- *   moocow bind L+q view-quit
+ *   moocow winops -c
+ *   moocow show windows
+ *   moocow bind L+q winops -c
  */
 
 #include <errno.h>
@@ -52,10 +52,9 @@ static const char *usage =
     "  moocow -p\n"
     "  moocow -p -P 'cow> ' -S '...> ' -C green\n"
     "  moocow decor -a default\n"
-    "  moocow get windows\n"
-    "  moocow view-close\n"
-    "  moocow bind L+q view-quit\n"
-    "  moocow action terminal xterm\n"
+    "  moocow show windows\n"
+    "  moocow winops -c\n"
+    "  moocow bind L+q winops -c\n"
     "  moocow exec foot\n";
 
 struct moocow_state {
@@ -412,7 +411,7 @@ main(int argc, char *argv[])
 	};
 	int ch;
 
-	while ((ch = getopt(argc, argv, "hP:S:C:p")) != -1) {
+	while ((ch = getopt(argc, argv, "+hP:S:C:p")) != -1) {
 		switch (ch) {
 		case 'p':
 			persistent = true;
