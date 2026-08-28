@@ -27,6 +27,7 @@
 #include "cow/ipc.h"
 #include "cow/memory.h"
 #include "cow/output.h"
+#include "cow/output_selector.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
@@ -34,91 +35,41 @@
  * Output resolution
  * ================================================================ */
 
-static bool
-output_spec_is_nr(const char *spec)
-{
-	if (spec[0] != '@' || spec[1] < '0' || spec[1] > '9')
-		return false;
-
-	for (const char *p = spec + 2; *p != '\0'; p++) {
-		if (*p < '0' || *p > '9')
-			return false;
-	}
-	return true;
-}
-
-static long long
-outputs_count(void)
-{
-	long long	   n = 0;
-	struct cow_output *out;
-
-	wl_list_for_each(out, &cow_wm.outputs, wm_link)
-		n++;
-	return n;
-}
-
 static struct cow_output *
 resolve_output(const char *spec, char **cause)
 {
-	if (spec == NULL || *spec == '\0' || (strcmp(spec, "@current") == 0))
-		return cow_wm.current_output;
+	if ((spec == NULL || *spec == '\0' ||
+	    strcmp(spec, "@current") == 0) && cow_wm.current_output == NULL)
+		return NULL;
 
-	if (strcmp(spec, "@next") == 0) {
-		if (cow_wm.current_output == NULL)
-			return NULL;
-		struct wl_list *next = cow_wm.current_output->wm_link.next;
-		if (next == &cow_wm.outputs)
-			next = next->next;
-		if (next == &cow_wm.outputs)
-			return cow_wm.current_output;
-		return wl_container_of(next, cow_wm.current_output, wm_link);
+	/* cow_wm.outputs is initialized after startup configuration parsing. */
+	if (cow_ipc.startup_mode)
+		goto unknown;
+
+	size_t count = 0;
+	struct cow_output *out;
+	wl_list_for_each(out, &cow_wm.outputs, wm_link)
+		count++;
+	if (count == 0)
+		goto unknown;
+
+	struct cow_output_selector_entry *entries = xcalloc(count,
+	    sizeof(*entries));
+	size_t i = 0;
+	wl_list_for_each(out, &cow_wm.outputs, wm_link)
+	{
+		entries[i].name = out->name;
+		entries[i].number = out->number;
+		entries[i].current = out == cow_wm.current_output;
+		i++;
 	}
-
-	if (strcmp(spec, "@prev") == 0) {
-		if (cow_wm.current_output == NULL)
-			return NULL;
-		struct wl_list *prev = cow_wm.current_output->wm_link.prev;
-		if (prev == &cow_wm.outputs)
-			prev = prev->prev;
-		if (prev == &cow_wm.outputs)
-			return cow_wm.current_output;
-		return wl_container_of(prev, cow_wm.current_output, wm_link);
-	}
-
-	if (output_spec_is_nr(spec)) {
-		if (!cow_ipc.startup_mode) {
-			const char *errstr;
-			long long   count = outputs_count();
-			long long   nr;
-
-			if (count == 0)
-				goto unknown;
-
-			nr = strtonum(spec + 1, 1, count, &errstr);
-			if (errstr != NULL)
-				goto unknown;
-
-			struct cow_output *out;
-			wl_list_for_each(out, &cow_wm.outputs, wm_link)
-			{
-				if ((long long)out->number == nr)
-					return out;
-			}
-		}
-	}
-
-	/* Match by name.  Skip the iteration during startup when
-	 * cow_wm.outputs has not been wl_list_init'd yet (cow_wm_init
-	 * runs after cow_ipc_load_config); no outputs exist at that
-	 * point so the spec necessarily can't resolve. */
-	if (!cow_ipc.startup_mode) {
-		struct cow_output *out;
+	int selected = cow_output_selector_resolve(spec, entries, count);
+	xfree(entries);
+	if (selected >= 0) {
+		i = 0;
 		wl_list_for_each(out, &cow_wm.outputs, wm_link)
-		{
-			if (out->name != NULL && strcmp(out->name, spec) == 0)
+			if (i++ == (size_t)selected)
 				return out;
-		}
 	}
 
 unknown:
@@ -351,7 +302,7 @@ cmd_ctx_parse(const char *spec, struct cmd_ctx *ctx, char **cause)
 			 * subsequent resolve_window will return the right
 			 * "no such window" error rather than crashing.
 			 */
-			bool is_output = output_spec_is_nr(buf);
+			bool is_output = cow_output_selector_is_number(buf);
 			if (!cow_ipc.startup_mode) {
 				struct cow_output *o;
 				wl_list_for_each(o, &cow_wm.outputs, wm_link)

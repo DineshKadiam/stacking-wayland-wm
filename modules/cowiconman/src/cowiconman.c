@@ -38,6 +38,7 @@
 #include "cow/module_cursor.h"
 #include "cow/module_draw.h"
 #include "cow/module_theme.h"
+#include "cow/output_selector.h"
 #include "cow/module_shm.h"
 #include "cow/text.h"
 #include "cow/util.h"
@@ -798,12 +799,18 @@ state_current_output(const struct state *st)
 }
 
 static const struct output *
-state_output_by_number(const struct state *st, int nr)
+state_output_by_selector(const struct state *st, const char *selector)
 {
-	for (int i = 0; i < st->n_outs; i++)
-		if (st->outs[i].number == nr)
-			return &st->outs[i];
-	return NULL;
+	struct cow_output_selector_entry entries[MAX_OUTS];
+
+	for (int i = 0; i < st->n_outs; i++) {
+		entries[i].name = st->outs[i].name;
+		entries[i].number = (uint32_t)st->outs[i].number;
+		entries[i].current = st->outs[i].current != 0;
+	}
+	int selected = cow_output_selector_resolve(selector, entries,
+	    (size_t)st->n_outs);
+	return selected >= 0 ? &st->outs[selected] : NULL;
 }
 
 static const struct output *
@@ -815,12 +822,7 @@ selected_output(const struct state *st)
 		return state_output_by_name(st, self_output_name());
 	if (output_filter != FILTER_EXPLICIT)
 		return NULL;
-	if (output_arg[0] == '@') {
-		int nr;
-		if (parse_int(output_arg + 1, &nr))
-			return state_output_by_number(st, nr);
-	}
-	return state_output_by_name(st, output_arg);
+	return state_output_by_selector(st, output_arg);
 }
 
 static const struct output *

@@ -47,6 +47,7 @@
 
 #include "cow/module.h"
 #include "cow/module_config.h"
+#include "cow/module_output.h"
 #include "cow/attrs.h"
 #include "cow/util.h"
 
@@ -385,7 +386,7 @@ usage(void)
 	    "usage: cowbar [-c path] [-o output] [-f field] [-w module] [-n]\n"
 	    "\n"
 	    "  -c path     load style and format overrides from path\n"
-	    "  -o output   filter for named output\n"
+	    "  -o output   filter by output name or @ selector\n"
 	    "  -f field    extract field: desks, focused, language, outputs\n"
 	    "  -w module   emit waybar JSON for module: desks, title\n"
 	    "              (requires -o for desks; -o filters title to one bar)\n"
@@ -394,27 +395,16 @@ usage(void)
 	    "With no flags, relays full state snapshots.\n");
 }
 
-/*
- * Find the output object matching the given name.
- * Returns NULL if not found or name is NULL (returns first).
- */
+/* Find an output by selector. NULL retains cowbar's first-output default. */
 static cJSON *
 find_output(cJSON *state, const char *name)
 {
 	cJSON *outputs = cJSON_GetObjectItem(state, "outputs");
 	if (!cJSON_IsArray(outputs))
 		return NULL;
-
-	cJSON *out;
-	cJSON_ArrayForEach(out, outputs)
-	{
-		if (name == NULL)
-			return out;
-		cJSON *n = cJSON_GetObjectItem(out, "name");
-		if (cJSON_IsString(n) && strcmp(n->valuestring, name) == 0)
-			return out;
-	}
-	return NULL;
+	if (name == NULL)
+		return cJSON_GetArrayItem(outputs, 0);
+	return cow_module_output_resolve(outputs, name);
 }
 
 static void
@@ -744,7 +734,15 @@ process_state(const char *line, const char *waybar_mod,
 			else
 				emit_waybar("", "");
 		} else if (strcmp(waybar_mod, "title") == 0) {
-			waybar_title(state, output_filter);
+			const char *resolved = output_filter;
+			if (output_filter != NULL) {
+				cJSON *output = find_output(state, output_filter);
+				cJSON *name = output != NULL ?
+				    cJSON_GetObjectItem(output, "name") : NULL;
+				resolved = cJSON_IsString(name) ?
+				    name->valuestring : "";
+			}
+			waybar_title(state, resolved);
 		}
 	} else if (field == NULL && output_filter == NULL) {
 		emit(state);

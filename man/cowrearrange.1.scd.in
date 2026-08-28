@@ -38,8 +38,9 @@ By default only the current output's desk is rearranged.
 # OPTIONS
 
 *-o* _output_
-	Target the named output (as reported by *moocow show output*).
-	Defaults to the current output.
+	Target an output name or selector. Selectors are *@N*, *@current*,
+	*@next*, and *@prev*, with the same meaning as in *cow*(1). Defaults
+	to *@current*.
 
 *-d* _desk_
 	Target the desk number _desk_ (0-indexed) on the chosen output.

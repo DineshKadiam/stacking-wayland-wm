@@ -30,9 +30,11 @@ without requiring ordering guarantees.
 	loaded first. An explicit file replaces those defaults.
 
 *-o* _output_
-	Filter snapshots to the named output. When combined with *-f desks*,
-	the desk information for that output is extracted. When used alone,
-	the full state object for that output is emitted on each update.
+	Filter snapshots to an output name or selector. Selectors are *@N*,
+	*@current*, *@next*, and *@prev*, with the same meaning as in *cow*(1).
+	When combined with *-f desks*, the desk information for that output is
+	extracted. When used alone, the full state object for that output is
+	emitted on each update.
 
 *-f* _field_
 	Extract a single field from each snapshot. Valid values:

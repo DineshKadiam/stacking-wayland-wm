@@ -40,9 +40,10 @@ from the config file.
 
 *-m* _LIST_
 	Restrict the pager to the listed outputs.  _LIST_ is one or
-	more output names separated by commas (e.g.
-	*-m HDMI-A-1,DP-1*).  Monitor labels appear in the order
-	given on the command line.
+	more output names or selectors separated by commas (e.g.
+	*-m HDMI-A-1,@2*). Selectors are *@N*, *@current*, *@next*, and
+	*@prev*, with the same meaning as in *cow*(1). Monitor labels appear
+	in the order given on the command line.
 
 	When *-m* names a *single* output, cowpager tracks that output:
 	the page grid is scaled to that monitor rather than to the full
@@ -108,9 +109,9 @@ window-icons true
 window-icon-size 16
 ```
 
-*monitors* selects the outputs shown by this pager.  Use a single output
-name to track one monitor, or a comma-separated list to show several
-monitors in the given order.
+*monitors* selects the outputs shown by this pager. Use a single output name
+or selector to track one monitor, or a comma-separated list to show several
+outputs in the given order. It accepts the same selectors as *-m*.
 
 *desks* selects the desks shown by this pager.  The range is inclusive,
 so *desks 0 3* shows desks 0, 1, 2, and 3.  It is mutually exclusive

@@ -54,6 +54,7 @@
 #include "cow/module_cursor.h"
 #include "cow/module_draw.h"
 #include "cow/module_theme.h"
+#include "cow/output_selector.h"
 #include "cow/text.h"
 #include "cow/module_shm.h"
 #include "xdg-shell-client-protocol.h"
@@ -592,7 +593,7 @@ monitor_colour_muted(const char *name, double *r, double *g, double *b)
 	hsv_to_rgb(hue, 0.45, 0.55, r, g, b);
 }
 
-static const char *single_pinned_output(void);
+static const char *single_pinned_output(const state_t *);
 static const char *cp_host_output(void);
 static int	   cp_surface_on_output(const char *name);
 static int hit_test_page(const state_t *st, double x, double y, int *desk_nr,
@@ -626,7 +627,7 @@ has_canonical_current_desk(const state_t *st)
 {
 	if (!is_per_output_mode(st))
 		return 1;
-	if (single_pinned_output() != NULL)
+	if (single_pinned_output(st) != NULL)
 		return 1;
 	return 0;
 }
@@ -659,14 +660,17 @@ tab_outputs(const state_t *st, const pout_t **out_arr, int max)
 {
 	int n = 0;
 	if (opt_n_monitors > 0) {
+		struct cow_output_selector_entry entries[MAX_OUTS];
+		for (int i = 0; i < st->n_outs; i++) {
+			entries[i].name = st->outs[i].name;
+			entries[i].number = (uint32_t)st->outs[i].number;
+			entries[i].current = st->outs[i].current != 0;
+		}
 		for (int j = 0; j < opt_n_monitors && n < max; j++) {
-			for (int i = 0; i < st->n_outs; i++) {
-				if (strcmp(st->outs[i].name, opt_monitors[j]) ==
-				    0) {
-					out_arr[n++] = &st->outs[i];
-					break;
-				}
-			}
+			int selected = cow_output_selector_resolve(opt_monitors[j],
+			    entries, (size_t)st->n_outs);
+			if (selected >= 0)
+				out_arr[n++] = &st->outs[selected];
 		}
 	} else {
 		for (int i = 0; i < st->n_outs && n < max; i++)
@@ -677,23 +681,28 @@ tab_outputs(const state_t *st, const pout_t **out_arr, int max)
 }
 
 static int
-monitor_visible(const char *name)
+monitor_visible(const state_t *st, const char *name)
 {
 	if (opt_n_monitors == 0)
 		return 1;
 	if (name == NULL || name[0] == '\0')
 		return 1; /* IPC didn't tell us; don't drop the window. */
-	for (int j = 0; j < opt_n_monitors; j++)
-		if (strcmp(opt_monitors[j], name) == 0)
+	const pout_t *outputs[MAX_OUTS];
+	int count = tab_outputs(st, outputs, MAX_OUTS);
+	for (int i = 0; i < count; i++)
+		if (strcmp(outputs[i]->name, name) == 0)
 			return 1;
 	return 0;
 }
 
 static const char *
-single_pinned_output(void)
+single_pinned_output(const state_t *st)
 {
-	if (opt_n_monitors == 1)
-		return opt_monitors[0];
+	if (opt_n_monitors == 1) {
+		const pout_t *output[MAX_OUTS];
+		if (tab_outputs(st, output, MAX_OUTS) == 1)
+			return output[0]->name;
+	}
 	return NULL;
 }
 
@@ -730,17 +739,18 @@ output_by_name(const state_t *st, const char *name)
 static const pout_t *
 current_only_output(const state_t *st)
 {
-	const char *pinned = single_pinned_output();
+	const char *pinned = single_pinned_output(st);
 	const pout_t *o = output_by_name(st, pinned);
 	if (o != NULL)
 		return o;
 
 	o = output_by_name(st, st->user_output);
-	if (o != NULL && monitor_visible(o->name))
+	if (o != NULL && monitor_visible(st, o->name))
 		return o;
 
 	for (int i = 0; i < st->n_outs; i++) {
-		if (st->outs[i].current && monitor_visible(st->outs[i].name))
+		if (st->outs[i].current &&
+		    monitor_visible(st, st->outs[i].name))
 			return &st->outs[i];
 	}
 
@@ -873,7 +883,7 @@ output_at_canvas_point(const state_t *st, const canvas_t *cv, double x,
 
 	for (int i = 0; i < st->n_outs; i++) {
 		const pout_t *o = &st->outs[i];
-		if (!monitor_visible(o->name))
+		if (!monitor_visible(st, o->name))
 			continue;
 		if (!output_in_canvas(cv, o))
 			continue;
@@ -1175,7 +1185,7 @@ fill_output_backgrounds(cairo_t *cr, const state_t *st, const canvas_t *cv,
 		const pout_t *o = &st->outs[oi];
 		if (!o->has_background)
 			continue;
-		if (!monitor_visible(o->name))
+		if (!monitor_visible(st, o->name))
 			continue;
 		if (!output_in_canvas(cv, o))
 			continue;
@@ -1240,7 +1250,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 			int is_cur = 0;
 			for (int oi = 0; oi < st->n_outs; oi++) {
 				const pout_t *o = &st->outs[oi];
-				if (!monitor_visible(o->name))
+				if (!monitor_visible(st, o->name))
 					continue;
 				if (!output_in_canvas(cv, o))
 					continue;
@@ -1273,7 +1283,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 
 				for (int oi = 0; oi < st->n_outs; oi++) {
 					const pout_t *o = &st->outs[oi];
-					if (!monitor_visible(o->name))
+					if (!monitor_visible(st, o->name))
 						continue;
 					if (!output_in_canvas(cv, o))
 						continue;
@@ -1338,7 +1348,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		int foc = w->focused != 0;
 		if (w->desk != d->nr)
 			continue;
-		if (!monitor_visible(w->output))
+		if (!monitor_visible(st, w->output))
 			continue;
 		if (is_self_window(w))
 			continue;
@@ -1456,7 +1466,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		const pout_t *o = &st->outs[oi];
 		if (o->current_desk != d->nr)
 			continue;
-		if (!monitor_visible(o->name))
+		if (!monitor_visible(st, o->name))
 			continue;
 		if (!output_in_canvas(cv, o))
 			continue;
@@ -2044,7 +2054,7 @@ hit_test_window(const state_t *st, double x, double y,
 		const pwin_t *w = &st->wins[wi];
 		if (w->desk != d->nr)
 			continue;
-		if (!monitor_visible(w->output))
+		if (!monitor_visible(st, w->output))
 			continue;
 		if (is_self_window(w))
 			continue;
@@ -3419,8 +3429,8 @@ usage(void)
 	    "       cowpager [-f path]\n"
 	    "  -r ROWS   arrange desks in ROWS rows\n"
 	    "  -c COLS   arrange desks in COLS columns\n"
-	    "  -m LIST   restrict pager to the listed\n"
-	    "            monitors (comma-separated). A\n"
+	    "  -m LIST   restrict pager to listed output\n"
+	    "            names or @ selectors. A\n"
 	    "            single monitor is tracked; otherwise\n"
 	    "            the page canvas uses the monitor\n"
 	    "            layout and labels use LIST order\n"

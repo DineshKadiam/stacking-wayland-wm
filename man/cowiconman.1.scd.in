@@ -72,10 +72,11 @@ show iconman common current-output
 Supported commands are described below.
 
 *output* _VALUE_
-	Limit the list to an output.  _VALUE_ may be an output name, *@N* for
-	cow's output number, *current* for cow's current output, or *self* for
-	the output containing the cowiconman window.  Use *all* to clear an
-	inherited output filter.  The default is to show all outputs.
+	Limit the list to an output. _VALUE_ may be an output name, *@N*,
+	*@current*, *@next*, or *@prev*. The existing *current* alias selects
+	cow's current output, while *self* selects the output containing the
+	cowiconman window. Use *all* to clear an inherited output filter. The
+	default is to show all outputs.
 
 *desk* _VALUE_
 	Limit the list to a desk.  _VALUE_ may be a desk number or *current*.

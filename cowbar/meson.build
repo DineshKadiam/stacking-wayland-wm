@@ -9,6 +9,8 @@ cowbar_inc = [
 executable('cowbar',
     'src/cowbar.c',
     '../src/module.c',
+    '../src/module_output.c',
+    '../src/output_selector.c',
     '../src/module_config.c',
     '../src/util.c',
     '../vendor/cJSON.c',

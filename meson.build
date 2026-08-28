@@ -97,6 +97,7 @@ srcs = [
     'src/memory.c',
     'src/module_protocol.c',
     'src/output.c',
+    'src/output_selector.c',
     'src/options-table.c',
     'src/pan_frames.c',
     'src/placement.c',
@@ -468,6 +469,16 @@ update_test = executable('test-update',
     dependencies: all_deps,
 )
 test('update', update_test)
+
+output_selector_test = executable('test-output-selector',
+    'tests/output-selector.c',
+    'src/module_output.c',
+    'src/output_selector.c',
+    'vendor/cJSON.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('output-selector', output_selector_test)
 
 module_theme_test = executable('test-module-theme',
     'tests/module-theme.c',

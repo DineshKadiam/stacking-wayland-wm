@@ -23,6 +23,7 @@
 
 #include "cow/json_util.h"
 #include "cow/module.h"
+#include "cow/module_output.h"
 
 #define MIN_WIN_W 50
 #define MIN_WIN_H 50
@@ -120,7 +121,8 @@ usage(FILE *fp)
 	    "                            [--dy N] [-r|-R] [-i] [-m]\n"
 	    "                            [-x SELECTOR ...]\n"
 	    "\n"
-	    "  -o output       target output by name (default: current)\n"
+	    "  -o output       target output by name or @ selector\n"
+	    "                  (default: @current)\n"
 	    "  -d desk         target desk index (default: current)\n"
 	    "  --rows N        tile: fix the number of rows (default: auto)\n"
 	    "  --cols N        tile: fix the number of cols (default: auto)\n"
@@ -336,13 +338,7 @@ struct workarea {
 	int x, y, w, h;
 };
 
-/*
- * Resolve the workarea for the named (or current) output.  When
- * name is NULL, pick the one whose usable rect contains the most
- * recent focus -- approximated here as "the first output that
- * matches the focused window's output_name from show windows", with
- * a fallback to the first output in the list.
- */
+/* Resolve the workarea for the selected (or current) output. */
 static int
 resolve_workarea(cJSON *outputs, const char *want_name, char *out_name,
     size_t out_name_sz, struct workarea *wa)
@@ -351,42 +347,25 @@ resolve_workarea(cJSON *outputs, const char *want_name, char *out_name,
 		fprintf(stderr, "cowrearrange: show output: not an array\n");
 		return -1;
 	}
-	cJSON *o;
-	cJSON_ArrayForEach(o, outputs)
-	{
-		const char *n = js_string(o, "name");
-		if (n == NULL)
-			continue;
-		if (want_name != NULL && strcmp(n, want_name) != 0)
-			continue;
-		cJSON *ua = cJSON_GetObjectItem(o, "usable");
-		if (!cJSON_IsObject(ua))
-			continue;
-		wa->x = js_int(ua, "x", 0);
-		wa->y = js_int(ua, "y", 0);
-		wa->w = js_int(ua, "width", 0);
-		wa->h = js_int(ua, "height", 0);
-		strncpy(out_name, n, out_name_sz - 1);
-		out_name[out_name_sz - 1] = '\0';
-		return 0;
-	}
-	if (want_name != NULL) {
-		fprintf(stderr, "cowrearrange: unknown output: %s\n",
-		    want_name);
-		return -1;
-	}
-	/* No focus heuristic available; take first. */
-	o = cJSON_GetArrayItem(outputs, 0);
+	cJSON *o = cow_module_output_resolve(outputs, want_name);
+	if (o == NULL && want_name == NULL)
+		o = cJSON_GetArrayItem(outputs, 0);
 	if (o == NULL) {
-		fprintf(stderr, "cowrearrange: no outputs\n");
+		if (want_name != NULL)
+			fprintf(stderr, "cowrearrange: unknown output: %s\n",
+			    want_name);
+		else
+			fprintf(stderr, "cowrearrange: no current output\n");
 		return -1;
 	}
 	const char *n = js_string(o, "name");
-	if (n != NULL) {
-		strncpy(out_name, n, out_name_sz - 1);
-		out_name[out_name_sz - 1] = '\0';
-	}
 	cJSON *ua = cJSON_GetObjectItem(o, "usable");
+	if (n == NULL || !cJSON_IsObject(ua)) {
+		fprintf(stderr, "cowrearrange: invalid output data\n");
+		return -1;
+	}
+	strncpy(out_name, n, out_name_sz - 1);
+	out_name[out_name_sz - 1] = '\0';
 	wa->x	  = js_int(ua, "x", 0);
 	wa->y	  = js_int(ua, "y", 0);
 	wa->w	  = js_int(ua, "width", 0);
