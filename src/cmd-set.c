@@ -35,11 +35,13 @@
 #include "cow/gradient.h"
 #include "cow/image.h"
 #include "cow/ipc.h"
+#include "cow/keybinding.h"
 #include "cow/memory.h"
 #include "cow/options.h"
 #include "cow/output.h"
 #include "cow/pan_frames.h"
 #include "cow/rule.h"
+#include "cow/seat.h"
 #include "cow/shm.h"
 #include "cow/stack.h"
 #include "cow/titlebar.h"
@@ -764,6 +766,25 @@ set_option_exec(const struct cow_option_entry *opt, const char *key, const char 
 		return (set_scalar_bool(opt, val, cmdq));
 	case COW_OPTION_SCALAR_STRING:
 		return (set_scalar_string(opt, val, cmdq));
+	case COW_OPTION_MODIFIERS: {
+		uint32_t modifiers;
+
+		if (!cow_binding_parse_modifier_mask(val, &modifiers)) {
+			cmdq_error(cmdq,
+			    "set: %s: bad modifier mask: %s "
+			    "(expected a combination of L, S, A, M, C, 5, or 0)",
+			    opt->name, val);
+			return (CMD_RETURN_ERROR);
+		}
+		uint32_t *ptr = (uint32_t *)((char *)cow_config +
+		    opt->config_offset);
+		*ptr = modifiers;
+		if (!cow_ipc.startup_mode) {
+			cow_seat_refresh_modifier_watches();
+			cow_pan_frames_modifiers_changed(cow_seat_primary());
+		}
+		return (CMD_RETURN_NORMAL);
+	}
 	case COW_OPTION_COLOUR:
 		set_colour_option(key, val, cmdq);
 		return (CMD_RETURN_NORMAL);

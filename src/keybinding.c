@@ -29,6 +29,7 @@
 #include "cow/ipc.h"
 #include "cow/memory.h"
 #include "cow/output.h"
+#include "cow/pan_frames.h"
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
 #include "cow/util.h"
@@ -99,10 +100,9 @@ xkb_binding_handle_stop_repeat(void	 *data,
 	 * though `released` has not yet arrived.
 	 *
 	 * Modifier-only changes (e.g. releasing Super while Down is
-	 * still held on a Super+Down binding) do NOT trigger
-	 * `released` per the protocol; observing those would require
-	 * river_xkb_bindings_seat_v1.modifiers_watch (v3) which we
-	 * don't currently use.
+	 * still held on a Super+Down binding) do not trigger `released`.
+	 * CoW observes those separately through
+	 * river_xkb_bindings_seat_v1.modifiers_watch (v3).
 	 */
 	kb->held	 = false;
 	kb->first_repeat = false;
@@ -473,6 +473,8 @@ cow_seat_update_modifier_watch(struct cow_seat *seat)
 	struct cow_pointer_binding *pb;
 	wl_list_for_each(pb, &seat->pointer_bindings, link)
 		modifiers |= pb->modifiers;
+	if (cow_config != NULL)
+		modifiers |= cow_config->edge_scroll_modifiers;
 
 	if (modifiers != seat->watched_modifiers) {
 		river_xkb_bindings_seat_v1_modifiers_watch(seat->xkb_seat,
@@ -489,6 +491,7 @@ cow_seat_handle_modifiers_update(struct cow_seat *seat, uint32_t old,
 	if (seat == NULL)
 		return;
 	seat->active_modifiers = new;
+	cow_pan_frames_modifiers_changed(seat);
 
 	bool release_due = false;
 	struct cow_keybinding *kb;
@@ -509,6 +512,17 @@ cow_seat_handle_modifiers_update(struct cow_seat *seat, uint32_t old,
 	}
 	if (release_due)
 		cow_update_request(COW_UPDATE_MANAGE);
+}
+
+void
+cow_seat_refresh_modifier_watches(void)
+{
+	struct cow_seat *seat;
+
+	wl_list_for_each(seat, &cow_wm.seats, wm_link)
+		seat->modifier_watch_dirty = true;
+	/* modifiers_watch may only be sent during a manage sequence. */
+	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 static void
@@ -738,6 +752,17 @@ parse_modifiers(const char *str, uint32_t *modifiers_out,
 	*modifiers_out = mods;
 	*key_part_out = p;
 	return true;
+}
+
+bool
+cow_binding_parse_modifier_mask(const char *str, uint32_t *modifiers_out)
+{
+	const char *remainder;
+
+	if (*str == '\0' || strchr(str, '+') != NULL ||
+	    !parse_modifiers(str, modifiers_out, &remainder))
+		return (false);
+	return (*remainder == '\0');
 }
 
 bool

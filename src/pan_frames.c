@@ -135,6 +135,16 @@ pan_dwell_ms(void)
 	return v;
 }
 
+static bool
+pan_modifiers_active(const struct cow_seat *seat)
+{
+	uint32_t required = cow_config != NULL ?
+	    cow_config->edge_scroll_modifiers : 0;
+
+	return (required == 0 || (seat != NULL &&
+	    (seat->active_modifiers & required) == required));
+}
+
 /* Would a page-switch in this direction actually move the page? */
 static bool
 pan_edge_has_page(const struct cow_output *output, int edge)
@@ -183,6 +193,8 @@ cow_pan_frame_pointer_enter(struct cow_output *output, int edge)
 		return;
 
 	output->pan_entered[edge] = true;
+	if (!pan_modifiers_active(cow_seat_primary()))
+		return;
 	long now = cow_mono_ms();
 	if (now < output->pan_giveup_until_ms ||
 	    now < cow_wm.pan_global_cooldown_ms)
@@ -832,6 +844,8 @@ cow_output_pan_frame_tick(struct cow_output *output)
 {
 	if (output == NULL || cow_config == NULL || !cow_config->edge_scroll)
 		return;
+	if (!pan_modifiers_active(cow_seat_primary()))
+		return;
 	if (cow_wm.pan_lock_output != output || cow_wm.pan_lock_edge < 0)
 		return;
 	int edge = cow_wm.pan_lock_edge;
@@ -858,6 +872,8 @@ cow_output_pan_pointer_leave(int px, int py)
 	if (cow_wm.wl_layer_shell != NULL)
 		return;
 	if (cow_config == NULL || !cow_config->edge_scroll)
+		return;
+	if (!pan_modifiers_active(cow_seat_primary()))
 		return;
 	if (cow_config->page_cols <= 1 && cow_config->page_rows <= 1)
 		return;
@@ -900,6 +916,8 @@ cow_output_pan_op_arm(struct cow_seat *seat)
 	if (seat == NULL)
 		return;
 	if (cow_config == NULL || !cow_config->edge_scroll)
+		return;
+	if (!pan_modifiers_active(seat))
 		return;
 	if (cow_config->page_cols <= 1 && cow_config->page_rows <= 1)
 		return;
@@ -958,6 +976,38 @@ cow_output_pan_op_arm(struct cow_seat *seat)
 		if (elapsed >= dwell) {
 			pan_fire(output, edge);
 			return;
+		}
+	}
+}
+
+void
+cow_pan_frames_modifiers_changed(struct cow_seat *seat)
+{
+	if (seat == NULL || seat != cow_seat_primary())
+		return;
+	if (!pan_modifiers_active(seat)) {
+		pan_disarm();
+		struct cow_output *output;
+		wl_list_for_each(output, &cow_wm.outputs, wm_link)
+		{
+			if (output->pan_edge >= 0)
+				pan_frame_set_level(output, output->pan_edge, 0);
+			output->pan_edge = -1;
+			output->pan_arm_ms = 0;
+		}
+		return;
+	}
+	if (cow_config == NULL || !cow_config->edge_scroll)
+		return;
+
+	struct cow_output *output;
+	wl_list_for_each(output, &cow_wm.outputs, wm_link)
+	{
+		for (int edge = 0; edge < 4; edge++) {
+			if (output->pan_entered[edge]) {
+				pan_arm_edge(output, edge);
+				return;
+			}
 		}
 	}
 }

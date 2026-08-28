@@ -169,6 +169,8 @@ void cow_seat_process_bindings(struct cow_seat *);
 
 void cow_seat_update_modifier_watch(struct cow_seat *);
 void cow_seat_handle_modifiers_update(struct cow_seat *, uint32_t, uint32_t);
+void cow_seat_refresh_modifier_watches(void);
+bool cow_binding_parse_modifier_mask(const char *, uint32_t *);
 bool cow_seat_dispatch_pointer_binding(struct cow_seat *, uint32_t,
     uint32_t, struct cow_view *);
 

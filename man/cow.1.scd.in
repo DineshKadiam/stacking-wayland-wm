@@ -2403,6 +2403,12 @@ behaviour of desktops and pages:
 |  *edge\_scroll\_delay\_ms*
 :  integer (ms, 50..5000)
 :  Cursor hover time at an edge before the page switches.  Default: _300_.
+|  *edge\_scroll\_modifiers*
+:  modifier combination
+:  Modifiers which must be held to activate edge scrolling.  This uses the
+   same *L*, *S*, *A*/*M*, *C*, and *5* notation as *bind*.  Additional held
+   modifiers do not prevent activation.  Use *0* (the default) to require no
+   modifier.
 |  *output.colour.background*
 :  hex colour (_0xRRGGBB_ or _0xRRGGBBAA_)
 :  Background colour for all outputs.
@@ -2429,6 +2435,17 @@ behaviour of desktops and pages:
 |  *reserved.right*
 :  integer (default: 0)
 :  Pixels reserved at the right of each output.
+
+For example, require Alt while dwelling at an edge:
+
+```
+set edge_scroll true
+set edge_scroll_modifiers A
+```
+
+The modifier applies both while moving a window and during ordinary pointer
+movement.  Pressing it while the pointer is already at an edge starts the
+dwell, while releasing it cancels a pending page switch immediately.
 
 *NOT£:* The _reserved._ settings are akin to X11's concept of a working-area.
 That is to say, these settings will reserve parts of the screen to be able to

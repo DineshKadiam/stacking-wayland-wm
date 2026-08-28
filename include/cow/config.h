@@ -389,6 +389,7 @@ struct cow_config {
 	 * Default false (disabled). */
 	bool edge_scroll;
 	int  edge_scroll_delay_ms; /* dwell duration in ms */
+	uint32_t edge_scroll_modifiers; /* required modifier mask */
 
 	/*
 	 * Key-repeat timing for repeatable bindings and menu navigation.

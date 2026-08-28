@@ -487,6 +487,15 @@ const struct cow_option_entry cow_options_table[] = {
 		.hi = 5000,
 	},
 	{
+		.name = "edge_scroll_modifiers",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_GLOBAL,
+		.action = COW_OPTION_MODIFIERS,
+		.config_offset = offsetof(struct cow_config,
+		    edge_scroll_modifiers),
+		.view_offset = COW_OPTION_NO_OFFSET,
+	},
+	{
 		.name = "page_visibility",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_GLOBAL,

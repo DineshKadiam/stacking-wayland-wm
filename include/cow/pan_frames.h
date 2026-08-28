@@ -69,5 +69,6 @@ void cow_pan_frame_pointer_leave(struct cow_output *, int);
  */
 struct cow_seat;
 void cow_output_pan_op_arm(struct cow_seat *);
+void cow_pan_frames_modifiers_changed(struct cow_seat *);
 
 #endif /* COW_PAN_FRAMES_H */
