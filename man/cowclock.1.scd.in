@@ -1,0 +1,126 @@
+COWCLOCK(1) "@VERSION@" "CoW Manual"
+
+# NAME
+
+cowclock - analogue clock for CoW
+
+# SYNOPSIS
+
+*cowclock* [*-c* _path_] [*-h*]
+
+# DESCRIPTION
+
+*cowclock* is a resizable analogue clock.
+
+The system configuration is loaded first. Unless *-c* is used, cowclock then
+loads _$XDG_CONFIG_HOME/cow/cowclock.conf_ or
+_$HOME/.config/cow/cowclock.conf_ when present. A missing user configuration
+is not an error, as usable defaults are built in.
+
+Send *SIGHUP* to reload theme and presentation settings while cowclock is
+running. The initial *size* does not resize an already-managed window.
+
+By default, the face background, foreground, and font follow CoW's current
+theme through the status socket. Explicit *font* and *style* settings override
+the inherited values. If CoW is unavailable, built-in black-on-white defaults
+are used.
+
+# OPTIONS
+
+*-c* _path_
+	Load overrides from _path_ instead of the default user configuration.
+
+*-h*
+	Print usage and exit.
+
+# CONFIGURATION
+
+The configuration is line-oriented. Blank lines and lines beginning with
+_#_ are ignored. Values containing spaces may be double-quoted.
+
+*size* _width_ _height_
+	Set the requested initial size. Both dimensions must be at least 64.
+
+*minimum-size* _width_ _height_
+	Set the minimum dimensions advertised to the compositor. The default is
+	120 by 120 pixels.
+
+*aspect-ratio* *true*|*false*
+	Preserve the ratio given by *size* during interactive resize. This is
+	enabled by default. Maximized and fullscreen dimensions are still obeyed.
+
+*padding* _pixels_
+	Set the gap between the dial and the closest window edge.
+
+*font* _description_
+	Set the Pango font used for numerals. Its configured size applies at the
+	initial *size* and scales proportionally with the dial.
+
+*timezone* _name_
+	Display _name_ from the system timezone database, such as
+	_Europe/London_ or _America/New\_York_. Use *local* for the process's
+	original local timezone.
+
+*date-format* _format_
+	Draw optional date text below the centre using an *strftime*(3) format.
+	An empty string disables it.
+
+*numerals* *roman*|*arabic*|*none*
+	Select Roman numerals, Arabic numerals, or no numerals. Roman four is
+	rendered as _IIII_, matching traditional clock faces and xarclock.
+
+*direction* *clockwise*|*anticlockwise*
+	Set the direction of the hands and the order of the numerals.
+
+*ticks* *true*|*false*
+	Enable or disable minute and hour marks.
+
+*second-mode* *tick*|*smooth*|*none*
+	Select a once-per-second hand, a smoothly moving hand, or no second hand.
+	With *none*, the display wakes only at minute boundaries.
+
+*hand* *hour*|*minute*|*second* _length_ _width_
+	Set a hand's length and total width as percentages of the dial radius.
+
+*tick* *major*|*minor* _length_ _width_
+	Set tick length and width as percentages of the dial radius.
+
+*numeral-radius* _percent_
+	Set the distance of numerals from the centre as a percentage of the dial
+	radius.
+
+*centre-size* _percent_
+	Set the centre pin radius as a percentage of the dial radius. Zero hides
+	the pin.
+
+*face-outline* _percent_
+	Set the circular face-outline width as a percentage of the dial radius.
+	Zero disables the outline.
+
+*style* _element_ _colour_
+	Set an element colour. _element_ is one of *background*, *foreground*,
+	*ticks*, *numerals*, *hour*, *minute*, *second*, *centre*, or *outline*.
+	*foreground* supplies every unset foreground element; a more specific
+	style takes precedence. Colours use CoW's RGB or RGBA syntax.
+
+# EXAMPLE
+
+```
+size 300 300
+font "serif 12"
+numerals roman
+direction anticlockwise
+second-mode smooth
+timezone Europe/London
+date-format "%a %d %b"
+face-outline 0.8
+
+style background 0x202020ff
+style foreground 0xe0e0e0ff
+style second     0xff4040ff
+style outline    0x808080ff
+```
+
+# SEE ALSO
+
+*cow*(1)
