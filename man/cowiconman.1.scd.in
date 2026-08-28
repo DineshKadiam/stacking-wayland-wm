@@ -123,6 +123,12 @@ Supported commands are described below.
 *button-height* _N_
 	Override the row height derived from cow's current titlebar theme.
 
+*style* _element_ _colour_
+	Override a palette colour. _element_ is one of *background*,
+	*active.bg*, *active.fg*, *inactive.bg*, *inactive.fg*, or
+	*iconified.bg*. Colours use CoW's RGB or RGBA syntax. Styles may be
+	shared at top level or set separately inside an *iconman* block.
+
 *min-button-width* _N_
 	Set the minimum button width used when the preferred grid would exceed
 	the output's usable width.  The default is 80.
@@ -144,7 +150,11 @@ Supported commands are described below.
 
 # APPEARANCE
 
-Focused and unfocused rows use the active and inactive titlebar colours.
+Without explicit *style* settings, focused and unfocused rows use CoW's
+active and inactive titlebar colours. The empty background follows the
+selected output, and an iconified row uses a darkened inactive background.
+Explicit styles override these inherited colours; an unset *iconified.bg*
+is derived from the effective *inactive.bg* colour.
 
 # USAGE
 
@@ -198,6 +208,10 @@ iconman left {
 
 iconman right {
 	output eDP-1
+	style active.bg 0x458588
+	style active.fg 0xffffff
+	style inactive.bg 0x83a598
+	style inactive.fg 0x000000
 }
 ```
 

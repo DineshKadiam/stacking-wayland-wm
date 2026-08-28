@@ -100,6 +100,16 @@ enum match_field {
 	MATCH_ID,
 };
 
+enum palette_slot {
+	PALETTE_BACKGROUND,
+	PALETTE_ACTIVE_BG,
+	PALETTE_ACTIVE_FG,
+	PALETTE_INACTIVE_BG,
+	PALETTE_INACTIVE_FG,
+	PALETTE_ICONIFIED_BG,
+	PALETTE_COUNT,
+};
+
 struct match_rule {
 	enum match_field field;
 	int		 negate;
@@ -243,6 +253,8 @@ static int		 button_h;
 static int		 iconified_marker;
 static int		 show_icons;
 static int		 icon_size = DEFAULT_ICON_SIZE;
+static float		 palette_overrides[PALETTE_COUNT][4];
+static bool		 palette_override_set[PALETTE_COUNT];
 static struct cow_image_cache icon_cache;
 static char		 self_title[MAX_NAME];
 static char		 self_id[MAX_NAME];
@@ -455,6 +467,36 @@ parse_positive(const char *s, int *out)
 	return 1;
 }
 
+static bool
+parse_style(char **fields, int n, const char **why)
+{
+	static const char *names[PALETTE_COUNT] = {
+		[PALETTE_BACKGROUND] = "background",
+		[PALETTE_ACTIVE_BG] = "active.bg",
+		[PALETTE_ACTIVE_FG] = "active.fg",
+		[PALETTE_INACTIVE_BG] = "inactive.bg",
+		[PALETTE_INACTIVE_FG] = "inactive.fg",
+		[PALETTE_ICONIFIED_BG] = "iconified.bg",
+	};
+
+	if (n != 3) {
+		*why = "style requires NAME COLOUR";
+		return false;
+	}
+	for (int i = 0; i < PALETTE_COUNT; i++) {
+		if (strcmp(fields[1], names[i]) != 0)
+			continue;
+		if (!cow_colour_parse(fields[2], palette_overrides[i])) {
+			*why = "bad style colour";
+			return false;
+		}
+		palette_override_set[i] = true;
+		return true;
+	}
+	*why = "unknown style";
+	return false;
+}
+
 static int
 iconman_selection_find(const char *name)
 {
@@ -632,6 +674,8 @@ load_iconman_option(char **fields, int n, const char **why)
 			return false;
 		}
 		show_self = enabled;
+	} else if (strcmp(fields[0], "style") == 0) {
+		return parse_style(fields, n, why);
 	} else {
 		*why = "unknown command";
 		return false;
@@ -1111,7 +1155,21 @@ resolve_palette(const struct state *st, const struct output *output,
 	    theme_colour(titlebar->has_inactive_fg, titlebar->inactive_fg,
 		generic->has_inactive_fg, generic->inactive_fg,
 		default_inactive_fg));
+	float *colours[PALETTE_COUNT] = {
+		[PALETTE_BACKGROUND] = palette->background,
+		[PALETTE_ACTIVE_BG] = palette->active_bg,
+		[PALETTE_ACTIVE_FG] = palette->active_fg,
+		[PALETTE_INACTIVE_BG] = palette->inactive_bg,
+		[PALETTE_INACTIVE_FG] = palette->inactive_fg,
+		[PALETTE_ICONIFIED_BG] = palette->iconified_bg,
+	};
+	for (int i = 0; i < PALETTE_ICONIFIED_BG; i++)
+		if (palette_override_set[i])
+			copy_colour(colours[i], palette_overrides[i]);
 	cow_colour_darken(palette->iconified_bg, palette->inactive_bg);
+	if (palette_override_set[PALETTE_ICONIFIED_BG])
+		copy_colour(palette->iconified_bg,
+		    palette_overrides[PALETTE_ICONIFIED_BG]);
 	palette->font = titlebar->has_font ? titlebar->font :
 	    generic->has_font ? generic->font : "Sans 12";
 	palette->height = titlebar->has_height ? titlebar->height : ROW_H;
