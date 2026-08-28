@@ -110,6 +110,8 @@ classify_word(const char *word, YYSTYPE *lval, bool *push_cmd_arg)
 		return (OR);
 	if (strcmp(word, "not") == 0)
 		return (NOT);
+	if (strcmp(word, "matches") == 0)
+		return (MATCHES);
 	if (strcmp(word, "true") == 0)
 		return (TRUE_LIT);
 	if (strcmp(word, "false") == 0)

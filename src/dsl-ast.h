@@ -67,6 +67,8 @@ enum dsl_cmp_op {
 	DSL_CMP_LE,
 	DSL_CMP_GT,
 	DSL_CMP_GE,
+	DSL_CMP_MATCH,
+	DSL_CMP_NOT_MATCH,
 };
 
 /* Source identifiers used by DSL_N_FOR. */

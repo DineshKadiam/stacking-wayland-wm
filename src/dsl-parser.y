@@ -97,7 +97,7 @@ struct dsl_source_spec {
 
 %token LBRACE RBRACE LBRACKET RBRACKET LPAREN RPAREN
 %token COMMA DOT EQUALS
-%token LET FOR IN IF ELSE BREAK CONTINUE WHERE AND OR NOT
+%token LET FOR IN IF ELSE BREAK CONTINUE WHERE AND OR NOT MATCHES
 %token SELF
 %token TRUE_LIT FALSE_LIT NIL_LIT
 %token <src> SOURCE_NAME
@@ -316,6 +316,16 @@ rel_expr
 		{
 			$$ = dsl_node_in(ctx->ast, @1.first_line,
 			    @1.first_column, $1, $4, true);
+		}
+	| rel_expr MATCHES atom
+		{
+			$$ = dsl_node_cmp(ctx->ast, @1.first_line,
+			    @1.first_column, DSL_CMP_MATCH, $1, $3);
+		}
+	| rel_expr NOT MATCHES atom
+		{
+			$$ = dsl_node_cmp(ctx->ast, @1.first_line,
+			    @1.first_column, DSL_CMP_NOT_MATCH, $1, $4);
 		}
 	;
 

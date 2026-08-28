@@ -16,6 +16,7 @@
 
 /* DSL parser entry points and tree-walking evaluator. */
 
+#include <fnmatch.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -184,6 +185,17 @@ compare(struct dsl_eval_ctx *ctx, struct dsl_node *n, struct dsl_value *lhs,
 	}
 
 	enum dsl_cmp_op op = n->u.cmp.op;
+	if (op == DSL_CMP_MATCH || op == DSL_CMP_NOT_MATCH) {
+		if (lhs->type != DSL_V_STRING) {
+			fail_at(ctx, n->line, n->col,
+			    "'matches' requires string operands");
+			return (false);
+		}
+		bool matched = fnmatch(rhs->u.s ? rhs->u.s : "",
+		    lhs->u.s ? lhs->u.s : "", 0) == 0;
+		*out = op == DSL_CMP_MATCH ? matched : !matched;
+		return (true);
+	}
 
 	if (lhs->type == DSL_V_NUMBER) {
 		double a = lhs->u.n, b = rhs->u.n;
@@ -206,6 +218,9 @@ compare(struct dsl_eval_ctx *ctx, struct dsl_node *n, struct dsl_value *lhs,
 		case DSL_CMP_GE:
 			*out = (a >= b);
 			break;
+		case DSL_CMP_MATCH:
+		case DSL_CMP_NOT_MATCH:
+			return (false);
 		}
 		return (true);
 	}
@@ -231,6 +246,9 @@ compare(struct dsl_eval_ctx *ctx, struct dsl_node *n, struct dsl_value *lhs,
 		case DSL_CMP_GE:
 			*out = (c >= 0);
 			break;
+		case DSL_CMP_MATCH:
+		case DSL_CMP_NOT_MATCH:
+			return (false);
 		}
 		return (true);
 	}

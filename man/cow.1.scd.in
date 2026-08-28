@@ -329,8 +329,8 @@ _COMMAND_ [_ARGS_ ...]
 
 ## Expressions
 
-The expression language has no arithmetic and no string operators
-in v1; it covers what's needed to choose work to do.
+The expression language has no arithmetic; it covers what's needed to choose
+work to do.
 
 [[ *Form*
 :< *Meaning*
@@ -354,12 +354,23 @@ in v1; it covers what's needed to choose work to do.
    evaluation error; *nil* supports only *==* and *!=*
 |  _A_ *in* [_B_, _C_], _A_ *not in* [_B_, _C_]
 :  membership tests; list elements compare with exact scalar equality
+|  _A_ *matches* _PATTERN_, _A_ *not matches* _PATTERN_
+:  match a string against a shell pattern using *fnmatch*(3); matching is
+   case-sensitive
 |  *not* _A_
 :  unary negation
 |  _A_ *and* _B_, _A_ *or* _B_
 :  boolean operators (short-circuit)
 |  (_EXPR_)
 :  grouping
+
+For example, match every named cowiconman instance on a particular output:
+
+```
+if self.title matches "cowiconman:*" and self.output == "eDP-1" {
+	# commands
+}
+```
 
 ## Sources
 

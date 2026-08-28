@@ -66,6 +66,11 @@ main(void)
 		"{ if self.output == \"HDMI-A-1\" { nop } }",
 		"{ if self.current_output and self.output == "
 		    "\"HDMI-A-1\"{ nop } }",
+		"{ if self.title matches \"cowiconman:*\" and "
+		    "self.output == \"eDP-1\" { nop } }",
+		"{ if self.title not matches \"cowiconman:*\" { nop } }",
+		"{ for w in (windows where w.title matches \"cowiconman:*\") "
+		    "{ nop } }",
 	};
 
 	for (size_t repeat = 0; repeat < 100; repeat++) {
