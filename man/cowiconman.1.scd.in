@@ -148,6 +148,9 @@ Supported commands are described below.
 *show-self* _true_|_false_
 	Include cowiconman windows in the list.  Hidden by default.
 
+*frame-padding* _N_
+	Add a border of _N_ pixels around the window list.  The default is 4.
+
 # APPEARANCE
 
 Without explicit *style* settings, focused and unfocused rows use CoW's

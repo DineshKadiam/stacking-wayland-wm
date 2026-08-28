@@ -249,6 +249,7 @@ static int		 opt_rows;
 static int		 opt_cols;
 static int		 button_w = DEFAULT_BUTTON_W;
 static int		 min_button_w = DEFAULT_MIN_BUTTON_W;
+static int		 frame_padding = PAD;
 static int		 button_h;
 static int		 iconified_marker;
 static int		 show_icons;
@@ -467,6 +468,17 @@ parse_positive(const char *s, int *out)
 	return 1;
 }
 
+static int
+parse_nonnegative(const char *s, int *out)
+{
+	int n;
+
+	if (!parse_int(s, &n) || n < 0)
+		return 0;
+	*out = n;
+	return 1;
+}
+
 static bool
 parse_style(char **fields, int n, const char **why)
 {
@@ -644,6 +656,11 @@ load_iconman_option(char **fields, int n, const char **why)
 	} else if (strcmp(fields[0], "min-button-width") == 0) {
 		if (n != 2 || !parse_positive(fields[1], &min_button_w)) {
 			*why = "bad min-button-width";
+			return false;
+		}
+	} else if (strcmp(fields[0], "frame-padding") == 0) {
+		if (n != 2 || !parse_nonnegative(fields[1], &frame_padding)) {
+			*why = "bad frame-padding";
 			return false;
 		}
 	} else if (strcmp(fields[0], "icons") == 0) {
@@ -1100,9 +1117,9 @@ max_columns_for_width(int width)
 {
 	int cols;
 
-	if (width <= PAD * 2)
+	if (width <= frame_padding * 2)
 		return 1;
-	cols = (width - PAD * 2) / min_button_w;
+	cols = (width - frame_padding * 2) / min_button_w;
 	return cols > 0 ? cols : 1;
 }
 
@@ -1275,7 +1292,7 @@ apply_width_limit(int max_w, int *desired_w)
 		}
 	}
 
-	*desired_w = PAD * 2 + layout_cols * min_button_w;
+	*desired_w = frame_padding * 2 + layout_cols * min_button_w;
 	if (*desired_w > max_w)
 		*desired_w = max_w;
 }
@@ -1283,7 +1300,7 @@ apply_width_limit(int max_w, int *desired_w)
 static void
 layout_rows_for_width(int width, int column_major, int row_height)
 {
-	int cell_w = (width - PAD * 2) / layout_cols;
+	int cell_w = (width - frame_padding * 2) / layout_cols;
 	if (cell_w < 1)
 		cell_w = 1;
 
@@ -1296,8 +1313,8 @@ layout_rows_for_width(int width, int column_major, int row_height)
 			col = i % layout_cols;
 			row = i / layout_cols;
 		}
-		rows[i].x = PAD + col * cell_w;
-		rows[i].y = PAD + row * row_height;
+		rows[i].x = frame_padding + col * cell_w;
+		rows[i].y = frame_padding + row * row_height;
 		rows[i].w = cell_w;
 		rows[i].h = row_height;
 		if (row + 1 > layout_rows)
@@ -1450,11 +1467,11 @@ do_render(const struct state *st)
 		max_h = out->usable_h > 0 ? out->usable_h : out->h;
 	}
 
-	desired_w = PAD * 2 + layout_cols * button_w;
+	desired_w = frame_padding * 2 + layout_cols * button_w;
 	apply_width_limit(max_w, &desired_w);
 	win_w	  = desired_w;
 	layout_rows_for_width(win_w, column_major, palette.height);
-	win_h = PAD * 2 + layout_rows * palette.height;
+	win_h = frame_padding * 2 + layout_rows * palette.height;
 	if (max_h > 0 && win_h > max_h)
 		win_h = max_h;
 
@@ -1471,13 +1488,13 @@ do_render(const struct state *st)
 	cow_module_cairo_fill(cr, palette.background, 0, 0, win_w, win_h);
 
 	if (n_rows == 0) {
-		cow_module_cairo_fill(cr, palette.active_bg, PAD, PAD,
-		    win_w - PAD * 2, palette.height);
-		cow_module_cairo_relief(cr, PAD, PAD, win_w - PAD * 2,
+		cow_module_cairo_fill(cr, palette.active_bg, frame_padding, frame_padding,
+		    win_w - frame_padding * 2, palette.height);
+		cow_module_cairo_relief(cr, frame_padding, frame_padding, win_w - frame_padding * 2,
 		    palette.height, false, palette.active_bg);
 		cow_module_cairo_set_source(cr, palette.active_fg);
-		cow_text_render(cr, font, PAD + TEXT_PAD, PAD,
-		    win_w - 2 * (PAD + TEXT_PAD), palette.height, "cowiconman",
+		cow_text_render(cr, font, frame_padding + TEXT_PAD, frame_padding,
+		    win_w - 2 * (frame_padding + TEXT_PAD), palette.height, "cowiconman",
 		    PANGO_ALIGN_LEFT, NULL);
 	} else {
 		for (int i = 0; i < n_rows; i++) {
