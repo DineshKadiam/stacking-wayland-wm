@@ -26,6 +26,7 @@ struct river_xkb_binding_v1;
 struct river_pointer_binding_v1;
 struct cow_seat;
 struct cow_view;
+struct cow_keymap;
 
 /*
  * Action callback.
@@ -79,6 +80,11 @@ struct cow_keybinding {
 	xkb_keysym_t keysym;
 	uint32_t     modifiers;
 	uint32_t     context_mask;
+	/* NULL keymap means the normal root bindings.  A non-NULL
+	 * next_keymap makes this binding a sequence prefix.
+	 */
+	struct cow_keymap *keymap;
+	struct cow_keymap *next_keymap;
 
 	cow_action_fn action;
 	void	     *action_arg;
@@ -171,6 +177,8 @@ void cow_seat_update_modifier_watch(struct cow_seat *);
 void cow_seat_handle_modifiers_update(struct cow_seat *, uint32_t, uint32_t);
 void cow_seat_refresh_modifier_watches(void);
 bool cow_binding_parse_modifier_mask(const char *, uint32_t *);
+bool cow_binding_validate_key_sequence(const char *);
+void cow_keybinding_cancel_sequence(struct cow_seat *);
 bool cow_seat_dispatch_pointer_binding(struct cow_seat *, uint32_t,
     uint32_t, struct cow_view *);
 

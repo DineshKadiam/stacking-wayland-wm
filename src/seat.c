@@ -225,10 +225,7 @@ static const struct river_seat_v1_listener seat_listener = {
 	.pointer_position	   = seat_handle_pointer_position,
 };
 
-/*
- * river_xkb_bindings_seat_v1 event: an unbound key was eaten.
- * Used for sheet-assign mode.
- */
+/* river_xkb_bindings_seat_v1 event: an unbound key was eaten. */
 static void
 xkb_seat_handle_ate_unbound_key(void	       *data,
     __unused struct river_xkb_bindings_seat_v1 *xkb_seat)
@@ -238,6 +235,7 @@ xkb_seat_handle_ate_unbound_key(void	       *data,
 	if (seat->awaiting_desk_assign) {
 		seat->awaiting_desk_assign = false;
 	}
+	cow_keybinding_cancel_sequence(seat);
 }
 
 static void
@@ -273,6 +271,7 @@ cow_seat_create(struct river_seat_v1 *river_seat)
 	seat->pending_button_click_deadline_ms = -1;
 
 	wl_list_init(&seat->keybindings);
+	wl_list_init(&seat->binding_keymaps);
 	wl_list_init(&seat->pointer_bindings);
 
 	river_seat_v1_add_listener(river_seat, &seat_listener, seat);
@@ -456,6 +455,8 @@ cow_seat_forget_view(struct cow_seat *seat, struct cow_view *view)
 	}
 	if (seat->binding_action_view == view)
 		seat->binding_action_view = NULL;
+	if (seat->binding_sequence_view == view)
+		cow_keybinding_cancel_sequence(seat);
 	struct cow_keybinding *kb;
 	wl_list_for_each(kb, &seat->keybindings, link)
 	{

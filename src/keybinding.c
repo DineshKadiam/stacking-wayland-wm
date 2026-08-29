@@ -40,6 +40,10 @@
 #include "river-window-management-v1-client-protocol.h"
 #include "river-xkb-bindings-v1-client-protocol.h"
 
+struct cow_keymap {
+	struct wl_list link;
+};
+
 static void
 xkb_binding_handle_pressed(void		 *data,
     __unused struct river_xkb_binding_v1 *river_binding)
@@ -50,6 +54,7 @@ xkb_binding_handle_pressed(void		 *data,
 	if (kb->release_action != NULL && !kb->release_armed) {
 		kb->release_armed = true;
 		kb->release_action_view =
+		    kb->keymap != NULL ? kb->seat->binding_sequence_view :
 		    (kb->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0 ?
 		    NULL : kb->seat->binding_context_view;
 	}
@@ -191,10 +196,17 @@ context_specificity(uint32_t mask)
 static bool
 binding_wanted(struct cow_seat *seat, struct cow_keybinding *target)
 {
+	if (seat->sequence_finishing != NULL)
+		return (target == seat->sequence_finishing);
+	if (target->keymap != seat->active_keymap)
+		return (false);
+
 	struct cow_keybinding *best = NULL;
 	struct cow_keybinding *kb;
 	wl_list_for_each_reverse(kb, &seat->keybindings, link)
 	{
+		if (kb->keymap != seat->active_keymap)
+			continue;
 		if (kb->keysym != target->keysym ||
 		    kb->modifiers != target->modifiers)
 			continue;
@@ -406,8 +418,14 @@ void
 cow_seat_enable_all_bindings(struct cow_seat *seat)
 {
 	if (seat->bindings_enabled && !seat->modifier_watch_dirty &&
-	    !seat->binding_context_dirty)
+	    !seat->binding_context_dirty && !seat->binding_keymap_dirty)
 		return;
+	if (seat->binding_sequence_cancel_eat && seat->xkb_seat != NULL &&
+	    cow_wm.xkb_bindings_version >= 2) {
+		river_xkb_bindings_seat_v1_cancel_ensure_next_key_eaten(
+		    seat->xkb_seat);
+		seat->binding_sequence_cancel_eat = false;
+	}
 
 	struct cow_keybinding *kb;
 	wl_list_for_each(kb, &seat->keybindings, link)
@@ -447,6 +465,7 @@ cow_seat_enable_all_bindings(struct cow_seat *seat)
 
 	seat->bindings_enabled = true;
 	seat->binding_context_dirty = false;
+	seat->binding_keymap_dirty = false;
 	cow_seat_update_modifier_watch(seat);
 }
 
@@ -538,6 +557,40 @@ run_binding_action(struct cow_seat *seat, struct cow_view *view,
 	cow_wm.current_interaction_seat = old_seat;
 }
 
+static void
+binding_sequence_reset(struct cow_seat *seat)
+{
+	if (seat->active_keymap == NULL && seat->sequence_finishing == NULL)
+		return;
+	seat->binding_sequence_cancel_eat = true;
+	seat->active_keymap = NULL;
+	seat->sequence_finishing = NULL;
+	seat->binding_sequence_view = NULL;
+	seat->binding_keymap_dirty = true;
+}
+
+void
+cow_keybinding_cancel_sequence(struct cow_seat *seat)
+{
+	if (seat == NULL ||
+	    (seat->active_keymap == NULL && seat->sequence_finishing == NULL))
+		return;
+	binding_sequence_reset(seat);
+	cow_update_request(COW_UPDATE_MANAGE);
+}
+
+static void
+binding_sequence_enter(struct cow_seat *seat, struct cow_keybinding *kb)
+{
+	if (seat->active_keymap == NULL)
+		seat->binding_sequence_view =
+		    (kb->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0 ?
+		    NULL : seat->binding_context_view;
+	seat->active_keymap = kb->next_keymap;
+	seat->binding_keymap_dirty = true;
+	river_xkb_bindings_seat_v1_ensure_next_key_eaten(seat->xkb_seat);
+}
+
 /*
  * How long to wait between consecutive fires of a held repeatable
  * binding.  The first repeat after the initial press waits
@@ -584,11 +637,23 @@ cow_seat_process_bindings(struct cow_seat *seat)
 
 		if (fire_press || fire_repeat) {
 			kb->pending = false;
+			if (fire_press && kb->next_keymap != NULL) {
+				binding_sequence_enter(seat, kb);
+				kb->last_fire_ms = cow_mono_ms();
+				continue;
+			}
 			struct cow_view *target =
+			    kb->keymap != NULL ? seat->binding_sequence_view :
 			    (kb->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0 ?
 			    NULL : seat->binding_context_view;
 			run_binding_action(seat, target, kb->action,
 			    kb->action_arg);
+			if (fire_press && kb->keymap != NULL) {
+				if (kb->repeatable || kb->release_action != NULL)
+					seat->sequence_finishing = kb;
+				else
+					binding_sequence_reset(seat);
+			}
 			/*
 			 * Stamp the fire time AFTER the action runs so
 			 * the delay clock counts from the user-visible
@@ -609,6 +674,9 @@ cow_seat_process_bindings(struct cow_seat *seat)
 			run_binding_action(seat, target, kb->release_action,
 			    kb->release_action_arg);
 		}
+		if (seat->sequence_finishing == kb && !kb->main_key_held &&
+		    !kb->release_armed)
+			binding_sequence_reset(seat);
 	}
 
 	struct cow_pointer_binding *pb, *pb_tmp;
@@ -904,6 +972,27 @@ parse_key_string(const char *str, xkb_keysym_t *keysym_out,
 	return true;
 }
 
+bool
+cow_binding_validate_key_sequence(const char *sequence)
+{
+	char *copy = xstrdup(sequence);
+	char *cursor = copy;
+	char *part;
+	bool valid = true;
+
+	while ((part = strsep(&cursor, ",")) != NULL) {
+		xkb_keysym_t keysym;
+		uint32_t modifiers, context;
+
+		if (!parse_key_string(part, &keysym, &modifiers, &context)) {
+			valid = false;
+			break;
+		}
+	}
+	xfree(copy);
+	return (valid);
+}
+
 static uint32_t
 parse_button_name(const char *name)
 {
@@ -985,29 +1074,88 @@ register_config_keyboard_bindings(struct cow_seat *seat)
 	struct cow_binding_entry *entry;
 	wl_list_for_each(entry, &cow_config->keyboard_bindings, link)
 	{
-		xkb_keysym_t keysym;
-		uint32_t     modifiers;
-		uint32_t     context;
-
-		if (!parse_key_string(entry->key_string, &keysym, &modifiers,
-			&context))
+		if (strchr(entry->key_string, ',') != NULL &&
+		    (seat->xkb_seat == NULL || cow_wm.xkb_bindings_version < 2)) {
+			cow_log_error("chorded binding %s requires River XKB "
+			    "bindings protocol version 2", entry->key_string);
 			continue;
-
+		}
 		cow_action_fn fn;
 		cow_action_fn release_fn = NULL;
-		void	     *arg;
-		void	     *release_arg = NULL;
+		void *arg;
+		void *release_arg = NULL;
 		if (!cow_resolve_action(entry->action_string, &fn, &arg))
 			continue;
-
 		if (entry->release_action_string != NULL &&
-		    !cow_resolve_action(entry->release_action_string, &release_fn,
-			&release_arg)) {
+		    !cow_resolve_action(entry->release_action_string,
+			&release_fn, &release_arg)) {
 			xfree(arg);
 			continue;
 		}
-		cow_keybinding_create(seat, keysym, modifiers, context, fn, arg,
-		    entry->repeatable, release_fn, release_arg);
+		char *sequence = xstrdup(entry->key_string);
+		char *cursor = sequence;
+		struct cow_keymap *keymap = NULL;
+		char *part;
+
+		while ((part = strsep(&cursor, ",")) != NULL) {
+			xkb_keysym_t keysym;
+			uint32_t modifiers, context;
+			bool terminal = cursor == NULL;
+
+			if (!parse_key_string(part, &keysym, &modifiers,
+				&context))
+				break;
+
+			struct cow_keybinding *existing = NULL;
+			struct cow_keybinding *kb;
+			wl_list_for_each(kb, &seat->keybindings, link)
+			{
+				if (kb->keymap == keymap && kb->keysym == keysym &&
+				    kb->modifiers == modifiers &&
+				    kb->context_mask == context) {
+					existing = kb;
+					break;
+				}
+			}
+
+			if (!terminal) {
+				if (existing != NULL &&
+				    existing->next_keymap == NULL) {
+					cow_log_error(
+					    "key is both an action and a prefix: %s",
+					    entry->key_string);
+					break;
+				}
+				if (existing == NULL) {
+					struct cow_keymap *next =
+					    xcalloc(1, sizeof(*next));
+					wl_list_insert(&seat->binding_keymaps,
+					    &next->link);
+					existing = cow_keybinding_create(seat, keysym,
+					    modifiers, context, NULL, NULL, false,
+					    NULL, NULL);
+					existing->keymap = keymap;
+					existing->next_keymap = next;
+				}
+				keymap = existing->next_keymap;
+				continue;
+			}
+			if (existing != NULL) {
+				cow_log_error("duplicate chorded binding: %s",
+				    entry->key_string);
+				break;
+			}
+
+			kb = cow_keybinding_create(seat, keysym, modifiers,
+			    context, fn, arg, entry->repeatable, release_fn,
+			    release_arg);
+			kb->keymap = keymap;
+			arg = NULL;
+			release_arg = NULL;
+		}
+		xfree(sequence);
+		xfree(arg);
+		xfree(release_arg);
 	}
 }
 
@@ -1168,6 +1316,8 @@ cow_seat_register_default_bindings(struct cow_seat *seat)
 void
 cow_seat_destroy_bindings(struct cow_seat *seat)
 {
+	binding_sequence_reset(seat);
+
 	struct cow_keybinding *kb, *kb_tmp;
 	wl_list_for_each_safe(kb, kb_tmp, &seat->keybindings, link)
 	{
@@ -1176,6 +1326,12 @@ cow_seat_destroy_bindings(struct cow_seat *seat)
 		xfree(kb->action_arg);
 		xfree(kb->release_action_arg);
 		xfree(kb);
+	}
+	struct cow_keymap *keymap, *keymap_tmp;
+	wl_list_for_each_safe(keymap, keymap_tmp, &seat->binding_keymaps, link)
+	{
+		wl_list_remove(&keymap->link);
+		xfree(keymap);
 	}
 
 	struct cow_pointer_binding *pb, *pb_tmp;

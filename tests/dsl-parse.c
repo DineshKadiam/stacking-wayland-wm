@@ -25,8 +25,11 @@ struct cmd_entry *
 cmd_find_cmd(const char *name)
 {
 	static struct cmd_entry nop = { .name = "nop" };
+	static struct cmd_entry bind = { .name = "bind" };
 
-	return (strcmp(name, "nop") == 0 ? &nop : NULL);
+	if (strcmp(name, "nop") == 0)
+		return (&nop);
+	return (strcmp(name, "bind") == 0 ? &bind : NULL);
 }
 
 static void
@@ -62,6 +65,7 @@ int
 main(void)
 {
 	static const char *const valid[] = {
+		"{ bind C+c,C+a nop }",
 		"{ if self.output == \"HDMI-A-1\"{ nop } }",
 		"{ if self.output == \"HDMI-A-1\" { nop } }",
 		"{ if self.current_output and self.output == "

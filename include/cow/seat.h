@@ -39,8 +39,15 @@ struct cow_seat {
 
 	/* Registered bindings */
 	struct wl_list keybindings;	 /* cow_keybinding.link */
+	struct wl_list binding_keymaps;	 /* cow_keymap.link */
 	struct wl_list pointer_bindings; /* cow_pointer_binding.link */
 	bool	       bindings_enabled;
+	/* Per-seat chorded-binding state. */
+	struct cow_keymap *active_keymap;
+	struct cow_keybinding *sequence_finishing;
+	struct cow_view *binding_sequence_view;
+	bool		binding_keymap_dirty;
+	bool		binding_sequence_cancel_eat;
 	uint32_t	binding_context;
 	struct cow_view *binding_context_view;
 	struct cow_view *binding_action_view;

@@ -87,11 +87,15 @@ main(void)
 		"rule", "-g", "-Ton-map", "-nonfoot", "-s", "/foot/",
 		"script", "{ if self.output == \"HDMI-A-1\"{ } }",
 	};
+	static const char *const chord[] = {
+		"bind", "C+c,C+a", "window-move", "-x", "0",
+	};
 
 	check("script{}", 2, script);
 	check("script{}nop", 3, adjacent);
 	check("rule -g -Ton-map -nonfoot -s /foot/ "
 	    "script{ if self.output == \"HDMI-A-1\"{ } }",
 	    8, rule);
+	check("bind C+c,C+a window-move -x 0", 5, chord);
 	return (0);
 }

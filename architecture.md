@@ -82,6 +82,12 @@ model of windows, desks, pages, decorations, and focus intent, but River is the
 authority for compositor objects and for when those objects may be safely
 updated.
 
+Chorded keyboard bindings are stored as per-seat binding maps.  Pressing a
+prefix enables only the map below that prefix and asks
+`river_xkb_bindings_seat_v1` to consume the next non-modifier key.  A matching
+binding either enters another map or runs the final action; River reports an
+unmatched consumed key so CoW can restore the normal root bindings.
+
 For example, when a command asks to move a window, CoW records the desired
 position on the `cow_view`.  It does not directly mutate River's scene graph.
 Instead, CoW registers that another management pass is required.  At the end of

@@ -561,7 +561,7 @@ The following details those commands which operate globally within *cow*.
 Note that the same command might also contain window/output settings, which will
 be also be added under the relevant section in this man page.
 
-## bind [-r] [-x release-action] [contexts:]modifier+key action ... | bind -d pattern
+## bind [-r] [-x release-action] [contexts:]modifier+key[,modifier+key...] action ... | bind -d pattern
 
 Key bindings are specified as a modifier string immediately followed by *+* and
 a keysym name, or *-* and a numeric keycode:
@@ -570,6 +570,7 @@ a keysym name, or *-* and a numeric keycode:
 bind MODIFIERS+keysym  command
 bind MODIFIERS-keycode command
 bind CONTEXTS:MODIFIERS+keysym command
+bind MODIFIERS+keysym,MODIFIERS+keysym command
 ```
 
 Without a context prefix the binding is global.  A context-qualified binding is
@@ -636,6 +637,28 @@ Logo+Control+Alt, and *CM* means Control+Meta. Use *0* to specify no
 modifier.
 
 Key symbols and codes can be determined with *wev*(1).
+
+Separate keys with commas to define a chorded binding.  Every key except the
+last is a prefix: pressing it temporarily replaces the normal key bindings
+with the bindings below that prefix.  A matching key continues the sequence;
+the final key executes the command and restores the normal bindings.  An
+unmatched non-modifier key, including *Escape* unless explicitly bound,
+is consumed and cancels the sequence.
+
+Prefixes are shared, so several bindings may begin with the same keys:
+
+```
+bind C+c,C+a window-move -x 0 -y 0
+bind C+c,C+i winops -i
+bind C+c,C+c winops -c
+bind C+x,0+4,C+f window-maximize
+```
+
+Only the first key may have a binding context.  Its context window remains the
+default command target throughout the sequence.  A key cannot be both a
+complete binding and a prefix.  The *-r* and *-x* options apply to the final
+key.  Chorded bindings require version 2 or newer of River's XKB bindings
+protocol.
 
 Examples:
 

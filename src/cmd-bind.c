@@ -16,7 +16,7 @@
 /*
  * Command: bind -- add a keyboard binding.
  *
- * usage: bind [-r] [-x release-action] [contexts:]key action ...
+ * usage: bind [-r] [-x release-action] [contexts:]key[,key...] action ...
  *        bind -d pattern
  *
  *   -r  mark the binding as repeatable: while the triggering key is
@@ -40,6 +40,52 @@
 
 static enum cmd_retval cmd_bind_exec(struct cmd *, struct cmd_q *);
 
+static bool
+binding_sequence_is_prefix(const char *prefix, const char *sequence)
+{
+	size_t len = strlen(prefix);
+
+	return (strncmp(prefix, sequence, len) == 0 && sequence[len] == ',');
+}
+
+static bool
+binding_sequence_validate(const char *sequence, const char **error)
+{
+	char *copy = xstrdup(sequence);
+	char *cursor = copy;
+	char *part;
+	unsigned int depth = 0;
+	bool valid = true;
+
+	while ((part = strsep(&cursor, ",")) != NULL) {
+		uint32_t context;
+		const char *key, *context_error;
+
+		if (*part == '\0') {
+			*error = "empty key in sequence";
+			valid = false;
+			break;
+		}
+		if (depth > 0 && strchr(part, ':') != NULL) {
+			*error = "only the first key may have a context";
+			valid = false;
+			break;
+		}
+		if (!cow_binding_parse_context(part, &context, &key,
+			&context_error)) {
+			*error = context_error != NULL ? context_error :
+			    "invalid context";
+			valid = false;
+			break;
+		}
+		(void)context;
+		(void)key;
+		depth++;
+	}
+	xfree(copy);
+	return (valid);
+}
+
 /*
  * The args template prefix `+` puts glibc getopt into POSIX mode so
  * option parsing stops at the first non-option argument (i.e. the
@@ -56,7 +102,7 @@ struct cmd_entry cmd_bind_entry = {
 	"+drx:",
 	1,
 	-1,
-	"bind [-r] [-x release-action] [contexts:]key action ...\n"
+	"bind [-r] [-x release-action] [contexts:]key[,key...] action ...\n"
 	"bind -d pattern",
 	cmd_bind_exec,
 	0,
@@ -91,7 +137,18 @@ cmd_bind_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	if (args->argc < 2) {
-		cmdq_error(cmdq, "usage: bind [-r] [-x release-action] [contexts:]key action ...");
+		cmdq_error(cmdq, "usage: bind [-r] [-x release-action] "
+		    "[contexts:]key[,key...] action ...");
+		return (CMD_RETURN_ERROR);
+	}
+	const char *sequence_error = NULL;
+	if (!binding_sequence_validate(args->argv[0], &sequence_error)) {
+		cmdq_error(cmdq, "bind: invalid key sequence %s: %s",
+		    args->argv[0], sequence_error);
+		return (CMD_RETURN_ERROR);
+	}
+	if (!cow_binding_validate_key_sequence(args->argv[0])) {
+		cmdq_error(cmdq, "bind: invalid key sequence %s", args->argv[0]);
 		return (CMD_RETURN_ERROR);
 	}
 
@@ -111,17 +168,30 @@ cmd_bind_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 	(void)key;
 
-	struct cow_binding_entry *existing, *tmp;
-	wl_list_for_each_safe(existing, tmp, &cow_config->keyboard_bindings,
-	    link)
+	struct cow_binding_entry *replace = NULL;
+	struct cow_binding_entry *existing;
+	wl_list_for_each(existing, &cow_config->keyboard_bindings, link)
 	{
 		if (strcmp(existing->key_string, args->argv[0]) == 0) {
-			wl_list_remove(&existing->link);
-			xfree(existing->key_string);
-			xfree(existing->action_string);
-			xfree(existing->release_action_string);
-			xfree(existing);
+			replace = existing;
+			continue;
 		}
+		if (binding_sequence_is_prefix(existing->key_string,
+			args->argv[0]) ||
+		    binding_sequence_is_prefix(args->argv[0],
+			existing->key_string)) {
+			cmdq_error(cmdq,
+			    "bind: a key cannot be both an action and a prefix: %s",
+			    args->argv[0]);
+			return (CMD_RETURN_ERROR);
+		}
+	}
+	if (replace != NULL) {
+		wl_list_remove(&replace->link);
+		xfree(replace->key_string);
+		xfree(replace->action_string);
+		xfree(replace->release_action_string);
+		xfree(replace);
 	}
 
 	struct cow_binding_entry *entry = xcalloc(1, sizeof(*entry));
