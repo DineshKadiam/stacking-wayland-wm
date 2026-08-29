@@ -34,6 +34,8 @@ struct cow_keyboard_layout {
 	bool			 has_caps_lock;
 	bool			 num_lock;
 	bool			 has_num_lock;
+	bool			 scroll_lock;
+	bool			 has_scroll_lock;
 };
 
 void cow_keyboard_layout_init(void);

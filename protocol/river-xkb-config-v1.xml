@@ -5,7 +5,7 @@
     SPDX-License-Identifier: MIT
   </copyright>
 
-  <interface name="river_xkb_config_v1" version="2">
+  <interface name="river_xkb_config_v1" version="3">
     <enum name="error">
       <entry name="invalid_destroy" value="0"/>
       <entry name="invalid_format" value="1"/>
@@ -27,7 +27,7 @@
     </event>
   </interface>
 
-  <interface name="river_xkb_keymap_v1" version="2">
+  <interface name="river_xkb_keymap_v1" version="3">
     <request name="destroy" type="destructor"/>
     <event name="success"/>
     <event name="failure">
@@ -35,7 +35,7 @@
     </event>
   </interface>
 
-  <interface name="river_xkb_keyboard_v1" version="2">
+  <interface name="river_xkb_keyboard_v1" version="3">
     <enum name="error">
       <entry name="invalid_keymap" value="0"/>
     </enum>
@@ -69,5 +69,9 @@
     <event name="numlock_enabled"/>
     <event name="numlock_disabled"/>
     <event name="done" since="2"/>
+    <request name="scrolllock_enable" since="3"/>
+    <request name="scrolllock_disable" since="3"/>
+    <event name="scrolllock_enabled" since="3"/>
+    <event name="scrolllock_disabled" since="3"/>
   </interface>
 </protocol>

@@ -123,6 +123,24 @@ keyboard_numlock_disabled(void *data,
 }
 
 static void
+keyboard_scrolllock_enabled(void *data,
+    __unused struct river_xkb_keyboard_v1 *river_keyboard)
+{
+	struct cow_keyboard_layout *keyboard = data;
+	keyboard_set_lock(&keyboard->scroll_lock, &keyboard->has_scroll_lock,
+	    true);
+}
+
+static void
+keyboard_scrolllock_disabled(void *data,
+    __unused struct river_xkb_keyboard_v1 *river_keyboard)
+{
+	struct cow_keyboard_layout *keyboard = data;
+	keyboard_set_lock(&keyboard->scroll_lock, &keyboard->has_scroll_lock,
+	    false);
+}
+
+static void
 keyboard_done(__unused void *data,
     __unused struct river_xkb_keyboard_v1 *river_keyboard)
 {
@@ -136,6 +154,8 @@ static const struct river_xkb_keyboard_v1_listener keyboard_listener = {
 	.capslock_disabled = keyboard_capslock_disabled,
 	.numlock_enabled = keyboard_numlock_enabled,
 	.numlock_disabled = keyboard_numlock_disabled,
+	.scrolllock_enabled = keyboard_scrolllock_enabled,
+	.scrolllock_disabled = keyboard_scrolllock_disabled,
 	.done = keyboard_done,
 };
 
@@ -177,7 +197,7 @@ void
 cow_keyboard_layout_bind(struct wl_registry *registry, uint32_t name,
     uint32_t version)
 {
-	uint32_t bind_version = version < 2 ? version : 2;
+	uint32_t bind_version = version < 3 ? version : 3;
 
 	cow_wm.xkb_config = wl_registry_bind(registry, name,
 	    &river_xkb_config_v1_interface, bind_version);
@@ -229,6 +249,11 @@ cow_keyboard_layout_active_json(void)
 			    active_layout->num_lock);
 		else
 			cJSON_AddNullToObject(language, "num_lock");
+		if (active_layout->has_scroll_lock)
+			cJSON_AddBoolToObject(language, "scroll_lock",
+			    active_layout->scroll_lock);
+		else
+			cJSON_AddNullToObject(language, "scroll_lock");
 		return language;
 	}
 	return cJSON_CreateNull();

@@ -148,13 +148,15 @@ Each line of output is a self-contained JSON object, suitable for parsing with
   "language": {
     "name": "English (UK)",
     "caps_lock": false,
-    "num_lock": true
+    "num_lock": true,
+    "scroll_lock": false
   }
 }
 ```
 
-The _language.caps\_lock_ and _language.num\_lock_ values are _null_ until
-River has reported those states for the keyboard providing the active layout.
+The _language.caps\_lock_, _language.num\_lock_, and
+_language.scroll\_lock_ values are _null_ until River has reported those
+states for the keyboard providing the active layout.
 
 *-f desks* output:
 
@@ -171,7 +173,7 @@ River has reported those states for the keyboard providing the active layout.
 *-f language* output:
 
 ```
-{"text": "English (UK)", "caps_lock": false, "num_lock": true}
+{"text": "English (UK)", "caps_lock": false, "num_lock": true, "scroll_lock": false}
 ```
 
 *-f outputs* output:
