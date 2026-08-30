@@ -38,6 +38,7 @@
 
 #include "cow/cmd_scan.h"
 #include "cow/module.h"
+#include "cow/util.h"
 
 #ifndef COW_VERSION
 #define COW_VERSION "unknown"
@@ -89,22 +90,26 @@ append_buf(char **buf, size_t *len, size_t *cap, const char *s, size_t slen)
 static char *
 build_command(int argc, char *argv[])
 {
-	char  *cmd = NULL;
-	size_t len = 0, cap = 0;
-
-	for (int i = 0; i < argc; i++) {
-		if (i > 0 && !append_buf(&cmd, &len, &cap, " ", 1))
-			goto error;
-		if (!append_buf(&cmd, &len, &cap, argv[i], strlen(argv[i])))
-			goto error;
+	/* A single argument is the historical raw-command form.  Otherwise,
+	 * preserve the argument boundaries established by the shell. */
+	char *cmd = argc == 1 ? strdup(argv[0]) :
+	    cow_command_from_argv((size_t)argc,
+		(const char *const *)argv);
+	if (cmd == NULL) {
+		perror("moocow: command");
+		return NULL;
 	}
-	if (!append_buf(&cmd, &len, &cap, "\n", 1))
-		goto error;
-	return cmd;
 
-error:
-	free(cmd);
-	return NULL;
+	size_t len = strlen(cmd);
+	char *line = realloc(cmd, len + 2);
+	if (line == NULL) {
+		perror("moocow: realloc");
+		free(cmd);
+		return NULL;
+	}
+	line[len] = '\n';
+	line[len + 1] = '\0';
+	return line;
 }
 
 static char *

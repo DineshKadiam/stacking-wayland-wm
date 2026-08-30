@@ -77,6 +77,11 @@ main(void)
 	};
 	check(3, filter, "window-list -F \"self.id in [\\\"abc\\\"]\"");
 
+	const char *target[] = {
+		"show", "window", "-t", "/Mozilla Firefox/",
+	};
+	check(4, target, "show window -t \"/Mozilla Firefox/\"");
+
 	const char *special[] = {
 		"", "two words", "a\\b", "a\nb", "#id", "a;b", "{body}",
 	};

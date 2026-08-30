@@ -16,8 +16,11 @@ moocow - send commands to a running cow instance
 connects to the cow IPC socket, sends the given command, waits for the JSON
 response, and prints it as formatted JSON to standard output.
 
-All arguments are joined with spaces and sent as a single newline-terminated
-line. The full command language is described in *cow*(1).
+Each shell argument is encoded as a separate *cow* command argument.  Normal
+shell quoting therefore preserves values containing spaces; it is not
+necessary to quote the entire command.  For compatibility and advanced uses,
+a single argument is treated as a complete command string.  The full command
+language is described in *cow*(1).
 
 Options belonging to *moocow* must precede _command_. Once _command_ is seen,
 all remaining options are passed to *cow* unchanged. An optional *--* may still
@@ -119,6 +122,18 @@ Close the focused window:
 
 ```
 moocow winops -c
+```
+
+Target a window whose title contains a space:
+
+```
+moocow winops -t '/Mozilla Firefox/' -c
+```
+
+The equivalent raw-command form remains available:
+
+```
+moocow 'winops -t "/Mozilla Firefox/" -c'
 ```
 
 List all available commands:
