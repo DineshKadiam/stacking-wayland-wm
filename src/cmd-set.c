@@ -44,6 +44,7 @@
 #include "cow/seat.h"
 #include "cow/shm.h"
 #include "cow/stack.h"
+#include "cow/style.h"
 #include "cow/titlebar.h"
 #include "cow/util.h"
 #include "cow/view.h"
@@ -70,7 +71,7 @@ static enum cmd_retval set_titlebar_squeeze(const struct cow_option_entry *,
     const char *, const char *, struct cmd_q *);
 static enum cmd_retval set_layer(const char *, const char *, struct cmd_q *);
 static void finish_visual_update(enum cow_view_cfg_option,
-    struct cow_view_cfg *);
+    struct cow_view_cfg *, struct cmd_q *);
 static struct cow_titlebar_config *target_titlebar(struct cmd_q *,
     struct cow_view_cfg **);
 static struct cow_container_config *target_container(struct cmd_q *,
@@ -78,6 +79,15 @@ static struct cow_container_config *target_container(struct cmd_q *,
 static void set_colour_option(const char *, const char *, struct cmd_q *);
 static enum cmd_retval set_image_option(const char *, const char *,
     struct cmd_q *);
+static enum cow_view_cfg_option button_vector_option(int);
+static enum cow_view_cfg_option button_image_option(int);
+static enum cow_view_cfg_option button_active_relief_option(int);
+static enum cow_view_cfg_option button_inactive_relief_option(int);
+static enum cow_view_cfg_option button_active_colour_option(int);
+static enum cow_view_cfg_option button_inactive_colour_option(int);
+static enum cow_view_cfg_option button_active_fg_option(int);
+static enum cow_view_cfg_option button_inactive_fg_option(int);
+static bool parse_button_key(const char *, int *, const char **);
 static enum cmd_retval set_output_image(const char *, const char *,
     struct cmd_q *);
 static bool set_gradient_option(const char *, const char *, struct cmd_q *);
@@ -368,13 +378,17 @@ propagate_global_option(enum cow_view_cfg_option option)
 }
 
 static void
-finish_visual_update(enum cow_view_cfg_option option, struct cow_view_cfg *cfg)
+finish_visual_update(enum cow_view_cfg_option option, struct cow_view_cfg *cfg,
+    struct cmd_q *cmdq)
 {
-	if (cfg != NULL)
-		cow_view_cfg_set_override(cfg, option);
-	else
+	if (cfg != NULL) {
+		if (cmdq == NULL || !cmdq->in_style)
+			cow_view_cfg_set_override(cfg, option);
+	} else {
 		propagate_global_option(option);
-	refresh_visuals();
+	}
+	if (cmdq == NULL || !cmdq->in_style)
+		refresh_visuals();
 }
 
 static struct cow_titlebar_config *
@@ -432,6 +446,113 @@ cmd_set_is_decor_key(const char *key)
 	const struct cow_option_entry *opt = set_option_find(key);
 
 	return (opt != NULL && set_option_is_decor(opt, key));
+}
+
+static enum cow_view_cfg_option
+decor_option_id(const struct cow_option_entry *opt, const char *key)
+{
+	if (strncmp(key, "icon.", 5) == 0 && opt->match == COW_OPTION_EXACT)
+		return (opt->id);
+	if (opt->action == COW_OPTION_SCALAR_INT ||
+	    opt->action == COW_OPTION_SCALAR_BOOL ||
+	    opt->action == COW_OPTION_SCALAR_STRING ||
+	    opt->action == COW_OPTION_BORDER_STYLE ||
+	    opt->action == COW_OPTION_FONT ||
+	    opt->action == COW_OPTION_TITLEBAR_HEIGHT ||
+	    opt->action == COW_OPTION_TITLEBAR_POSITION ||
+	    opt->action == COW_OPTION_TITLEBAR_SQUEEZE ||
+	    opt->action == COW_OPTION_TITLEBAR_SQUEEZE_JUSTIFY ||
+	    opt->action == COW_OPTION_TITLEBAR_SQUEEZE_INT)
+		return (opt->id);
+
+	for (const struct set_titlebar_colour_option *entry =
+	    set_titlebar_colour_options; entry->name != NULL; entry++)
+		if (strcmp(key, entry->name) == 0)
+			return (entry->id);
+	for (const struct set_container_colour_option *entry =
+	    set_container_colour_options; entry->name != NULL; entry++)
+		if (strcmp(key, entry->name) == 0)
+			return (entry->id);
+
+	if (strcmp(key, "titlebar.active_gradient") == 0)
+		return (COW_VIEW_CFG_TITLEBAR_ACTIVE_GRADIENT);
+	if (strcmp(key, "titlebar.inactive_gradient") == 0)
+		return (COW_VIEW_CFG_TITLEBAR_INACTIVE_GRADIENT);
+	if (strcmp(key, "titlebar.active_image") == 0)
+		return (COW_VIEW_CFG_TITLEBAR_ACTIVE_IMAGE);
+	if (strcmp(key, "titlebar.inactive_image") == 0)
+		return (COW_VIEW_CFG_TITLEBAR_INACTIVE_IMAGE);
+	if (strcmp(key, "titlebar.active_relief") == 0)
+		return (COW_VIEW_CFG_TITLEBAR_ACTIVE_RELIEF);
+	if (strcmp(key, "titlebar.inactive_relief") == 0)
+		return (COW_VIEW_CFG_TITLEBAR_INACTIVE_RELIEF);
+	if (strcmp(key, "titlebar.active_title_justify") == 0)
+		return (COW_VIEW_CFG_TITLEBAR_ACTIVE_TITLE_JUSTIFY);
+	if (strcmp(key, "titlebar.inactive_title_justify") == 0)
+		return (COW_VIEW_CFG_TITLEBAR_INACTIVE_TITLE_JUSTIFY);
+	if (strcmp(key, "titlebar.button_style") == 0)
+		return (COW_VIEW_CFG_TITLEBAR_BUTTON_STYLE);
+	if (strcmp(key, "container.tab.active_gradient") == 0)
+		return (COW_VIEW_CFG_CONTAINER_TAB_ACTIVE_GRADIENT);
+	if (strcmp(key, "container.tab.inactive_gradient") == 0)
+		return (COW_VIEW_CFG_CONTAINER_TAB_INACTIVE_GRADIENT);
+	if (strcmp(key, "container.tab.active_image") == 0)
+		return (COW_VIEW_CFG_CONTAINER_TAB_ACTIVE_IMAGE);
+	if (strcmp(key, "container.tab.inactive_image") == 0)
+		return (COW_VIEW_CFG_CONTAINER_TAB_INACTIVE_IMAGE);
+
+	int idx;
+	const char *field;
+	if (parse_button_key(key, &idx, &field)) {
+		if (strcmp(field, "vector") == 0)
+			return (button_vector_option(idx));
+		if (strcmp(field, "image") == 0)
+			return (button_image_option(idx));
+		if (strcmp(field, "active_relief") == 0)
+			return (button_active_relief_option(idx));
+		if (strcmp(field, "inactive_relief") == 0)
+			return (button_inactive_relief_option(idx));
+		if (strcmp(field, "active_colour") == 0)
+			return (button_active_colour_option(idx));
+		if (strcmp(field, "inactive_colour") == 0)
+			return (button_inactive_colour_option(idx));
+		if (strcmp(field, "active_fg") == 0)
+			return (button_active_fg_option(idx));
+		if (strcmp(field, "inactive_fg") == 0)
+			return (button_inactive_fg_option(idx));
+	}
+
+	bool active = strncmp(key, "border.active", 13) == 0;
+	bool inactive = strncmp(key, "border.inactive", 15) == 0;
+	if (active || inactive) {
+		const char *suffix = key + (active ? 13 : 15);
+		if (*suffix == '\0')
+			return (active ? COW_VIEW_CFG_BORDER_ACTIVE :
+			    COW_VIEW_CFG_BORDER_INACTIVE);
+		if (strcmp(suffix, ".gradient") == 0)
+			return (active ? COW_VIEW_CFG_BORDER_ACTIVE_GRADIENT :
+			    COW_VIEW_CFG_BORDER_INACTIVE_GRADIENT);
+		if (strcmp(suffix, ".image") == 0)
+			return (active ? COW_VIEW_CFG_BORDER_ACTIVE_IMAGE :
+			    COW_VIEW_CFG_BORDER_INACTIVE_IMAGE);
+		if (*suffix == '.')
+			suffix++;
+		for (const struct set_border_edge *edge = set_border_edges;
+		    edge->name != NULL; edge++) {
+			size_t len = strlen(edge->name);
+			if (strcmp(suffix, edge->name) == 0)
+				return (active ? edge->active_id : edge->inactive_id);
+			if (strncmp(suffix, edge->name, len) != 0)
+				continue;
+			if (strcmp(suffix + len, ".gradient") == 0)
+				return (active ? edge->active_gradient_id :
+				    edge->inactive_gradient_id);
+			if (strcmp(suffix + len, ".image") == 0)
+				return (active ? edge->active_image_id :
+				    edge->inactive_image_id);
+		}
+	}
+	return (COW_VIEW_CFG_OPTION_COUNT);
 }
 
 char *
@@ -653,11 +774,12 @@ set_option_scope_ok(const struct cow_option_entry *opt, struct cmd_q *cmdq)
 }
 
 static void
-set_option_post_update(const struct cow_option_entry *opt)
+set_option_post_update(const struct cow_option_entry *opt, struct cmd_q *cmdq)
 {
 	if ((opt->post & COW_OPTION_POST_PAN_FRAMES) != 0 && !cow_ipc.startup_mode)
 		pan_frames_update_all();
-	if ((opt->post & COW_OPTION_POST_REFRESH_VISUALS) != 0)
+	if ((opt->post & COW_OPTION_POST_REFRESH_VISUALS) != 0 &&
+	    (cmdq == NULL || !cmdq->in_style))
 		refresh_visuals();
 	if ((opt->post & COW_OPTION_POST_CURSOR_HIDE) != 0 &&
 	    !cow_ipc.startup_mode)
@@ -679,14 +801,15 @@ set_scalar_bool(const struct cow_option_entry *opt, const char *val,
 	if (cfg != NULL && opt->view_offset != COW_OPTION_NO_OFFSET) {
 		bool *ptr = (bool *)((char *)cfg + opt->view_offset);
 		*ptr = b;
-		cow_view_cfg_set_override(cfg, opt->id);
+		if (cmdq == NULL || !cmdq->in_style)
+			cow_view_cfg_set_override(cfg, opt->id);
 	} else if (cow_config != NULL) {
 		bool *ptr = (bool *)((char *)cow_config + opt->config_offset);
 		*ptr = b;
 		if (opt->scope == COW_OPTION_MIXED)
 			propagate_global_option(opt->id);
 	}
-	set_option_post_update(opt);
+	set_option_post_update(opt, cmdq);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -711,7 +834,8 @@ set_scalar_int(const struct cow_option_entry *opt, const char *key, const char *
 		*ptr = (int)v;
 		if ((opt->post & COW_OPTION_POST_ZERO_DISABLE_HANDLES) != 0 && v == 0)
 			cfg->handles = false;
-		cow_view_cfg_set_override(cfg, opt->id);
+		if (cmdq == NULL || !cmdq->in_style)
+			cow_view_cfg_set_override(cfg, opt->id);
 	} else if (cow_config != NULL) {
 		int *ptr = (int *)((char *)cow_config + opt->config_offset);
 		*ptr = (int)v;
@@ -720,7 +844,7 @@ set_scalar_int(const struct cow_option_entry *opt, const char *key, const char *
 		if (opt->scope == COW_OPTION_MIXED)
 			propagate_global_option(opt->id);
 	}
-	set_option_post_update(opt);
+	set_option_post_update(opt, cmdq);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -739,7 +863,8 @@ set_scalar_string(const struct cow_option_entry *opt, const char *val,
 		char **ptr = (char **)((char *)cfg + opt->view_offset);
 
 		xstrset(ptr, val);
-		cow_view_cfg_set_override(cfg, opt->id);
+		if (cmdq == NULL || !cmdq->in_style)
+			cow_view_cfg_set_override(cfg, opt->id);
 	} else if (cow_config != NULL) {
 		char **ptr = (char **)((char *)cow_config + opt->config_offset);
 
@@ -747,7 +872,7 @@ set_scalar_string(const struct cow_option_entry *opt, const char *val,
 		if (opt->scope == COW_OPTION_MIXED)
 			propagate_global_option(opt->id);
 	}
-	set_option_post_update(opt);
+	set_option_post_update(opt, cmdq);
 	cow_update_request(COW_UPDATE_STATUS);
 	return (CMD_RETURN_NORMAL);
 }
@@ -890,6 +1015,12 @@ cmd_set_apply_decor(const char *key, const char *val, struct cmd_q *cmdq)
 		cmdq_error(cmdq, "decor: %s: wrong target scope", key);
 		return (CMD_RETURN_ERROR);
 	}
+	if (cmdq != NULL && cmdq->in_style && cmdq->target.window != NULL) {
+		enum cow_view_cfg_option id = decor_option_id(opt, key);
+		if (id < COW_VIEW_CFG_OPTION_COUNT &&
+		    cow_view_cfg_is_override(&cmdq->target.window->cfg, id))
+			return (CMD_RETURN_NORMAL);
+	}
 	return (set_option_exec(opt, key, val, NULL, cmdq));
 }
 
@@ -973,7 +1104,7 @@ set_titlebar_height(const char *val, struct cmd_q *cmdq)
 	struct cow_view_cfg	    *cfg;
 	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
 	tb->height = (int)v;
-	finish_visual_update(COW_VIEW_CFG_TITLEBAR_HEIGHT, cfg);
+	finish_visual_update(COW_VIEW_CFG_TITLEBAR_HEIGHT, cfg, cmdq);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -1001,7 +1132,7 @@ set_titlebar_active_relief(const char *val, struct cmd_q *cmdq)
 	struct cow_view_cfg	    *cfg;
 	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
 	tb->active_relief = v;
-	finish_visual_update(COW_VIEW_CFG_TITLEBAR_ACTIVE_RELIEF, cfg);
+	finish_visual_update(COW_VIEW_CFG_TITLEBAR_ACTIVE_RELIEF, cfg, cmdq);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -1020,7 +1151,8 @@ set_titlebar_active_title_justify(const char *val, struct cmd_q *cmdq)
 	struct cow_view_cfg	    *cfg;
 	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
 	tb->active_title_justify = v;
-	finish_visual_update(COW_VIEW_CFG_TITLEBAR_ACTIVE_TITLE_JUSTIFY, cfg);
+	finish_visual_update(COW_VIEW_CFG_TITLEBAR_ACTIVE_TITLE_JUSTIFY, cfg,
+	    cmdq);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -1039,7 +1171,8 @@ set_titlebar_inactive_title_justify(const char *val, struct cmd_q *cmdq)
 	struct cow_view_cfg	    *cfg;
 	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
 	tb->inactive_title_justify = v;
-	finish_visual_update(COW_VIEW_CFG_TITLEBAR_INACTIVE_TITLE_JUSTIFY, cfg);
+	finish_visual_update(COW_VIEW_CFG_TITLEBAR_INACTIVE_TITLE_JUSTIFY, cfg,
+	    cmdq);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -1059,7 +1192,7 @@ set_titlebar_button_style(const char *val, struct cmd_q *cmdq)
 	struct cow_view_cfg	    *cfg;
 	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
 	tb->button_style = v;
-	finish_visual_update(COW_VIEW_CFG_TITLEBAR_BUTTON_STYLE, cfg);
+	finish_visual_update(COW_VIEW_CFG_TITLEBAR_BUTTON_STYLE, cfg, cmdq);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -1076,7 +1209,7 @@ set_titlebar_inactive_relief(const char *val, struct cmd_q *cmdq)
 	struct cow_view_cfg	    *cfg;
 	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
 	tb->inactive_relief = v;
-	finish_visual_update(COW_VIEW_CFG_TITLEBAR_INACTIVE_RELIEF, cfg);
+	finish_visual_update(COW_VIEW_CFG_TITLEBAR_INACTIVE_RELIEF, cfg, cmdq);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -1093,7 +1226,7 @@ set_titlebar_position(const char *val, struct cmd_q *cmdq)
 	struct cow_view_cfg *cfg;
 	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
 	tb->position = position;
-	finish_visual_update(COW_VIEW_CFG_TITLEBAR_POSITION, cfg);
+	finish_visual_update(COW_VIEW_CFG_TITLEBAR_POSITION, cfg, cmdq);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -1135,7 +1268,7 @@ set_titlebar_squeeze(const struct cow_option_entry *opt, const char *key,
 		*ptr = (int)v;
 	}
 
-	finish_visual_update(opt->id, cfg);
+	finish_visual_update(opt->id, cfg, cmdq);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -1156,6 +1289,7 @@ set_layer(const char *key, const char *val, struct cmd_q *cmdq)
 		if ((int)v > max)
 			v = max;
 		cow_config->default_layer = (uint8_t)v;
+		cow_style_apply_all_live();
 		return (CMD_RETURN_NORMAL);
 	}
 
@@ -1176,6 +1310,7 @@ set_layer(const char *key, const char *val, struct cmd_q *cmdq)
 		cow_stack_mark_dirty();
 		cow_update_request(COW_UPDATE_MANAGE);
 	}
+	cow_style_apply_all_live();
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -1234,7 +1369,7 @@ set_image_value(char **slot, enum cow_view_cfg_option id, const char *val,
 		*slot = NULL;
 	} else
 		*slot = path;
-	finish_visual_update(id, cfg);
+	finish_visual_update(id, cfg, cmdq);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -1249,7 +1384,7 @@ set_icon_image(const char *key, const char *val, struct cmd_q *cmdq)
 		return (CMD_RETURN_ERROR);
 	if (strcmp(val, "auto") == 0) {
 		xstrset(slot, "auto");
-		finish_visual_update(COW_VIEW_CFG_ICON_IMAGE, cfg);
+		finish_visual_update(COW_VIEW_CFG_ICON_IMAGE, cfg, cmdq);
 		return (CMD_RETURN_NORMAL);
 	}
 	return (set_image_value(slot, COW_VIEW_CFG_ICON_IMAGE, val, cfg, cmdq));
@@ -1434,7 +1569,7 @@ set_titlebar_gradient(const char *key, const char *val, struct cmd_q *cmdq)
 		return (false);
 
 	if (set_gradient_value(g, key, val, cmdq))
-		finish_visual_update(id, cfg);
+		finish_visual_update(id, cfg, cmdq);
 	return (true);
 }
 
@@ -1456,7 +1591,7 @@ set_container_tab_gradient(const char *key, const char *val, struct cmd_q *cmdq)
 		return (false);
 
 	if (set_gradient_value(g, key, val, cmdq))
-		finish_visual_update(id, cfg);
+		finish_visual_update(id, cfg, cmdq);
 	return (true);
 }
 
@@ -1503,7 +1638,7 @@ set_border_gradient(const char *key, const char *val, struct cmd_q *cmdq)
 		return (true);
 	}
 	if (set_gradient_value(g, key, val, cmdq))
-		finish_visual_update(id, cfg);
+		finish_visual_update(id, cfg, cmdq);
 	return (true);
 }
 
@@ -1596,7 +1731,7 @@ set_icon_colour(const char *key, const char *val, struct cmd_q *cmdq)
 		cmdq_error(cmdq, "set: invalid colour value");
 		return (true);
 	}
-	finish_visual_update(id, cfg);
+	finish_visual_update(id, cfg, cmdq);
 	return (true);
 }
 
@@ -1614,7 +1749,7 @@ set_titlebar_colour(const char *key, const char *val, struct cmd_q *cmdq)
 			cmdq_error(cmdq, "set: invalid colour value");
 			return (true);
 		}
-		finish_visual_update(opt->id, cfg);
+		finish_visual_update(opt->id, cfg, cmdq);
 		return (true);
 	}
 	return (false);
@@ -1636,7 +1771,7 @@ set_container_tab_colour(const char *key, const char *val, struct cmd_q *cmdq)
 			return (true);
 		}
 		*has = true;
-		finish_visual_update(opt->id, cfg);
+		finish_visual_update(opt->id, cfg, cmdq);
 		return (true);
 	}
 	return (false);
@@ -1674,7 +1809,7 @@ set_border_colour(const char *key, const char *val, struct cmd_q *cmdq)
 		memcpy(bc->e, c, sizeof(float) * 4);
 		memcpy(bc->w, c, sizeof(float) * 4);
 		finish_visual_update(is_active ? COW_VIEW_CFG_BORDER_ACTIVE :
-		    COW_VIEW_CFG_BORDER_INACTIVE, cfg);
+		    COW_VIEW_CFG_BORDER_INACTIVE, cfg, cmdq);
 		return (true);
 	}
 
@@ -1702,7 +1837,7 @@ set_border_colour(const char *key, const char *val, struct cmd_q *cmdq)
 	if (bc->has_nw || bc->has_ne || bc->has_sw || bc->has_se)
 		bc->has_corners = true;
 	finish_visual_update(is_active ? edge_opt->active_id :
-	    edge_opt->inactive_id, cfg);
+	    edge_opt->inactive_id, cfg, cmdq);
 	return (true);
 }
 
@@ -1719,7 +1854,7 @@ set_border_style_option(const char *val, struct cmd_q *cmdq)
 		cfg->border_style = style;
 	else
 		cow_config->border_style = style;
-	finish_visual_update(COW_VIEW_CFG_BORDER_STYLE, cfg);
+	finish_visual_update(COW_VIEW_CFG_BORDER_STYLE, cfg, cmdq);
 }
 
 static void
@@ -1870,7 +2005,7 @@ set_font_option(const char *val, struct cmd_q *cmdq)
 	} else {
 		xstrset(&cow_config->font_name, val);
 	}
-	finish_visual_update(COW_VIEW_CFG_FONT, cfg);
+	finish_visual_update(COW_VIEW_CFG_FONT, cfg, cmdq);
 }
 
 static void
@@ -1892,7 +2027,7 @@ set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 			cmdq_error(cmdq, "set: %s: bad vector", key);
 			return;
 		}
-		finish_visual_update(button_vector_option(idx), cfg);
+		finish_visual_update(button_vector_option(idx), cfg, cmdq);
 		return;
 	}
 	if (strcmp(field, "active_relief") == 0) {
@@ -1904,7 +2039,7 @@ set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 			return;
 		}
 		tb->buttons[idx].active_relief = relief;
-		finish_visual_update(button_active_relief_option(idx), cfg);
+		finish_visual_update(button_active_relief_option(idx), cfg, cmdq);
 		return;
 	}
 
@@ -1917,7 +2052,7 @@ set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 			return;
 		}
 		tb->buttons[idx].inactive_relief = relief;
-		finish_visual_update(button_inactive_relief_option(idx), cfg);
+		finish_visual_update(button_inactive_relief_option(idx), cfg, cmdq);
 		return;
 	}
 
@@ -1930,7 +2065,7 @@ set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 
 		memcpy(tb->buttons[idx].inactive_colour, c, sizeof(c));
 		tb->buttons[idx].has_inactive_colour = true;
-		finish_visual_update(button_inactive_colour_option(idx), cfg);
+		finish_visual_update(button_inactive_colour_option(idx), cfg, cmdq);
 		return;
 	}
 
@@ -1942,7 +2077,7 @@ set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 		}
 		memcpy(tb->buttons[idx].active_colour, c, sizeof(c));
 		tb->buttons[idx].has_active_colour = true;
-		finish_visual_update(button_active_colour_option(idx), cfg);
+		finish_visual_update(button_active_colour_option(idx), cfg, cmdq);
 		return;
 	}
 
@@ -1956,11 +2091,12 @@ set_button_option(const char *key, const char *val, struct cmd_q *cmdq)
 		if (field[0] == 'a') {
 			memcpy(tb->buttons[idx].active_fg, c, sizeof(c));
 			tb->buttons[idx].has_active_fg = true;
-			finish_visual_update(button_active_fg_option(idx), cfg);
+			finish_visual_update(button_active_fg_option(idx), cfg, cmdq);
 		} else {
 			memcpy(tb->buttons[idx].inactive_fg, c, sizeof(c));
 			tb->buttons[idx].has_inactive_fg = true;
-			finish_visual_update(button_inactive_fg_option(idx), cfg);
+			finish_visual_update(button_inactive_fg_option(idx), cfg,
+			    cmdq);
 		}
 		return;
 	}

@@ -302,7 +302,10 @@ void cow_view_cfg_init_from_global(struct cow_view_cfg *);
 void cow_view_cfg_apply_global(struct cow_view_cfg *);
 void cow_view_cfg_apply_global_option(struct cow_view_cfg *,
     enum cow_view_cfg_option);
+void cow_view_cfg_rebase_global(struct cow_view_cfg *);
 void cow_view_cfg_set_override(struct cow_view_cfg *, enum cow_view_cfg_option);
+bool cow_view_cfg_is_override(const struct cow_view_cfg *,
+    enum cow_view_cfg_option);
 void cow_view_cfg_fini(struct cow_view_cfg *);
 
 /* A managed river window. */
@@ -463,7 +466,17 @@ struct cow_view {
 	struct cow_container_member *container_member;
 
 	struct cow_view_cfg cfg;
+
+	/* Declarative style state and explicit rule/user policy overrides. */
+	uint32_t style_live_mask;
+	uint32_t policy_overrides;
+	bool     style_initial_applied;
 };
+
+#define COW_VIEW_POLICY_LAYER          (1u << 0)
+#define COW_VIEW_POLICY_CIRCULATE_SKIP (1u << 1)
+#define COW_VIEW_POLICY_STICKY_DESK    (1u << 2)
+#define COW_VIEW_POLICY_STICKY_PAGE    (1u << 3)
 
 /* Create/destroy view wrappers. */
 struct cow_view *cow_view_create(struct river_window_v1 *);

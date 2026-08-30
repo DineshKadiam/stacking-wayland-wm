@@ -30,6 +30,7 @@
 #include "cow/menu.h"
 #include "cow/output.h"
 #include "cow/rule.h"
+#include "cow/style.h"
 #include "cow/seat.h"
 #include "cow/view.h"
 #include "cow/update.h"
@@ -90,6 +91,7 @@ do_reload(struct cmd_q *cmdq)
 	 * cow_config, so they need explicit reset here too.
 	 */
 	cow_rule_fini();
+	cow_style_fini();
 	cow_decor_reset_profiles();
 	cow_menu_close_all();
 	cow_menu_destroy_all();
@@ -118,6 +120,7 @@ do_reload(struct cmd_q *cmdq)
 	{
 		if (!view->closed) {
 			cow_view_cfg_apply_global(&view->cfg);
+			view->policy_overrides = 0;
 			view->dec.dirty	       = true;
 			view->dec.border_width = view->cfg.border;
 		}

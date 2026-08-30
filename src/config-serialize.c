@@ -249,6 +249,69 @@ serialize_rules(struct config_buf *buf, const struct state_value *value)
 }
 
 static void
+serialize_style(struct config_buf *buf, const struct state_value *record)
+{
+	const char *name = string_field(record, "name");
+	const char *match = string_field(record, "match");
+	const char *body = string_field(record, "body");
+	const struct state_value *desk = state_record_get(record, "desk");
+	char desk_text[64] = "";
+	char *target = NULL;
+
+	if (desk != NULL && desk->type == STATE_V_STRING)
+		strlcpy(desk_text, desk->u.s, sizeof(desk_text));
+	else if (desk != NULL && desk->type == STATE_V_NUMBER && desk->u.n >= 0)
+		snprintf(desk_text, sizeof(desk_text), "%d", (int)desk->u.n);
+
+	const char *argv[8];
+	size_t argc = 0;
+	argv[argc++] = "style";
+	if (bool_field(record, "global")) {
+		argv[argc++] = "-g";
+	} else {
+		const char *output = string_field(record, "output");
+		if (desk_text[0] != '\0')
+			xasprintf(&target, "%s:%s", output, desk_text);
+		else if (output[0] != '\0')
+			target = xstrdup(output);
+		else
+			target = xstrdup(":");
+		argv[argc++] = "-t";
+		argv[argc++] = target;
+	}
+	argv[argc++] = "-n";
+	argv[argc++] = name;
+	if (match[0] != '\0') {
+		argv[argc++] = "-s";
+		argv[argc++] = match;
+	}
+	char *prefix = cow_command_from_argv(argc, argv);
+	if (prefix != NULL) {
+		buf_append(buf, prefix);
+		buf_append(buf, " {\n");
+		buf_append(buf, body);
+		if (body[0] != '\0' && body[strlen(body) - 1] != '\n')
+			buf_append(buf, "\n");
+		buf_append(buf, "}\n");
+		free(prefix);
+	}
+	xfree(target);
+}
+
+static void
+serialize_styles(struct config_buf *buf, const struct state_value *value)
+{
+	if (value->type == STATE_V_RECORD) {
+		serialize_style(buf, value);
+		return;
+	}
+	if (value->type != STATE_V_LIST)
+		return;
+	for (size_t i = 0; i < value->u.list.n; i++)
+		serialize_style(buf, value->u.list.items[i]);
+}
+
+static void
 serialize_decor_profile(struct config_buf *buf,
     const struct state_value *record, const char **active)
 {
@@ -493,6 +556,8 @@ serialize_topic(struct config_buf *buf, const char *topic,
 {
 	if (strcmp(topic, "rule") == 0)
 		serialize_rules(buf, value);
+	else if (strcmp(topic, "style") == 0)
+		serialize_styles(buf, value);
 	else if (strcmp(topic, "decor") == 0)
 		serialize_decor(buf, value);
 	else if (strcmp(topic, "menu") == 0)

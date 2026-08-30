@@ -372,7 +372,7 @@ Commands can be loaded from:
 The small DSL is limited to `script` blocks.  It exists to add structured
 control flow without replacing the command language used elsewhere.
 
-## Rules
+## Rules And Styles
 
 Rules bind command lists to lifecycle events such as map, move, resize, desk
 change, page change, startup, restart, title change, and output topology
@@ -380,6 +380,25 @@ changes.
 
 Rules are evaluated with an event context.  That context can expose the current
 view, desk, or output to normal commands and to DSL scripts.
+
+Rules and styles share a policy definition containing the object's name,
+global or output/desk scope, optional window selector, and definition order.
+The shared matcher therefore gives `%app`, `/title/`, and `#identifier` the
+same meaning in both interfaces.
+
+Their payloads deliberately differ.  A rule associates an event with a command
+list and executes that list when the event occurs.  A style contains typed
+window policy which can be resolved repeatedly and undone when the style stops
+matching.  For a window event, CoW resolves matching styles in definition order
+before dispatching matching rules.  Later styles override individual fields;
+a command subsequently issued by a rule or through IPC marks that field as an
+explicit per-window override.
+
+Decoration policy uses three layers: the global configuration, sparse named or
+inline style overlays, and explicit per-window overrides.  Initial placement
+and state fields are applied once when the window is first managed.  Live
+fields such as decoration, layer, stickiness, and circulation are recomputed
+when relevant window or scope state changes and after configuration reload.
 
 ## IPC And Modules
 
@@ -453,7 +472,7 @@ CoW owns:
 
 - stacking-window-manager policy;
 - command/config semantics;
-- desks, pages, rules, and decoration policy;
+- desks, pages, rules, styles, and decoration policy;
 - module-facing IPC and status;
 - state persistence.
 

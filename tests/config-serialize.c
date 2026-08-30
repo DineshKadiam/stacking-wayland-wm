@@ -117,6 +117,25 @@ test_rules(void)
 }
 
 static void
+test_styles(void)
+{
+	struct state_value *style = state_value_record();
+	record_string(style, "name", "terminal style");
+	record_bool(style, "global", true);
+	record_string(style, "output", "");
+	record_number(style, "desk", -1);
+	record_string(style, "match", "%foot");
+	record_string(style, "body",
+	    "\n    decor {\n        border.width 4\n    }\n"
+	    "    layer top\n");
+	expect("style", cow_config_serialize_topic("style", style),
+	    "style -g -n \"terminal style\" -s %foot {\n"
+	    "\n    decor {\n        border.width 4\n    }\n"
+	    "    layer top\n}\n");
+	state_value_unref(style);
+}
+
+static void
 test_menu(void)
 {
 	struct state_value *menu = state_value_record();
@@ -157,6 +176,7 @@ main(void)
 {
 	test_settings();
 	test_rules();
+	test_styles();
 	test_menu();
 	return (failures != 0);
 }

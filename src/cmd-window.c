@@ -110,6 +110,8 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	 /* Sticky-flag.  -s toggles desk-sticky, -S toggles page-sticky. */
 	if (args_has(args, 's')) {
+		if (!cmdq->in_style)
+			view->policy_overrides |= COW_VIEW_POLICY_STICKY_DESK;
 		bool currently = (view->flags & COW_VIEW_STICKY_DESK_FLAG) != 0;
 		bool target    = cmdq->in_rule ? true : !currently;
 		if (target != currently) {
@@ -130,6 +132,8 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	if (args_has(args, 'S')) {
+		if (!cmdq->in_style)
+			view->policy_overrides |= COW_VIEW_POLICY_STICKY_PAGE;
 		bool currently = (view->flags & COW_VIEW_STICKY_PAGE_FLAG) != 0;
 		bool target    = cmdq->in_rule ? true : !currently;
 		cow_view_set_page_sticky(view, target);
@@ -147,6 +151,20 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 		enum cmd_retval r    = do_set_layer(view, lval, cmdq);
 		if (r != CMD_RETURN_NORMAL)
 			return (r);
+		if (!cmdq->in_style) {
+			view->policy_overrides |= COW_VIEW_POLICY_LAYER;
+			if (view->container_member != NULL) {
+				struct cow_container *container =
+				    view->container_member->container;
+				struct cow_container_member *member;
+				wl_list_for_each(member, &container->members, link)
+				{
+					if (member->view != NULL)
+						member->view->policy_overrides |=
+						    COW_VIEW_POLICY_LAYER;
+				}
+			}
+		}
 	}
 
 	if (args_has(args, 'C')) {
@@ -155,6 +173,8 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 		    do_set_circulate_skip(view, cval, cmdq);
 		if (r != CMD_RETURN_NORMAL)
 			return (r);
+		if (!cmdq->in_style)
+			view->policy_overrides |= COW_VIEW_POLICY_CIRCULATE_SKIP;
 	}
 
 	return (CMD_RETURN_NORMAL);

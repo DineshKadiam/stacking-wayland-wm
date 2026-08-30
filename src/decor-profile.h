@@ -18,8 +18,10 @@
 #define COW_DECOR_PROFILE_H
 
 struct state_value;
+struct cmd_q;
 
 struct state_value *cow_decor_snapshot_all(void);
 struct state_value *cow_decor_snapshot_named(const char *);
+bool cow_decor_apply_named(const char *, struct cmd_q *);
 
 #endif /* COW_DECOR_PROFILE_H */

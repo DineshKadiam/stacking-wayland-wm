@@ -908,6 +908,94 @@ rule -d -ndesk2
 
 Defined rules can be seen with the *show* command.
 
+## style -d -n <name> | -g | -t output[:desk] -n <name> [-s sel] { ... }
+
+Define states for windows.  Styles reuse the same names,
+scopes, and selectors as rules, but describe window state rather than executing
+commands in response to an event.  Styles can override one another, the last
+match wins, with theat style overriding any previous properties within it/
+
+The selector forms are the same as for *rule*: *%app-id*, */title/*, and
+*#identifier*.  A global style uses *-g*.  With *-t output[:desk]*, either part
+may be omitted to match any output or desk.
+
+The following properties are reapplied when a window's title or scope
+changes and when the configuration is reloaded:
+
+[[ *Property*
+:< *Value*
+|  *layer*
+:  An absolute layer number, *top*, or *bottom*.
+|  *circulate.skip*
+:  A boolean controlling whether ordinary next/previous focus skips the window.
+|  *sticky.desk*, *sticky.page*
+:  Booleans controlling desk and page stickiness.
+|  *decor* _name_
+:  Overlay a named sparse decoration profile.
+|  *decor { ... }*
+:  Overlay decoration keys local to this style.  The keys and values are the
+   same as for *decor -d*.
+
+These placement and state properties apply only when the window is first
+managed.  They are not replayed by a configuration reload or title change:
+
+[[ *Property*
+:< *Value*
+|  *placement.output*
+:  An output name or selector such as *@2*.
+|  *placement.desk*
+:  A desk number or name.
+|  *placement.page*
+:  An absolute _column,row_ page.
+|  *placement.x*, *placement.y*
+:  Initial position, using the units accepted by *window-move*.
+|  *placement.width*, *placement.height*
+:  Initial size, using the units accepted by *window-resize*.
+|  *state.maximized*
+:  *none*, *horizontal*, *vertical*, or *both*.
+|  *state.maximized.ignore_reserved*
+:  Whether initial maximisation ignores reserved areas.
+|  *state.fullscreen*, *state.shaded*, *state.iconified*
+:  Initial boolean window states.
+
+Styles are resolved before an event rule is executed.  If a rule or later
+targeted command changes a live style field, that field becomes an explicit
+per-window override and is not subsequently replaced by style recomputation.
+
+For example, give terminals a reusable base theme with a local border change,
+keep them in the normal layer, and initially place them on the left half of the
+work desk:
+
+```
+style -g -n terminal -s %foot {
+    decor motif
+    decor {
+        border.width 4
+        titlebar.active_colour 0x303030
+    }
+    layer 4
+    circulate.skip false
+    placement.desk work
+    placement.x 0vw
+    placement.y 0vh
+    placement.width 50vw
+    placement.height 100vh
+}
+```
+
+An event rule can then make a particular terminal an explicit exception:
+
+```
+rule -g -T on-map -n build-log -s '/build log/' script {
+    winops -L =top
+    decor -a alert
+}
+```
+
+Delete a style with *style -d -n name*.
+
+Styles can be inspected with the *show style name* and *show -a style* commands.
+
 ## exec command ...
 
 Execute a shell command. During configuration loading, *exec* commands are
@@ -940,13 +1028,14 @@ standard output.
 
 *-a*
 	Return all records for the topic. This is supported by _window_, _output_,
-	_desk_, _rule_, _decor_, _menu_, _binding_, and _command_. It cannot be
+	_desk_, _rule_, _style_, _decor_, _menu_, _binding_, and _command_. It
+	cannot be
 	combined with *-t* or a resource name.
 
 *-f* _format_
 	Select the output format. _json_ is the default. _config_ emits commands
-	accepted by *cow.conf* and is available for _config_, _rule_, _decor_,
-	_menu_, and _binding_. With *-a*, filters are applied before the collection
+	accepted by *cow.conf* and is available for _config_, _rule_, _style_,
+	_decor_, _menu_, and _binding_. With *-a*, filters are applied before the collection
 	is serialized.
 
 *-t* _target_
@@ -997,6 +1086,15 @@ standard output.
 	Example:
 	*show -a -F 'self.type == "on-map"' rule*
 
+*show style* _name_, *show -a style*
+	Return one exactly named style or all styles.  Records contain the shared
+	rule-style scope and selector fields plus the style body.
+
+	Examples:
+	*show style terminal*
+	*show -a -F 'self.global' style*
+	*show -a -f config style*
+
 *show decor* _name_, *show -a decor*
 	Return one exactly named decoration profile or every profile. Each
 	profile contains its _name_, whether it is globally _active_, and its
@@ -1035,7 +1133,8 @@ standard output.
 
 *show config* [_key_]
 	With no key, return all serializable configuration grouped into _commands_,
-	_settings_, _decor_, _menu\_style_, _menus_, _bindings_, and _rules_. The
+	_settings_, _decor_, _menu\_style_, _menus_, _bindings_, _rules_, and
+	_styles_. The
 	_commands_ array is the ordered, directly reusable configuration record.
 	With a key,
 	return only that setting. Supported setting keys:

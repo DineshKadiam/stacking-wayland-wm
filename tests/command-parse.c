@@ -95,6 +95,11 @@ main(void)
 		"on-outputs-changed", "script",
 		"{\nscript {\n    bind \"L+#{d.nr}\" desk -d #{d.nr}\n}\n}",
 	};
+	static const char *const style[] = {
+		"style", "-g", "-n", "foot", "-s", "%foot",
+		"{\n    decor {\n        border.width 4\n    }\n"
+		"    layer top\n}",
+	};
 
 	check("script{}", 2, script);
 	check("script{}nop", 3, adjacent);
@@ -105,5 +110,8 @@ main(void)
 	check("rule -g -n desk-number-bindings -T on-outputs-changed "
 	    "script {\nscript {\n    bind \"L+#{d.nr}\" desk -d #{d.nr}\n}\n}",
 	    8, rule_dump);
+	check("style -g -n foot -s %foot {\n"
+	    "    decor {\n        border.width 4\n    }\n"
+	    "    layer top\n}", 7, style);
 	return (0);
 }

@@ -20,6 +20,8 @@
 
 #include <wayland-client.h>
 
+#include "cow/policy.h"
+
 struct cmd_list;
 struct cow_view;
 struct cow_desk;
@@ -50,14 +52,8 @@ enum cow_rule_type {
 
 /* A registered rule and its scope. */
 struct cow_rule {
-	char		  *name;
+	struct cow_policy policy;
 	enum cow_rule_type type;
-
-	bool  is_global;
-	char *output_name; /* NULL = any */
-	int   desk_nr;	   /* -1 = any */
-	char *desk_name;   /* NULL = use desk_nr or any */
-	char *match_spec;  /* NULL = any view */
 
 	struct cmd_list *cmdlist;
 	struct wl_list	 link; /* file-scope list in src/rule.c */

@@ -45,6 +45,7 @@
 #include "cow/seat.h"
 #include "cow/shm.h"
 #include "cow/stack.h"
+#include "cow/style.h"
 #include "cow/titlebar.h"
 #include "cow/util.h"
 #include "cow/update.h"
@@ -282,6 +283,17 @@ cow_view_cfg_set_override(struct cow_view_cfg *cfg,
 
 	if (view_cfg_option_index(option, &word, &bit))
 		cfg->overrides[word] |= bit;
+}
+
+bool
+cow_view_cfg_is_override(const struct cow_view_cfg *cfg,
+    enum cow_view_cfg_option option)
+{
+	size_t word;
+	uint64_t bit;
+
+	return (cfg != NULL && view_cfg_option_index(option, &word, &bit) &&
+	    (cfg->overrides[word] & bit) != 0);
 }
 
 void
@@ -643,6 +655,14 @@ cow_view_cfg_apply_global(struct cow_view_cfg *cfg)
 }
 
 void
+cow_view_cfg_rebase_global(struct cow_view_cfg *cfg)
+{
+	for (enum cow_view_cfg_option option = 0;
+	    option < COW_VIEW_CFG_OPTION_COUNT; option++)
+		cow_view_cfg_apply_global_option(cfg, option);
+}
+
+void
 cow_view_cfg_fini(struct cow_view_cfg *cfg)
 {
 	xfree(cfg->font_name);
@@ -805,6 +825,8 @@ window_handle_app_id(void *data, __unused struct river_window_v1 *rw,
 	if (cow_view_is_iconified(view))
 		cow_view_icon_refresh(view);
 	view_mark_title_dirty(view);
+	if (view->on_map_fired)
+		cow_style_apply_for_event(view, false);
 	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 }
 
@@ -1575,6 +1597,7 @@ cow_view_reassign_output(struct cow_view *view, struct cow_output *output)
 	wl_list_insert(&output->visible_views, &view->output_views);
 
 	view->dec.dirty = true;
+	cow_style_apply_for_event(view, false);
 	cow_update_request(COW_UPDATE_STATUS);
 }
 

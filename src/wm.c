@@ -47,6 +47,7 @@
 #include "cow/pointer_input.h"
 #include "cow/pointer_op.h"
 #include "cow/rule.h"
+#include "cow/style.h"
 #include "cow/seat.h"
 #include "cow/stack.h"
 #include "cow/state.h"
@@ -1654,6 +1655,7 @@ cow_wm_fini(void)
 	cow_ipc.config_path = NULL;
 	cow_event_fini();
 	cow_rule_fini();
+	cow_style_fini();
 
 	if (cow_wm.layer_shell != NULL)
 		river_layer_shell_v1_destroy(cow_wm.layer_shell);

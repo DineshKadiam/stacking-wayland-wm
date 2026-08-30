@@ -23,6 +23,7 @@ struct cow_view;
 struct cow_output;
 struct cow_desk;
 struct cow_rule;
+struct cow_style;
 struct cow_menu;
 
 enum state_source {
@@ -30,6 +31,7 @@ enum state_source {
 	STATE_SRC_DESKS,
 	STATE_SRC_OUTPUTS,
 	STATE_SRC_RULES,
+	STATE_SRC_STYLES,
 	STATE_SRC_DECOR,
 	STATE_SRC_MENUS,
 	STATE_SRC_BINDINGS,
@@ -46,6 +48,7 @@ struct state_value *state_snapshot_view(const struct cow_view *);
 struct state_value *state_snapshot_output(const struct cow_output *);
 struct state_value *state_snapshot_desk(const struct cow_desk *);
 struct state_value *state_snapshot_rule(const struct cow_rule *);
+struct state_value *state_snapshot_style(const struct cow_style *);
 struct state_value *state_snapshot_menu(const struct cow_menu *);
 struct state_value *state_snapshot_menu_style(void);
 

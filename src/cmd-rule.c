@@ -47,7 +47,6 @@
 
 static enum cmd_retval cmd_rule_exec(struct cmd *, struct cmd_q *);
 static bool	       do_rule_add(struct args *, struct cmd_q *);
-static bool parse_scope_t(const char *, char **, int *, char **, char **);
 
 struct cmd_entry cmd_rule_entry = {
 	"rule",
@@ -82,64 +81,6 @@ cmd_rule_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (!do_rule_add(args, cmdq))
 		return (CMD_RETURN_ERROR);
 	return (CMD_RETURN_NORMAL);
-}
-
-/*
- * Parse a rule's -t output[:desk] specifier.  Empty parts mean "any":
- * ":1" is desk 1 on any output, "DP-1:" is any desk on DP-1, "DP-1:0"
- * is desk 0 on DP-1, "DP-1" is any desk on DP-1.
- *
- * The output name is stored verbatim (no validation against existing
- * outputs) so that rules registered before outputs are bound (i.e.
- * during config parse) still work; cow_rule_fire matches on
- * output->name string equality at fire time.
- *
- * Returns true on success.  *output_name is xstrdup'd (or left NULL),
- * *desk_nr is set to 0..COW_NR_OF_DESKS-1 (or left -1).  Sets *cause
- * (xasprintf'd) and returns false on a malformed spec, e.g. extra
- * colons (`::1`) or a non-numeric desk part (`:foo`).
- */
-static bool
-parse_scope_t(const char *spec, char **output_name, int *desk_nr,
-    char **desk_name, char **cause)
-{
-	if (spec == NULL || spec[0] == '\0') {
-		xasprintf(cause, "empty -t spec");
-		return false;
-	}
-	char *dup   = xstrdup(spec);
-	char *colon = strchr(dup, ':');
-	if (colon != NULL) {
-		*colon			= '\0';
-		const char *output_part = dup;
-		const char *desk_part	= colon + 1;
-
-		if (strchr(desk_part, ':') != NULL) {
-			xasprintf(cause,
-			    "-t %s: too many colons "
-			    "(expected output[:desk])",
-			    spec);
-			xfree(dup);
-			return false;
-		}
-
-		if (*output_part != '\0')
-			*output_name = xstrdup(output_part);
-		if (*desk_part != '\0') {
-			char *end;
-			long  nr = strtol(desk_part, &end, 10);
-			if (end != desk_part && *end == '\0' && nr >= 0 &&
-			    nr <= 255) {
-				*desk_nr = (int)nr;
-			} else {
-				*desk_name = xstrdup(desk_part);
-			}
-		}
-	} else if (*dup != '\0') {
-		*output_name = xstrdup(dup);
-	}
-	xfree(dup);
-	return true;
 }
 
 static bool
@@ -199,21 +140,22 @@ do_rule_add(struct args *args, struct cmd_q *cmdq)
 		return false;
 	}
 
-	/* Validate -t up front so we can reject malformed specs (extra
-	 * colons, non-numeric desk part, etc.) before we go on to parse
-	 * the command body or allocate the rule struct. */
-	char *parsed_output_name = NULL;
-	int   parsed_desk_nr	 = -1;
-	char *parsed_desk_name	 = NULL;
+	/* Validate -t up front so malformed scope syntax is rejected before
+	 * parsing the command body or allocating the rule.
+	 */
+	struct cow_policy policy;
+	cow_policy_init(&policy);
+	policy.name = xstrdup(name);
+	policy.is_global = is_g;
+	if (s_val != NULL)
+		policy.match_spec = xstrdup(s_val);
 	if (t_val != NULL) {
 		char *t_cause = NULL;
-		if (!parse_scope_t(t_val, &parsed_output_name, &parsed_desk_nr,
-			&parsed_desk_name, &t_cause)) {
+		if (!cow_policy_parse_scope(t_val, &policy, &t_cause)) {
 			cmdq_error(cmdq, "rule: %s",
 			    t_cause != NULL ? t_cause : "bad -t spec");
 			xfree(t_cause);
-			xfree(parsed_output_name);
-			xfree(parsed_desk_name);
+			cow_policy_fini(&policy);
 			return false;
 		}
 	}
@@ -228,23 +170,16 @@ do_rule_add(struct args *args, struct cmd_q *cmdq)
 		    cause != NULL ? cause : "(unknown)");
 		xfree(cause);
 		xfree(body);
-		xfree(parsed_output_name);
-		xfree(parsed_desk_name);
+		cow_policy_fini(&policy);
 		return false;
 	}
 	xfree(cause);
 	xfree(body);
 
 	struct cow_rule *rule = xcalloc(1, sizeof(*rule));
-	rule->name	      = xstrdup(name);
+	rule->policy	      = policy;
 	rule->type	      = type;
-	rule->is_global	      = is_g;
-	rule->desk_nr	      = parsed_desk_nr;
-	rule->desk_name	      = parsed_desk_name;
-	rule->output_name     = parsed_output_name;
 	rule->cmdlist	      = cmdlist;
-	if (s_val != NULL)
-		rule->match_spec = xstrdup(s_val);
 
 	cow_rule_add(rule);
 	return true;

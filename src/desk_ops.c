@@ -27,6 +27,7 @@
 #include "cow/titlebar.h"
 #include "cow/util.h"
 #include "cow/view.h"
+#include "cow/style.h"
 #include "cow/update.h"
 #include "cow/wm.h"
 
@@ -259,6 +260,7 @@ cow_view_assign_desk(struct cow_view *view, uint8_t desk_nr)
 	wl_list_insert(&target->views, &view->desk_views);
 
 	view->dec.dirty = true;
+	cow_style_apply_for_event(view, false);
 
 	/* Visibility recomputed in render callback */
 	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);

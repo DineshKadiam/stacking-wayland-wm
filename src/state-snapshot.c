@@ -36,6 +36,7 @@
 #include "cow/menu.h"
 #include "cow/output.h"
 #include "cow/rule.h"
+#include "cow/style.h"
 #include "cow/titlebar.h"
 #include "cow/view.h"
 #include "cow/wm.h"
@@ -305,21 +306,27 @@ state_snapshot_output(const struct cow_output *out)
 	return (r);
 }
 
+static void
+snapshot_policy(struct state_value *record, const struct cow_policy *policy)
+{
+	rec_set_string(record, "name", policy->name);
+	rec_set_bool(record, "global", policy->is_global);
+	rec_set_string(record, "output", policy->output_name != NULL ?
+	    policy->output_name : "");
+	if (policy->desk_name != NULL)
+		rec_set_string(record, "desk", policy->desk_name);
+	else
+		rec_set_number(record, "desk", policy->desk_nr);
+	rec_set_string(record, "match", policy->match_spec != NULL ?
+	    policy->match_spec : "");
+}
+
 struct state_value *
 state_snapshot_rule(const struct cow_rule *rule)
 {
 	struct state_value *r = state_value_record();
-	rec_set_string(r, "name", rule->name);
+	snapshot_policy(r, &rule->policy);
 	rec_set_string(r, "type", cow_rule_type_name(rule->type));
-	rec_set_bool(r, "global", rule->is_global);
-	rec_set_string(r, "output",
-	    rule->output_name != NULL ? rule->output_name : "");
-	if (rule->desk_name != NULL)
-		rec_set_string(r, "desk", rule->desk_name);
-	else
-		rec_set_number(r, "desk", rule->desk_nr);
-	rec_set_string(r, "match",
-	    rule->match_spec != NULL ? rule->match_spec : "");
 	if (rule->cmdlist != NULL) {
 		char *body = cmd_list_to_config(rule->cmdlist);
 		rec_set_string(r, "body", body);
@@ -332,6 +339,15 @@ state_snapshot_rule(const struct cow_rule *rule)
 		rec_set_bool(r, "body_is_single", false);
 	}
 	return (r);
+}
+
+struct state_value *
+state_snapshot_style(const struct cow_style *style)
+{
+	struct state_value *record = state_value_record();
+	snapshot_policy(record, &style->policy);
+	rec_set_string(record, "body", style->body != NULL ? style->body : "");
+	return (record);
 }
 
 static struct state_value *
@@ -524,6 +540,19 @@ state_snapshot_collection(enum state_source src)
 			wl_list_for_each(rule, head, link)
 			{
 				struct state_value *r = state_snapshot_rule(rule);
+				state_list_append(list, r);
+				state_value_unref(r);
+			}
+		}
+		break;
+	}
+	case STATE_SRC_STYLES: {
+		const struct wl_list *head = cow_styles_head();
+		if (head != NULL) {
+			struct cow_style *style;
+			wl_list_for_each(style, head, link)
+			{
+				struct state_value *r = state_snapshot_style(style);
 				state_list_append(list, r);
 				state_value_unref(r);
 			}

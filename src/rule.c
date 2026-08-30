@@ -22,6 +22,7 @@
 #include "cow/log.h"
 #include "cow/memory.h"
 #include "cow/output.h"
+#include "cow/style.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
@@ -81,10 +82,7 @@ cow_rule_free(struct cow_rule *rule)
 {
 	if (rule == NULL)
 		return;
-	xfree(rule->name);
-	xfree(rule->output_name);
-	xfree(rule->desk_name);
-	xfree(rule->match_spec);
+	cow_policy_fini(&rule->policy);
 	if (rule->cmdlist != NULL)
 		cmd_list_free(rule->cmdlist);
 	xfree(rule);
@@ -139,7 +137,8 @@ cow_rule_find_by_name(const char *name)
 	struct cow_rule *r;
 	wl_list_for_each(r, &rules, link)
 	{
-		if (r->name != NULL && strcmp(r->name, name) == 0)
+		if (r->policy.name != NULL &&
+		    strcmp(r->policy.name, name) == 0)
 			return r;
 	}
 	return NULL;
@@ -179,11 +178,7 @@ cow_rule_remove_by_name(const char *name)
 static bool
 rule_view_matches(const struct cow_rule *rule, const struct cow_view *view)
 {
-	if (rule->match_spec == NULL)
-		return true;
-	if (view == NULL)
-		return false;
-	return cow_view_matches_selector(view, rule->match_spec);
+	return cow_policy_view_matches(&rule->policy, view);
 }
 
 /*
@@ -195,20 +190,7 @@ static bool
 rule_scope_matches(const struct cow_rule *rule, const struct cow_desk *desk,
     const struct cow_output *output)
 {
-	if (rule->output_name != NULL) {
-		if (output == NULL || output->name == NULL ||
-		    strcmp(rule->output_name, output->name) != 0)
-			return false;
-	}
-	if (rule->desk_name != NULL) {
-		if (desk == NULL || desk->name == NULL ||
-		    strcmp(rule->desk_name, desk->name) != 0)
-			return false;
-	} else if (rule->desk_nr >= 0) {
-		if (desk == NULL || desk->nr != rule->desk_nr)
-			return false;
-	}
-	return true;
+	return cow_policy_scope_matches(&rule->policy, desk, output);
 }
 
 /* Run a single rule's command body against the supplied context.
@@ -223,9 +205,10 @@ rule_run(struct cow_rule *rule, struct cow_view *view, struct cow_desk *desk,
 	cmd_list_print(rule->cmdlist, actions, sizeof(actions));
 	cow_log_trace("rule matched (name=%s event=%s scope=%s selector=%s "
 	    "output=%s desk=%s window=%s actions=%s)",
-	    rule->name ? rule->name : "unnamed", cow_rule_type_name(rule->type),
-	    rule->is_global ? "global" : "scoped",
-	    rule->match_spec ? rule->match_spec : "any",
+	    rule->policy.name ? rule->policy.name : "unnamed",
+	    cow_rule_type_name(rule->type),
+	    rule->policy.is_global ? "global" : "scoped",
+	    rule->policy.match_spec ? rule->policy.match_spec : "any",
 	    output && output->name ? output->name : "any",
 	    desk && desk->name ? desk->name : "any",
 	    view && view->identifier ? view->identifier : "none", actions);
@@ -327,8 +310,18 @@ cow_rule_fire_json(enum cow_rule_type type, struct cow_view *view,
 {
 	if (type <= COW_RULE_NONE || type >= COW_RULE_TYPE_COUNT)
 		return;
+	if (!cow_style_is_applying()) {
+		if (view != NULL && (type == COW_RULE_ON_MAP ||
+		    type == COW_RULE_ON_TITLE_CHANGE ||
+		    type == COW_RULE_ON_MOVE))
+			cow_style_apply_for_event(view, type == COW_RULE_ON_MAP);
+		else if (view == NULL && (type == COW_RULE_ON_DESK ||
+		    type == COW_RULE_ON_DESKS_CHANGED ||
+		    type == COW_RULE_ON_OUTPUTS_CHANGED))
+			cow_style_apply_all_live();
+	}
 	if (!rules_initialised)
-		return; /* no rules registered */
+		return; /* no executable rules registered */
 
 	cow_log_trace("rule event (event=%s output=%s desk=%s window=%s)",
 	    cow_rule_type_name(type),
@@ -363,7 +356,7 @@ cow_rule_fire_json(enum cow_rule_type type, struct cow_view *view,
 		 */
 		wl_list_for_each(rule, &rules, link)
 		{
-			if (rule->type != type || !rule->is_global)
+			if (rule->type != type || !rule->policy.is_global)
 				continue;
 			if (!rule_view_matches(rule, view))
 				continue;
@@ -371,7 +364,7 @@ cow_rule_fire_json(enum cow_rule_type type, struct cow_view *view,
 		}
 		wl_list_for_each(rule, &rules, link)
 		{
-			if (rule->type != type || rule->is_global)
+			if (rule->type != type || rule->policy.is_global)
 				continue;
 			if (!rule_scope_matches(rule, desk, output))
 				continue;

@@ -23,6 +23,7 @@
 #include "cow/ipc.h"
 #include "cow/memory.h"
 #include "cow/view.h"
+#include "cow/style.h"
 
 #include "decor-profile.h"
 #include "state-value.h"
@@ -195,6 +196,7 @@ decor_define(const char *name, const char *key, const char *value,
 		if (strcmp(entry->key, key) == 0) {
 			xfree(entry->value);
 			entry->value = stored;
+			cow_style_apply_all_live();
 			return (CMD_RETURN_NORMAL);
 		}
 	}
@@ -203,6 +205,7 @@ decor_define(const char *name, const char *key, const char *value,
 	entry->key = xstrdup(key);
 	entry->value = stored;
 	wl_list_insert(profile->entries.prev, &entry->link);
+	cow_style_apply_all_live();
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -227,6 +230,12 @@ decor_apply(const char *name, struct cmd_q *cmdq)
 			return ret;
 	}
 	return (CMD_RETURN_NORMAL);
+}
+
+bool
+cow_decor_apply_named(const char *name, struct cmd_q *cmdq)
+{
+	return (decor_apply(name, cmdq) == CMD_RETURN_NORMAL);
 }
 
 static bool
@@ -302,5 +311,7 @@ cmd_decor_exec(struct cmd *self, struct cmd_q *cmdq)
 	    !cmdq->in_rule && cmdq->target.window == NULL) {
 		xstrset(&runtime_active_profile, app);
 	}
+	if (ret == CMD_RETURN_NORMAL && (cmdq == NULL || !cmdq->in_style))
+		cow_style_apply_all_live();
 	return (ret);
 }

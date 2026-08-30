@@ -162,6 +162,7 @@ struct cmd_q {
 	char *event_json;
 
 	int in_rule;
+	int in_style;
 };
 
 /* Error cause list. */
@@ -248,6 +249,7 @@ extern struct cmd_entry cmd_bind_decoration_entry;
 extern struct cmd_entry cmd_mouse_entry;
 extern struct cmd_entry cmd_nop_entry;
 extern struct cmd_entry cmd_rule_entry;
+extern struct cmd_entry cmd_style_entry;
 extern struct cmd_entry cmd_draw_exec_entry;
 extern struct cmd_entry cmd_exec_entry;
 extern struct cmd_entry cmd_show_entry;
@@ -310,6 +312,7 @@ char		*cmd_list_to_config(struct cmd_list *);
 
 int cmd_string_parse(const char *, struct cmd_list **, const char *, u_int,
     char **);
+char *cmd_string_unquote(const char *);
 
 struct cmd_q	*cmdq_new(void);
 int		 cmdq_free(struct cmd_q *);

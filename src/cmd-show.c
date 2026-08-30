@@ -25,6 +25,7 @@
 #include "cow/menu.h"
 #include "cow/output.h"
 #include "cow/rule.h"
+#include "cow/style.h"
 #include "cow/wm.h"
 
 #include "decor-profile.h"
@@ -109,6 +110,8 @@ state_topic(const char *topic, enum state_source *source)
 		*source = STATE_SRC_DESKS;
 	else if (strcmp(topic, "rule") == 0)
 		*source = STATE_SRC_RULES;
+	else if (strcmp(topic, "style") == 0)
+		*source = STATE_SRC_STYLES;
 	else if (strcmp(topic, "decor") == 0)
 		*source = STATE_SRC_DECOR;
 	else if (strcmp(topic, "menu") == 0)
@@ -234,6 +237,25 @@ cmd_show_exec(struct cmd *self, struct cmd_q *cmdq)
 		    cmdq));
 	}
 
+	if (strcmp(topic, "style") == 0) {
+		if (has_target) {
+			cmdq_error(cmdq, "show: -t is not valid with style");
+			return (CMD_RETURN_ERROR);
+		}
+		if (args->argc != 2) {
+			cmdq_error(cmdq, "show: style requires a name");
+			return (CMD_RETURN_ERROR);
+		}
+		struct cow_style *style = cow_style_find_by_name(args->argv[1]);
+		if (style == NULL) {
+			cmdq_error(cmdq, "show: no style named '%s'",
+			    args->argv[1]);
+			return (CMD_RETURN_ERROR);
+		}
+		return (show_record(topic, state_snapshot_style(style), format,
+		    cmdq));
+	}
+
 	if (strcmp(topic, "menu") == 0) {
 		if (has_target) {
 			cmdq_error(cmdq, "show: -t is not valid with menu");
@@ -349,6 +371,7 @@ show_collection(enum state_source source, const char *filter_expr,
 	    source == STATE_SRC_OUTPUTS ? "output" :
 	    source == STATE_SRC_DESKS ? "desk" :
 	    source == STATE_SRC_RULES ? "rule" :
+	    source == STATE_SRC_STYLES ? "style" :
 	    source == STATE_SRC_DECOR ? "decor" :
 	    source == STATE_SRC_MENUS ? "menu" :
 	    source == STATE_SRC_BINDINGS ? "binding" : "command";
@@ -424,6 +447,8 @@ do_show_config(const char *ckey, const char *format, struct cmd_q *cmdq)
 		    state_snapshot_collection(STATE_SRC_BINDINGS));
 		json_add_snapshot(all, "rules",
 		    state_snapshot_collection(STATE_SRC_RULES));
+		json_add_snapshot(all, "styles",
+		    state_snapshot_collection(STATE_SRC_STYLES));
 		cow_ipc_respond_data(cmdq->client_fd, all);
 	}
 	return (CMD_RETURN_NORMAL);

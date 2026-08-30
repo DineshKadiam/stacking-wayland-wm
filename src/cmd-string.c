@@ -236,3 +236,21 @@ error:
 	xfree(buf);
 	return (NULL);
 }
+
+char *
+cmd_string_unquote(const char *value)
+{
+	size_t len = strlen(value);
+
+	if (len < 2 || (value[0] != '\'' && value[0] != '"') ||
+	    value[len - 1] != value[0])
+		return (xstrdup(value));
+	size_t pos = 1;
+	char *result = cmd_string_string(value, &pos, value[0],
+	    value[0] == '"');
+	if (result == NULL || pos != len) {
+		xfree(result);
+		return (NULL);
+	}
+	return (result);
+}
