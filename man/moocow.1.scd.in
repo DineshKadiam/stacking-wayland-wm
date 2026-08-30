@@ -94,7 +94,7 @@ _$XDG\_RUNTIME\_DIR/cow-$WAYLAND\_DISPLAY-cmd.sock_
 Query all managed windows:
 
 ```
-moocow show windows
+moocow show -a window
 ```
 
 Apply a decoration profile:
@@ -124,8 +124,18 @@ moocow winops -c
 List all available commands:
 
 ```
-moocow list-commands
+moocow show -a command
 ```
+
+Write the current serializable configuration as commands which can be loaded
+by *cow*(1):
+
+```
+moocow show -f config config > cow.generated.conf
+```
+
+Config-formatted responses are printed as plain text. Other responses retain
+their JSON envelope.
 
 Run commands persistently:
 

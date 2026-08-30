@@ -374,9 +374,9 @@ if self.title matches "cowiconman:*" and self.output == "eDP-1" {
 
 ## Sources
 
-Each iterable source yields records whose fields match the matching
-*show* topic JSON (see *show windows*, *show desk*, *show output*,
-*show rules*).  Common window fields include *id*, *app_id*,
+Each iterable source yields records whose fields match the corresponding
+*show -a* topic JSON (see *show -a window*, *show -a desk*, *show -a output*,
+and *show -a rule*). Common window fields include *id*, *app_id*,
 *title*, *desk*, *output*, *layer*, *focused*, *iconified*,
 *circulate_skip*, *maximized*, *width*, *height*, *page_col*,
 *page_row*, *current_page*, *current_desk*, *current_output*,
@@ -385,7 +385,7 @@ Each iterable source yields records whose fields match the matching
 Common desk fields include *nr*, *name*, *output*, *current*,
 *active*, *collected*, *window_count*, *page_col*, *page_row*,
 *page_cols*, *page_rows*, *page_vx*, and *page_vy*.  Common output
-fields include *name*, *nr*, *number*, geometry, usable geometry, *current*,
+fields include *name*, *number*, geometry, usable geometry, *current*,
 *current_desk*, *current_desk_name*, and page state.  Common rule
 fields include *name*, *type*, *global*, *output*, *desk*, *match*,
 and *body*.
@@ -930,47 +930,142 @@ mouse M+middle draw-exec -F 'self.app_id == "foot"' exec foot
 If the command is a brace-delimited script block, the surrounding braces are
 removed before the block is evaluated.
 
-## show [-F expr] [topic] [config key]
+## show [-f json|config] [-t target] topic [name]
+## show -a [-f json|config] [-F expr] topic
 
-Query window manager state. The response is a JSON object.
-When used via *moocow*(1) the JSON is printed to standard output.
+Query window manager state and configured objects. Without *-a*, a topic
+returns one current or named record. With *-a*, it returns an array containing
+all records for that topic. When used via *moocow*(1), JSON is printed to
+standard output.
+
+*-a*
+	Return all records for the topic. This is supported by _window_, _output_,
+	_desk_, _rule_, _decor_, _menu_, _binding_, and _command_. It cannot be
+	combined with *-t* or a resource name.
+
+*-f* _format_
+	Select the output format. _json_ is the default. _config_ emits commands
+	accepted by *cow.conf* and is available for _config_, _rule_, _decor_,
+	_menu_, and _binding_. With *-a*, filters are applied before the collection
+	is serialized.
+
+*-t* _target_
+	Select the resource returned by *show window*, *show output*, or
+	*show desk*. It uses the normal command context syntax described in
+	*COMMAND REFERENCING*. Without *-t*, the focused window, current output,
+	or current desk is used respectively.
 
 *-F* _expr_
-	Filter *show windows* with a DSL expression.  *self* is bound to
-	each candidate window.
+	Filter a topic selected with *-a* using a DSL expression. *self* is bound
+	to each candidate record. A query with no matches returns an empty array.
+	*-F* requires *-a*.
 
 *Topics:*
 
-*show windows*
-	Return an array of all managed windows. Each element contains:
-	_id_, _app\_id_, _title_, _desk_, _x_, _y_, _width_, _height_,
-	_focused_, _maximized_, _shaded_, _iconified_,
-	_circulate\_skip_, _page\_col_, _page\_row_, _current\_page_,
-	_current\_desk_, _current\_output_.
+*show window*, *show -a window*
+	Return the target managed window or all managed windows. Window records
+	include identity, content and frame geometry, icon geometry, placement,
+	page state, stacking state, window flags, decorations, size hints, and
+	per-window style fields.
+
+	Examples:
+	*show window*
+	*show -t '#0123abcd' window*
+	*show -a -F 'self.current_page and not self.iconified' window*
+
+*show output*, *show -a output*
+	Return the target output or all outputs. Output records contain _name_,
+	_number_, geometry, usable geometry, current desk, and page state.
+
+	Examples:
+	*show -t @2 output*
+	*show -a -F 'self.current' output*
+
+*show desk*, *show -a desk*
+	Return the target desk or all desks on every output. Desk
+	records contain their number, name, output, page state, collection state,
+	and window count.
+
+	Examples:
+	*show -t HDMI-A-1:2 desk*
+	*show -a -F 'self.output == "HDMI-A-1"' desk*
+
+*show rule* _name_, *show -a rule*
+	Return one exactly named rule or all rules. Rules can be filtered
+	by fields such as _name_, _type_, _global_, _output_, _desk_, and _match_.
 
 	Example:
-	*show -F 'self.current_page' windows*
+	*show -a -F 'self.type == "on-map"' rule*
 
-*show desk*
-	Return _{"current": N}_ for the current output's active desk.
+*show decor* _name_, *show -a decor*
+	Return one exactly named decoration profile or every profile. Each
+	profile contains its _name_, whether it is globally _active_, and its
+	sparse _settings_ object. The collection may be filtered with *-F*.
 
-*show rules*
-	Return an array of all defined rules.
+	Examples:
+	*show -a decor*
+	*show decor fvwm*
+	*show -a -F 'self.active' decor*
 
-*show output*
-	Return an array of output objects, each with _name_, _x_, _y_,
-	_width_, _height_, and a _usable_ sub-object reflecting reserved areas.
+*show menu* _name_, *show -a menu*
+	Return one named menu or every menu definition. Records contain the
+	selection modes, resolved style, and ordered item definitions.
+
+	Examples:
+	*show menu RootMenu*
+	*show -a menu*
+
+*show -a binding*
+	Return every keyboard, mouse, and decoration binding. Bindings have no
+	singular selector. The _type_ field is
+	_keyboard_, _mouse_, or _decoration_; *-F* can select one kind.
+
+	Example:
+	*show -a -F 'self.type == "keyboard"' binding*
+
+*show command* _name_, *show -a command*
+	Return one named command or every registered command with its _name_ and
+	_usage_. This replaces the former *list-commands* command and supports
+	filtering with *-a -F*.
 
 *show keyboard-layout*
 	Return the active keyboard layout's _name_, _caps\_lock_, _num\_lock_,
 	and _scroll\_lock_ states, or _null_ if no layout is set. A lock state is
 	_null_ until River has reported it.
 
-*show config* _key_
-	Return the current value of a configuration key. Supported keys:
-	_border.width_, _step_, _border.corner\_length_, _border.style_,
-	_focus_.
-	Also accepted as *show config.*_key_.
+*show config* [_key_]
+	With no key, return all serializable configuration grouped into _commands_,
+	_settings_, _decor_, _menu\_style_, _menus_, _bindings_, and _rules_. The
+	_commands_ array is the ordered, directly reusable configuration record.
+	With a key,
+	return only that setting. Supported setting keys:
+	_border.width_, _step_, _border.corner\_length_, _border.style_, _focus_,
+	_geometry\_window_, _clamp\_mode_, _placement_, page and edge-scroll
+	settings, _titlebar.font_, _title\_format_, cursor and repeat settings,
+	_default\_layer_, _max\_layer_, _preserve\_desk\_on\_output\_loss_, and
+	_desks.count_.
+	With _desks.count_, *-t* may select the output to inspect.
+
+	Examples:
+	*show config*
+	*show config border.width*
+	*show -t @2 config desks.count*
+	*show -f config config*
+	*show -a -f config binding*
+
+	The config form of *show config* is built from the successful persistent
+	commands seen while loading the configuration and from later configuration
+	changes made through *moocow*(1). This includes settings, decorations,
+	bindings, menus, rules, icon placement and startup *exec* commands without
+	relying on a separate list of setting names. Per-window commands fired by
+	rules are session state and are not included.
+
+	*moocow*(1) prints this form without a JSON envelope, so it can be written
+	directly:
+
+	```
+	moocow show -f config config > cow.generated.conf
+	```
 
 ## quit [-r]
 
@@ -994,11 +1089,6 @@ which does not exist.
 ```
 keyboard-layout 'English (UK)'
 ```
-
-## list-commands
-
-Return a JSON array of all registered commands, each with _name_ and _usage_
-fields.
 
 ## nop
 
@@ -1089,15 +1179,12 @@ These are listed below:
 
 The following details commands which operate on windows directly.
 
-## winops [-Icilrs] [-C on|off|toggle] [-L layer] [-t target]
+## winops [-cilrs] [-C on|off|toggle] [-L layer] [-t target]
 
 Operate on a window.
 
 *-t* _target_
 	Target window (see *COMMAND REFERENCING*). Defaults to the focused window.
-
-*-I*
-	Identify the window; returns a JSON object with geometry and state.
 
 *-c*
 	Close the window.
@@ -1358,7 +1445,7 @@ it.
 
 *-F* _expr_
 	Only include windows matching the DSL expression.  *self* is bound to each
-	candidate window, as with *show -F* and *focus -F*.
+	candidate window, as with *show -a -F* and *focus -F*.
 
 *-f* _format_
 	Format each window label.  The following conversions are supported:

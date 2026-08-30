@@ -88,7 +88,7 @@ By default only the current output's desk is rearranged.
 
 	- *%*_app\_id_  -- exact match against the window's _app\_id_.
 	- *#*_id_       -- exact match against the river window _id_
-	  (the value reported as "id" by *moocow show windows*).
+	  (the value reported as "id" by *moocow show -a window*).
 	- */*_text_*/*  -- title substring match.  Trailing _/_ optional;
 	  */foo* and */foo/* behave identically.
 

@@ -192,11 +192,21 @@ are registered when an operation creates work which River must apply.  Keeping
 that distinction at mutation sites makes propagation part of the state change
 rather than an easily missed responsibility of its caller.
 
-An incoming `manage_start` satisfies any manage request queued before that
-sequence began.  If processing the sequence creates more manage work, that new
-request remains pending and the event-loop drain asks River for a follow-up
-sequence.  A compositor-initiated manage sequence is handled the same way even
-when CoW has no outstanding request.
+## State Queries
+
+The `show` command is the single command-socket interface for inspecting CoW
+state.  This includes quering windows, showing menu settings, bindings, etc.
+
+Commands which change reusable configuration are marked as persistent in their
+command-table entry. After successful execution their canonical command text is
+recorded in `cow_config`.  The command `show config` outputs this.
+
+The query implementation and in-process script iterators share the canonical
+record builders in `state-snapshot.c`. This keeps fields such as window
+geometry, output page state, and rule metadata identical between JSON queries
+and expressions such as `for w in (windows)`. `state-value.c` supplies the
+neutral typed representation used by both the expression evaluator and JSON
+serialization; it is not tied to either interface.
 
 ## Manage And Render Sequences
 
