@@ -1,5 +1,12 @@
-systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP
-dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=river
-systemctl --user restart xdg-desktop-portal
+#!/bin/sh
+
+set -eu
+
+: ${XDG_CURRENT_DESKTOP:=river}
+
+export XDG_CURRENT_DESKTOP
+
+# Put here things which should happen before river runs CoW.
+# This might include things such as xdg-portal activation, etc.
 
 cow-start
