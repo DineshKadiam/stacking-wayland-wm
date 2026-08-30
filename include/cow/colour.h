@@ -17,6 +17,7 @@
 #define COW_COLOUR_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 void cow_colour_convert(float *, uint32_t);
@@ -41,6 +42,9 @@ uint32_t cow_colour_to_pixel(const float *);
  * Returns true on success.
  */
 bool cow_colour_parse(const char *, float *);
+
+/* Format straight RGBA components as 0xRRGGBB or 0xRRGGBBAA. */
+void cow_colour_format(char *, size_t, const float *);
 
 enum cow_gradient_mode {
 	COW_GRADIENT_NONE,

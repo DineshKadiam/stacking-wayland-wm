@@ -28,12 +28,12 @@
 #include "cow/view.h"
 
 #include "dsl-ast.h"
-#include "dsl-sources.h"
-#include "dsl-value.h"
+#include "state-snapshot.h"
+#include "state-value.h"
 
 struct dsl_env_entry {
 	char		 *name;
-	struct dsl_value *value;
+	struct state_value *value;
 };
 
 struct dsl_env {
@@ -73,20 +73,20 @@ env_free(struct dsl_env *e)
 {
 	for (size_t i = 0; i < e->n; i++) {
 		xfree(e->entries[i].name);
-		dsl_value_unref(e->entries[i].value);
+		state_value_unref(e->entries[i].value);
 	}
 	xfree(e->entries);
 	xfree(e);
 }
 
 static void
-env_set(struct dsl_env *e, const char *name, struct dsl_value *v)
+env_set(struct dsl_env *e, const char *name, struct state_value *v)
 {
 	for (size_t i = 0; i < e->n; i++) {
 		if (strcmp(e->entries[i].name, name) != 0)
 			continue;
-		dsl_value_unref(e->entries[i].value);
-		e->entries[i].value = dsl_value_ref(v);
+		state_value_unref(e->entries[i].value);
+		e->entries[i].value = state_value_ref(v);
 		return;
 	}
 
@@ -95,12 +95,12 @@ env_set(struct dsl_env *e, const char *name, struct dsl_value *v)
 		e->entries = xrealloc(e->entries, e->cap, sizeof(*e->entries));
 	}
 	e->entries[e->n].name  = xstrdup(name);
-	e->entries[e->n].value = dsl_value_ref(v);
+	e->entries[e->n].value = state_value_ref(v);
 	e->n++;
 }
 
 /* Borrowed lookup; NULL if not found. */
-static struct dsl_value *
+static struct state_value *
 env_get(const struct dsl_env *e, const char *name)
 {
 	for (; e != NULL; e = e->parent) {
@@ -134,40 +134,56 @@ fail_at(struct dsl_eval_ctx *ctx, int line, int col, const char *fmt, ...)
 	ctx->err->message = xstrdup(buf);
 }
 
-static struct dsl_value *eval_expr(struct dsl_eval_ctx *, struct dsl_env *,
+static struct state_value *eval_expr(struct dsl_eval_ctx *, struct dsl_env *,
     struct dsl_node *);
 
+static enum state_source
+state_source_from_dsl(enum dsl_source source)
+{
+	switch (source) {
+	case DSL_SRC_WINDOWS:
+		return (STATE_SRC_WINDOWS);
+	case DSL_SRC_DESKS:
+		return (STATE_SRC_DESKS);
+	case DSL_SRC_OUTPUTS:
+		return (STATE_SRC_OUTPUTS);
+	case DSL_SRC_RULES:
+		return (STATE_SRC_RULES);
+	}
+	return (STATE_SRC_WINDOWS);
+}
+
 /* Evaluate a dotted path and return a fresh reference. */
-static struct dsl_value *
+static struct state_value *
 eval_path(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 {
 	if (n->u.path.n == 0)
 		return (NULL);
 
-	struct dsl_value *cur = env_get(env, n->u.path.parts[0]);
+	struct state_value *cur = env_get(env, n->u.path.parts[0]);
 	if (cur == NULL) {
 		fail_at(ctx, n->line, n->col, "unknown name '%s'",
 		    n->u.path.parts[0]);
 		return (NULL);
 	}
-	dsl_value_ref(cur);
+	state_value_ref(cur);
 
 	for (size_t i = 1; i < n->u.path.n; i++) {
-		if (cur->type != DSL_V_RECORD) {
+		if (cur->type != STATE_V_RECORD) {
 			fail_at(ctx, n->line, n->col,
 			    "field access on non-record: '%s.%s'",
 			    n->u.path.parts[0], n->u.path.parts[i]);
-			dsl_value_unref(cur);
+			state_value_unref(cur);
 			return (NULL);
 		}
-		struct dsl_value *field = dsl_record_get(cur,
+		struct state_value *field = state_record_get(cur,
 		    n->u.path.parts[i]);
 		if (field == NULL) {
-			dsl_value_unref(cur);
-			return (dsl_value_nil());
+			state_value_unref(cur);
+			return (state_value_nil());
 		}
-		dsl_value_ref(field);
-		dsl_value_unref(cur);
+		state_value_ref(field);
+		state_value_unref(cur);
 		cur = field;
 	}
 	return (cur);
@@ -175,8 +191,8 @@ eval_path(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 
 /* Typed comparison. */
 static bool
-compare(struct dsl_eval_ctx *ctx, struct dsl_node *n, struct dsl_value *lhs,
-    struct dsl_value *rhs, bool *out)
+compare(struct dsl_eval_ctx *ctx, struct dsl_node *n, struct state_value *lhs,
+    struct state_value *rhs, bool *out)
 {
 	if (lhs->type != rhs->type) {
 		fail_at(ctx, n->line, n->col,
@@ -186,7 +202,7 @@ compare(struct dsl_eval_ctx *ctx, struct dsl_node *n, struct dsl_value *lhs,
 
 	enum dsl_cmp_op op = n->u.cmp.op;
 	if (op == DSL_CMP_MATCH || op == DSL_CMP_NOT_MATCH) {
-		if (lhs->type != DSL_V_STRING) {
+		if (lhs->type != STATE_V_STRING) {
 			fail_at(ctx, n->line, n->col,
 			    "'matches' requires string operands");
 			return (false);
@@ -197,7 +213,7 @@ compare(struct dsl_eval_ctx *ctx, struct dsl_node *n, struct dsl_value *lhs,
 		return (true);
 	}
 
-	if (lhs->type == DSL_V_NUMBER) {
+	if (lhs->type == STATE_V_NUMBER) {
 		double a = lhs->u.n, b = rhs->u.n;
 		switch (op) {
 		case DSL_CMP_EQ:
@@ -224,7 +240,7 @@ compare(struct dsl_eval_ctx *ctx, struct dsl_node *n, struct dsl_value *lhs,
 		}
 		return (true);
 	}
-	if (lhs->type == DSL_V_STRING) {
+	if (lhs->type == STATE_V_STRING) {
 		int c = strcmp(lhs->u.s ? lhs->u.s : "",
 		    rhs->u.s ? rhs->u.s : "");
 		switch (op) {
@@ -252,7 +268,7 @@ compare(struct dsl_eval_ctx *ctx, struct dsl_node *n, struct dsl_value *lhs,
 		}
 		return (true);
 	}
-	if (lhs->type == DSL_V_BOOL) {
+	if (lhs->type == STATE_V_BOOL) {
 		if (op != DSL_CMP_EQ && op != DSL_CMP_NE) {
 			fail_at(ctx, n->line, n->col,
 			    "ordering comparison on bool");
@@ -262,7 +278,7 @@ compare(struct dsl_eval_ctx *ctx, struct dsl_node *n, struct dsl_value *lhs,
 					    (lhs->u.b != rhs->u.b);
 		return (true);
 	}
-	if (lhs->type == DSL_V_NIL) {
+	if (lhs->type == STATE_V_NIL) {
 		if (op != DSL_CMP_EQ && op != DSL_CMP_NE) {
 			fail_at(ctx, n->line, n->col,
 			    "ordering comparison on nil");
@@ -276,23 +292,23 @@ compare(struct dsl_eval_ctx *ctx, struct dsl_node *n, struct dsl_value *lhs,
 }
 
 static bool
-value_equal(const struct dsl_value *a, const struct dsl_value *b)
+value_equal(const struct state_value *a, const struct state_value *b)
 {
 	if (a->type != b->type)
 		return (false);
 
 	switch (a->type) {
-	case DSL_V_NIL:
+	case STATE_V_NIL:
 		return (true);
-	case DSL_V_BOOL:
+	case STATE_V_BOOL:
 		return (a->u.b == b->u.b);
-	case DSL_V_NUMBER:
+	case STATE_V_NUMBER:
 		return (a->u.n == b->u.n);
-	case DSL_V_STRING:
+	case STATE_V_STRING:
 		return (strcmp(a->u.s ? a->u.s : "", b->u.s ? b->u.s : "")
 		    == 0);
-	case DSL_V_LIST:
-	case DSL_V_RECORD:
+	case STATE_V_LIST:
+	case STATE_V_RECORD:
 		return (false);
 	}
 	return (false);
@@ -300,9 +316,9 @@ value_equal(const struct dsl_value *a, const struct dsl_value *b)
 
 static bool
 membership(struct dsl_eval_ctx *ctx, struct dsl_node *n,
-    struct dsl_value *lhs, struct dsl_value *rhs, bool *out)
+    struct state_value *lhs, struct state_value *rhs, bool *out)
 {
-	if (rhs->type != DSL_V_LIST) {
+	if (rhs->type != STATE_V_LIST) {
 		fail_at(ctx, n->line, n->col,
 		    "right side of 'in' must be a list");
 		return (false);
@@ -320,7 +336,7 @@ membership(struct dsl_eval_ctx *ctx, struct dsl_node *n,
 	return (true);
 }
 
-static struct dsl_value *
+static struct state_value *
 eval_expr(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 {
 	if (ctx->failed || n == NULL)
@@ -328,98 +344,98 @@ eval_expr(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 
 	switch (n->kind) {
 	case DSL_N_NUM:
-		return (dsl_value_number(n->u.num.n));
+		return (state_value_number(n->u.num.n));
 	case DSL_N_STR:
-		return (dsl_value_string(n->u.str.s));
+		return (state_value_string(n->u.str.s));
 	case DSL_N_BOOL:
-		return (dsl_value_bool(n->u.boolean.b));
+		return (state_value_bool(n->u.boolean.b));
 	case DSL_N_NIL:
-		return (dsl_value_nil());
+		return (state_value_nil());
 	case DSL_N_PATH:
 		return (eval_path(ctx, env, n));
 	case DSL_N_LIST: {
-		struct dsl_value *list = dsl_value_list();
+		struct state_value *list = state_value_list();
 		for (size_t i = 0; i < n->u.list.n; i++) {
-			struct dsl_value *item = eval_expr(ctx, env,
+			struct state_value *item = eval_expr(ctx, env,
 			    n->u.list.items[i]);
 			if (item == NULL) {
-				dsl_value_unref(list);
+				state_value_unref(list);
 				return (NULL);
 			}
-			dsl_list_append(list, item);
-			dsl_value_unref(item);
+			state_list_append(list, item);
+			state_value_unref(item);
 		}
 		return (list);
 	}
 	case DSL_N_NOT: {
-		struct dsl_value *e = eval_expr(ctx, env, n->u.unop.e);
+		struct state_value *e = eval_expr(ctx, env, n->u.unop.e);
 		if (e == NULL)
 			return (NULL);
-		struct dsl_value *r = dsl_value_bool(!dsl_value_truthy(e));
-		dsl_value_unref(e);
+		struct state_value *r = state_value_bool(!state_value_truthy(e));
+		state_value_unref(e);
 		return (r);
 	}
 	case DSL_N_AND: {
-		struct dsl_value *l = eval_expr(ctx, env, n->u.binop.lhs);
+		struct state_value *l = eval_expr(ctx, env, n->u.binop.lhs);
 		if (l == NULL)
 			return (NULL);
-		if (!dsl_value_truthy(l)) {
-			dsl_value_unref(l);
-			return (dsl_value_bool(false));
+		if (!state_value_truthy(l)) {
+			state_value_unref(l);
+			return (state_value_bool(false));
 		}
-		dsl_value_unref(l);
-		struct dsl_value *r = eval_expr(ctx, env, n->u.binop.rhs);
+		state_value_unref(l);
+		struct state_value *r = eval_expr(ctx, env, n->u.binop.rhs);
 		if (r == NULL)
 			return (NULL);
-		bool rv = dsl_value_truthy(r);
-		dsl_value_unref(r);
-		return (dsl_value_bool(rv));
+		bool rv = state_value_truthy(r);
+		state_value_unref(r);
+		return (state_value_bool(rv));
 	}
 	case DSL_N_OR: {
-		struct dsl_value *l = eval_expr(ctx, env, n->u.binop.lhs);
+		struct state_value *l = eval_expr(ctx, env, n->u.binop.lhs);
 		if (l == NULL)
 			return (NULL);
-		if (dsl_value_truthy(l)) {
-			dsl_value_unref(l);
-			return (dsl_value_bool(true));
+		if (state_value_truthy(l)) {
+			state_value_unref(l);
+			return (state_value_bool(true));
 		}
-		dsl_value_unref(l);
-		struct dsl_value *r = eval_expr(ctx, env, n->u.binop.rhs);
+		state_value_unref(l);
+		struct state_value *r = eval_expr(ctx, env, n->u.binop.rhs);
 		if (r == NULL)
 			return (NULL);
-		bool rv = dsl_value_truthy(r);
-		dsl_value_unref(r);
-		return (dsl_value_bool(rv));
+		bool rv = state_value_truthy(r);
+		state_value_unref(r);
+		return (state_value_bool(rv));
 	}
 	case DSL_N_CMP: {
-		struct dsl_value *l = eval_expr(ctx, env, n->u.cmp.lhs);
+		struct state_value *l = eval_expr(ctx, env, n->u.cmp.lhs);
 		if (l == NULL)
 			return (NULL);
-		struct dsl_value *r = eval_expr(ctx, env, n->u.cmp.rhs);
+		struct state_value *r = eval_expr(ctx, env, n->u.cmp.rhs);
 		if (r == NULL) {
-			dsl_value_unref(l);
+			state_value_unref(l);
 			return (NULL);
 		}
 		bool result = false;
 		bool ok	    = compare(ctx, n, l, r, &result);
-		dsl_value_unref(l);
-		dsl_value_unref(r);
-		return (ok ? dsl_value_bool(result) : NULL);
+		state_value_unref(l);
+		state_value_unref(r);
+		return (ok ? state_value_bool(result) : NULL);
 	}
 	case DSL_N_IN: {
-		struct dsl_value *l = eval_expr(ctx, env, n->u.in.lhs);
+		struct state_value *l = eval_expr(ctx, env, n->u.in.lhs);
 		if (l == NULL)
 			return (NULL);
-		struct dsl_value *r = eval_expr(ctx, env, n->u.in.rhs);
+		struct state_value *r = eval_expr(ctx, env, n->u.in.rhs);
 		if (r == NULL) {
-			dsl_value_unref(l);
+			state_value_unref(l);
 			return (NULL);
 		}
 		bool result = false;
 		bool ok	    = membership(ctx, n, l, r, &result);
-		dsl_value_unref(l);
-		dsl_value_unref(r);
-		return (ok ? dsl_value_bool(result) : NULL);
+		state_value_unref(l);
+		state_value_unref(r);
+		return (ok ? state_value_bool(result) : NULL);
 	}
 	default:
 		fail_at(ctx, n->line, n->col, "not an expression");
@@ -466,14 +482,14 @@ enqueue_command(struct dsl_eval_ctx *ctx, struct dsl_env *env,
 				s      = p->u.raw;
 				free_s = false;
 			} else {
-				struct dsl_value *v = eval_expr(ctx, env,
+				struct state_value *v = eval_expr(ctx, env,
 				    p->u.interp);
 				if (v == NULL) {
 					xfree(buf);
 					goto fail;
 				}
-				s = dsl_value_to_argv_string(v);
-				dsl_value_unref(v);
+				s = state_value_to_argv_string(v);
+				state_value_unref(v);
 				if (s == NULL) {
 					fail_at(ctx, cmd_node->line,
 					    cmd_node->col,
@@ -551,19 +567,19 @@ exec_stmt(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 
 	switch (n->kind) {
 	case DSL_N_LET: {
-		struct dsl_value *v = eval_expr(ctx, env, n->u.let.value);
+		struct state_value *v = eval_expr(ctx, env, n->u.let.value);
 		if (v == NULL)
 			return;
 		env_set(env, n->u.let.name, v);
-		dsl_value_unref(v);
+		state_value_unref(v);
 		return;
 	}
 	case DSL_N_IF: {
-		struct dsl_value *c = eval_expr(ctx, env, n->u.ifstmt.cond);
+		struct state_value *c = eval_expr(ctx, env, n->u.ifstmt.cond);
 		if (c == NULL)
 			return;
-		bool t = dsl_value_truthy(c);
-		dsl_value_unref(c);
+		bool t = state_value_truthy(c);
+		state_value_unref(c);
 
 		if (t) {
 			exec_block(ctx, env, n->u.ifstmt.body);
@@ -577,24 +593,25 @@ exec_stmt(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 		return;
 	}
 	case DSL_N_FOR: {
-		struct dsl_value *list = dsl_source_snapshot(n->u.forstmt.src);
+		struct state_value *list = state_snapshot_collection(
+		    state_source_from_dsl(n->u.forstmt.src));
 		if (list == NULL)
 			return;
 		const char *saved_target = ctx->implicit_target_id;
 		for (size_t i = 0; i < list->u.list.n; i++) {
-			struct dsl_value *item = list->u.list.items[i];
+			struct state_value *item = list->u.list.items[i];
 			struct dsl_env	 *sub  = env_new(env);
 			env_set(sub, n->u.forstmt.var, item);
 
 			if (n->u.forstmt.where != NULL) {
-				struct dsl_value *w = eval_expr(ctx, sub,
+				struct state_value *w = eval_expr(ctx, sub,
 				    n->u.forstmt.where);
 				if (w == NULL) {
 					env_free(sub);
 					break;
 				}
-				bool keep = dsl_value_truthy(w);
-				dsl_value_unref(w);
+				bool keep = state_value_truthy(w);
+				state_value_unref(w);
 				if (!keep) {
 					env_free(sub);
 					continue;
@@ -603,10 +620,10 @@ exec_stmt(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 
 			/* Window iteration gets an implicit -t target. */
 			if (n->u.forstmt.src == DSL_SRC_WINDOWS &&
-			    item->type == DSL_V_RECORD) {
-				struct dsl_value *idv = dsl_record_get(item,
+			    item->type == STATE_V_RECORD) {
+				struct state_value *idv = state_record_get(item,
 				    "id");
-				if (idv != NULL && idv->type == DSL_V_STRING &&
+				if (idv != NULL && idv->type == STATE_V_STRING &&
 				    idv->u.s != NULL && idv->u.s[0] != '\0')
 					ctx->implicit_target_id = idv->u.s;
 				else
@@ -629,7 +646,7 @@ exec_stmt(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 			}
 		}
 		ctx->implicit_target_id = saved_target;
-		dsl_value_unref(list);
+		state_value_unref(list);
 		return;
 	}
 	case DSL_N_BREAK:
@@ -688,10 +705,10 @@ dsl_eval(struct dsl_ast *ast, struct cmd_q *cmdq, struct dsl_error *err)
 
 	struct dsl_env *env = env_new(NULL);
 	if (cmdq != NULL && cmdq->default_target.window != NULL) {
-		struct dsl_value *self =
-		    dsl_snapshot_view(cmdq->default_target.window);
+		struct state_value *self =
+		    state_snapshot_view(cmdq->default_target.window);
 		env_set(env, "self", self);
-		dsl_value_unref(self);
+		state_value_unref(self);
 	}
 	exec_block(&ctx, env, ast->root);
 	env_free(env);
@@ -700,7 +717,7 @@ dsl_eval(struct dsl_ast *ast, struct cmd_q *cmdq, struct dsl_error *err)
 }
 
 bool
-dsl_eval_view_expr(struct dsl_ast *ast, const struct cow_view *view,
+dsl_eval_record_expr(struct dsl_ast *ast, const struct state_value *record,
     bool *out, struct dsl_error *err)
 {
 	if (out == NULL)
@@ -713,19 +730,26 @@ dsl_eval_view_expr(struct dsl_ast *ast, const struct cow_view *view,
 	ctx.err			= err;
 
 	struct dsl_env *env = env_new(NULL);
-	if (view != NULL) {
-		struct dsl_value *self = dsl_snapshot_view(view);
-		env_set(env, "self", self);
-		dsl_value_unref(self);
-	}
+	if (record != NULL)
+		env_set(env, "self", (struct state_value *)record);
 
-	struct dsl_value *v = eval_expr(&ctx, env, ast->root);
+	struct state_value *v = eval_expr(&ctx, env, ast->root);
 	bool ok = v != NULL;
 	if (v != NULL) {
-		*out = dsl_value_truthy(v);
-		dsl_value_unref(v);
+		*out = state_value_truthy(v);
+		state_value_unref(v);
 	}
 	env_free(env);
 
 	return (!ctx.failed && ok);
+}
+
+bool
+dsl_eval_view_expr(struct dsl_ast *ast, const struct cow_view *view,
+    bool *out, struct dsl_error *err)
+{
+	struct state_value *record = state_snapshot_view(view);
+	bool ok = dsl_eval_record_expr(ast, record, out, err);
+	state_value_unref(record);
+	return (ok);
 }

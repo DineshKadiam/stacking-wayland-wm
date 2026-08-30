@@ -38,7 +38,7 @@ struct cmd_entry cmd_icon_placement_entry = {
 	"icon-placement [-o OUTPUT] box full|GEOMETRY | fill DIR DIR | "
 	"grid X Y | compact BOOL | reset",
 	cmd_icon_placement_exec,
-	0,
+	CMD_CONFIG,
 };
 
 static void

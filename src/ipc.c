@@ -167,6 +167,21 @@ cow_ipc_respond_data(int fd, cJSON *data)
 	cJSON_Delete(root);
 }
 
+void
+cow_ipc_respond_formatted(int fd, const char *format, const char *data)
+{
+	if (fd < 0)
+		return;
+	cJSON *root = cJSON_CreateObject();
+	cJSON_AddBoolToObject(root, "ok", 1);
+	cJSON_AddStringToObject(root, "format", format);
+	cJSON_AddStringToObject(root, "data", data);
+	char *s = cJSON_PrintUnformatted(root);
+	cow_ipc_respond(fd, s);
+	cJSON_free(s);
+	cJSON_Delete(root);
+}
+
 bool
 cow_ipc_dispatch(const char *line, int client_fd)
 {

@@ -24,6 +24,9 @@
 #include "cow/memory.h"
 #include "cow/view.h"
 
+#include "decor-profile.h"
+#include "state-value.h"
+
 struct decor_entry {
 	char	       *key;
 	char	       *value;
@@ -56,7 +59,7 @@ struct cmd_entry cmd_decor_entry = {
 	"decor -d name key value\n"
 	"decor -a name [-t target]",
 	cmd_decor_exec,
-	0,
+	CMD_CONFIG,
 };
 
 static void
@@ -94,6 +97,56 @@ decor_profile_get(const char *name)
 	wl_list_init(&profile->entries);
 	wl_list_insert(decor_profiles.prev, &profile->link);
 	return profile;
+}
+
+static struct state_value *
+decor_profile_snapshot(const struct decor_profile *profile)
+{
+	struct state_value *record = state_value_record();
+	struct state_value *name = state_value_string(profile->name);
+	struct state_value *active = state_value_bool(
+	    runtime_active_profile != NULL &&
+	    strcmp(runtime_active_profile, profile->name) == 0);
+	struct state_value *settings = state_value_record();
+
+	state_record_set(record, "name", name);
+	state_record_set(record, "active", active);
+	struct decor_entry *entry;
+	wl_list_for_each(entry, &profile->entries, link)
+	{
+		struct state_value *value = state_value_string(entry->value);
+		state_record_set(settings, entry->key, value);
+		state_value_unref(value);
+	}
+	state_record_set(record, "settings", settings);
+	state_value_unref(settings);
+	state_value_unref(active);
+	state_value_unref(name);
+	return (record);
+}
+
+struct state_value *
+cow_decor_snapshot_all(void)
+{
+	struct state_value *list = state_value_list();
+	struct decor_profile *profile;
+
+	decor_ensure_init();
+	wl_list_for_each(profile, &decor_profiles, link)
+	{
+		struct state_value *record = decor_profile_snapshot(profile);
+		state_list_append(list, record);
+		state_value_unref(record);
+	}
+	return (list);
+}
+
+struct state_value *
+cow_decor_snapshot_named(const char *name)
+{
+	struct decor_profile *profile = decor_find(name);
+
+	return (profile != NULL ? decor_profile_snapshot(profile) : NULL);
 }
 
 void

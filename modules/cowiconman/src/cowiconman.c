@@ -1764,7 +1764,7 @@ parse_status(const char *json)
 static void
 fetch_windows(void)
 {
-	char	     *resp = ipc_query("show windows");
+	char	     *resp = ipc_query("show -a window");
 	cJSON	     *root, *data, *w;
 	static struct win wins[MAX_WINS];
 	char	     new_self_id[MAX_NAME] = "";

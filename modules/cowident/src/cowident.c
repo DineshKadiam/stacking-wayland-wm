@@ -196,7 +196,7 @@ get_jbool(cJSON *obj, const char *key)
 static void
 fetch_font(void)
 {
-	char *resp = ipc_query("show config.font");
+	char *resp = ipc_query("show config titlebar.font");
 	if (!resp)
 		return;
 
@@ -219,9 +219,9 @@ static void
 fetch_views(void)
 {
 	free_views();
-	char *resp = ipc_query("show windows");
+	char *resp = ipc_query("show -a window");
 	if (!resp) {
-		fprintf(stderr, "cowident: no response to 'show windows'\n");
+		fprintf(stderr, "cowident: no response to 'show -a window'\n");
 		return;
 	}
 
@@ -342,7 +342,7 @@ hit_test(int gx, int gy)
 	 * Return the topmost window at (gx, gy).  Topmost = the matching
 	 * view with the highest raise_seq.  cow increments raise_seq
 	 * every time a view is raised to top, so this correctly reflects
-	 * stacking order regardless of the order 'show windows' returns
+	 * stacking order regardless of the order 'show -a window' returns
 	 * views in.
 	 */
 	int	 best	 = -1;

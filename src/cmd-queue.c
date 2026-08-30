@@ -25,7 +25,10 @@
 #include <time.h>
 
 #include "cow/cmd.h"
+#include "cow/config.h"
+#include "cow/ipc.h"
 #include "cow/log.h"
+#include "cow/memory.h"
 #include "cow/output.h"
 
 static long long
@@ -227,6 +230,23 @@ cmdq_continue(struct cmd_q *cmdq)
 
 			if (retval == CMD_RETURN_ERROR)
 				break;
+			bool save_config =
+			    (cmdq->cmd->entry->flags & CMD_CONFIG) != 0 ||
+			    (cow_ipc.startup_mode &&
+				(cmdq->cmd->entry->flags & CMD_CONFIG_STARTUP) != 0);
+			/* Applying a decor profile to one window is session state;
+			 * definitions and other persistent commands remain global
+			 * even when issued by a window-bearing rule.
+			 */
+			bool session_only = cmdq->target.window != NULL &&
+			    cmdq->cmd->entry == &cmd_decor_entry &&
+			    args_has(cmdq->cmd->args, 'a');
+			if (save_config && cow_config != NULL &&
+			    !session_only) {
+				char *saved = cmd_to_config(cmdq->cmd);
+				cow_config_command_add(cow_config, saved);
+				xfree(saved);
+			}
 
 			cmdq->cmd = TAILQ_NEXT(cmdq->cmd, qentry);
 		}

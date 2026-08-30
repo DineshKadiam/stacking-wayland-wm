@@ -13,17 +13,6 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-/*
- * Command: show -- query window manager state.
- *
- * usage: show windows
- *        show desk
- *        show output
- *        show rules
- *        show keyboard-layout
- *        show config KEY
- *        show config.KEY
- */
 
 #include <cJSON.h>
 #include <string.h>
@@ -33,304 +22,439 @@
 #include "cow/config.h"
 #include "cow/ipc.h"
 #include "cow/keyboard_layout.h"
+#include "cow/menu.h"
 #include "cow/output.h"
 #include "cow/rule.h"
-#include "cow/status.h"
-#include "cow/titlebar.h"
-#include "cow/view.h"
 #include "cow/wm.h"
 
+#include "decor-profile.h"
+#include "config-serialize.h"
+#include "state-snapshot.h"
+#include "state-value.h"
+
+#include "river-window-management-v1-client-protocol.h"
+
 static enum cmd_retval cmd_show_exec(struct cmd *, struct cmd_q *);
-static enum cmd_retval do_show_windows(int, struct cmd_filter *,
+static enum cmd_retval show_collection(enum state_source, const char *,
+    const char *, struct cmd_q *);
+static enum cmd_retval show_record(const char *, struct state_value *,
+    const char *, struct cmd_q *);
+static enum cmd_retval do_show_config(const char *, const char *,
     struct cmd_q *);
-static void	       do_show_desk(int fd);
-static void	       do_show_output(int fd);
-static void	       do_show_rules(int fd);
-static void	       do_show_keyboard_layout(int fd);
-static void	       do_show_config(const char *ckey, int fd, struct cmd_q *);
+static cJSON	      *show_config_value(const char *, struct cmd_q *);
+static cJSON	      *show_config_object(struct cmd_q *);
+static void	       json_add_snapshot(cJSON *, const char *,
+    struct state_value *);
+static void	       json_add_config_command(const char *, void *);
+
+static const char *show_config_keys[] = {
+	"border.width",
+	"step",
+	"border.corner_length",
+	"reserved.top",
+	"reserved.bottom",
+	"reserved.left",
+	"reserved.right",
+	"output.colour.background",
+	"output.image.background",
+	"snap_distance",
+	"border.style",
+	"desktop-configuration",
+	"desktop_size",
+	"focus",
+	"geometry_window",
+	"clamp_mode",
+	"placement",
+	"page_visibility",
+	"page_scroll_animate",
+	"page_scroll_ms",
+	"edge_scroll",
+	"edge_scroll_delay_ms",
+	"edge_scroll_modifiers",
+	"titlebar.font",
+	"title_format",
+	"cursor.theme",
+	"cursor.size",
+	"cursor.hide_timeout",
+	"repeat_delay_ms",
+	"repeat_interval_ms",
+	"menu.repeat_keys",
+	"raise_on_focus",
+	"preserve_desk_on_output_loss",
+	"max_layer",
+	"default_layer",
+	"desks.count",
+	NULL,
+};
 
 struct cmd_entry cmd_show_entry = {
 	"show",
-	"F:",
+	"aF:f:t:",
 	1,
 	2,
-	"show [-F expr] topic",
+	"show [-f json|config] [-t target] TOPIC [name] | "
+	"show -a [-f json|config] [-F expr] TOPIC",
 	cmd_show_exec,
 	0,
 };
 
+static bool
+state_topic(const char *topic, enum state_source *source)
+{
+	if (strcmp(topic, "window") == 0)
+		*source = STATE_SRC_WINDOWS;
+	else if (strcmp(topic, "output") == 0)
+		*source = STATE_SRC_OUTPUTS;
+	else if (strcmp(topic, "desk") == 0)
+		*source = STATE_SRC_DESKS;
+	else if (strcmp(topic, "rule") == 0)
+		*source = STATE_SRC_RULES;
+	else if (strcmp(topic, "decor") == 0)
+		*source = STATE_SRC_DECOR;
+	else if (strcmp(topic, "menu") == 0)
+		*source = STATE_SRC_MENUS;
+	else if (strcmp(topic, "binding") == 0)
+		*source = STATE_SRC_BINDINGS;
+	else if (strcmp(topic, "command") == 0)
+		*source = STATE_SRC_COMMANDS;
+	else
+		return (false);
+	return (true);
+}
+
 static enum cmd_retval
 cmd_show_exec(struct cmd *self, struct cmd_q *cmdq)
 {
-	struct args *args  = self->args;
-	int	     fd	   = cmdq->client_fd;
+	struct args *args = self->args;
 	const char  *topic = args->argv[0];
-	const char  *filter_val = args_get(args, 'F');
-	struct cmd_filter filter;
+	const char  *filter_expr = args_get(args, 'F');
+	const char  *format = args_get(args, 'f');
+	bool	     all = args_has(args, 'a');
+	bool	     has_target = args_has(args, 't');
+	enum state_source source;
 
-	if (filter_val != NULL && strcmp(topic, "windows") != 0) {
-		cmdq_error(cmdq, "show: -F is only valid with windows");
+	if (format == NULL)
+		format = "json";
+	if (strcmp(format, "json") != 0 && strcmp(format, "config") != 0) {
+		cmdq_error(cmdq, "show: unknown format: %s", format);
 		return (CMD_RETURN_ERROR);
 	}
-	if (!cmd_filter_parse(&filter, cmdq, "show", "-F", filter_val))
-		return (CMD_RETURN_ERROR);
 
-	if (strcmp(topic, "windows") == 0) {
-		enum cmd_retval r = do_show_windows(fd, &filter, cmdq);
-		cmd_filter_free(&filter);
-		return (r);
+	if (all) {
+		if (!state_topic(topic, &source)) {
+			cmdq_error(cmdq, "show: -a is not valid with %s", topic);
+			return (CMD_RETURN_ERROR);
+		}
+		if (has_target) {
+			cmdq_error(cmdq, "show: -t is not valid with -a");
+			return (CMD_RETURN_ERROR);
+		}
+		if (args->argc != 1) {
+			cmdq_error(cmdq, "show: -a %s takes no name", topic);
+			return (CMD_RETURN_ERROR);
+		}
+		return (show_collection(source, filter_expr, format, cmdq));
 	}
-	cmd_filter_free(&filter);
 
-	if (strcmp(topic, "desk") == 0) {
-		do_show_desk(fd);
-		return (CMD_RETURN_NORMAL);
+	if (filter_expr != NULL) {
+		cmdq_error(cmdq, "show: -F requires -a");
+		return (CMD_RETURN_ERROR);
+	}
+
+	if (strcmp(topic, "decor") == 0 && args->argc == 2) {
+		if (filter_expr != NULL || has_target) {
+			cmdq_error(cmdq,
+			    "show: -F and -t are not valid with named decor");
+			return (CMD_RETURN_ERROR);
+		}
+		struct state_value *profile =
+		    cow_decor_snapshot_named(args->argv[1]);
+		if (profile == NULL) {
+			cmdq_error(cmdq, "show: no decor profile named '%s'",
+			    args->argv[1]);
+			return (CMD_RETURN_ERROR);
+		}
+		return (show_record(topic, profile, format, cmdq));
+	}
+	if (strcmp(topic, "decor") == 0) {
+		cmdq_error(cmdq, "show: decor requires a name or -a");
+		return (CMD_RETURN_ERROR);
+	}
+
+	if (strcmp(topic, "window") == 0) {
+		if (args->argc != 1)
+			goto no_name;
+		struct cow_view *view = cmd_require_target_window(cmdq, "show");
+		if (view == NULL)
+			return (CMD_RETURN_ERROR);
+		return (show_record(topic, state_snapshot_view(view), format,
+		    cmdq));
 	}
 
 	if (strcmp(topic, "output") == 0) {
-		do_show_output(fd);
-		return (CMD_RETURN_NORMAL);
+		if (args->argc != 1)
+			goto no_name;
+		struct cow_output *output = cmd_ctx_target_output(cmdq);
+		if (output == NULL) {
+			cmdq_error(cmdq, "show: no target output");
+			return (CMD_RETURN_ERROR);
+		}
+		return (show_record(topic, state_snapshot_output(output), format,
+		    cmdq));
 	}
 
-	if (strcmp(topic, "rules") == 0) {
-		do_show_rules(fd);
-		return (CMD_RETURN_NORMAL);
+	if (strcmp(topic, "desk") == 0) {
+		if (args->argc != 1)
+			goto no_name;
+		struct cow_desk *desk = cmd_ctx_target_desk(cmdq);
+		if (desk == NULL) {
+			cmdq_error(cmdq, "show: no target desk");
+			return (CMD_RETURN_ERROR);
+		}
+		return (show_record(topic, state_snapshot_desk(desk), format,
+		    cmdq));
+	}
+
+	if (strcmp(topic, "rule") == 0) {
+		if (has_target) {
+			cmdq_error(cmdq, "show: -t is not valid with rule");
+			return (CMD_RETURN_ERROR);
+		}
+		if (args->argc != 2) {
+			cmdq_error(cmdq, "show: rule requires a name");
+			return (CMD_RETURN_ERROR);
+		}
+		struct cow_rule *rule = cow_rule_find_by_name(args->argv[1]);
+		if (rule == NULL) {
+			cmdq_error(cmdq, "show: no rule named '%s'",
+			    args->argv[1]);
+			return (CMD_RETURN_ERROR);
+		}
+		return (show_record(topic, state_snapshot_rule(rule), format,
+		    cmdq));
+	}
+
+	if (strcmp(topic, "menu") == 0) {
+		if (has_target) {
+			cmdq_error(cmdq, "show: -t is not valid with menu");
+			return (CMD_RETURN_ERROR);
+		}
+		if (args->argc != 2) {
+			cmdq_error(cmdq, "show: menu requires a name");
+			return (CMD_RETURN_ERROR);
+		}
+		struct cow_menu *menu = cow_menu_find(args->argv[1]);
+		if (menu == NULL) {
+			cmdq_error(cmdq, "show: no menu named '%s'",
+			    args->argv[1]);
+			return (CMD_RETURN_ERROR);
+		}
+		return (show_record(topic, state_snapshot_menu(menu), format,
+		    cmdq));
+	}
+
+	if (strcmp(topic, "binding") == 0) {
+		cmdq_error(cmdq, "show: binding requires -a");
+		return (CMD_RETURN_ERROR);
+	}
+
+	if (strcmp(topic, "command") == 0) {
+		if (has_target) {
+			cmdq_error(cmdq, "show: -t is not valid with command");
+			return (CMD_RETURN_ERROR);
+		}
+		if (args->argc != 2) {
+			cmdq_error(cmdq, "show: command requires a name");
+			return (CMD_RETURN_ERROR);
+		}
+		struct cmd_entry *entry = cmd_find_cmd(args->argv[1]);
+		if (entry == NULL) {
+			cmdq_error(cmdq, "show: no command named '%s'",
+			    args->argv[1]);
+			return (CMD_RETURN_ERROR);
+		}
+		struct state_value *record = state_value_record();
+		struct state_value *name = state_value_string(entry->name);
+		struct state_value *usage = state_value_string(entry->usage);
+		state_record_set(record, "name", name);
+		state_record_set(record, "usage", usage);
+		state_value_unref(name);
+		state_value_unref(usage);
+		return (show_record(topic, record, format, cmdq));
 	}
 
 	if (strcmp(topic, "keyboard-layout") == 0) {
-		do_show_keyboard_layout(fd);
+		if (has_target) {
+			cmdq_error(cmdq,
+			    "show: -t is not valid with keyboard-layout");
+			return (CMD_RETURN_ERROR);
+		}
+		if (args->argc != 1)
+			goto no_name;
+		if (strcmp(format, "config") == 0) {
+			cmdq_error(cmdq,
+			    "show: keyboard-layout has no config representation");
+			return (CMD_RETURN_ERROR);
+		}
+		cow_ipc_respond_data(cmdq->client_fd,
+		    cow_keyboard_layout_active_json());
 		return (CMD_RETURN_NORMAL);
 	}
 
-	const char *ckey = NULL;
-	if (strncmp(topic, "config.", 7) == 0)
-		ckey = topic + 7;
-	else if (strcmp(topic, "config") == 0 && args->argc >= 2)
-		ckey = args->argv[1];
-
-	if (ckey != NULL) {
-		do_show_config(ckey, fd, cmdq);
-		return (CMD_RETURN_NORMAL);
+	if (strcmp(topic, "config") == 0) {
+		return (do_show_config(args->argc == 2 ? args->argv[1] : NULL,
+		    format, cmdq));
 	}
 
-	cow_ipc_respond_error(fd, "show: unknown topic");
 	cmdq_error(cmdq, "show: unknown topic: %s", topic);
+	return (CMD_RETURN_ERROR);
+
+no_name:
+	cmdq_error(cmdq, "show: %s takes no name", topic);
 	return (CMD_RETURN_ERROR);
 }
 
 static enum cmd_retval
-do_show_windows(int fd, struct cmd_filter *filter, struct cmd_q *cmdq)
+show_collection(enum state_source source, const char *filter_expr,
+    const char *format, struct cmd_q *cmdq)
 {
-	cJSON		*arr = cJSON_CreateArray();
-	struct cow_view *view;
+	struct cmd_filter filter;
+	if (!cmd_filter_parse(&filter, cmdq, "show", "-F", filter_expr))
+		return (CMD_RETURN_ERROR);
 
-	wl_list_for_each(view, &cow_wm.views, wm_link)
-	{
-		if (view->closed)
-			continue;
+	struct state_value *all = state_snapshot_collection(source);
+	struct state_value *result = state_value_list();
+	for (size_t i = 0; i < all->u.list.n; i++) {
+		struct state_value *record = all->u.list.items[i];
 		bool matches = false;
-		if (!cmd_filter_view(filter, view, &matches)) {
-			cJSON_Delete(arr);
-			cmd_filter_finish(filter, cmdq);
+		if (!cmd_filter_record(&filter, record, &matches)) {
+			state_value_unref(result);
+			state_value_unref(all);
+			cmd_filter_finish(&filter, cmdq);
+			cmd_filter_free(&filter);
 			return (CMD_RETURN_ERROR);
 		}
-		if (!matches)
-			continue;
-		cJSON *w = cJSON_CreateObject();
-		cow_view_json_add_identity(w, view);
-		cow_view_json_add_placement(w, view);
-		cJSON_AddNumberToObject(w, "x", view->x);
-		cJSON_AddNumberToObject(w, "y", view->y);
-		cJSON_AddNumberToObject(w, "vx", view->vx);
-		cJSON_AddNumberToObject(w, "vy", view->vy);
-		cJSON_AddNumberToObject(w, "width", view->content_width);
-		cJSON_AddNumberToObject(w, "height", view->content_height);
-		cJSON_AddNumberToObject(w, "icon_x", view->icon_x);
-		cJSON_AddNumberToObject(w, "icon_y", view->icon_y);
-		cJSON_AddNumberToObject(w, "icon_vx",
-		    view->icon_x - (view->output ? view->output->x : 0) +
-		    (view->desk ? view->desk->page_vx : 0));
-		cJSON_AddNumberToObject(w, "icon_vy",
-		    view->icon_y - (view->output ? view->output->y : 0) +
-		    (view->desk ? view->desk->page_vy : 0));
-		cJSON_AddNumberToObject(w, "icon_width", view->icon_width);
-		cJSON_AddNumberToObject(w, "icon_height", view->icon_height);
-		cJSON_AddNumberToObject(w, "page_col",
-		    cow_view_page_col(view));
-		cJSON_AddNumberToObject(w, "page_row",
-		    cow_view_page_row(view));
-		cJSON_AddBoolToObject(w, "current_desk",
-		    cow_view_current_desk(view));
-		cJSON_AddBoolToObject(w, "current_output",
-		    cow_view_current_output(view));
-		cJSON_AddBoolToObject(w, "current_page",
-		    cow_view_current_page(view));
-		cJSON_AddBoolToObject(w, "focused",
-		    view == cow_wm.focused_view);
-		cJSON_AddBoolToObject(w, "maximized", view->maximized);
-		cJSON_AddBoolToObject(w, "shaded", view->sd != COW_SHADE_NONE);
-		cJSON_AddBoolToObject(w, "iconified",
-		    cow_view_is_iconified(view));
-		cJSON_AddBoolToObject(w, "circulate_skip",
-		    (view->flags & COW_VIEW_CIRCULATE_SKIP_FLAG) != 0);
-		cJSON_AddNumberToObject(w, "raise_seq",
-		    (double)view->raise_seq);
-		cJSON_AddNumberToObject(w, "layer", (double)view->layer);
-
-		/* Container membership.  Emit the first member's id as
-		 * the container_id (stable per-container key) and
-		 * container_active (true when this view is the visible
-		 * member).  Lets cowrearrange and similar consumers
-		 * dedupe a container's members down to a single layout
-		 * entity. */
-		if (view->container_member != NULL) {
-			struct cow_container *ctr =
-			    view->container_member->container;
-			struct cow_container_member *first =
-			    wl_container_of(ctr->members.next, first, link);
-			if (first->view != NULL &&
-			    first->view->identifier != NULL)
-				cJSON_AddStringToObject(w, "container_id",
-				    first->view->identifier);
-			cJSON_AddBoolToObject(w, "container_active",
-			    ctr->active == view->container_member);
-		}
-
-		/* Decoration / squeeze diagnostics. */
-		cJSON_AddBoolToObject(w, "use_ssd", view->use_ssd);
-		cJSON_AddNumberToObject(w, "title_thickness",
-		    view->dec.title_thickness);
-		cJSON_AddStringToObject(w, "titlebar_position",
-		    cow_titlebar_position_name(view->cfg.titlebar.position));
-		cJSON_AddNumberToObject(w, "border_width",
-		    view->dec.border_width);
-		struct cow_titlebar_squeeze sq;
-		cow_titlebar_effective_squeeze(view, &sq);
-		const char *mode = sq.mode == COW_SQUEEZE_NATURAL ? "natural" :
-		    sq.mode == COW_SQUEEZE_FIXED		  ? "fixed" :
-								    "none";
-		const char *just = sq.justify == COW_JUST_CENTRE ? "centre" :
-		    sq.justify == COW_JUST_RIGHT		 ? "right" :
-								   "left";
-		cJSON	   *sqo	 = cJSON_CreateObject();
-		cJSON_AddStringToObject(sqo, "mode", mode);
-		cJSON_AddStringToObject(sqo, "justify", just);
-		cJSON_AddNumberToObject(sqo, "width", sq.width);
-		cJSON_AddNumberToObject(sqo, "offset", sq.offset);
-		cJSON_AddNumberToObject(sqo, "min_width", sq.min_width);
-		cJSON_AddItemToObject(w, "squeeze", sqo);
-
-		struct cow_box tbr  = cow_titlebar_squeezed_rect(view);
-		cJSON	      *tbrj = cJSON_CreateObject();
-		cow_box_json_add(tbrj, &tbr);
-		cJSON_AddItemToObject(w, "squeezed_rect", tbrj);
-
-		cJSON_AddItemToArray(arr, w);
+		if (matches)
+			state_list_append(result, record);
 	}
-	if (!cmd_filter_finish(filter, cmdq)) {
-		cJSON_Delete(arr);
+	state_value_unref(all);
+
+	if (!cmd_filter_finish(&filter, cmdq)) {
+		state_value_unref(result);
+		cmd_filter_free(&filter);
 		return (CMD_RETURN_ERROR);
 	}
-	cow_ipc_respond_data(fd, arr);
+	cmd_filter_free(&filter);
+	const char *topic = source == STATE_SRC_WINDOWS ? "window" :
+	    source == STATE_SRC_OUTPUTS ? "output" :
+	    source == STATE_SRC_DESKS ? "desk" :
+	    source == STATE_SRC_RULES ? "rule" :
+	    source == STATE_SRC_DECOR ? "decor" :
+	    source == STATE_SRC_MENUS ? "menu" :
+	    source == STATE_SRC_BINDINGS ? "binding" : "command";
+	return (show_record(topic, result, format, cmdq));
+}
+
+static enum cmd_retval
+show_record(const char *topic, struct state_value *record, const char *format,
+    struct cmd_q *cmdq)
+{
+	if (strcmp(format, "config") == 0) {
+		char *text = cow_config_serialize_topic(topic, record);
+		state_value_unref(record);
+		if (text == NULL) {
+			cmdq_error(cmdq,
+			    "show: %s has no config representation", topic);
+			return (CMD_RETURN_ERROR);
+		}
+		cow_ipc_respond_formatted(cmdq->client_fd, "config", text);
+		xfree(text);
+		return (CMD_RETURN_NORMAL);
+	}
+	cJSON *json = state_value_to_json(record);
+	state_value_unref(record);
+	if (json == NULL) {
+		cmdq_error(cmdq, "show: cannot create JSON response");
+		return (CMD_RETURN_ERROR);
+	}
+	cow_ipc_respond_data(cmdq->client_fd, json);
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+do_show_config(const char *ckey, const char *format, struct cmd_q *cmdq)
+{
+	if (ckey != NULL) {
+		cJSON *val = show_config_value(ckey, cmdq);
+		if (val == NULL) {
+			cmdq_error(cmdq, "show: unknown config key: %s", ckey);
+			return (CMD_RETURN_ERROR);
+		}
+		if (strcmp(format, "config") == 0) {
+			cJSON *setting = cJSON_CreateObject();
+			cJSON_AddItemToObject(setting, ckey, val);
+			char *text = cow_config_serialize_settings(setting);
+			cJSON_Delete(setting);
+			cow_ipc_respond_formatted(cmdq->client_fd, "config", text);
+			xfree(text);
+		} else
+			cow_ipc_respond_data(cmdq->client_fd, val);
+		return (CMD_RETURN_NORMAL);
+	}
+
+	cJSON *config = show_config_object(cmdq);
+	if (strcmp(format, "config") == 0) {
+		char *text = cow_config_commands_string(cow_config);
+		cJSON_Delete(config);
+		cow_ipc_respond_formatted(cmdq->client_fd, "config", text);
+		xfree(text);
+	} else {
+		cJSON *all = cJSON_CreateObject();
+		cJSON *commands = cJSON_AddArrayToObject(all, "commands");
+		cow_config_visit_commands(cow_config, json_add_config_command,
+		    commands);
+		cJSON_AddItemToObject(all, "settings", config);
+		json_add_snapshot(all, "decor",
+		    state_snapshot_collection(STATE_SRC_DECOR));
+		json_add_snapshot(all, "menu_style",
+		    state_snapshot_menu_style());
+		json_add_snapshot(all, "menus",
+		    state_snapshot_collection(STATE_SRC_MENUS));
+		json_add_snapshot(all, "bindings",
+		    state_snapshot_collection(STATE_SRC_BINDINGS));
+		json_add_snapshot(all, "rules",
+		    state_snapshot_collection(STATE_SRC_RULES));
+		cow_ipc_respond_data(cmdq->client_fd, all);
+	}
 	return (CMD_RETURN_NORMAL);
 }
 
 static void
-do_show_desk(int fd)
+json_add_config_command(const char *command, void *data)
 {
-	struct cow_output *out = cow_wm.current_output;
-
-	if (out == NULL) {
-		cow_ipc_respond_data(fd, cJSON_CreateNull());
-		return;
-	}
-
-	cJSON *d = cJSON_CreateObject();
-	cJSON_AddNumberToObject(d, "current", out->current_desk->nr);
-	if (out->current_desk->name != NULL)
-		cJSON_AddStringToObject(d, "current_name",
-		    out->current_desk->name);
-	cJSON *desks = cJSON_AddArrayToObject(d, "desks");
-	struct cow_desk *dk;
-	wl_list_for_each(dk, &out->desk_set.desks, set_link)
-	{
-		cJSON *entry = cJSON_CreateObject();
-		cJSON_AddNumberToObject(entry, "nr", dk->nr);
-		cJSON_AddStringToObject(entry, "name",
-		    dk->name != NULL ? dk->name : "");
-		cJSON_AddBoolToObject(entry, "active",
-		    dk == out->current_desk);
-		cJSON_AddItemToArray(desks, entry);
-	}
-	cow_ipc_respond_data(fd, d);
+	cJSON_AddItemToArray(data, cJSON_CreateString(command));
 }
 
 static void
-do_show_output(int fd)
+json_add_snapshot(cJSON *object, const char *name, struct state_value *snapshot)
 {
-	cJSON		  *arr = cJSON_CreateArray();
-	struct cow_output *out;
-
-	wl_list_for_each(out, &cow_wm.outputs, wm_link)
-	{
-		cJSON *o = cJSON_CreateObject();
-		cow_status_add_output_geometry(o, out);
-		cJSON_AddItemToArray(arr, o);
-	}
-	cow_ipc_respond_data(fd, arr);
+	cJSON *json = state_value_to_json(snapshot);
+	state_value_unref(snapshot);
+	cJSON_AddItemToObject(object, name, json);
 }
 
-static void
-do_show_keyboard_layout(int fd)
+static cJSON *
+show_config_object(struct cmd_q *cmdq)
 {
-	cow_ipc_respond_data(fd, cow_keyboard_layout_active_json());
+	cJSON *config = cJSON_CreateObject();
+	for (const char **key = show_config_keys; *key != NULL; key++)
+		cJSON_AddItemToObject(config, *key,
+		    show_config_value(*key, cmdq));
+	return (config);
 }
 
-static void
-do_show_rules(int fd)
-{
-	cJSON		     *arr  = cJSON_CreateArray();
-	const struct wl_list *head = cow_rules_head();
-	struct cow_rule	     *rule;
-
-	wl_list_for_each(rule, head, link)
-	{
-		cJSON *r = cJSON_CreateObject();
-		cJSON_AddStringToObject(r, "name",
-		    rule->name ? rule->name : "");
-		cJSON_AddStringToObject(r, "type",
-		    cow_rule_type_name(rule->type));
-		cJSON_AddBoolToObject(r, "global", rule->is_global);
-		if (rule->output_name != NULL)
-			cJSON_AddStringToObject(r, "output", rule->output_name);
-		if (rule->desk_name != NULL)
-			cJSON_AddStringToObject(r, "desk", rule->desk_name);
-		else if (rule->desk_nr >= 0)
-			cJSON_AddNumberToObject(r, "desk", rule->desk_nr);
-		if (rule->match_spec != NULL)
-			cJSON_AddStringToObject(r, "match", rule->match_spec);
-
-		/*
-		 * Render the rule body (parsed command list) back to a
-		 * source-form string.  cmd_list_print uses " ; " between
-		 * commands, matching what the user wrote in their config.
-		 */
-		if (rule->cmdlist != NULL) {
-			char buf[1024];
-			buf[0] = '\0';
-			cmd_list_print(rule->cmdlist, buf, sizeof(buf));
-			cJSON_AddStringToObject(r, "body", buf);
-		} else {
-			cJSON_AddStringToObject(r, "body", "");
-		}
-
-		cJSON_AddItemToArray(arr, r);
-	}
-	cow_ipc_respond_data(fd, arr);
-}
-
-static void
-do_show_config(const char *ckey, int fd, struct cmd_q *cmdq)
+static cJSON *
+show_config_value(const char *ckey, struct cmd_q *cmdq)
 {
 	cJSON *val = NULL;
 
@@ -340,13 +464,60 @@ do_show_config(const char *ckey, int fd, struct cmd_q *cmdq)
 		val = cJSON_CreateNumber(cow_config->step);
 	else if (strcmp(ckey, "border.corner_length") == 0)
 		val = cJSON_CreateNumber(cow_config->corner_length);
+	else if (strcmp(ckey, "reserved.top") == 0)
+		val = cJSON_CreateNumber(cow_config->reserved.top);
+	else if (strcmp(ckey, "reserved.bottom") == 0)
+		val = cJSON_CreateNumber(cow_config->reserved.bottom);
+	else if (strcmp(ckey, "reserved.left") == 0)
+		val = cJSON_CreateNumber(cow_config->reserved.left);
+	else if (strcmp(ckey, "reserved.right") == 0)
+		val = cJSON_CreateNumber(cow_config->reserved.right);
+	else if (strcmp(ckey, "output.colour.background") == 0) {
+		if (cow_config->has_output_bg_colour) {
+			char colour[16];
+			cow_colour_format(colour, sizeof(colour),
+			    cow_config->output_bg_colour);
+			val = cJSON_CreateString(colour);
+		} else
+			val = cJSON_CreateNull();
+	} else if (strcmp(ckey, "output.image.background") == 0) {
+		if (cow_config->has_output_bg_image)
+			val = cJSON_CreateString(cow_config->output_bg_image != NULL ?
+			    cow_config->output_bg_image : "none");
+		else
+			val = cJSON_CreateNull();
+	} else if (strncmp(ckey, "output.colour.background.", 25) == 0) {
+		float colour[4];
+		if (cow_config_get_output_background(cow_config, ckey + 25,
+			colour)) {
+			char text[16];
+			cow_colour_format(text, sizeof(text), colour);
+			val = cJSON_CreateString(text);
+		}
+	} else if (strncmp(ckey, "output.image.background.", 24) == 0) {
+		const char *image;
+		if (cow_config_get_output_background_image(cow_config, ckey + 24,
+			&image))
+			val = cJSON_CreateString(image != NULL ? image : "none");
+	}
+	else if (strcmp(ckey, "snap_distance") == 0)
+		val = cJSON_CreateNumber(cow_config->snap_distance);
 	else if (strcmp(ckey, "border.style") == 0)
 		val = cJSON_CreateString(
 		    cow_config->border_style == COW_BORDER_STYLE_FVWM ? "fvwm" :
 			cow_config->border_style == COW_BORDER_STYLE_MWM ?
 									"mwm" :
 									"none");
-	else if (strcmp(ckey, "focus") == 0)
+	else if (strcmp(ckey, "desktop-configuration") == 0)
+		val = cJSON_CreateString(cow_config->desktop_config ==
+		    COW_DESKTOP_PER_OUTPUT ? "per-output" :
+		    cow_config->desktop_config == COW_DESKTOP_SHARED ? "shared" :
+		    "global");
+	else if (strcmp(ckey, "desktop_size") == 0) {
+		val = cJSON_CreateArray();
+		cJSON_AddItemToArray(val, cJSON_CreateNumber(cow_config->page_cols));
+		cJSON_AddItemToArray(val, cJSON_CreateNumber(cow_config->page_rows));
+	} else if (strcmp(ckey, "focus") == 0)
 		val = cJSON_CreateString(
 		    cow_config->focus_mode == COW_FOCUS_MODE_SLOPPY ? "sloppy" :
 								      "click");
@@ -365,15 +536,45 @@ do_show_config(const char *ckey, int fd, struct cmd_q *cmdq)
 		const char *mode = "output";
 		if (cow_config->clamp_mode == COW_CLAMP_NONE)
 			mode = "none";
-		else if (cow_config->clamp_mode == COW_CLAMP_TO_OUTPUT)
-			mode = "output";
 		else if (cow_config->clamp_mode == COW_CLAMP_TO_ALL_OUTPUTS)
 			mode = "all_outputs";
 		val = cJSON_CreateString(mode);
 	} else if (strcmp(ckey, "page_visibility") == 0)
 		val = cJSON_CreateString(cow_config->page_visibility ==
 		    COW_PAGE_VISIBILITY_OVERLAP ? "overlap" : "origin");
-	else if (strcmp(ckey, "font") == 0)
+	else if (strcmp(ckey, "placement") == 0)
+		val = cJSON_CreateString(cow_config->placement ==
+		    COW_PLACEMENT_UNDERMOUSE ? "undermouse" :
+		    cow_config->placement == COW_PLACEMENT_CENTRE ? "centre" :
+		    cow_config->placement == COW_PLACEMENT_EMPTY ? "empty" :
+		    "cascade");
+	else if (strcmp(ckey, "page_scroll_animate") == 0)
+		val = cJSON_CreateBool(cow_config->page_scroll_animate);
+	else if (strcmp(ckey, "page_scroll_ms") == 0)
+		val = cJSON_CreateNumber(cow_config->page_scroll_ms);
+	else if (strcmp(ckey, "edge_scroll") == 0)
+		val = cJSON_CreateBool(cow_config->edge_scroll);
+	else if (strcmp(ckey, "edge_scroll_delay_ms") == 0)
+		val = cJSON_CreateNumber(cow_config->edge_scroll_delay_ms);
+	else if (strcmp(ckey, "edge_scroll_modifiers") == 0) {
+		char modifiers[16];
+		size_t n = 0;
+		uint32_t mask = cow_config->edge_scroll_modifiers;
+		if ((mask & RIVER_SEAT_V1_MODIFIERS_MOD4) != 0)
+			modifiers[n++] = 'L';
+		if ((mask & RIVER_SEAT_V1_MODIFIERS_SHIFT) != 0)
+			modifiers[n++] = 'S';
+		if ((mask & RIVER_SEAT_V1_MODIFIERS_MOD1) != 0)
+			modifiers[n++] = 'A';
+		if ((mask & RIVER_SEAT_V1_MODIFIERS_CTRL) != 0)
+			modifiers[n++] = 'C';
+		if ((mask & RIVER_SEAT_V1_MODIFIERS_MOD5) != 0)
+			modifiers[n++] = '5';
+		if (n == 0)
+			modifiers[n++] = '0';
+		modifiers[n] = '\0';
+		val = cJSON_CreateString(modifiers);
+	} else if (strcmp(ckey, "titlebar.font") == 0)
 		val = cJSON_CreateString(
 		    cow_config->font_name ? cow_config->font_name : "");
 	else if (strcmp(ckey, "title_format") == 0)
@@ -384,21 +585,29 @@ do_show_config(const char *ckey, int fd, struct cmd_q *cmdq)
 		    cow_config->cursor_theme : "");
 	else if (strcmp(ckey, "cursor.size") == 0)
 		val = cJSON_CreateNumber(cow_config->cursor_size);
+	else if (strcmp(ckey, "cursor.hide_timeout") == 0)
+		val = cJSON_CreateNumber(cow_config->cursor_hide_timeout);
+	else if (strcmp(ckey, "repeat_delay_ms") == 0)
+		val = cJSON_CreateNumber(cow_config->repeat_delay_ms);
+	else if (strcmp(ckey, "repeat_interval_ms") == 0)
+		val = cJSON_CreateNumber(cow_config->repeat_interval_ms);
+	else if (strcmp(ckey, "menu.repeat_keys") == 0)
+		val = cJSON_CreateString(cow_config->menu_repeat_keys != NULL ?
+		    cow_config->menu_repeat_keys : "");
+	else if (strcmp(ckey, "raise_on_focus") == 0)
+		val = cJSON_CreateBool(cow_config->raise_on_focus);
 	else if (strcmp(ckey, "preserve_desk_on_output_loss") == 0)
 		val = cJSON_CreateBool(cow_config->preserve_desk_on_output_loss);
+	else if (strcmp(ckey, "default_layer") == 0)
+		val = cJSON_CreateNumber(cow_config->default_layer);
+	else if (strcmp(ckey, "max_layer") == 0)
+		val = cJSON_CreateNumber(cow_config->max_layer);
 	else if (strcmp(ckey, "desks.count") == 0) {
 		struct cow_output *out = cmd_ctx_target_output(cmdq);
 		if (out == NULL && !wl_list_empty(&cow_wm.outputs))
-			out = wl_container_of(cow_wm.outputs.next, out,
-			    wm_link);
+			out = wl_container_of(cow_wm.outputs.next, out, wm_link);
 		val = cJSON_CreateNumber(out != NULL ? cow_desk_count(out) :
 		    cow_config->desk_count);
 	}
-	else {
-		cow_ipc_respond_error(fd, "show: unknown config key");
-		cmdq_error(cmdq, "show: unknown config key: %s", ckey);
-		return;
-	}
-
-	cow_ipc_respond_data(fd, val);
+	return (val);
 }

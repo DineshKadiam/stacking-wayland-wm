@@ -20,6 +20,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -53,6 +54,20 @@ cow_colour_parse(const char *str, float *out)
 	out[2] = ((v >> 8) & 0xff) / 255.0f;
 	out[3] = (v & 0xff) / 255.0f;
 	return true;
+}
+
+void
+cow_colour_format(char *buf, size_t size, const float *colour)
+{
+	uint8_t r = (uint8_t)(colour[0] * 255.0f + 0.5f);
+	uint8_t g = (uint8_t)(colour[1] * 255.0f + 0.5f);
+	uint8_t b = (uint8_t)(colour[2] * 255.0f + 0.5f);
+	uint8_t a = (uint8_t)(colour[3] * 255.0f + 0.5f);
+
+	if (a == 0xff)
+		snprintf(buf, size, "0x%02X%02X%02X", r, g, b);
+	else
+		snprintf(buf, size, "0x%02X%02X%02X%02X", r, g, b, a);
 }
 
 static bool

@@ -37,7 +37,7 @@ struct cmd_entry cmd_mouse_entry = {
 	-1,
 	"mouse [contexts:]key action ...",
 	cmd_mouse_exec,
-	0,
+	CMD_CONFIG,
 };
 
 static enum cmd_retval

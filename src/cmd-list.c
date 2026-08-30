@@ -20,6 +20,9 @@
 #include <string.h>
 
 #include "cow/cmd.h"
+#include "cow/cmd_scan.h"
+#include "cow/memory.h"
+#include "cow/util.h"
 
 struct cmd_list *
 cmd_list_parse(int argc, char **argv, const char *file, u_int line,
@@ -114,4 +117,81 @@ cmd_list_print(struct cmd_list *cmdlist, char *buf, size_t len)
 			off += snprintf(buf + off, len - off, " ; ");
 	}
 	return (off);
+}
+
+static void
+config_append(char **buf, size_t *len, const char *text)
+{
+	size_t add = strlen(text);
+
+	*buf = xrealloc(*buf, 1, *len + add + 1);
+	memcpy(*buf + *len, text, add + 1);
+	*len += add;
+}
+
+static void
+config_append_arg(char **buf, size_t *len, const char *arg)
+{
+	size_t end;
+	bool brace_group = arg[0] == '{' &&
+	    cow_cmd_find_matching_brace(arg, strlen(arg), &end) ==
+	    COW_CMD_SCAN_COMPLETE && arg[end + 1] == '\0';
+
+	config_append(buf, len, " ");
+	if (brace_group) {
+		config_append(buf, len, arg);
+		return;
+	}
+
+	const char *argv[] = { arg };
+	char *quoted = cow_command_from_argv(1, argv);
+	if (quoted != NULL) {
+		config_append(buf, len, quoted);
+		xfree(quoted);
+	}
+}
+
+char *
+cmd_to_config(struct cmd *cmd)
+{
+	char *buf = xstrdup("");
+	size_t len = 0;
+
+	config_append(&buf, &len, cmd->entry->name);
+
+	struct args_entry *entry;
+	RB_FOREACH (entry, args_tree, &cmd->args->tree) {
+		if (entry->value != NULL)
+			continue;
+		char option[] = { '-', (char)entry->flag, '\0' };
+		config_append_arg(&buf, &len, option);
+	}
+	RB_FOREACH (entry, args_tree, &cmd->args->tree) {
+		if (entry->value == NULL)
+			continue;
+		char option[] = { '-', (char)entry->flag, '\0' };
+		config_append_arg(&buf, &len, option);
+		config_append_arg(&buf, &len, entry->value);
+	}
+	for (int i = 0; i < cmd->args->argc; i++)
+		config_append_arg(&buf, &len, cmd->args->argv[i]);
+	return (buf);
+}
+
+/* Format a command list for embedding in a script block. */
+char *
+cmd_list_to_config(struct cmd_list *cmdlist)
+{
+	struct cmd *cmd;
+	char *buf = xstrdup("");
+	size_t len = 0;
+
+	TAILQ_FOREACH (cmd, &cmdlist->list, qentry) {
+		char *command = cmd_to_config(cmd);
+		if (len != 0)
+			config_append(&buf, &len, "\n");
+		config_append(&buf, &len, command);
+		xfree(command);
+	}
+	return (buf);
 }

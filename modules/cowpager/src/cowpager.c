@@ -1215,7 +1215,7 @@ fill_output_backgrounds(cairo_t *cr, const state_t *st, const canvas_t *cv,
  *   sw/sh: size of the page-grid area.
  *
  * Window placement uses the desk-pixel coordinates (vx, vy) emitted in
- * the IPC `show windows` data; the page grid here is defined by the
+ * the IPC `show -a window` data; the page grid here is defined by the
  * reference output's pcols/prows/output_w/h (cow guarantees these are
  * uniform across outputs).
  */
@@ -3022,7 +3022,7 @@ parse_status(const char *json)
 static void
 fetch_windows(void)
 {
-	char *resp = ipc_query("show windows");
+	char *resp = ipc_query("show -a window");
 	if (!resp)
 		return;
 

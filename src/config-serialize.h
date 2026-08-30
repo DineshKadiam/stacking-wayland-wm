@@ -14,20 +14,17 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#if !defined(COW_DSL_SOURCES_H)
-#define COW_DSL_SOURCES_H
+#if !defined(COW_CONFIG_SERIALIZE_H)
+#define COW_CONFIG_SERIALIZE_H
 
-#include "dsl-ast.h"
-#include "dsl-value.h"
-
-struct cow_view;
+struct cJSON;
+struct state_value;
 
 /*
- * Snapshot the named collection from live wm state.  Returned value
- * is a freshly-owned DSL_V_LIST of records; caller dsl_value_unref's
- * when done.
+ * Serialize query snapshots as commands accepted by cow.conf.  The returned
+ * string is owned by the caller.  NULL means the topic has no config form.
  */
-struct dsl_value *dsl_source_snapshot(enum dsl_source);
-struct dsl_value *dsl_snapshot_view(const struct cow_view *);
+char *cow_config_serialize_settings(const struct cJSON *);
+char *cow_config_serialize_topic(const char *, const struct state_value *);
 
-#endif /* COW_DSL_SOURCES_H */
+#endif /* COW_CONFIG_SERIALIZE_H */

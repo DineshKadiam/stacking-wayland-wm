@@ -21,6 +21,9 @@
 #include "cow/dsl.h"
 #include "cow/memory.h"
 
+#include "state-snapshot.h"
+#include "state-value.h"
+
 static void
 cmd_filter_error_free(struct cmd_filter *filter)
 {
@@ -71,9 +74,25 @@ cmd_filter_view(struct cmd_filter *filter, const struct cow_view *view,
 	if (cmd_filter_empty(filter))
 		return true;
 
+	struct state_value *record = state_snapshot_view(view);
+	bool ok = cmd_filter_record(filter, record, matches);
+	state_value_unref(record);
+	return (ok);
+}
+
+bool
+cmd_filter_record(struct cmd_filter *filter, const struct state_value *record,
+    bool *matches)
+{
+	if (matches == NULL)
+		return false;
+	*matches = true;
+	if (cmd_filter_empty(filter))
+		return true;
+
 	cmd_filter_error_free(filter);
 	filter->err = xcalloc(1, sizeof(*filter->err));
-	if (!dsl_eval_view_expr(filter->ast, view, matches, filter->err)) {
+	if (!dsl_eval_record_expr(filter->ast, record, matches, filter->err)) {
 		filter->failed = true;
 		return false;
 	}

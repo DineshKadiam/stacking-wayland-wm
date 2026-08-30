@@ -341,10 +341,10 @@ struct workarea {
 /* Resolve the workarea for the selected (or current) output. */
 static int
 resolve_workarea(cJSON *outputs, const char *want_name, char *out_name,
-    size_t out_name_sz, struct workarea *wa)
+    size_t out_name_sz, struct workarea *wa, int *current_desk)
 {
 	if (!cJSON_IsArray(outputs)) {
-		fprintf(stderr, "cowrearrange: show output: not an array\n");
+		fprintf(stderr, "cowrearrange: show -a output: not an array\n");
 		return -1;
 	}
 	cJSON *o = cow_module_output_resolve(outputs, want_name);
@@ -359,17 +359,17 @@ resolve_workarea(cJSON *outputs, const char *want_name, char *out_name,
 		return -1;
 	}
 	const char *n = js_string(o, "name");
-	cJSON *ua = cJSON_GetObjectItem(o, "usable");
-	if (n == NULL || !cJSON_IsObject(ua)) {
+	if (n == NULL) {
 		fprintf(stderr, "cowrearrange: invalid output data\n");
 		return -1;
 	}
 	strncpy(out_name, n, out_name_sz - 1);
 	out_name[out_name_sz - 1] = '\0';
-	wa->x	  = js_int(ua, "x", 0);
-	wa->y	  = js_int(ua, "y", 0);
-	wa->w	  = js_int(ua, "width", 0);
-	wa->h	  = js_int(ua, "height", 0);
+	wa->x	  = js_int(o, "usable_x", 0);
+	wa->y	  = js_int(o, "usable_y", 0);
+	wa->w	  = js_int(o, "usable_width", 0);
+	wa->h	  = js_int(o, "usable_height", 0);
+	*current_desk = js_int(o, "current_desk", 0);
 	return 0;
 }
 
@@ -434,7 +434,7 @@ window_excluded(cJSON *w, const struct opts *opts)
 }
 
 /*
- * Walk the show windows array, filter to the candidate set, dedupe
+ * Walk the show -a window array, filter to the candidate set, dedupe
  * container members (keep the active member), and return a malloc'd
  * array.  *n_out gets the count.  Caller must free each id and the
  * array.
@@ -445,7 +445,7 @@ collect_candidates(cJSON *windows, const struct opts *opts, int target_desk,
 {
 	*n_out = 0;
 	if (!cJSON_IsArray(windows)) {
-		fprintf(stderr, "cowrearrange: show windows: not an array\n");
+		fprintf(stderr, "cowrearrange: show -a window: not an array\n");
 		return NULL;
 	}
 
@@ -749,38 +749,33 @@ main(int argc, char *argv[])
 	 * so ipc_request opens / closes its own socket per call.  No
 	 * persistent fd to manage here.
 	 */
-	char	      *resp_windows = ipc_request("show windows\n");
-	char	      *resp_output  = ipc_request("show output\n");
-	char	      *resp_desk    = ipc_request("show desk\n");
+	char	      *resp_windows = ipc_request("show -a window\n");
+	char	      *resp_output  = ipc_request("show -a output\n");
 	int	       rc	    = 1;
-	cJSON	      *jw = NULL, *jo = NULL, *jd = NULL;
+	cJSON	      *jw = NULL, *jo = NULL;
 	struct win    *wins = NULL;
 	struct placed *plan = NULL;
 
 	int n = 0;
 
-	if (resp_windows == NULL || resp_output == NULL || resp_desk == NULL)
+	if (resp_windows == NULL || resp_output == NULL)
 		goto out;
 
-	jw = parse_response(resp_windows, "show windows");
-	jo = parse_response(resp_output, "show output");
-	jd = parse_response(resp_desk, "show desk");
+	jw = parse_response(resp_windows, "show -a window");
+	jo = parse_response(resp_output, "show -a output");
 	if (jw == NULL || jo == NULL)
 		goto out;
 
 	char		out_name[64];
 	struct workarea wa;
+	int current_desk;
 	if (resolve_workarea(jo, opts.output_name, out_name, sizeof(out_name),
-		&wa) < 0)
+		&wa, &current_desk) < 0)
 		goto out;
 
 	int target_desk = opts.desk;
-	if (target_desk < 0) {
-		if (jd != NULL)
-			target_desk = js_int(jd, "current", 0);
-		else
-			target_desk = 0;
-	}
+	if (target_desk < 0)
+		target_desk = current_desk;
 
 	int got = 0;
 	wins	= collect_candidates(jw, &opts, target_desk, out_name,
@@ -853,10 +848,7 @@ out:
 		cJSON_Delete(jw);
 	if (jo != NULL)
 		cJSON_Delete(jo);
-	if (jd != NULL)
-		cJSON_Delete(jd);
 	free(resp_windows);
 	free(resp_output);
-	free(resp_desk);
 	return rc;
 }

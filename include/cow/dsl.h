@@ -30,6 +30,7 @@
 struct cmd_q;
 struct cow_view;
 struct dsl_ast;
+struct state_value;
 
 /* Parse / eval error carrier. */
 struct dsl_error {
@@ -68,5 +69,9 @@ bool dsl_eval(struct dsl_ast *ast, struct cmd_q *cmdq, struct dsl_error *err);
  */
 bool dsl_eval_view_expr(struct dsl_ast *ast, const struct cow_view *view,
     bool *out, struct dsl_error *err);
+
+/* Evaluate an expression with "self" bound to a state record. */
+bool dsl_eval_record_expr(struct dsl_ast *, const struct state_value *, bool *,
+    struct dsl_error *);
 
 #endif /* COW_DSL_H */

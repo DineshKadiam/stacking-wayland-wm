@@ -105,7 +105,7 @@ struct cmd_entry cmd_bind_entry = {
 	"bind [-r] [-x release-action] [contexts:]key[,key...] action ...\n"
 	"bind -d pattern",
 	cmd_bind_exec,
-	0,
+	CMD_CONFIG,
 };
 
 static enum cmd_retval

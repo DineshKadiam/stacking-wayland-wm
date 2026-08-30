@@ -54,6 +54,11 @@ struct cow_output_background_config {
 	bool	       has_image;
 };
 
+struct cow_config_command {
+	struct wl_list link;
+	char *command;
+};
+
 bool
 cow_parse_squeeze_mode(const char *s, enum cow_squeeze_mode *out)
 {
@@ -361,6 +366,7 @@ cow_config_create(void)
 	wl_list_init(&config->mouse_bindings);
 	wl_list_init(&config->decoration_bindings);
 	wl_list_init(&config->output_backgrounds);
+	wl_list_init(&config->configured_commands);
 	cow_icon_placement_config_init(config);
 
 	return config;
@@ -443,6 +449,14 @@ cow_config_destroy(struct cow_config *config)
 		xfree(ob->name);
 		xfree(ob->image);
 		xfree(ob);
+	}
+	struct cow_config_command *command, *command_tmp;
+	wl_list_for_each_safe(command, command_tmp, &config->configured_commands,
+	    link)
+	{
+		wl_list_remove(&command->link);
+		xfree(command->command);
+		xfree(command);
 	}
 	xfree(config->output_bg_image);
 	xfree(config->menu_style.icon_path);
@@ -581,6 +595,46 @@ cow_config_set_output_background_image(struct cow_config *config,
 	ob->image = image != NULL ? xstrdup(image) : NULL;
 	ob->has_image = true;
 	wl_list_insert(&config->output_backgrounds, &ob->link);
+}
+
+void
+cow_config_command_add(struct cow_config *config, const char *text)
+{
+	if (config == NULL || text == NULL || text[0] == '\0')
+		return;
+	struct cow_config_command *command = xcalloc(1, sizeof(*command));
+	command->command = xstrdup(text);
+	wl_list_insert(config->configured_commands.prev, &command->link);
+}
+
+char *
+cow_config_commands_string(const struct cow_config *config)
+{
+	char *result = xstrdup("");
+	size_t len = 0;
+	if (config == NULL)
+		return result;
+	struct cow_config_command *command;
+	wl_list_for_each(command, &config->configured_commands, link) {
+		size_t add = strlen(command->command);
+		result = xrealloc(result, 1, len + add + 2);
+		memcpy(result + len, command->command, add);
+		len += add;
+		result[len++] = '\n';
+		result[len] = '\0';
+	}
+	return result;
+}
+
+void
+cow_config_visit_commands(const struct cow_config *config,
+    cow_config_command_cb callback, void *data)
+{
+	if (config == NULL || callback == NULL)
+		return;
+	struct cow_config_command *command;
+	wl_list_for_each(command, &config->configured_commands, link)
+		callback(command->command, data);
 }
 
 /*

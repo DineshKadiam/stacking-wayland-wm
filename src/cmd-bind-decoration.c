@@ -44,7 +44,7 @@ static enum cmd_retval cmd_bind_decoration_exec(struct cmd *, struct cmd_q *);
  */
 struct cmd_entry cmd_bind_decoration_entry = { "bind-decoration", "", 2, -1,
 	"bind-decoration [-2] REGION command [args ...]",
-	cmd_bind_decoration_exec, 0 };
+	cmd_bind_decoration_exec, CMD_CONFIG };
 
 static enum cmd_retval
 cmd_bind_decoration_exec(struct cmd *self, struct cmd_q *cmdq)

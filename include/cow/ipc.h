@@ -85,5 +85,6 @@ struct cJSON;
 void cow_ipc_respond(int, const char *);
 void cow_ipc_respond_error(int, const char *);
 void cow_ipc_respond_data(int, struct cJSON *);
+void cow_ipc_respond_formatted(int, const char *, const char *);
 
 #endif

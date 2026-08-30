@@ -478,6 +478,7 @@ struct cow_config {
 	bool  has_output_bg_image;
 
 	struct wl_list output_backgrounds;
+	struct wl_list configured_commands;
 
 	/* Menu style overrides (set via 'menu-style') */
 	struct cow_menu_style menu_style;
@@ -527,6 +528,11 @@ bool cow_config_get_output_background_image(struct cow_config *, const char *,
     const char **);
 void cow_config_set_output_background_image(struct cow_config *, const char *,
     const char *);
+void cow_config_command_add(struct cow_config *, const char *);
+char *cow_config_commands_string(const struct cow_config *);
+typedef void (*cow_config_command_cb)(const char *, void *);
+void cow_config_visit_commands(const struct cow_config *,
+    cow_config_command_cb, void *);
 
 /*
  * Find an action entry by name. Returns the command string, or NULL.

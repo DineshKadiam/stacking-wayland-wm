@@ -42,7 +42,6 @@ struct cmd_entry *cmd_table[] = {
 	&cmd_icon_placement_entry,
 	&cmd_include_entry,
 	&cmd_keyboard_layout_entry,
-	&cmd_list_commands_entry,
 	&cmd_menu_add_entry,
 	&cmd_menu_clear_entry,
 	&cmd_menu_destroy_entry,

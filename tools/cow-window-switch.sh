@@ -22,7 +22,7 @@ fi
 
 # Build a list: "desk  app_id  title<TAB>id"
 # Present the human-readable part to the picker, recover the id from the tab.
-sel=$(moocow show windows \
+sel=$(moocow show -a window \
     | jq -r '.data[] | select(.iconified == false) | "\(.desk)  \(.app_id)  \(.title)\t\(.id)"' \
     | $PICKER \
     | cut -f2)

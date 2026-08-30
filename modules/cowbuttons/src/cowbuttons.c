@@ -2603,7 +2603,7 @@ windows_find_for_panel(struct panel_selection *p, struct win_info *panel,
 	double best_raise = -1.0;
 
 	xasprintf(&panel_app, "%s:%s", PROG, p->name);
-	resp = ipc_query("show windows");
+	resp = ipc_query("show -a window");
 	if (resp == NULL) {
 		free(panel_app);
 		return false;

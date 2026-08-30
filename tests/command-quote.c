@@ -77,8 +77,11 @@ main(void)
 	};
 	check(3, filter, "window-list -F \"self.id in [\\\"abc\\\"]\"");
 
-	const char *special[] = { "", "two words", "a\\b", "a\nb", "#id" };
-	check(5, special, "\"\" \"two words\" \"a\\\\b\" \"a\\nb\" \"#id\"");
+	const char *special[] = {
+		"", "two words", "a\\b", "a\nb", "#id", "a;b", "{body}",
+	};
+	check(7, special,
+	    "\"\" \"two words\" \"a\\\\b\" \"a\\nb\" \"#id\" \"a;b\" \"{body}\"");
 
 	check_markup("plain", "plain");
 	check_markup("<&>\"'", "&lt;&amp;&gt;&quot;&apos;");

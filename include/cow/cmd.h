@@ -88,6 +88,8 @@ enum cmd_retval {
 
 /* Command parses -t/-s itself. */
 #define CMD_OWN_TS (1u << 0)
+#define CMD_CONFIG (1u << 1)
+#define CMD_CONFIG_STARTUP (1u << 2)
 
 /* Command definition. */
 struct cmd_entry {
@@ -250,7 +252,6 @@ extern struct cmd_entry cmd_draw_exec_entry;
 extern struct cmd_entry cmd_exec_entry;
 extern struct cmd_entry cmd_show_entry;
 extern struct cmd_entry cmd_quit_entry;
-extern struct cmd_entry cmd_list_commands_entry;
 extern struct cmd_entry cmd_winops_entry;
 extern struct cmd_entry cmd_window_expand_entry;
 extern struct cmd_entry cmd_window_maximize_entry;
@@ -299,11 +300,13 @@ char		 *cmd_argv_to_command_string(int, char **, int);
 char		 *cmd_argv_to_action_string(int, char **, int);
 char		 *cmd_argv_to_command_string_or_body(int, char **, int);
 size_t		  cmd_print(struct cmd *, char *, size_t);
+char		 *cmd_to_config(struct cmd *);
 struct cmd	 *cmd_parse(int, char **, const char *, u_int, char **);
 
 struct cmd_list *cmd_list_parse(int, char **, const char *, u_int, char **);
 void		 cmd_list_free(struct cmd_list *);
 size_t		 cmd_list_print(struct cmd_list *, char *, size_t);
+char		*cmd_list_to_config(struct cmd_list *);
 
 int cmd_string_parse(const char *, struct cmd_list **, const char *, u_int,
     char **);

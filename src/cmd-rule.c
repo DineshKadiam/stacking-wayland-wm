@@ -47,8 +47,7 @@
 
 static enum cmd_retval cmd_rule_exec(struct cmd *, struct cmd_q *);
 static bool	       do_rule_add(struct args *, struct cmd_q *);
-static bool	       parse_scope_t(const char *, char **, int *, char **,
-			   char **);
+static bool parse_scope_t(const char *, char **, int *, char **, char **);
 
 struct cmd_entry cmd_rule_entry = {
 	"rule",
@@ -58,7 +57,7 @@ struct cmd_entry cmd_rule_entry = {
 	"rule -g | -t output[:desk] -n <name> -T <event> [-s sel] cmd...\n"
 	"rule -d -n <name>",
 	cmd_rule_exec,
-	CMD_OWN_TS,
+	CMD_OWN_TS | CMD_CONFIG,
 };
 
 static enum cmd_retval
@@ -178,8 +177,7 @@ do_rule_add(struct args *args, struct cmd_q *cmdq)
 		cmdq_error(cmdq, "rule: unknown event: %s", T_val);
 		return false;
 	}
-	if ((type == COW_RULE_ON_START ||
-		type == COW_RULE_ON_DESKS_CHANGED) &&
+	if ((type == COW_RULE_ON_START || type == COW_RULE_ON_DESKS_CHANGED) &&
 	    t_val != NULL) {
 		cmdq_error(cmdq, "rule: -t is not valid for event %s", T_val);
 		return false;
@@ -221,8 +219,7 @@ do_rule_add(struct args *args, struct cmd_q *cmdq)
 	}
 
 	/* Reconstruct + parse the command body. */
-	char		*body =
-	    cmd_argv_to_command_string(args->argc, args->argv, 0);
+	char *body = cmd_argv_to_command_string(args->argc, args->argv, 0);
 	struct cmd_list *cmdlist = NULL;
 	char		*cause	 = NULL;
 	if (cmd_string_parse(body, &cmdlist, NULL, 0, &cause) != 0 ||

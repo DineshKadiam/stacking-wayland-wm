@@ -51,7 +51,7 @@ command_arg_needs_quotes(const char *s)
 	for (; *s != '\0'; s++) {
 		unsigned char ch = (unsigned char)*s;
 		if (isspace(ch) || ch == '"' || ch == '\'' || ch == '\\' ||
-		    ch == '#')
+		    ch == '#' || ch == ';' || ch == '{' || ch == '}')
 			return (true);
 	}
 	return (false);

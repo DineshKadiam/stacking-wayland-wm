@@ -14,7 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <cJSON.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,7 +22,6 @@
 #include "cow/compat.h"
 #include "cow/config.h"
 #include "cow/desk_ops.h"
-#include "cow/ipc.h"
 #include "cow/keybinding.h"
 #include "cow/output.h"
 #include "cow/titlebar.h"
@@ -63,7 +61,6 @@ static enum cmd_retval cmd_window_maximize_exec(struct cmd *, struct cmd_q *);
 static enum cmd_retval cmd_window_shade_exec(struct cmd *, struct cmd_q *);
 static enum cmd_retval cmd_window_tile_exec(struct cmd *, struct cmd_q *);
 
-static void		    do_identify(struct cow_view *, struct cmd_q *);
 static void		    do_raise(struct cow_view *);
 static void		    do_lower(struct cow_view *);
 static enum cmd_retval	    do_set_layer(struct cow_view *, const char *,
@@ -82,10 +79,10 @@ static enum shade_direction resolve_shade_direction(struct cow_view *,
 
 struct cmd_entry cmd_winops_entry = {
 	"winops",
-	"t:IcrlsiSL:C:",
+	"t:crlsiSL:C:",
 	0,
 	0,
-	"[-Icilrs] [-C on|off|toggle] [-L layer] [-t target window]",
+	"[-cilrs] [-C on|off|toggle] [-L layer] [-t target window]",
 	cmd_winops_exec,
 	0,
 };
@@ -105,9 +102,6 @@ cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 		cow_update_request(COW_UPDATE_MANAGE);
 		return (CMD_RETURN_NORMAL);
 	}
-
-	if (args_has(args, 'I'))
-		do_identify(view, cmdq);
 
 	if (args_has(args, 'r'))
 		do_raise(view);
@@ -847,84 +841,4 @@ parse_tiled_edges(const char *spec, uint32_t *out)
 
 	*out = edges;
 	return true;
-}
-
-static void
-do_identify(struct cow_view *view, struct cmd_q *cmdq)
-{
-	int    fd   = cmdq->client_fd;
-	cJSON *info = cJSON_CreateObject();
-
-	/* Identity */
-	cow_view_json_add_identity(info, view);
-
-	/* Geometry */
-	struct cow_box gb = {
-		.x	= view->x,
-		.y	= view->y,
-		.width	= view->content_width,
-		.height = view->content_height,
-	};
-	cJSON *geo = cJSON_CreateObject();
-	cow_box_json_add(geo, &gb);
-	cJSON_AddItemToObject(info, "geometry", geo);
-
-	/* Frame */
-	struct cow_box fb    = cow_view_frame_box(view);
-	cJSON	      *frame = cJSON_CreateObject();
-	cow_box_json_add(frame, &fb);
-	cJSON_AddItemToObject(info, "frame", frame);
-
-	/* Decoration */
-	cJSON *dec = cJSON_CreateObject();
-	cJSON_AddNumberToObject(dec, "border_width", view->dec.border_width);
-	cJSON_AddNumberToObject(dec, "title_thickness",
-	    view->dec.title_thickness);
-	cJSON_AddStringToObject(dec, "titlebar_position",
-	    cow_titlebar_position_name(view->cfg.titlebar.position));
-	cJSON_AddBoolToObject(dec, "ssd", view->use_ssd);
-	cJSON_AddItemToObject(info, "decoration", dec);
-
-	/* Desk/output */
-	cJSON_AddNumberToObject(info, "desk", view->desk ? view->desk->nr : -1);
-	if (view->output != NULL && view->output->name != NULL)
-		cJSON_AddStringToObject(info, "output", view->output->name);
-
-	/* Flags */
-	cJSON *flags = cJSON_CreateObject();
-	cJSON_AddBoolToObject(flags, "sticky",
-	    (view->flags & COW_VIEW_STICKY_DESK_FLAG) != 0);
-	cJSON_AddBoolToObject(flags, "page_sticky",
-	    (view->flags & COW_VIEW_STICKY_PAGE_FLAG) != 0);
-	cJSON_AddBoolToObject(flags, "iconified",
-	    (view->flags & COW_VIEW_ICONIFIED_FLAG) != 0);
-	cJSON_AddBoolToObject(flags, "circulate_skip",
-	    (view->flags & COW_VIEW_CIRCULATE_SKIP_FLAG) != 0);
-	cJSON_AddBoolToObject(flags, "maximized", view->maximized);
-	cJSON_AddBoolToObject(flags, "shaded", view->sd != COW_SHADE_NONE);
-	cJSON_AddBoolToObject(flags, "fullscreen", view->fullscreen);
-	cJSON_AddBoolToObject(flags, "focused", view == cow_wm.focused_view);
-	cJSON_AddItemToObject(info, "flags", flags);
-
-	/* Size hints */
-	if (view->min_width > 0 || view->min_height > 0 ||
-	    view->max_width > 0 || view->max_height > 0) {
-		cJSON *hints = cJSON_CreateObject();
-		cJSON_AddNumberToObject(hints, "min_width", view->min_width);
-		cJSON_AddNumberToObject(hints, "min_height", view->min_height);
-		cJSON_AddNumberToObject(hints, "max_width", view->max_width);
-		cJSON_AddNumberToObject(hints, "max_height", view->max_height);
-		cJSON_AddItemToObject(info, "size_hints", hints);
-	}
-
-	/* Style: report this view's per-view cfg snapshot (which may
-	 * differ from cow_config when the view was hit by a targeted
-	 * `set` or matched an event-driven rule body). */
-	cJSON *style = cJSON_CreateObject();
-	cJSON_AddNumberToObject(style, "border", view->cfg.border);
-	cJSON_AddBoolToObject(style, "titlebar_enabled",
-	    view->cfg.titlebar.enabled);
-	cJSON_AddItemToObject(info, "style", style);
-
-	cow_ipc_respond_data(fd, info);
 }

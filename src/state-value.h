@@ -14,14 +14,14 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#if !defined(COW_DSL_VALUE_H)
-#define COW_DSL_VALUE_H
+#if !defined(COW_STATE_VALUE_H)
+#define COW_STATE_VALUE_H
 
 #include <stdbool.h>
 #include <stddef.h>
 
 /*
- * DSL runtime value.
+ * Shared state value.
  *
  * Tagged union shared between the evaluator and source adapters.
  * Records (per-window/desk/output snapshots) are flat name->value
@@ -30,39 +30,40 @@
  * -- the DSL never does real arithmetic.
  *
  * Memory: values are heap-allocated and reference-counted.  Lists
- * and records own their contained values via dsl_value_ref/_unref.
+ * and records own their contained values via state_value_ref/_unref.
  */
 
-enum dsl_value_type {
-	DSL_V_NIL = 0,
-	DSL_V_BOOL,
-	DSL_V_NUMBER,
-	DSL_V_STRING,
-	DSL_V_LIST,
-	DSL_V_RECORD,
+enum state_value_type {
+	STATE_V_NIL = 0,
+	STATE_V_BOOL,
+	STATE_V_NUMBER,
+	STATE_V_STRING,
+	STATE_V_LIST,
+	STATE_V_RECORD,
 };
 
-struct dsl_value;
+struct state_value;
+struct cJSON;
 
-struct dsl_record_entry {
+struct state_record_entry {
 	char		 *key;
-	struct dsl_value *val;
+	struct state_value *val;
 };
 
-struct dsl_value {
-	enum dsl_value_type type;
+struct state_value {
+	enum state_value_type type;
 	unsigned	    refcount;
 	union {
 		bool   b;
 		double n;
 		char  *s;
 		struct {
-			struct dsl_value **items;
+			struct state_value **items;
 			size_t		   n;
 			size_t		   cap;
 		} list;
 		struct {
-			struct dsl_record_entry *entries;
+			struct state_record_entry *entries;
 			size_t			 n;
 			size_t			 cap;
 		} record;
@@ -72,33 +73,33 @@ struct dsl_value {
 /*
  * Constructors.  Each returns a fresh ref (refcount == 1).
  */
-struct dsl_value *dsl_value_nil(void);
-struct dsl_value *dsl_value_bool(bool);
-struct dsl_value *dsl_value_number(double);
-struct dsl_value *dsl_value_string(const char *); /* copies */
-struct dsl_value *dsl_value_string_take(char *);  /* takes  */
-struct dsl_value *dsl_value_list(void);
-struct dsl_value *dsl_value_record(void);
+struct state_value *state_value_nil(void);
+struct state_value *state_value_bool(bool);
+struct state_value *state_value_number(double);
+struct state_value *state_value_string(const char *); /* copies */
+struct state_value *state_value_string_take(char *);  /* takes  */
+struct state_value *state_value_list(void);
+struct state_value *state_value_record(void);
 
 /*
  * Reference counting.
  */
-struct dsl_value *dsl_value_ref(struct dsl_value *);
-void		  dsl_value_unref(struct dsl_value *);
+struct state_value *state_value_ref(struct state_value *);
+void		  state_value_unref(struct state_value *);
 
 /*
  * Container operations.  Each takes a ref on the supplied child
  * value; the caller still owns its own ref and should unref it when
  * done if it doesn't need it any longer.
  */
-void dsl_list_append(struct dsl_value *list, struct dsl_value *item);
-void dsl_record_set(struct dsl_value *record, const char *key,
-    struct dsl_value *val);
+void state_list_append(struct state_value *list, struct state_value *item);
+void state_record_set(struct state_value *record, const char *key,
+    struct state_value *val);
 
 /*
  * Lookup.  Returns a borrowed pointer (no ref bump); NULL on miss.
  */
-struct dsl_value *dsl_record_get(const struct dsl_value *record,
+struct state_value *state_record_get(const struct state_value *record,
     const char						*key);
 
 /*
@@ -110,7 +111,7 @@ struct dsl_value *dsl_record_get(const struct dsl_value *record,
  *   list    -> non-empty
  *   record  -> always true
  */
-bool dsl_value_truthy(const struct dsl_value *);
+bool state_value_truthy(const struct state_value *);
 
 /*
  * Stringify for command argv interpolation.  Number prints with the
@@ -119,6 +120,9 @@ bool dsl_value_truthy(const struct dsl_value *);
  * NULL (caller treats as evaluation error: cannot splice an
  * aggregate into argv).  Caller owns the returned string (xfree).
  */
-char *dsl_value_to_argv_string(const struct dsl_value *);
+char *state_value_to_argv_string(const struct state_value *);
 
-#endif /* COW_DSL_VALUE_H */
+/* Convert a state value recursively to an owned cJSON value. */
+struct cJSON *state_value_to_json(const struct state_value *);
+
+#endif /* COW_STATE_VALUE_H */

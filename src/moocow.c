@@ -22,7 +22,7 @@
  * Usage:
  *   moocow decor -a default
  *   moocow winops -c
- *   moocow show windows
+ *   moocow show -a window
  *   moocow bind L+q winops -c
  */
 
@@ -52,7 +52,7 @@ static const char *usage =
     "  moocow -p\n"
     "  moocow -p -P 'cow> ' -S '...> ' -C green\n"
     "  moocow decor -a default\n"
-    "  moocow show windows\n"
+    "  moocow show -a window\n"
     "  moocow winops -c\n"
     "  moocow bind L+q winops -c\n"
     "  moocow exec foot\n";
@@ -132,9 +132,24 @@ static int
 print_response(char *resp, bool pretty_json)
 {
 	size_t len = strlen(resp);
+	cJSON *json = cJSON_Parse(resp);
+	if (json != NULL) {
+		const cJSON *format = cJSON_GetObjectItemCaseSensitive(json,
+		    "format");
+		const cJSON *data = cJSON_GetObjectItemCaseSensitive(json, "data");
+		if (cJSON_IsString(format) &&
+		    strcmp(format->valuestring, "config") == 0 &&
+		    cJSON_IsString(data)) {
+			fputs(data->valuestring, stdout);
+			if (data->valuestring[0] != '\0' &&
+			    data->valuestring[strlen(data->valuestring) - 1] != '\n')
+				putchar('\n');
+			cJSON_Delete(json);
+			return 0;
+		}
+	}
 
 	if (pretty_json) {
-		cJSON *json = cJSON_Parse(resp);
 		if (json != NULL) {
 			char *pretty = cJSON_Print(json);
 			if (pretty != NULL) {
@@ -145,7 +160,6 @@ print_response(char *resp, bool pretty_json)
 				if (len > 0 && resp[len - 1] != '\n')
 					printf("\n");
 			}
-			cJSON_Delete(json);
 		} else {
 			printf("%s", resp);
 			if (len > 0 && resp[len - 1] != '\n')
@@ -156,6 +170,7 @@ print_response(char *resp, bool pretty_json)
 		if (len > 0 && resp[len - 1] != '\n')
 			printf("\n");
 	}
+	cJSON_Delete(json);
 
 	return strstr(resp, "\"ok\":false") != NULL ? 1 : 0;
 }

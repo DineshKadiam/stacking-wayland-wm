@@ -187,7 +187,7 @@ struct cmd_entry cmd_menu_add_entry = {
 	-1,
 	"menu-add [-i ICON] NAME LABEL ACTION",
 	cmd_menu_add_exec,
-	0,
+	CMD_CONFIG,
 };
 
 static enum cmd_retval
@@ -214,7 +214,7 @@ struct cmd_entry cmd_menu_clear_entry = {
 	1,
 	"menu-clear NAME",
 	cmd_menu_clear_exec,
-	0,
+	CMD_CONFIG,
 };
 
 static enum cmd_retval
@@ -242,7 +242,7 @@ struct cmd_entry cmd_menu_destroy_entry = {
 	1,
 	"menu-destroy NAME",
 	cmd_menu_destroy_exec,
-	0,
+	CMD_CONFIG,
 };
 
 static enum cmd_retval
@@ -653,5 +653,5 @@ struct cmd_entry cmd_menu_style_entry = {
 	-1,
 	"menu-style [-m NAME] KEY VALUE | menu-style -m NAME -r KEY",
 	cmd_menu_style_exec,
-	0,
+	CMD_CONFIG,
 };

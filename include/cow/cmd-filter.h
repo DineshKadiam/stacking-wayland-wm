@@ -24,6 +24,7 @@ struct cmd_q;
 struct cow_view;
 struct dsl_ast;
 struct dsl_error;
+struct state_value;
 
 struct cmd_filter {
 	struct dsl_ast	  *ast;
@@ -37,6 +38,7 @@ bool cmd_filter_parse(struct cmd_filter *, struct cmd_q *, const char *,
     const char *, const char *);
 bool cmd_filter_empty(const struct cmd_filter *);
 bool cmd_filter_view(struct cmd_filter *, const struct cow_view *, bool *);
+bool cmd_filter_record(struct cmd_filter *, const struct state_value *, bool *);
 bool cmd_filter_finish(struct cmd_filter *, struct cmd_q *);
 void cmd_filter_fprint_error(struct cmd_filter *, FILE *, const char *);
 void cmd_filter_free(struct cmd_filter *);

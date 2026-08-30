@@ -18,6 +18,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "cow/colour.h"
 
@@ -62,6 +63,31 @@ test_parse(void)
 }
 
 static int
+test_format(void)
+{
+	const float opaque[4] = {
+		0x11 / 255.0f, 0x22 / 255.0f, 0x33 / 255.0f, 1.0f,
+	};
+	const float translucent[4] = {
+		0x11 / 255.0f, 0x22 / 255.0f, 0x33 / 255.0f,
+		0x80 / 255.0f,
+	};
+	char buf[16];
+
+	cow_colour_format(buf, sizeof(buf), opaque);
+	if (strcmp(buf, "0x112233") != 0) {
+		fprintf(stderr, "RGB colour formatting failed: %s\n", buf);
+		return (1);
+	}
+	cow_colour_format(buf, sizeof(buf), translucent);
+	if (strcmp(buf, "0x11223380") != 0) {
+		fprintf(stderr, "RGBA colour formatting failed: %s\n", buf);
+		return (1);
+	}
+	return (0);
+}
+
+static int
 test_pixel(void)
 {
 	const float in[4] = { 1.0f, 0.5f, 0.0f, 0.5f };
@@ -86,7 +112,7 @@ test_pixel(void)
 int
 main(void)
 {
-	if (test_parse() != 0 || test_pixel() != 0)
+	if (test_parse() != 0 || test_format() != 0 || test_pixel() != 0)
 		return (1);
 
 	const float near_threshold[4] = {

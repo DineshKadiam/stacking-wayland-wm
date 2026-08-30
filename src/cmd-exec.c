@@ -40,7 +40,7 @@ struct cmd_entry cmd_exec_entry = {
 	-1,
 	"exec command ...",
 	cmd_exec_exec,
-	0,
+	CMD_CONFIG_STARTUP,
 };
 
 /* Deferred exec list for startup mode. */

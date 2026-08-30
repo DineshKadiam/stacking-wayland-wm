@@ -90,6 +90,11 @@ main(void)
 	static const char *const chord[] = {
 		"bind", "C+c,C+a", "window-move", "-x", "0",
 	};
+	static const char *const rule_dump[] = {
+		"rule", "-g", "-n", "desk-number-bindings", "-T",
+		"on-outputs-changed", "script",
+		"{\nscript {\n    bind \"L+#{d.nr}\" desk -d #{d.nr}\n}\n}",
+	};
 
 	check("script{}", 2, script);
 	check("script{}nop", 3, adjacent);
@@ -97,5 +102,8 @@ main(void)
 	    "script{ if self.output == \"HDMI-A-1\"{ } }",
 	    8, rule);
 	check("bind C+c,C+a window-move -x 0", 5, chord);
+	check("rule -g -n desk-number-bindings -T on-outputs-changed "
+	    "script {\nscript {\n    bind \"L+#{d.nr}\" desk -d #{d.nr}\n}\n}",
+	    8, rule_dump);
 	return (0);
 }

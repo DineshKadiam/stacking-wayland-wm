@@ -402,7 +402,7 @@ struct cmd_entry cmd_set_entry = {
 	-1,
 	"set [-v] key value",
 	cmd_set_exec,
-	0,
+	CMD_CONFIG,
 };
 
 static const struct cow_option_entry *

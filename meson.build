@@ -44,7 +44,6 @@ srcs = [
     'src/cmd-icon-placement.c',
     'src/cmd-include.c',
     'src/cmd-keyboard-layout.c',
-    'src/cmd-list-commands.c',
     'src/cmd-list.c',
     'src/cmd-menu.c',
     'src/cmd-mouse.c',
@@ -68,10 +67,11 @@ srcs = [
     'src/dsl-ast.c',
     'src/dsl-parse.c',
     'src/dsl-eval.c',
-    'src/dsl-sources.c',
-    'src/dsl-value.c',
+    'src/state-snapshot.c',
+    'src/state-value.c',
     'src/colour.c',
     'src/command.c',
+    'src/config-serialize.c',
     'src/config.c',
     'src/config_types.c',
     'src/cow_box.c',
@@ -510,6 +510,28 @@ shared_utils_test = executable('test-shared-utils',
     dependencies: all_deps,
 )
 test('shared-utils', shared_utils_test)
+
+state_value_test = executable('test-state-value',
+    'tests/state-value.c',
+    'src/state-value.c',
+    'src/memory.c',
+    'vendor/cJSON.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('state-value', state_value_test)
+
+config_serialize_test = executable('test-config-serialize',
+    'tests/config-serialize.c',
+    'src/config-serialize.c',
+    'src/state-value.c',
+    'src/util.c',
+    'src/memory.c',
+    'vendor/cJSON.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('config-serialize', config_serialize_test)
 
 subdir('cowbar')
 subdir('modules/cowclock')
