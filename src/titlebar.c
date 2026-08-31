@@ -434,7 +434,7 @@ draw_titlebar_relief(uint32_t *pixels, int stride, int rx, int ry, int rw,
 		uint32_t br = sunken ? px_lt : px_dk;
 		struct titlebar_relief_edges edges =
 		    titlebar_relief_edges(position, ul, br);
-		cow_draw_hline(&p, rx + 1, rx + rw - 1, ry, edges.top);
+		cow_draw_hline(&p, rx, rx + rw - 1, ry, edges.top);
 		cow_draw_vline(&p, rx, ry + 1, ry + rh - 1, edges.left);
 		cow_draw_hline(&p, rx, rx + rw - 2, ry + rh - 1,
 		    edges.bottom);
