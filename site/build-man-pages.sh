@@ -7,6 +7,8 @@ repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 source_root=$repo_root
 git_root=$repo_root
 git_ref=HEAD
+compare_ref=
+compare_label=
 version=
 channel="the current CoW source tree"
 link_prefix=../
@@ -18,6 +20,8 @@ usage()
 	echo "  --source-root directory" >&2
 	echo "  --git-root directory" >&2
 	echo "  --git-ref ref" >&2
+	echo "  --compare-ref ref" >&2
+	echo "  --compare-label description" >&2
 	echo "  --version version" >&2
 	echo "  --channel description" >&2
 	echo "  --link-prefix prefix" >&2
@@ -27,12 +31,14 @@ usage()
 
 while [ "$#" -gt 0 ]; do
 	case "$1" in
-	--source-root|--git-root|--git-ref|--version|--channel|--link-prefix|--manuals-href)
+	--source-root|--git-root|--git-ref|--compare-ref|--compare-label|--version|--channel|--link-prefix|--manuals-href)
 		[ "$#" -ge 2 ] || usage
 		case "$1" in
 		--source-root) source_root=$2 ;;
 		--git-root) git_root=$2 ;;
 		--git-ref) git_ref=$2 ;;
+		--compare-ref) compare_ref=$2 ;;
+		--compare-label) compare_label=$2 ;;
 		--version) version=$2 ;;
 		--channel) channel=$2 ;;
 		--link-prefix) link_prefix=$2 ;;
@@ -55,6 +61,16 @@ base_url=$2
 
 if [ -z "$version" ]; then
 	version=$("$source_root/tools/cow-version-str.sh")
+fi
+if [ -n "$compare_ref" ]; then
+	git -C "$git_root" rev-parse --verify --quiet \
+	    "$compare_ref^{commit}" >/dev/null || {
+		echo "unknown comparison ref: $compare_ref" >&2
+		exit 1
+	}
+	if [ -z "$compare_label" ]; then
+		compare_label=$compare_ref
+	fi
 fi
 
 tmpdir=$(mktemp -d)
@@ -121,6 +137,13 @@ cat >> "$index" <<-EOF
 	<header class="manual-index-header">
 	  <h2>CoW manual pages</h2>
 	  <p>Manuals generated from ${channel}, version ${version}.</p>
+	EOF
+
+if [ -n "$compare_ref" ]; then
+	printf '  <p class="manual-change-key">Manuals with a highlighted background have changed since %s.</p>\n' \
+	    "$compare_label" >> "$index"
+fi
+cat >> "$index" <<-EOF
 	</header>
 	<ul class="manual-index">
 	EOF
@@ -169,8 +192,16 @@ for source in "$source_root"/man/*.scd.in; do
 	cat "$fragment" >> "$output/$page.html"
 	page_end >> "$output/$page.html"
 
-	printf '  <li><a href="%s.html"><code>%s(%s)</code></a></li>\n' \
-	    "$page" "$name" "$section" >> "$index"
+	class=
+	label="$name($section)"
+	if [ -n "$compare_ref" ] &&
+	    ! git -C "$git_root" diff --quiet "$compare_ref" "$git_ref" -- \
+	    "$source_relative"; then
+		class=' class="manual-index-changed"'
+		label="$label, changed since $compare_label"
+	fi
+	printf '  <li><a%s href="%s.html" aria-label="%s"><code>%s(%s)</code></a></li>\n' \
+	    "$class" "$page" "$label" "$name" "$section" >> "$index"
 done
 
 cat >> "$index" <<-EOF

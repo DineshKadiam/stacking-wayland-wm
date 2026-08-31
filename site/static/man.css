@@ -199,6 +199,14 @@
   outline-offset: 2px;
 }
 
+.manual-index a.manual-index-changed {
+  background: #d4b56a;
+}
+
+.manual-change-key {
+  margin-bottom: 0;
+}
+
 .manual-versions {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

@@ -18,6 +18,11 @@ The page at `man/` links to both sets and shows the version represented by
 each. Pre-release tags containing a suffix, such as `0.2-rc`, do not replace
 the stable release manuals.
 
+On the development manual index, pages whose source differs from the latest
+stable release use a highlighted background. The comparison uses the
+`man/*.scd.in` sources rather than generated HTML, so changing only the
+development version does not mark every manual as changed.
+
 The manual-page build performs the following steps for each
 `man/*.scd.in` file:
 

@@ -43,11 +43,17 @@ HUGO_PARAMS_RELEASEDATE=$release_date \
 	--gc \
 	--minify
 
-sh "$script_dir/build-man-pages.sh" \
+set -- \
 	--version "$development_version" \
 	--channel "the development branch" \
 	--link-prefix ../../ \
-	--manuals-href ../ \
+	--manuals-href ../
+if [ -n "$release_tag" ]; then
+	set -- "$@" \
+		--compare-ref "$release_tag" \
+		--compare-label "release $release_tag"
+fi
+sh "$script_dir/build-man-pages.sh" "$@" \
 	"$destination/man/development" "$base_url"
 
 if [ -n "$release_tag" ]; then
