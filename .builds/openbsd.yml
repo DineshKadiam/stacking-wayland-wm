@@ -16,7 +16,7 @@ packages:
   - wayland
   - wayland-protocols
 sources:
-  - https://codeberg.org/thomasadam/cow.git
+  - https://codeberg.org/cow-wm/cow.git
 tasks:
   - build: |
       cd cow

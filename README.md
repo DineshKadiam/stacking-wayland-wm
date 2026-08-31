@@ -5,9 +5,9 @@
 </p>
 
 <p align="center">
-  <a href="https://thomasadam.codeberg.page/cow/">Website</a> ·
-  <a href="https://codeberg.org/thomasadam/cow/wiki/Home">Wiki</a> ·
-  <a href="https://codeberg.org/thomasadam/cow/issues">Issues</a>
+  <a href="https://cow-wm.codeberg.page/cow/">Website</a> ·
+  <a href="https://codeberg.org/cow-wm/cow/wiki/Home">Wiki</a> ·
+  <a href="https://codeberg.org/cow-wm/cow/issues">Issues</a>
 </p>
 
 `cow` is a stacking window manager.  Unlike other compositors based on
@@ -129,17 +129,17 @@ It is also suggested to look at cowbar(1) for sending information to waybar.
 
 ## Wiki
 
-See:  https://codeberg.org/thomasadam/cow/wiki/Home
+See:  https://codeberg.org/cow-wm/cow/wiki/Home
 
 ## Old Screenshots
 
 Mostly for historical/development nostalgia:
 
-See: https://codeberg.org/thomasadam/cow/wiki/Screenshots
+See: https://codeberg.org/cow-wm/cow/wiki/Screenshots
 
 ## Packages
 
-CoW is packaged by the following entries [found on the wiki](https://codeberg.org/thomasadam/cow/wiki/Packages)
+CoW is packaged by the following entries [found on the wiki](https://codeberg.org/cow-wm/cow/wiki/Packages)
 
 ## Contact and Support
 

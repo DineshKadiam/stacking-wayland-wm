@@ -1,14 +1,14 @@
-baseURL = "https://thomasadam.codeberg.page/cow/"
+baseURL = "https://cow-wm.codeberg.page/cow/"
 locale = "en-GB"
 title = "CoW"
 disableKinds = ["taxonomy", "term", "RSS", "sitemap", "robotsTXT"]
 
 [params]
-repository = "https://codeberg.org/thomasadam/cow"
-documentation = "https://codeberg.org/thomasadam/cow/wiki/Home"
-architecture = "https://codeberg.org/thomasadam/cow/src/branch/main/architecture.md"
-packages = "https://codeberg.org/thomasadam/cow/wiki/Packages"
-changelog = "https://codeberg.org/thomasadam/cow/src/branch/main/CHANGELOG.md"
+repository = "https://codeberg.org/cow-wm/cow"
+documentation = "https://codeberg.org/cow-wm/cow/wiki/Home"
+architecture = "https://codeberg.org/cow-wm/cow/src/branch/main/architecture.md"
+packages = "https://codeberg.org/cow-wm/cow/wiki/Packages"
+changelog = "https://codeberg.org/cow-wm/cow/src/branch/main/CHANGELOG.md"
 
 [module]
   [[module.mounts]]

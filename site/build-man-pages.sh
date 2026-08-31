@@ -100,8 +100,8 @@ page_start()
 	    <nav aria-label="Primary navigation">
 	      <a href="${link_prefix}">Home</a>
 	      <a href="${manuals_href}">Manuals</a>
-	      <a href="https://codeberg.org/thomasadam/cow">Source</a>
-	      <a href="https://codeberg.org/thomasadam/cow/wiki/Home">Documentation</a>
+	      <a href="https://codeberg.org/cow-wm/cow">Source</a>
+	      <a href="https://codeberg.org/cow-wm/cow/wiki/Home">Documentation</a>
 	    </nav>
 	  </header>
 	  <main class="manual-main">

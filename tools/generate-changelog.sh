@@ -12,7 +12,7 @@ assistant=$2
 release_notes=$3
 changelog=${4:-CHANGELOG.md}
 forgejo_url=${FORGEJO_SERVER_URL:-https://codeberg.org}
-repository=${FORGEJO_REPOSITORY:-thomasadam/cow}
+repository=${FORGEJO_REPOSITORY:-cow-wm/cow}
 
 case "$version" in
 	*.*.*) tag_format='%[1]d.%[2]d.%[3]d' ;;

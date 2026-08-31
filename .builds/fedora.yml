@@ -17,7 +17,7 @@ packages:
   - wayland-devel.x86_64
   - wayland-protocols-devel
 sources:
-  - https://codeberg.org/thomasadam/cow.git
+  - https://codeberg.org/cow-wm/cow.git
 tasks:
   - build: |
       cd cow

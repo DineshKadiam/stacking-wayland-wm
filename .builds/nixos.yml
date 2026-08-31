@@ -4,7 +4,7 @@ environment:
 repositories:
   nixpkgs: https://nixos.org/channels/nixpkgs-unstable
 sources:
-  - https://codeberg.org/thomasadam/cow.git
+  - https://codeberg.org/cow-wm/cow.git
 tasks:
   - build: |
       cd cow
