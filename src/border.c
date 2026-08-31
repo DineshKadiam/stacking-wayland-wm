@@ -151,13 +151,13 @@ compute_layer_widths(int w[7], int bws, int style)
 {
 	if (style == COW_BORDER_STYLE_MWM) {
 		w[0]	= 0;
-		w[1]	= 1;
+		w[1]	= 2;
 		w[2]	= 0;
 		w[3]	= 0;
 		w[4]	= 0;
-		w[5]	= 0;
+		w[5]	= 1;
 		w[6]	= 0;
-		int sum = 1;
+		int sum = 3;
 		if (bws < sum) {
 			int trim = sum - bws;
 			if (trim > 0 && w[1] > 0) {
