@@ -76,15 +76,15 @@ draw_x_mark(uint32_t *pixels, int stride, int img_w, int img_h, int x, int y,
 {
 	x += offset_tl;
 	for (int k = 0; k < mark_thickness; k++) {
-		int len = mark_length - 1 - k;
-		if (len < 0)
+		int len = mark_length - 1 - 2 * k;
+		if (len <= 0)
 			break;
 		int x1, y1;
 		if (do_draw_shadow) {
-			x1 = x;
+			x1 = x + k;
 			y1 = y - 1 - k;
 		} else {
-			x1 = x - k;
+			x1 = x + k;
 			y1 = y + k;
 		}
 		hline(pixels, stride, img_w, img_h, x1, x1 + len, y1, colour);
@@ -98,7 +98,7 @@ draw_y_mark(uint32_t *pixels, int stride, int img_w, int img_h, int x, int y,
 {
 	y += offset_tl;
 	for (int k = 0; k < mark_thickness; k++) {
-		int len = mark_length - k;
+		int len = mark_length - 1 - 2 * k;
 		if (len <= 0)
 			break;
 		int x1, y1;
@@ -107,10 +107,9 @@ draw_y_mark(uint32_t *pixels, int stride, int img_w, int img_h, int x, int y,
 			y1 = y + k;
 		} else {
 			x1 = x + k;
-			y1 = y;
+			y1 = y + k;
 		}
-		vline(pixels, stride, img_w, img_h, x1, y1, y1 + len - 1,
-		    colour);
+		vline(pixels, stride, img_w, img_h, x1, y1, y1 + len, colour);
 	}
 }
 
