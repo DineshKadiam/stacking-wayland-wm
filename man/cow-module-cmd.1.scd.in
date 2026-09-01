@@ -1,0 +1,47 @@
+cow-module-cmd(1) "@VERSION@" "cow - Window Manager"
+
+# NAME
+
+cow-module-cmd - internal commands used by cow modules
+
+# DESCRIPTION
+
+These commands form part of the interface between *cow*(1) and its modules.
+They are documented for module authors and debugging, but are not intended as
+general configuration commands.
+
+# COMMANDS
+
+## show diagnostics
+
+Return read-only, process-lifetime diagnostic counters. The record contains
+CoW process CPU, uptime and peak RSS; pending and cumulative update counts;
+manage and render cycle counts; and last, average, and maximum callback and
+CoW/River hand-off timings. Timing values are in microseconds.
+
+The _request\_wait_ measurement covers the first pending manage request to
+River's _manage\_start_ event. _after\_manage_ covers CoW's _manage\_finish_
+request to River's next _render\_start_ event. These are protocol-boundary
+timings, not compositor frame-rendering measurements.
+
+The diagnostics have no _config_ representation.
+
+## window-tile [-t target] [-e edges] [-u]
+
+Set or clear the tiled-edge hint for a window. This is used by modules which
+place and size windows exactly, because some clients use the tiled state to
+ignore normal resize increments.
+
+*-t* _target_
+	Target window.
+
+*-e* _edges_
+	Set the tiled edges. _edges_ may be *all*, *none*, or any combination of
+	_n_, _s_, _e_, and _w_. The default is *all*.
+
+*-u*
+	Clear the tiled-edge hint.
+
+# SEE ALSO
+
+*cow*(1), *cowdiag*(1), *cowrearrange*(1), *moocow*(1)

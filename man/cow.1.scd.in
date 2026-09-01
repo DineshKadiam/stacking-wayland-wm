@@ -1131,18 +1131,6 @@ standard output.
 	and _scroll\_lock_ states, or _null_ if no layout is set. A lock state is
 	_null_ until River has reported it.
 
-*show diagnostics*
-	Return read-only, process-lifetime diagnostic counters. The record contains
-	CoW process CPU, uptime and peak RSS; pending and cumulative update counts;
-	manage and render cycle counts; and last, average, and maximum callback and
-	CoW/River hand-off timings. Timing values are in microseconds.
-
-	The _request\_wait_ measurement covers the first pending manage request to
-	River's _manage\_start_ event. _after\_manage_ covers CoW's
-	_manage\_finish_ request to River's next _render\_start_ event. These are
-	protocol-boundary timings, not compositor frame-rendering measurements.
-	The diagnostics have no _config_ representation.
-
 *show config* [_key_]
 	With no key, return all serializable configuration grouped into _commands_,
 	_settings_, _decor_, _menu\_style_, _menus_, _bindings_, _rules_, and
@@ -1450,22 +1438,6 @@ focused window in the left half and bottom-right quarter respectively:
 bind L+Left  window-move -x 0vw -y 0vh \; window-resize -w 50vw -h 100vh
 bind L+3     window-move -x 50vw -y 50vh \; window-resize -w 50vw -h 50vh
 ```
-
-## window-tile [-t target] [-e edges] [-u]
-
-Set or clear the tiled-edge hint for a window.  This is mainly useful for
-scripts which place and size windows exactly, because some clients use the
-tiled state to ignore normal resize increments.
-
-*-t* _target_
-	Target window.
-
-*-e* _edges_
-	Set the tiled edges.  _edges_ may be *all*, *none*, or any
-	combination of _n_, _s_, _e_, and _w_.  The default is *all*.
-
-*-u*
-	Clear the tiled-edge hint.
 
 ## focus [-npwL] [-F expr] [-l N] [-t target] [-d dir] [-o output] [-A app_id] [-T title] [-i id]
 
@@ -2779,9 +2751,9 @@ _$XDG\_RUNTIME\_DIR/cow-$WAYLAND\_DISPLAY-status.sock_
 
 # SEE ALSO
 
-*moocow*(1), *cowbar*(1), *cowiconman*(1), *cowpager*(1), *river*(1),
-*wev*(1), *xdg-desktop-portal*(1), *xdg-desktop-portal-wlr*(1),
-*pipewire*(1), *wl-clip-persist*(1)
+*moocow*(1), *cow-module-cmd*(1), *cowbar*(1), *cowiconman*(1),
+*cowpager*(1), *river*(1), *wev*(1), *xdg-desktop-portal*(1),
+*xdg-desktop-portal-wlr*(1), *pipewire*(1), *wl-clip-persist*(1)
 
 # AUTHORS
 

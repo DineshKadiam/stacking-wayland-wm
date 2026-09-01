@@ -482,6 +482,8 @@ commands_snapshot(void)
 	struct state_value *list = state_value_list();
 
 	for (struct cmd_entry **entry = cmd_table; *entry != NULL; entry++) {
+		if (((*entry)->flags & CMD_MODULE) != 0)
+			continue;
 		struct state_value *record = state_value_record();
 		rec_set_string(record, "name", (*entry)->name);
 		rec_set_string(record, "usage", (*entry)->usage);

@@ -599,8 +599,8 @@ if scdoc.found()
     foreach page : [
         ['cow', '1'], ['moocow', '1'], ['cowbar', '1'],
         ['cowbuttons', '1'], ['cowclock', '1'], ['cowdiag', '1'],
-        ['cowident', '1'], ['cowiconman', '1'], ['cowpager', '1'],
-        ['cowrearrange', '1'],
+        ['cowident', '1'], ['cowiconman', '1'], ['cow-module-cmd', '1'],
+        ['cowpager', '1'], ['cowrearrange', '1'],
     ]
         name    = page[0]
         section = page[1]

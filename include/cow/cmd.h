@@ -86,10 +86,11 @@ enum cmd_retval {
 	CMD_RETURN_NORMAL = 0,
 };
 
-/* Command parses -t/-s itself. */
-#define CMD_OWN_TS (1u << 0)
+/* Command flags. */
+#define CMD_OWN_TS (1u << 0) /* Command parses -t/-s itself. */
 #define CMD_CONFIG (1u << 1)
 #define CMD_CONFIG_STARTUP (1u << 2)
+#define CMD_MODULE (1u << 3) /* Omit from user-facing enumeration. */
 
 /* Command definition. */
 struct cmd_entry {

@@ -187,7 +187,7 @@ struct cmd_entry cmd_window_tile_entry = {
 	0,
 	"window-tile [-t target] [-e edges] [-u]",
 	cmd_window_tile_exec,
-	0,
+	CMD_MODULE,
 };
 
 static enum cmd_retval
