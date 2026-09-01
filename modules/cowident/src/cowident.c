@@ -16,6 +16,7 @@
 
 #include <cJSON.h>
 #include <cairo.h>
+#include <fontconfig/fontconfig.h>
 #include <pango/pangocairo.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -89,6 +90,7 @@ struct view_info {
 };
 
 static struct wl_display		 *display;
+static struct wl_registry		 *registry;
 static struct wl_compositor		 *compositor;
 static struct wl_shm			 *shm;
 static struct wl_seat			 *seat;
@@ -1370,9 +1372,102 @@ popup_destroy(void)
 	wl_display_roundtrip(display);
 }
 
+static void
+cowident_cleanup(void)
+{
+	free_popup_rows();
+	free_views();
+
+	/* Release process-wide font data after its last use. */
+	pango_cairo_font_map_set_default(NULL);
+	FcFini();
+
+	cow_module_cursor_fini(&cursor);
+	if (pointer) {
+		wl_pointer_destroy(pointer);
+		pointer = NULL;
+	}
+	if (keyboard) {
+		wl_keyboard_destroy(keyboard);
+		keyboard = NULL;
+	}
+	if (cursor_surface) {
+		wl_surface_destroy(cursor_surface);
+		cursor_surface = NULL;
+	}
+	if (cursor_theme) {
+		wl_cursor_theme_destroy(cursor_theme);
+		cursor_theme = NULL;
+		cursor_crosshair = NULL;
+	}
+
+	for (int i = 0; i < n_outs; i++) {
+		struct out *o = &outs[i];
+		if (o->xdg_output) {
+			zxdg_output_v1_destroy(o->xdg_output);
+			o->xdg_output = NULL;
+		}
+		if (o->wl_output) {
+			wl_output_destroy(o->wl_output);
+			o->wl_output = NULL;
+		}
+	}
+	n_outs = 0;
+
+	if (xdg_output_manager) {
+		zxdg_output_manager_v1_destroy(xdg_output_manager);
+		xdg_output_manager = NULL;
+	}
+	if (xdg_wm_base) {
+		xdg_wm_base_destroy(xdg_wm_base);
+		xdg_wm_base = NULL;
+	}
+	if (layer_shell) {
+		zwlr_layer_shell_v1_destroy(layer_shell);
+		layer_shell = NULL;
+	}
+	if (seat) {
+		wl_seat_destroy(seat);
+		seat = NULL;
+	}
+	if (shm) {
+		wl_shm_destroy(shm);
+		shm = NULL;
+	}
+	if (compositor) {
+		wl_compositor_destroy(compositor);
+		compositor = NULL;
+	}
+	if (registry) {
+		wl_registry_destroy(registry);
+		registry = NULL;
+	}
+
+	if (xkb_state) {
+		xkb_state_unref(xkb_state);
+		xkb_state = NULL;
+	}
+	if (xkb_keymap) {
+		xkb_keymap_unref(xkb_keymap);
+		xkb_keymap = NULL;
+	}
+	if (xkb_ctx) {
+		xkb_context_unref(xkb_ctx);
+		xkb_ctx = NULL;
+	}
+
+	if (display) {
+		wl_display_flush(display);
+		wl_display_disconnect(display);
+		display = NULL;
+	}
+}
+
 int
 main(void)
 {
+	int status = 0;
+
 	display = wl_display_connect(NULL);
 	if (!display) {
 		fprintf(stderr, "cowident: cannot connect to display\n");
@@ -1382,17 +1477,19 @@ main(void)
 	xkb_ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
 	if (!xkb_ctx) {
 		fprintf(stderr, "cowident: xkb_context_new failed\n");
-		return 1;
+		status = 1;
+		goto out;
 	}
 
-	struct wl_registry *registry = wl_display_get_registry(display);
+	registry = wl_display_get_registry(display);
 	wl_registry_add_listener(registry, &reg_listener, NULL);
 	wl_display_roundtrip(display);
 
 	if (!compositor || !shm || !seat || !layer_shell || !xdg_wm_base) {
 		fprintf(stderr,
 		    "cowident: compositor missing required globals\n");
-		return 1;
+		status = 1;
+		goto out;
 	}
 
 	/*
@@ -1434,11 +1531,7 @@ main(void)
 
 	if (phase == PHASE_DONE) {
 		/* Cancelled. */
-		free_popup_rows();
-		free_views();
-		cow_module_cursor_fini(&cursor);
-		wl_display_disconnect(display);
-		return 0;
+		goto out;
 	}
 
 	/* Phase 2: popup */
@@ -1450,9 +1543,7 @@ main(void)
 	popup_destroy();
 	wl_display_flush(display);
 
-	free_popup_rows();
-	free_views();
-	cow_module_cursor_fini(&cursor);
-	wl_display_disconnect(display);
-	return 0;
+out:
+	cowident_cleanup();
+	return status;
 }

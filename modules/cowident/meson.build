@@ -17,6 +17,7 @@ ident_deps = [
     dependency('wayland-cursor'),
     dependency('cairo'),
     dependency('pangocairo'),
+    dependency('fontconfig'),
     dependency('xkbcommon'),
 ]
 
