@@ -401,7 +401,7 @@ draw_fvwm_relief(uint32_t *pixels, int stride, int rx, int ry, int rw, int rh,
 	    titlebar_relief_edges(position, ul, br);
 
 	for (int r = 0; r < 2 && r < rw / 2 && r < rh / 2; r++) {
-		int y1 = ry + r + 1;
+		int y1 = ry + r;
 
 		cow_draw_hline(&p, rx + r, rx + rw - 1 - r, ry + r,
 			edges.top);
