@@ -29,6 +29,7 @@
               libevent
               libxkbcommon
               meson
+              ncurses
               ninja
               pango
               pixman

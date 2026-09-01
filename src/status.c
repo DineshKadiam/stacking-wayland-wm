@@ -32,6 +32,7 @@
 #include "cow/colour.h"
 #include "cow/config.h"
 #include "cow/decoration.h"
+#include "cow/diagnostics.h"
 #include "cow/desk_ops.h"
 #include "cow/event.h"
 #include "cow/keyboard_layout.h"
@@ -81,6 +82,7 @@ status_remove_client(struct status_client *client, const char *reason)
 	client->active = false;
 	if (nclients > 0)
 		nclients--;
+	cow_diagnostics_status_clients(nclients);
 	cow_log_debug("status client disconnected "
 	    "(name=%s fd=%d clients=%d reason=%s)",
 	    client->identified ? client->name : "unidentified", fd, nclients,
@@ -167,6 +169,7 @@ status_accept(void)
 		client->ev = event_new(cow_event_base(), fd,
 		    EV_READ | EV_PERSIST, status_client_cb, client);
 		nclients++;
+		cow_diagnostics_status_clients(nclients);
 		if (client->ev == NULL || event_add(client->ev, NULL) < 0) {
 			status_remove_client(client, "event-error");
 			continue;
@@ -449,6 +452,7 @@ cow_status_emit(void)
 {
 	if (server_fd < 0)
 		return;
+	cow_diagnostics_status_emit();
 
 	cJSON *root = cJSON_CreateObject();
 	status_add_theme(root);

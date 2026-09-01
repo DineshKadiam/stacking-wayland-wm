@@ -7,6 +7,7 @@ pkgs.mkShell {
     libbsd
     libevent
     libxkbcommon
+    ncurses
     pango
     pkg-config
     pixman

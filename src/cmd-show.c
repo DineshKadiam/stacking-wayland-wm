@@ -20,6 +20,7 @@
 #include "cow/cmd.h"
 #include "cow/cmd-filter.h"
 #include "cow/config.h"
+#include "cow/diagnostics.h"
 #include "cow/ipc.h"
 #include "cow/keyboard_layout.h"
 #include "cow/menu.h"
@@ -320,6 +321,24 @@ cmd_show_exec(struct cmd *self, struct cmd_q *cmdq)
 		}
 		cow_ipc_respond_data(cmdq->client_fd,
 		    cow_keyboard_layout_active_json());
+		return (CMD_RETURN_NORMAL);
+	}
+
+	if (strcmp(topic, "diagnostics") == 0) {
+		if (has_target) {
+			cmdq_error(cmdq,
+			    "show: -t is not valid with diagnostics");
+			return (CMD_RETURN_ERROR);
+		}
+		if (args->argc != 1)
+			goto no_name;
+		if (strcmp(format, "config") == 0) {
+			cmdq_error(cmdq,
+			    "show: diagnostics has no config representation");
+			return (CMD_RETURN_ERROR);
+		}
+		cow_ipc_respond_data(cmdq->client_fd,
+		    cow_diagnostics_json());
 		return (CMD_RETURN_NORMAL);
 	}
 

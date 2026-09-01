@@ -21,3 +21,6 @@ tasks:
   - build: |
       cd cow
       meson setup build && meson compile -C build
+  - test-cowdiag-process-backend: |
+      cd cow
+      meson test -C build cowdiag-proc --print-errorlogs

@@ -1131,6 +1131,18 @@ standard output.
 	and _scroll\_lock_ states, or _null_ if no layout is set. A lock state is
 	_null_ until River has reported it.
 
+*show diagnostics*
+	Return read-only, process-lifetime diagnostic counters. The record contains
+	CoW process CPU, uptime and peak RSS; pending and cumulative update counts;
+	manage and render cycle counts; and last, average, and maximum callback and
+	CoW/River hand-off timings. Timing values are in microseconds.
+
+	The _request\_wait_ measurement covers the first pending manage request to
+	River's _manage\_start_ event. _after\_manage_ covers CoW's
+	_manage\_finish_ request to River's next _render\_start_ event. These are
+	protocol-boundary timings, not compositor frame-rendering measurements.
+	The diagnostics have no _config_ representation.
+
 *show config* [_key_]
 	With no key, return all serializable configuration grouped into _commands_,
 	_settings_, _decor_, _menu\_style_, _menus_, _bindings_, _rules_, and

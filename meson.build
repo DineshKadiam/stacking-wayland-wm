@@ -80,6 +80,7 @@ srcs = [
     'src/decoration_hit.c',
     'src/desk.c',
     'src/desk_ops.c',
+    'src/diagnostics.c',
     'src/format.c',
     'src/draw.c',
     'src/draw_exec.c',
@@ -467,11 +468,31 @@ test('cow-box', cow_box_test)
 update_test = executable('test-update',
     'tests/update.c',
     'src/update.c',
+    'src/diagnostics.c',
+    'vendor/cJSON.c',
     'vendor/cow_log.c',
     include_directories: include_dirs,
     dependencies: all_deps,
 )
 test('update', update_test)
+
+diagnostics_test = executable('test-diagnostics',
+    'tests/diagnostics.c',
+    'src/diagnostics.c',
+    'vendor/cJSON.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('diagnostics', diagnostics_test)
+
+cowdiag_proc_test = executable('test-cowdiag-proc',
+    'tests/cowdiag-proc.c',
+    'modules/cowdiag/src/proc.c',
+    include_directories: [include_dirs,
+        include_directories('modules/cowdiag/src')],
+    dependencies: wayland_client,
+)
+test('cowdiag-proc', cowdiag_proc_test)
 
 output_selector_test = executable('test-output-selector',
     'tests/output-selector.c',
@@ -538,6 +559,7 @@ test('config-serialize', config_serialize_test)
 
 subdir('cowbar')
 subdir('modules/cowclock')
+subdir('modules/cowdiag')
 subdir('modules/cowbuttons')
 subdir('modules/cowident')
 subdir('modules/cowiconman')
@@ -574,7 +596,12 @@ man_conf.set('VERSION', meson.project_version())
 scdoc = dependency('scdoc', native: true, required: false)
 if scdoc.found()
     scdoc_prog = find_program(scdoc.get_variable(pkgconfig: 'scdoc'), native: true)
-    foreach page : [['cow', '1'], ['moocow', '1'], ['cowbar', '1'], ['cowbuttons', '1'], ['cowclock', '1'], ['cowident', '1'], ['cowiconman', '1'], ['cowpager', '1'], ['cowrearrange', '1']]
+    foreach page : [
+        ['cow', '1'], ['moocow', '1'], ['cowbar', '1'],
+        ['cowbuttons', '1'], ['cowclock', '1'], ['cowdiag', '1'],
+        ['cowident', '1'], ['cowiconman', '1'], ['cowpager', '1'],
+        ['cowrearrange', '1'],
+    ]
         name    = page[0]
         section = page[1]
         scd = configure_file(
@@ -602,5 +629,6 @@ summary({
     'cairo': cairo,
     'libbsd': libbsd,
     'libevent': libevent,
+    'ncursesw (cowdiag)': cowdiag_ncurses,
     'scdoc': scdoc,
 }, bool_yn: true, section: 'Dependencies')

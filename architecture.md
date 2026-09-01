@@ -293,6 +293,23 @@ This split is why many commands set flags such as `needs_raise`,
 It keeps command execution, River event handling, and compositor commits in a
 predictable order.
 
+## Diagnostics
+
+CoW records low-overhead counters at the update scheduler and at the
+manage/render protocol boundaries. `show diagnostics` exposes those counters
+without generating periodic status snapshots.
+
+The recorded intervals deliberately describe only what CoW can observe:
+
+- first pending manage request to River's `manage_start` event;
+- time spent executing CoW's manage callback;
+- CoW's `manage_finish` request to River's next `render_start` event; and
+- time spent executing CoW's render callback.
+
+They do not represent River's scene rendering, GPU work, or presentation
+latency. `cowdiag` supplements these internal measurements with process CPU and
+memory statistics where the host operating system exposes them.
+
 ## Internal Model
 
 The global runtime state is `struct cow_wm`.  It owns lists of:

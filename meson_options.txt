@@ -9,3 +9,9 @@ option(
   value: false,
   description: 'Enable debug build (-g -O0 -fsanitize=address)'
 )
+option(
+  'cowdiag',
+  type: 'feature',
+  value: 'auto',
+  description: 'Build the optional ncurses cowdiag dashboard'
+)

@@ -31,6 +31,7 @@
 #include "cow/log.h"
 #include "cow/command.h"
 #include "cow/config.h"
+#include "cow/diagnostics.h"
 #include "cow/event.h"
 #include "cow/draw_exec.h"
 #include "cow/geometry_window.h"
@@ -440,6 +441,7 @@ handle_wm_manage_start(__unused void *data,
 
 	river_window_manager_v1_manage_finish(manager);
 	cow_wm.sequence = COW_WM_SEQUENCE_NONE;
+	cow_diagnostics_manage_end();
 	clock_gettime(CLOCK_MONOTONIC, &finished);
 	cow_log_trace("manage cycle end (duration_us=%lld)",
 	    elapsed_us(&started, &finished));
@@ -1374,6 +1376,7 @@ static void
 handle_wm_render_start(__unused void *data,
     struct river_window_manager_v1   *manager)
 {
+	cow_diagnostics_render_begin();
 	cow_wm.sequence = COW_WM_SEQUENCE_RENDER;
 
 	render_outputs();
@@ -1386,6 +1389,7 @@ handle_wm_render_start(__unused void *data,
 
 	river_window_manager_v1_render_finish(manager);
 	cow_wm.sequence = COW_WM_SEQUENCE_NONE;
+	cow_diagnostics_render_end();
 }
 
 static void

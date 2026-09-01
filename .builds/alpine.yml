@@ -16,6 +16,7 @@ packages:
   - wayland-protocols
   - xwayland-dev
   - meson
+  - ncurses-dev
   - scdoc
   - tar
   - wget

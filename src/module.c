@@ -139,6 +139,26 @@ cow_module_cmd_connect(const char *prog)
 }
 
 int
+cow_module_cmd_connect_quiet(const char *prog)
+{
+	char path[COW_MODULE_SOCKET_PATH_MAX];
+
+	if (!cow_module_cmd_path(path, sizeof(path), prog))
+		return -1;
+	return connect_path(prog, path, true);
+}
+
+int
+cow_module_status_connect_quiet(const char *prog)
+{
+	char path[COW_MODULE_SOCKET_PATH_MAX];
+
+	if (!cow_module_status_path(path, sizeof(path), prog))
+		return -1;
+	return connect_path(prog, path, true);
+}
+
+int
 cow_module_status_connect(const char *prog, int retries, unsigned int delay)
 {
 	char path[COW_MODULE_SOCKET_PATH_MAX];

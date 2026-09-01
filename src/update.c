@@ -17,6 +17,7 @@
 #include <stdint.h>
 
 #include "cow/log.h"
+#include "cow/diagnostics.h"
 #include "cow/update.h"
 
 struct cow_update_state {
@@ -39,6 +40,7 @@ void
 cow_update_request_at(uint32_t flags, const char *file, int line,
     const char *function)
 {
+	cow_diagnostics_update_request(flags);
 	if ((flags & COW_UPDATE_MANAGE) != 0) {
 		update_state.manage_requests++;
 		update_state.last_manage_file = file;
@@ -55,12 +57,14 @@ cow_update_take(void)
 {
 	uint32_t pending = update_state.pending;
 	update_state.pending = COW_UPDATE_NONE;
+	cow_diagnostics_update_take(pending);
 	return pending;
 }
 
 void
 cow_update_manage_begin(void)
 {
+	cow_diagnostics_manage_begin(update_state.manage_requests);
 	/*
 	 * The new River sequence satisfies any manage update queued before it.
 	 * Requests made by work within the sequence are registered afterwards

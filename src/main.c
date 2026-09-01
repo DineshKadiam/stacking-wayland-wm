@@ -30,6 +30,7 @@
 #include "cow/cmd.h"
 #include "cow/command.h"
 #include "cow/config.h"
+#include "cow/diagnostics.h"
 #include "cow/ipc.h"
 #include "cow/log.h"
 #include "cow/memory.h"
@@ -94,7 +95,6 @@ main(int argc, char *argv[])
 		    strerror(errno));
 		return (EXIT_FAILURE);
 	}
-
 	/*
 	 * Ensure XDG_CURRENT_DESKTOP and XDG_SESSION_TYPE are set so that
 	 * xdg-desktop-portal can select the correct backend (xdg-desktop-
@@ -145,6 +145,7 @@ main(int argc, char *argv[])
 	/* Ignore SIGPIPE -- child processes (xterm etc.) may cause this */
 	signal(SIGPIPE, SIG_IGN);
 
+	cow_diagnostics_init();
 	if (!cow_wm_init()) {
 		cow_config_destroy(cow_config);
 		cow_log_fini();
