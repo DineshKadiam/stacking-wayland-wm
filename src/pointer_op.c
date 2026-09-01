@@ -15,7 +15,6 @@
  */
 #include "cow/pointer_op.h"
 
-#include <linux/input-event-codes.h>
 #include <stdlib.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
