@@ -94,6 +94,13 @@ enum group_mode {
 	GROUP_DESK,
 };
 
+enum button_relief_mode {
+	BUTTON_RELIEF_AUTO,
+	BUTTON_RELIEF_RAISED,
+	BUTTON_RELIEF_SUNKEN,
+	BUTTON_RELIEF_FLAT,
+};
+
 enum match_field {
 	MATCH_TITLE,
 	MATCH_APP,
@@ -107,6 +114,7 @@ enum palette_slot {
 	PALETTE_INACTIVE_BG,
 	PALETTE_INACTIVE_FG,
 	PALETTE_ICONIFIED_BG,
+	PALETTE_BORDER,
 	PALETTE_COUNT,
 };
 
@@ -168,6 +176,7 @@ struct palette {
 	float active_fg[4];
 	float inactive_fg[4];
 	float iconified_bg[4];
+	float border[4];
 	const char *font;
 	int height;
 };
@@ -254,6 +263,7 @@ static int		 button_h;
 static int		 iconified_marker;
 static int		 show_icons;
 static int		 icon_size = DEFAULT_ICON_SIZE;
+static enum button_relief_mode button_relief = BUTTON_RELIEF_AUTO;
 static float		 palette_overrides[PALETTE_COUNT][4];
 static bool		 palette_override_set[PALETTE_COUNT];
 static struct cow_image_cache icon_cache;
@@ -399,6 +409,22 @@ parse_anchor(const char *s)
 }
 
 static int
+parse_button_relief(const char *s)
+{
+	if (strcmp(s, "auto") == 0)
+		button_relief = BUTTON_RELIEF_AUTO;
+	else if (strcmp(s, "raised") == 0)
+		button_relief = BUTTON_RELIEF_RAISED;
+	else if (strcmp(s, "sunken") == 0)
+		button_relief = BUTTON_RELIEF_SUNKEN;
+	else if (strcmp(s, "flat") == 0)
+		button_relief = BUTTON_RELIEF_FLAT;
+	else
+		return 0;
+	return 1;
+}
+
+static int
 parse_group(const char *s)
 {
 	if (strcmp(s, "none") == 0)
@@ -489,6 +515,7 @@ parse_style(char **fields, int n, const char **why)
 		[PALETTE_INACTIVE_BG] = "inactive.bg",
 		[PALETTE_INACTIVE_FG] = "inactive.fg",
 		[PALETTE_ICONIFIED_BG] = "iconified.bg",
+		[PALETTE_BORDER] = "border",
 	};
 
 	if (n != 3) {
@@ -651,6 +678,11 @@ load_iconman_option(char **fields, int n, const char **why)
 	} else if (strcmp(fields[0], "button-height") == 0) {
 		if (n != 2 || !parse_positive(fields[1], &button_h)) {
 			*why = "bad button-height";
+			return false;
+		}
+	} else if (strcmp(fields[0], "button-relief") == 0) {
+		if (n != 2 || !parse_button_relief(fields[1])) {
+			*why = "bad button-relief";
 			return false;
 		}
 	} else if (strcmp(fields[0], "min-button-width") == 0) {
@@ -1179,6 +1211,7 @@ resolve_palette(const struct state *st, const struct output *output,
 		[PALETTE_INACTIVE_BG] = palette->inactive_bg,
 		[PALETTE_INACTIVE_FG] = palette->inactive_fg,
 		[PALETTE_ICONIFIED_BG] = palette->iconified_bg,
+		[PALETTE_BORDER] = palette->border,
 	};
 	for (int i = 0; i < PALETTE_ICONIFIED_BG; i++)
 		if (palette_override_set[i])
@@ -1187,6 +1220,9 @@ resolve_palette(const struct state *st, const struct output *output,
 	if (palette_override_set[PALETTE_ICONIFIED_BG])
 		copy_colour(palette->iconified_bg,
 		    palette_overrides[PALETTE_ICONIFIED_BG]);
+	if (palette_override_set[PALETTE_BORDER])
+		copy_colour(palette->border,
+		    palette_overrides[PALETTE_BORDER]);
 	palette->font = titlebar->has_font ? titlebar->font :
 	    generic->has_font ? generic->font : "Sans 12";
 	palette->height = titlebar->has_height ? titlebar->height : ROW_H;
@@ -1425,6 +1461,31 @@ draw_iconified_marker(cairo_t *cr, const struct win *win, double x,
 }
 
 static void
+draw_button_frame(cairo_t *cr, double x, double y, double width,
+    double height, bool sunken, const float background[4],
+    const struct palette *palette)
+{
+	if (button_relief != BUTTON_RELIEF_FLAT) {
+		if (button_relief == BUTTON_RELIEF_RAISED)
+			sunken = false;
+		else if (button_relief == BUTTON_RELIEF_SUNKEN)
+			sunken = true;
+		cow_module_cairo_relief(cr, x, y, width, height, sunken,
+		    background);
+	}
+	if (!palette_override_set[PALETTE_BORDER])
+		return;
+
+	cairo_save(cr);
+	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+	cow_module_cairo_set_source(cr, palette->border);
+	cairo_set_line_width(cr, 1.0);
+	cairo_rectangle(cr, x + 0.5, y + 0.5, width - 1.0, height - 1.0);
+	cairo_stroke(cr);
+	cairo_restore(cr);
+}
+
+static void
 draw_icon(cairo_t *cr, const char *path, int x, int y, int size)
 {
 	cairo_surface_t	 *target;
@@ -1490,8 +1551,9 @@ do_render(const struct state *st)
 	if (n_rows == 0) {
 		cow_module_cairo_fill(cr, palette.active_bg, frame_padding, frame_padding,
 		    win_w - frame_padding * 2, palette.height);
-		cow_module_cairo_relief(cr, frame_padding, frame_padding, win_w - frame_padding * 2,
-		    palette.height, false, palette.active_bg);
+		draw_button_frame(cr, frame_padding, frame_padding,
+		    win_w - frame_padding * 2, palette.height, false,
+		    palette.active_bg, &palette);
 		cow_module_cairo_set_source(cr, palette.active_fg);
 		cow_text_render(cr, font, frame_padding + TEXT_PAD, frame_padding,
 		    win_w - 2 * (frame_padding + TEXT_PAD), palette.height, "cowiconman",
@@ -1510,8 +1572,8 @@ do_render(const struct state *st)
 
 			cow_module_cairo_fill(cr, bg, r->x, r->y, r->w - 1,
 			    r->h - 1);
-			cow_module_cairo_relief(cr, r->x, r->y, r->w - 1,
-			    r->h - 1, sunken, bg);
+			draw_button_frame(cr, r->x, r->y, r->w - 1,
+			    r->h - 1, sunken, bg, &palette);
 
 			if (show_icons) {
 				draw_icon(cr, r->win.icon, label_x,

@@ -123,11 +123,17 @@ Supported commands are described below.
 *button-height* _N_
 	Override the row height derived from cow's current titlebar theme.
 
+*button-relief* *auto*|*raised*|*sunken*|*flat*
+	Set the relief drawn around each row. *auto* raises normal rows and
+	sinks focused or iconified rows, and is the default. *flat* disables
+	the relief; combine it with *style border* for a solid outline.
+
 *style* _element_ _colour_
 	Override a palette colour. _element_ is one of *background*,
 	*active.bg*, *active.fg*, *inactive.bg*, *inactive.fg*, or
-	*iconified.bg*. Colours use CoW's RGB or RGBA syntax. Styles may be
-	shared at top level or set separately inside an *iconman* block.
+	*iconified.bg*, or *border*. The optional border is drawn around every
+	row. Colours use CoW's RGB or RGBA syntax. Styles may be shared at top
+	level or set separately inside an *iconman* block.
 
 *min-button-width* _N_
 	Set the minimum button width used when the preferred grid would exceed
