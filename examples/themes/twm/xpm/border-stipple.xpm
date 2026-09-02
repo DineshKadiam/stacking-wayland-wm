@@ -1,0 +1,8 @@
+/* XPM */
+static char *border_stipple_xpm[] = {
+"2 2 2 1",
+". c #000000",
+"  c #FFFFFF",
+". ",
+" ."
+};
