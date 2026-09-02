@@ -490,6 +490,22 @@ border_corner_uses_solid_colour(const struct cow_border_colour *colours,
 }
 
 static void
+paint_border_image(const char *path, struct cow_pixbuf *frame, int x, int y,
+    int width, int height)
+{
+	if (path == NULL || width <= 0 || height <= 0)
+		return;
+
+	struct cow_pixbuf region = {
+		.pixels = frame->pixels + y * frame->stride_px + x,
+		.stride_px = frame->stride_px,
+		.width = width,
+		.height = height,
+	};
+	cow_image_render_tiled(path, &region);
+}
+
+static void
 paint_border_images(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
     int cls, const struct cow_border_colour *colors)
 {
@@ -503,20 +519,20 @@ paint_border_images(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
 	const char *e = colors->image_e != NULL ? colors->image_e :
 	    colors->image;
 
-	cow_image_render_rect(n, &p, 0, 0, fw_s, bws);
-	cow_image_render_rect(s, &p, 0, fh_s - bws, fw_s, bws);
-	cow_image_render_rect(w, &p, 0, 0, bws, fh_s);
-	cow_image_render_rect(e, &p, fw_s - bws, 0, bws, fh_s);
+	paint_border_image(n, &p, 0, 0, fw_s, bws);
+	paint_border_image(s, &p, 0, fh_s - bws, fw_s, bws);
+	paint_border_image(w, &p, 0, 0, bws, fh_s);
+	paint_border_image(e, &p, fw_s - bws, 0, bws, fh_s);
 
 	if (cls <= 0)
 		cls = bws;
-	cow_image_render_rect(colors->image_nw != NULL ? colors->image_nw :
+	paint_border_image(colors->image_nw != NULL ? colors->image_nw :
 	    colors->image, &p, 0, 0, cls, cls);
-	cow_image_render_rect(colors->image_ne != NULL ? colors->image_ne :
+	paint_border_image(colors->image_ne != NULL ? colors->image_ne :
 	    colors->image, &p, fw_s - cls, 0, cls, cls);
-	cow_image_render_rect(colors->image_sw != NULL ? colors->image_sw :
+	paint_border_image(colors->image_sw != NULL ? colors->image_sw :
 	    colors->image, &p, 0, fh_s - cls, cls, cls);
-	cow_image_render_rect(colors->image_se != NULL ? colors->image_se :
+	paint_border_image(colors->image_se != NULL ? colors->image_se :
 	    colors->image, &p, fw_s - cls, fh_s - cls, cls, cls);
 }
 
