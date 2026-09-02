@@ -288,7 +288,7 @@ cow_config_create(void)
 	config->icon_size	     = COW_CFG_DEFAULT_ICON_SIZE;
 	config->icon_label_area     = COW_CFG_DEFAULT_ICON_LABEL_AREA;
 	config->icon_image	     = xstrdup("auto");
-	config->icon_title_relief = true;
+	config->icon_title_relief = COW_RELIEF_RAISED;
 	config->snap_distance	     = COW_CFG_DEFAULT_SNAP_DISTANCE;
 	cow_menu_style_default(&config->menu_style);
 	border_colour_set_uniform(&config->border_active, 0xFFFFFF);

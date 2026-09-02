@@ -161,7 +161,7 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 		dst->border_style  = COW_BORDER_STYLE_FVWM;
 		cow_colour_convert(dst->icon_background, 0x828282);
 		cow_colour_convert(dst->icon_foreground, 0xFFFFFF);
-		dst->icon_title_relief = true;
+		dst->icon_title_relief = COW_RELIEF_RAISED;
 		return;
 	}
 	dst->border	     = cow_config->border;
@@ -2820,27 +2820,32 @@ cow_view_icon_image(const struct cow_view *view)
 static void
 icon_draw_label(struct cow_pixbuf *p, int icon_sz, const char *label,
     const float *fg, const struct cow_colour_triple *bc_t,
-    enum cow_border_style border_style, bool relief)
+    enum cow_border_style border_style, enum cow_relief relief)
 {
-	int text_y	= icon_sz + 2;
+	int text_y = relief == COW_RELIEF_FLAT ? icon_sz : icon_sz + 2;
 	int text_area_h = p->height - text_y;
 	if (text_area_h <= 0)
 		return;
 
-	if (relief) {
+	if (relief != COW_RELIEF_NONE) {
 		cow_draw_fill_rect(p, 0, text_y, p->width, text_area_h,
 		    bc_t->base);
-		if (border_style != COW_BORDER_STYLE_NONE) {
+		if (relief != COW_RELIEF_FLAT &&
+		    border_style != COW_BORDER_STYLE_NONE) {
+			uint32_t px_tl = relief == COW_RELIEF_SUNKEN ?
+			    bc_t->dk : bc_t->lt;
+			uint32_t px_br = relief == COW_RELIEF_SUNKEN ?
+			    bc_t->lt : bc_t->dk;
 			int bw = 3;
 			for (int r = 0; r < bw && r < text_area_h / 2; r++) {
 				cow_draw_hline(p, r, p->width - 1 - r,
-				    text_y + r, bc_t->lt);
+				    text_y + r, px_tl);
 				cow_draw_vline(p, r, text_y + r,
-				    text_y + text_area_h - 1 - r, bc_t->lt);
+				    text_y + text_area_h - 1 - r, px_tl);
 				cow_draw_hline(p, r, p->width - 1 - r,
-				    text_y + text_area_h - 1 - r, bc_t->dk);
+				    text_y + text_area_h - 1 - r, px_br);
 				cow_draw_vline(p, p->width - 1 - r, text_y + r,
-				    text_y + text_area_h - 1 - r, bc_t->dk);
+				    text_y + text_area_h - 1 - r, px_br);
 			}
 		}
 	}
@@ -2860,7 +2865,8 @@ icon_draw_label(struct cow_pixbuf *p, int icon_sz, const char *label,
 	pango_font_description_set_size(fd, 8 * PANGO_SCALE);
 	pango_layout_set_font_description(layout, fd);
 	pango_layout_set_text(layout, label, -1);
-	int inset = relief && border_style != COW_BORDER_STYLE_NONE ? 3 : 0;
+	int inset = relief != COW_RELIEF_FLAT && relief != COW_RELIEF_NONE &&
+	    border_style != COW_BORDER_STYLE_NONE ? 3 : 0;
 	int avail_w = p->width - 2 * inset;
 	int avail_h = text_area_h - 2 * inset;
 	if (avail_w <= 0 || avail_h <= 0)

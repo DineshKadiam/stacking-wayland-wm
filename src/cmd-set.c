@@ -99,6 +99,7 @@ static enum cmd_retval set_titlebar_inactive_relief(const char *, struct cmd_q *
 static enum cmd_retval set_titlebar_active_title_justify(const char *, struct cmd_q *);
 static enum cmd_retval set_titlebar_inactive_title_justify(const char *, struct cmd_q *);
 static enum cmd_retval set_titlebar_button_style(const char *, struct cmd_q *);
+static enum cmd_retval set_icon_title_relief(const char *, struct cmd_q *);
 static bool set_titlebar_colour(const char *, const char *, struct cmd_q *);
 static bool set_container_tab_colour(const char *, const char *, struct cmd_q *);
 static void set_border_style_option(const char *, struct cmd_q *);
@@ -199,6 +200,14 @@ static const struct cow_string_choice set_relief_options[] = {
 	{ "raised", COW_RELIEF_RAISED },
 	{ "sunken", COW_RELIEF_SUNKEN },
 	{ "flat", COW_RELIEF_FLAT },
+	{ NULL, -1 },
+};
+
+static const struct cow_string_choice set_icon_title_relief_options[] = {
+	{ "raised", COW_RELIEF_RAISED },
+	{ "sunken", COW_RELIEF_SUNKEN },
+	{ "flat", COW_RELIEF_FLAT },
+	{ "none", COW_RELIEF_NONE },
 	{ NULL, -1 },
 };
 
@@ -956,6 +965,8 @@ set_option_exec(const struct cow_option_entry *opt, const char *key, const char 
 		return (set_titlebar_inactive_title_justify(val, cmdq));
 	case COW_OPTION_TITLEBAR_BUTTON_STYLE:
 		return (set_titlebar_button_style(val, cmdq));
+	case COW_OPTION_ICON_TITLE_RELIEF:
+		return (set_icon_title_relief(val, cmdq));
 	case COW_OPTION_TITLEBAR_POSITION:
 		return (set_titlebar_position(val, cmdq));
 	case COW_OPTION_TITLEBAR_SQUEEZE:
@@ -1133,6 +1144,26 @@ set_titlebar_active_relief(const char *val, struct cmd_q *cmdq)
 	struct cow_titlebar_config *tb = target_titlebar(cmdq, &cfg);
 	tb->active_relief = v;
 	finish_visual_update(COW_VIEW_CFG_TITLEBAR_ACTIVE_RELIEF, cfg, cmdq);
+	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+set_icon_title_relief(const char *val, struct cmd_q *cmdq)
+{
+	struct cow_view_cfg *cfg = cfg_target(cmdq);
+	int parsed;
+
+	if (!cow_string_choice_parse(set_icon_title_relief_options, val,
+	    &parsed)) {
+		cmdq_error(cmdq, "set: bad icon title relief %s "
+		    "(expected raised|sunken|flat|none)", val);
+		return (CMD_RETURN_ERROR);
+	}
+	if (cfg != NULL)
+		cfg->icon_title_relief = parsed;
+	else
+		cow_config->icon_title_relief = parsed;
+	finish_visual_update(COW_VIEW_CFG_ICON_TITLE_RELIEF, cfg, cmdq);
 	return (CMD_RETURN_NORMAL);
 }
 

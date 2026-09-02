@@ -2166,8 +2166,9 @@ decor to change aspects of how icons are controlled:
 |  *icon.foreground*
 :  Iconified window label colour.
 |  *icon.title\_relief*
-:  _true_ | _false_.  Draw a 3D-relief panel behind the icon label (default:
-   _true_).
+:  _raised_ | _sunken_ | _flat_ | _none_.  Set the panel behind the icon
+   label.  _flat_ fills the panel without a bevel, while _none_ leaves the
+   label background transparent (default: _raised_).
 
 # MENUS
 

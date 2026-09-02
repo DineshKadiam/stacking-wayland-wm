@@ -291,7 +291,7 @@ struct cow_view_cfg {
 	char *icon_image;
 	float icon_background[4];
 	float icon_foreground[4];
-	bool icon_title_relief;
+	enum cow_relief icon_title_relief;
 };
 
 /* Effective application/override image used by icons and module clients. */

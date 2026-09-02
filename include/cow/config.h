@@ -95,6 +95,7 @@ enum cow_relief {
 	COW_RELIEF_RAISED,
 	COW_RELIEF_SUNKEN,
 	COW_RELIEF_FLAT,
+	COW_RELIEF_NONE,
 };
 
 enum cow_clamp_mode {
@@ -455,7 +456,7 @@ struct cow_config {
 	char *icon_image;
 	float icon_background[4];
 	float icon_foreground[4];
-	bool icon_title_relief;
+	enum cow_relief icon_title_relief;
 	/* Titlebar */
 	struct cow_titlebar_config titlebar;
 
