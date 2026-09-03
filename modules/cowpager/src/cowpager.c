@@ -144,6 +144,7 @@ struct pager_config {
 	int window_icon_size;
 	float background[4];
 	float desk_bg[4];
+	float desk_active_border[4];
 	float page_bg[4];
 	float page_active_bg[4];
 	float label_bg[4];
@@ -296,6 +297,7 @@ pager_config_init(struct pager_config *pc)
 	pc->window_icon_size = 16;
 	config_colour(pc->background, 0xffffff);
 	memcpy(pc->desk_bg, pc->background, sizeof(pc->desk_bg));
+	config_colour(pc->desk_active_border, 0x4d9ef2);
 	memcpy(pc->page_bg, pc->background, sizeof(pc->page_bg));
 	memcpy(pc->page_active_bg, pc->background, sizeof(pc->page_active_bg));
 	config_colour(pc->label_bg, 0xd8d8d8);
@@ -1875,7 +1877,7 @@ do_render(const state_t *st)
 
 		/* Active-desk highlight frame */
 		if (is_active) {
-			cairo_set_source_rgba(cr, 0.30, 0.62, 0.95, 1.0);
+			cow_module_cairo_set_source(cr, cfg.desk_active_border);
 			cairo_set_line_width(cr, 2.0);
 			cairo_rectangle(cr, dx + 1, dy + 1, L.cell_w - 2,
 			    L.cell_h - 2);
@@ -3153,6 +3155,8 @@ load_pager_style(char **fields, int n, const char **why)
 	} else if (strcmp(fields[1], "desk.bg") == 0) {
 		slot = cfg.desk_bg;
 		cfg.desk_bg_set = 1;
+	} else if (strcmp(fields[1], "desk.active.border") == 0) {
+		slot = cfg.desk_active_border;
 	} else if (strcmp(fields[1], "page.bg") == 0) {
 		slot = cfg.page_bg;
 		cfg.page_bg_set = 1;

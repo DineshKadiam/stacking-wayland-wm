@@ -129,6 +129,7 @@ Supported colour roles:
 ```
 style background 0xffffff
 style desk.bg 0xffffff
+style desk.active.border 0x4d9ef2
 style page.bg 0xffffff
 style page.active.bg 0x3366b3
 style label.bg 0xd8d8d8
@@ -166,6 +167,7 @@ value for that role.
 *background* is the default colour for the whole pager surface,
 including desk and page backgrounds.  *desk.bg*, *page.bg*, and
 *page.active.bg* may be set when those areas should differ.
+*desk.active.border* controls the frame around the active desk.
 
 *window.bg* gives every unfocused window miniature the same colour.  When it
 is not set, cowpager retains its default behaviour of deriving a stable colour
