@@ -135,7 +135,11 @@ style label.bg 0xd8d8d8
 style label.active.bg 0x3366b3
 style label.fg 0x000000
 style label.inactive.fg 0x000000
+style window.bg 0x60a0c0
+style window.border 0x000000
 style window.focused.bg 0xf7c733
+style viewport.bg 0x00000000
+style viewport.border 0xda70d6
 ```
 
 Colours may be opaque *0xRRGGBB* values or *0xRRGGBBAA* values carrying an
@@ -162,6 +166,15 @@ value for that role.
 *background* is the default colour for the whole pager surface,
 including desk and page backgrounds.  *desk.bg*, *page.bg*, and
 *page.active.bg* may be set when those areas should differ.
+
+*window.bg* gives every unfocused window miniature the same colour.  When it
+is not set, cowpager retains its default behaviour of deriving a stable colour
+from each window identifier.  *window.focused.bg* controls the focused window
+miniature, and *window.border* controls miniature outlines.
+
+*viewport.bg* and *viewport.border* override the monitor-derived fill and
+outline used to mark the currently visible viewport.  A fully transparent
+*viewport.bg*, such as *0x00000000*, leaves the active page colour unchanged.
 
 # DISPLAY
 

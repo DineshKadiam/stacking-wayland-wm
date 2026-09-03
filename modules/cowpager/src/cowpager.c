@@ -150,7 +150,11 @@ struct pager_config {
 	float label_active_bg[4];
 	float label_fg[4];
 	float label_inactive_fg[4];
+	float window_bg[4];
+	float window_border[4];
 	float window_focused_bg[4];
+	float viewport_bg[4];
+	float viewport_border[4];
 	int   background_set;
 	int   desk_bg_set;
 	int   page_bg_set;
@@ -159,7 +163,11 @@ struct pager_config {
 	int   label_active_bg_set;
 	int   label_fg_set;
 	int   label_inactive_fg_set;
+	int   window_bg_set;
+	int   window_border_set;
 	int   window_focused_bg_set;
+	int   viewport_bg_set;
+	int   viewport_border_set;
 };
 
 struct pager_selection {
@@ -294,7 +302,11 @@ pager_config_init(struct pager_config *pc)
 	config_colour(pc->label_active_bg, 0x3366b3);
 	config_colour(pc->label_fg, 0x000000);
 	config_colour(pc->label_inactive_fg, 0x000000);
+	config_colour(pc->window_bg, 0x60a0c0);
+	config_colour(pc->window_border, 0x000000);
 	config_colour(pc->window_focused_bg, 0xf7c733);
+	config_colour(pc->viewport_bg, 0x00000000);
+	config_colour(pc->viewport_border, 0xda70d6);
 }
 
 static void
@@ -1393,6 +1405,11 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 			g = cfg.window_focused_bg[1];
 			b = cfg.window_focused_bg[2];
 			a = cfg.window_focused_bg[3];
+		} else if (cfg.window_bg_set) {
+			r = cfg.window_bg[0];
+			g = cfg.window_bg[1];
+			b = cfg.window_bg[2];
+			a = cfg.window_bg[3];
 		} else {
 			window_colour(w->id, &r, &g, &b);
 		}
@@ -1425,15 +1442,20 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		cairo_rectangle(cr, wx, wy, ww, wh);
 		cairo_fill(cr);
 
-		double br, bg_, bb;
-		if (wo != NULL && wo->name[0] != '\0') {
+		double br, bg_, bb, ba = 1.0;
+		if (cfg.window_border_set) {
+			br = cfg.window_border[0];
+			bg_ = cfg.window_border[1];
+			bb = cfg.window_border[2];
+			ba = cfg.window_border[3];
+		} else if (wo != NULL && wo->name[0] != '\0') {
 			monitor_colour_muted(wo->name, &br, &bg_, &bb);
 		} else {
 			br  = 0.08;
 			bg_ = 0.08;
 			bb  = 0.10;
 		}
-		cairo_set_source_rgba(cr, br, bg_, bb, 1.0);
+		cairo_set_source_rgba(cr, br, bg_, bb, ba);
 		cairo_set_line_width(cr, 1.0);
 		cairo_set_dash(cr, NULL, 0, 0);
 		cairo_rectangle(cr, wx + 0.5, wy + 0.5, ww - 1, wh - 1);
@@ -1482,10 +1504,16 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		double mr, mg, mb;
 		monitor_colour(o->name, &mr, &mg, &mb);
 
-		cairo_set_source_rgba(cr, mr, mg, mb, 0.22);
+		if (cfg.viewport_bg_set)
+			cow_module_cairo_set_source(cr, cfg.viewport_bg);
+		else
+			cairo_set_source_rgba(cr, mr, mg, mb, 0.22);
 		cairo_rectangle(cr, ax, ay, aw, ah);
 		cairo_fill(cr);
-		cairo_set_source_rgba(cr, mr, mg, mb, 0.95);
+		if (cfg.viewport_border_set)
+			cow_module_cairo_set_source(cr, cfg.viewport_border);
+		else
+			cairo_set_source_rgba(cr, mr, mg, mb, 0.95);
 		cairo_set_line_width(cr, 1.5);
 		cairo_set_dash(cr, NULL, 0, 0);
 		cairo_rectangle(cr, ax + 0.75, ay + 0.75, aw - 1.5, ah - 1.5);
@@ -3143,9 +3171,21 @@ load_pager_style(char **fields, int n, const char **why)
 	} else if (strcmp(fields[1], "label.inactive.fg") == 0) {
 		slot = cfg.label_inactive_fg;
 		cfg.label_inactive_fg_set = 1;
+	} else if (strcmp(fields[1], "window.bg") == 0) {
+		slot = cfg.window_bg;
+		cfg.window_bg_set = 1;
+	} else if (strcmp(fields[1], "window.border") == 0) {
+		slot = cfg.window_border;
+		cfg.window_border_set = 1;
 	} else if (strcmp(fields[1], "window.focused.bg") == 0) {
 		slot = cfg.window_focused_bg;
 		cfg.window_focused_bg_set = 1;
+	} else if (strcmp(fields[1], "viewport.bg") == 0) {
+		slot = cfg.viewport_bg;
+		cfg.viewport_bg_set = 1;
+	} else if (strcmp(fields[1], "viewport.border") == 0) {
+		slot = cfg.viewport_border;
+		cfg.viewport_border_set = 1;
 	} else {
 		*why = "unknown style";
 		return false;
