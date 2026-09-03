@@ -1841,6 +1841,8 @@ do_render(const state_t *st)
 			ref = cur;
 	}
 	build_visible_desks(ref, desk_indices, L.rows * L.cols, &n_visible);
+	int active_dx = -1;
+	int active_dy = -1;
 
 	for (int v = 0; v < n_visible; v++) {
 		int row, col;
@@ -1875,13 +1877,10 @@ do_render(const state_t *st)
 			gh = 1;
 		draw_desk_pages(cr, st, &L, ref, &cv, d, dx, gy, L.cell_w, gh);
 
-		/* Active-desk highlight frame */
+		/* Draw the active frame after every desk divider. */
 		if (is_active) {
-			cow_module_cairo_set_source(cr, cfg.desk_active_border);
-			cairo_set_line_width(cr, 2.0);
-			cairo_rectangle(cr, dx + 1, dy + 1, L.cell_w - 2,
-			    L.cell_h - 2);
-			cairo_stroke(cr);
+			active_dx = dx;
+			active_dy = dy;
 		}
 
 		/*
@@ -1902,6 +1901,14 @@ do_render(const state_t *st)
 			cairo_line_to(cr, dx + L.cell_w, dy + 0.5);
 			cairo_stroke(cr);
 		}
+	}
+
+	if (active_dx >= 0) {
+		cow_module_cairo_set_source(cr, cfg.desk_active_border);
+		cairo_set_line_width(cr, 2.0);
+		cairo_rectangle(cr, active_dx + 1, active_dy + 1,
+		    L.cell_w - 2, L.cell_h - 2);
+		cairo_stroke(cr);
 	}
 
 	/*
