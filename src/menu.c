@@ -551,6 +551,9 @@ struct popup_ext {
 #define POPUP_EXT_MAX 16
 static struct popup_ext g_popup_ext[POPUP_EXT_MAX];
 static bool		g_hover_suppressed_until_pointer_moves;
+static bool		g_menu_pointer_known;
+static int		g_menu_pointer_x;
+static int		g_menu_pointer_y;
 
 static struct popup_ext *
 ext_for(struct cow_menu_popup *p, bool create)
@@ -588,6 +591,28 @@ hover_reset_all(void)
 		g_popup_ext[i].hover_item	= -1;
 		g_popup_ext[i].hover_arrow_pending = false;
 	}
+}
+
+static bool
+menu_pointer_position(int *x, int *y)
+{
+	if (cow_seat_get_pointer(x, y))
+		return (true);
+	if (cow_wm.has_raw_pointer) {
+		*x = cow_wm.raw_pointer_x;
+		*y = cow_wm.raw_pointer_y;
+		return (true);
+	}
+	return (false);
+}
+
+static void
+menu_pointer_baseline_reset(void)
+{
+	g_hover_suppressed_until_pointer_moves = true;
+	hover_reset_all();
+	g_menu_pointer_known = menu_pointer_position(&g_menu_pointer_x,
+	    &g_menu_pointer_y);
 }
 
 static int
@@ -867,6 +892,12 @@ item_row_height(const struct cow_menu_item *it, int text_h,
 }
 
 static bool
+item_selectable(const struct cow_menu_item *it)
+{
+	return (it != NULL && it->type == COW_MENU_ITEM_NORMAL);
+}
+
+static bool
 menu_item_visible(const struct cow_menu *menu, const struct cow_menu_item *it)
 {
 	if (menu == NULL || it == NULL || !menu->typeahead ||
@@ -875,6 +906,20 @@ menu_item_visible(const struct cow_menu *menu, const struct cow_menu_item *it)
 	if (it->type != COW_MENU_ITEM_NORMAL)
 		return (true);
 	return (label_contains_folded(it->label, menu->typeahead_query));
+}
+
+static int
+menu_first_selectable(const struct cow_menu *menu)
+{
+	int idx = 0;
+	struct cow_menu_item *it;
+	wl_list_for_each(it, &menu->items, link)
+	{
+		if (menu_item_visible(menu, it) && item_selectable(it))
+			return (idx);
+		idx++;
+	}
+	return (-1);
 }
 
 static void
@@ -1516,8 +1561,8 @@ cow_menu_popup_open(struct cow_menu *menu, int x, int y,
 		parent->child_item = parent->selected;
 		parent->needs_redraw = true;
 	} else {
-		g_hover_suppressed_until_pointer_moves = false;
-		hover_reset_all();
+		p->selected = menu_first_selectable(menu);
+		menu_pointer_baseline_reset();
 		cow_wm.menu_context_view = context_view;
 		cow_wm.menu_context_seat = cow_wm.current_interaction_seat;
 		if (cow_wm.menu_context_seat == NULL)
@@ -1562,8 +1607,9 @@ cow_menu_popup_open_centered(struct cow_menu *menu, int cx, int cy,
 	if (menu == NULL)
 		return (NULL);
 	struct cow_menu_popup *p = popup_alloc(menu);
-	g_hover_suppressed_until_pointer_moves = false;
-	hover_reset_all();
+	menu->typeahead_query[0] = '\0';
+	p->selected = menu_first_selectable(menu);
+	menu_pointer_baseline_reset();
 	cow_wm.menu_context_view = context_view;
 	cow_wm.menu_context_seat = cow_wm.current_interaction_seat;
 	if (cow_wm.menu_context_seat == NULL)
@@ -1578,7 +1624,6 @@ cow_menu_popup_open_centered(struct cow_menu *menu, int cx, int cy,
 	g_menu_restore_view = cow_wm.focused_view;
 	g_menu_restore_pending = false;
 	g_menu_focus_requested = false;
-	menu->typeahead_query[0] = '\0';
 	p->keep_centered = true;
 
 	popup_layout(p);
@@ -1815,12 +1860,6 @@ item_at_index(const struct cow_menu *def, int idx)
 }
 
 static bool
-item_selectable(const struct cow_menu_item *it)
-{
-	return (it != NULL && it->type == COW_MENU_ITEM_NORMAL);
-}
-
-static bool
 popup_is_ancestor_of(const struct cow_menu_popup *ancestor,
     const struct cow_menu_popup *popup)
 {
@@ -2024,27 +2063,17 @@ cow_menu_process_input(void)
 		g_menu_focus_requested = true;
 	}
 
-	int		 px_x	 = 0;
-	int		 px_y	 = 0;
-	bool		 have	 = false;
-	struct cow_seat *primary = cow_seat_primary();
-	if (primary != NULL && primary->has_pointer_position) {
-		px_x = primary->pointer_x;
-		px_y = primary->pointer_y;
-		have = true;
-	} else if (cow_wm.has_raw_pointer) {
-		px_x = cow_wm.raw_pointer_x;
-		px_y = cow_wm.raw_pointer_y;
-		have = true;
-	}
+	int  px_x = 0;
+	int  px_y = 0;
+	bool have = menu_pointer_position(&px_x, &px_y);
 
-	/* Static pointer position must not overwrite keyboard selection. */
-	static int last_px_x = INT_MIN;
-	static int last_px_y = INT_MIN;
-	bool pointer_moved   = have && (last_px_x != px_x || last_px_y != px_y);
+	/* An unchanged pointer must not overwrite keyboard selection. */
+	bool pointer_moved = have && g_menu_pointer_known &&
+	    (g_menu_pointer_x != px_x || g_menu_pointer_y != px_y);
 	if (have) {
-		last_px_x = px_x;
-		last_px_y = px_y;
+		g_menu_pointer_x = px_x;
+		g_menu_pointer_y = px_y;
+		g_menu_pointer_known = true;
 	}
 	if (pointer_moved) {
 		g_hover_suppressed_until_pointer_moves = false;
