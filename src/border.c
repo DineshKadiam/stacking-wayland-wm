@@ -864,15 +864,15 @@ draw_x_mark_tinted(uint32_t *pixels, const uint32_t *base, int stride,
 
 	x += offset_tl;
 	for (int k = 0; k < mark_thickness; k++) {
-		int len = mark_length - 1 - k;
+		int len = mark_length - 1 - 2 * k;
 		if (len < 0)
 			break;
 		int x1, y1;
 		if (do_draw_shadow) {
-			x1 = x;
+			x1 = x + k;
 			y1 = y - 1 - k;
 		} else {
-			x1 = x - k;
+			x1 = x + k;
 			y1 = y + k;
 		}
 		for (int xx = x1; xx <= x1 + len; xx++)
@@ -895,7 +895,7 @@ draw_y_mark_tinted(uint32_t *pixels, const uint32_t *base, int stride,
 
 	y += offset_tl;
 	for (int k = 0; k < mark_thickness; k++) {
-		int len = mark_length - k;
+		int len = mark_length - 1 - 2 * k;
 		if (len <= 0)
 			break;
 		int x1, y1;
@@ -904,9 +904,9 @@ draw_y_mark_tinted(uint32_t *pixels, const uint32_t *base, int stride,
 			y1 = y + k;
 		} else {
 			x1 = x + k;
-			y1 = y;
+			y1 = y + k;
 		}
-		for (int yy = y1; yy <= y1 + len - 1; yy++)
+		for (int yy = y1; yy <= y1 + len; yy++)
 			put_sampled_pixel(pixels, base, stride, img_w, img_h,
 			    x1, yy, shade, reference);
 	}
