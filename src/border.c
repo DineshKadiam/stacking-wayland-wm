@@ -918,7 +918,7 @@ draw_handle_marks(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
     const struct edge_colours *ec, const struct cow_border_colour *colors,
     const float *reference)
 {
-	int w_dout     = w[0];
+	int w_dout     = w[0] + ((style == COW_BORDER_STYLE_MWM) ? 1 : 0);
 	int inset      = (w[5] > 0 || w[6] > 0) ? 1 : 0;
 	int mark_len   = bws - w_dout - inset;
 	int mark_thick = (style == COW_BORDER_STYLE_MWM) ? 1 : 2;
