@@ -793,16 +793,14 @@ cow_decoration_init(struct cow_view *view)
 	dec->dirty	  = true;
 	dec->border_width = view->cfg.border;
 
-	/* Enable titlebar when the view's snapshot says so. */
-	if (view->cfg.titlebar.enabled) {
-		struct cow_font *font = get_titlebar_font();
-		int		 h    = view->cfg.titlebar.height;
-		dec->title_thickness  = (h > 0) ?
-		     h :
-		     cow_titlebar_compute_thickness(font);
-	} else {
-		dec->title_thickness = 0;
-	}
+	struct cow_font *font = get_titlebar_font();
+	int		 h    = view->cfg.titlebar.height;
+	dec->nominal_title_thickness = (h > 0) ?
+	    h :
+	    cow_titlebar_compute_thickness(font);
+	dec->title_thickness = view->cfg.titlebar.enabled ?
+	    dec->nominal_title_thickness :
+	    0;
 }
 
 void
@@ -831,13 +829,14 @@ cow_decoration_update(struct cow_view *view, bool active)
 	 */
 	dec->border_width = view->cfg.border;
 	if (view->cfg.titlebar.enabled) {
-		if (dec->title_thickness == 0) {
+		if (dec->nominal_title_thickness == 0) {
 			struct cow_font *font = get_titlebar_font();
 			int		 h    = view->cfg.titlebar.height;
-			dec->title_thickness  = (h > 0) ?
+			dec->nominal_title_thickness = (h > 0) ?
 			     h :
 			     cow_titlebar_compute_thickness(font);
 		}
+		dec->title_thickness = dec->nominal_title_thickness;
 	} else {
 		dec->title_thickness = 0;
 	}

@@ -38,9 +38,10 @@ struct cow_view_decoration {
 	int frame_width;
 	int frame_height;
 
-	/* Border width and titlebar thickness */
+	/* Border width and visible/configured titlebar thickness */
 	int border_width;
 	int title_thickness;
+	int nominal_title_thickness;
 
 	/* Frame buffer (currently committed or being rendered into) */
 	struct cow_shm_buffer *buffer;

@@ -117,7 +117,7 @@ static void set_button_option(const char *, const char *, struct cmd_q *);
 static bool set_key_is_image(const char *);
 static char *set_image_resolve_path(const char *, struct cmd_q *);
 static void refresh_visuals(void);
-static int  refreshed_title_thickness(struct cow_view *);
+static int  configured_title_thickness(struct cow_view *);
 static void refresh_view_visuals(struct cow_view *);
 static void refresh_output_visuals(struct cow_output *);
 
@@ -2153,11 +2153,8 @@ refresh_visuals(void)
 }
 
 static int
-refreshed_title_thickness(struct cow_view *view)
+configured_title_thickness(struct cow_view *view)
 {
-	if (!view->cfg.titlebar.enabled)
-		return (0);
-
 	if (view->cfg.titlebar.height > 0)
 		return (view->cfg.titlebar.height);
 
@@ -2175,11 +2172,15 @@ refresh_view_visuals(struct cow_view *view)
 	if (view->closed)
 		return;
 
-	view->dec.dirty		      = true;
-	view->dec.border_width	      = view->cfg.border;
-	view->dec.title_thickness     = refreshed_title_thickness(view);
-	view->dec.last_content_width  = -1;
-	view->dec.last_content_height = -1;
+	view->dec.dirty                    = true;
+	view->dec.border_width             = view->cfg.border;
+	view->dec.nominal_title_thickness =
+	    configured_title_thickness(view);
+	view->dec.title_thickness = view->cfg.titlebar.enabled ?
+	    view->dec.nominal_title_thickness :
+	    0;
+	view->dec.last_content_width       = -1;
+	view->dec.last_content_height      = -1;
 	if (view->dec.buffer != NULL) {
 		cow_shm_buffer_destroy(view->dec.buffer);
 		view->dec.buffer = NULL;

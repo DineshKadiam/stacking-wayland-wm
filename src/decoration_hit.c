@@ -28,18 +28,22 @@ struct dec_frame_hit {
 	int fy;
 };
 
-int
-cow_decoration_corner_length(const struct cow_view *view)
+static int
+normalized_corner_length(const struct cow_view *view)
 {
-	int cl = (view->cfg.handles && view->cfg.corner_length > 0) ?
-	    view->cfg.corner_length :
-	    0;
+	int cl = view->cfg.corner_length > 0 ? view->cfg.corner_length : 0;
 	int bw = view->dec.border_width;
-	int tt = view->dec.title_thickness;
+	int tt = view->dec.nominal_title_thickness;
 
 	if (cl > 0 && tt > 0 && cl < bw + tt)
 		cl = bw + tt;
 	return (cl);
+}
+
+int
+cow_decoration_corner_length(const struct cow_view *view)
+{
+	return (view->cfg.handles ? normalized_corner_length(view) : 0);
 }
 
 uint32_t
@@ -47,7 +51,7 @@ cow_decoration_edges_at(struct cow_view *view, int fx, int fy, int cw, int ch)
 {
 	struct dec_frame_hit hit = {
 		.bw = view->dec.border_width,
-		.cl = view->cfg.corner_length,
+		.cl = normalized_corner_length(view),
 		.fx = fx,
 		.fy = fy,
 	};
