@@ -528,6 +528,7 @@ apply_decor(struct cow_view *view)
 	cmdq->client_fd = -1;
 	cmdq->in_style = 1;
 	cmdq_set_default_target(cmdq, view, view->desk, view->output);
+	cmdq->target = cmdq->default_target;
 
 	struct cow_style *style;
 	wl_list_for_each(style, &styles, link)
