@@ -69,50 +69,6 @@ relieve_rect_per_edge(uint32_t *pixels, int stride, int img_w, int img_h, int x,
 	    br_bot, br_right);
 }
 
-static void
-draw_x_mark(uint32_t *pixels, int stride, int img_w, int img_h, int x, int y,
-    int mark_length, int mark_thickness, int offset_tl, bool do_draw_shadow,
-    uint32_t colour)
-{
-	x += offset_tl;
-	for (int k = 0; k < mark_thickness; k++) {
-		int len = mark_length - 1 - 2 * k;
-		if (len <= 0)
-			break;
-		int x1, y1;
-		if (do_draw_shadow) {
-			x1 = x + k;
-			y1 = y - 1 - k;
-		} else {
-			x1 = x + k;
-			y1 = y + k;
-		}
-		hline(pixels, stride, img_w, img_h, x1, x1 + len, y1, colour);
-	}
-}
-
-static void
-draw_y_mark(uint32_t *pixels, int stride, int img_w, int img_h, int x, int y,
-    int mark_length, int mark_thickness, int offset_tl, bool do_draw_shadow,
-    uint32_t colour)
-{
-	y += offset_tl;
-	for (int k = 0; k < mark_thickness; k++) {
-		int len = mark_length - 1 - 2 * k;
-		if (len <= 0)
-			break;
-		int x1, y1;
-		if (do_draw_shadow) {
-			x1 = x - 1 - k;
-			y1 = y + k;
-		} else {
-			x1 = x + k;
-			y1 = y + k;
-		}
-		vline(pixels, stride, img_w, img_h, x1, y1, y1 + len, colour);
-	}
-}
-
 struct edge_colours {
 	uint32_t n[3], s[3], w[3], e[3];
 };
@@ -851,21 +807,33 @@ overdraw_explicit_corners(uint32_t *pixels, int stride, int fw_s, int fh_s,
 }
 
 static void
+hline_sampled(uint32_t *pixels, const uint32_t *base, int stride, int img_w,
+    int img_h, int x1, int x2, int y, int shade, const float *reference)
+{
+	for (int x = x1; x <= x2; x++)
+		put_sampled_pixel(pixels, base, stride, img_w, img_h, x, y,
+		    shade, reference);
+}
+
+static void
+vline_sampled(uint32_t *pixels, const uint32_t *base, int stride, int img_w,
+    int img_h, int x, int y1, int y2, int shade, const float *reference)
+{
+	for (int y = y1; y <= y2; y++)
+		put_sampled_pixel(pixels, base, stride, img_w, img_h, x, y,
+		    shade, reference);
+}
+
+static void
 draw_x_mark_tinted(uint32_t *pixels, const uint32_t *base, int stride,
     int img_w, int img_h, int x, int y, int mark_length, int mark_thickness,
     int offset_tl, bool do_draw_shadow, bool sampled, int shade,
     uint32_t colour, const float *reference)
 {
-	if (!sampled) {
-		draw_x_mark(pixels, stride, img_w, img_h, x, y, mark_length,
-		    mark_thickness, offset_tl, do_draw_shadow, colour);
-		return;
-	}
-
 	x += offset_tl;
 	for (int k = 0; k < mark_thickness; k++) {
 		int len = mark_length - 1 - 2 * k;
-		if (len < 0)
+		if (len <= 0)
 			break;
 		int x1, y1;
 		if (do_draw_shadow) {
@@ -875,9 +843,13 @@ draw_x_mark_tinted(uint32_t *pixels, const uint32_t *base, int stride,
 			x1 = x + k;
 			y1 = y + k;
 		}
-		for (int xx = x1; xx <= x1 + len; xx++)
-			put_sampled_pixel(pixels, base, stride, img_w, img_h,
-			    xx, y1, shade, reference);
+		if (sampled) {
+			hline_sampled(pixels, base, stride, img_w, img_h, x1,
+			    x1 + len, y1, shade, reference);
+		} else {
+			hline(pixels, stride, img_w, img_h, x1, x1 + len, y1,
+			    colour);
+		}
 	}
 }
 
@@ -887,12 +859,6 @@ draw_y_mark_tinted(uint32_t *pixels, const uint32_t *base, int stride,
     int offset_tl, bool do_draw_shadow, bool sampled, int shade,
     uint32_t colour, const float *reference)
 {
-	if (!sampled) {
-		draw_y_mark(pixels, stride, img_w, img_h, x, y, mark_length,
-		    mark_thickness, offset_tl, do_draw_shadow, colour);
-		return;
-	}
-
 	y += offset_tl;
 	for (int k = 0; k < mark_thickness; k++) {
 		int len = mark_length - 1 - 2 * k;
@@ -906,9 +872,13 @@ draw_y_mark_tinted(uint32_t *pixels, const uint32_t *base, int stride,
 			x1 = x + k;
 			y1 = y + k;
 		}
-		for (int yy = y1; yy <= y1 + len; yy++)
-			put_sampled_pixel(pixels, base, stride, img_w, img_h,
-			    x1, yy, shade, reference);
+		if (sampled) {
+			vline_sampled(pixels, base, stride, img_w, img_h, x1,
+			    y1, y1 + len, shade, reference);
+		} else {
+			vline(pixels, stride, img_w, img_h, x1, y1, y1 + len,
+			    colour);
+		}
 	}
 }
 
