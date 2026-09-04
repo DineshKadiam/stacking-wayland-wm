@@ -3531,18 +3531,24 @@ main(int argc, char *argv[])
 	optind = 1;
 	while ((opt = getopt(argc, argv, "r:c:f:m:1vh")) != -1) {
 		switch (opt) {
-		case 'r':
-			opt_rows = atoi(optarg);
-			if (opt_rows < 1)
-				opt_rows = 1;
+		case 'r': {
+			if (!cow_module_config_parse_int(optarg, &opt_rows) ||
+			    opt_rows < 1) {
+				usage();
+				return 1;
+			}
 			cfg.rows = opt_rows;
 			break;
-		case 'c':
-			opt_cols = atoi(optarg);
-			if (opt_cols < 1)
-				opt_cols = 1;
+		}
+		case 'c': {
+			if (!cow_module_config_parse_int(optarg, &opt_cols) ||
+			    opt_cols < 1) {
+				usage();
+				return 1;
+			}
 			cfg.cols = opt_cols;
 			break;
+		}
 		case 'f':
 			break;
 		case 'm': {
