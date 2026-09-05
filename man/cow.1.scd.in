@@ -1397,7 +1397,7 @@ Move a window. With no flags, begin an interactive move using the mouse.
 	percentage of the current output's usable height; an absolute *vh*
 	position places the outer frame relative to the usable area's top edge.
 
-## window-resize [-t target] [-gs] [-d dir] [-e edges] [-w width] [-h height]
+## window-resize [-t target] [-gs] [-d dir] [-e edges|automatic] [-W] [-w width] [-h height]
 
 Resize a window. With no flags, begin an interactive resize operation with the
 mouse, from the bottom-right corner.
@@ -1412,14 +1412,23 @@ mouse, from the bottom-right corner.
 *-s -d* _dir_
 	Shrink the window in direction _dir_ by one step.
 
-*-e* _edges_
+*-e* _edges|automatic_
 	Begin an interactive resize anchored on the named _edges_ -- a
 	compass spec built from the letters _n_, _s_, _e_, _w_.  Single
 	letters select an edge (_n_, _s_, _e_, _w_); two-letter combos
 	select a corner (_ne_, _nw_, _se_, _sw_).  Used by
 	*bind-decoration* to express per-edge / per-corner resize defaults
 	as ordinary commands; default if *-e* is omitted is the historic
-	*se* (bottom-right) corner.
+	*se* (bottom-right) corner.  With _automatic_, the pointer position
+	in the target window's 3x3 grid selects the corresponding edge or
+	corner.  No resize starts from the centre cell or when the pointer is
+	outside the target window.
+
+*-W*
+	Warp the pointer to the selected border before starting an interactive
+	resize.  On a single edge, its position along that edge is retained; at
+	a corner, it is warped to the corner.  This can be combined with either
+	an explicit *-e* direction or *-e automatic*.
 
 *-w* _width_
 	Set the client width in pixels. A value suffixed with *vw* sets the
@@ -1437,6 +1446,14 @@ focused window in the left half and bottom-right quarter respectively:
 ```
 bind L+Left  window-move -x 0vw -y 0vh \; window-resize -w 50vw -h 100vh
 bind L+3     window-move -x 50vw -y 50vh \; window-resize -w 50vw -h 50vh
+```
+
+Automatic resize direction works identically with keyboard and mouse
+bindings.  The first example also warps the pointer to the chosen border:
+
+```
+bind L+r       window-resize -e automatic -W
+mouse L+right  window-resize -e automatic
 ```
 
 ## focus [-npwL] [-F expr] [-l N] [-t target] [-d dir] [-o output] [-A app_id] [-T title] [-i id]

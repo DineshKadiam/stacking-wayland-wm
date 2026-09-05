@@ -109,9 +109,13 @@ void cow_pointer_op_start_icon_move(struct cow_seat *, struct cow_view *);
 /*
  * Begin an interactive resize of the given view.
  * Must be called during a manage sequence.
+ * Returns false if the operation cannot be started.
  */
-void cow_pointer_op_start_resize(struct cow_seat *, struct cow_view *,
+bool cow_pointer_op_start_resize(struct cow_seat *, struct cow_view *,
     uint32_t);
+/* Warp the initiating seat before anchoring the resize operation. */
+bool cow_pointer_op_start_resize_warped(struct cow_seat *, struct cow_view *,
+    uint32_t, int, int);
 
 /*
  * Begin an interactive scroll-drag on the given output.  Pointer

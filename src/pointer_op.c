@@ -516,12 +516,12 @@ cow_pointer_op_finish_menu_select(struct cow_seat *seat)
 	return (true);
 }
 
-void
-cow_pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
-    uint32_t edges)
+static bool
+pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
+    uint32_t edges, bool warp, int warp_x, int warp_y)
 {
-	if (view == NULL || view->closed || seat->op_in_progress)
-		return;
+	if (seat == NULL || view == NULL || view->closed || seat->op_in_progress)
+		return false;
 	bool wants_w = (edges & (COW_EDGE_LEFT | COW_EDGE_RIGHT)) != 0;
 	bool wants_h = (edges & (COW_EDGE_TOP | COW_EDGE_BOTTOM)) != 0;
 	bool fixed_w = view->min_width > 0 && view->max_width > 0 &&
@@ -529,7 +529,13 @@ cow_pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
 	bool fixed_h = view->min_height > 0 && view->max_height > 0 &&
 	    view->min_height == view->max_height;
 	if ((!wants_w || fixed_w) && (!wants_h || fixed_h))
-		return;
+		return false;
+	if (warp) {
+		river_seat_v1_pointer_warp(seat->river_seat, warp_x, warp_y);
+		seat->pointer_x = warp_x;
+		seat->pointer_y = warp_y;
+		seat->has_pointer_position = true;
+	}
 	resize_clear_maximized_axes(view, edges);
 
 	seat->op.type	      = COW_POINTER_OP_RESIZE;
@@ -553,6 +559,21 @@ cow_pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
 	cow_pointer_cursor_hold_start();
 	river_seat_v1_op_start_pointer(seat->river_seat);
 	pointer_op_arm_attached(seat);
+	return true;
+}
+
+bool
+cow_pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
+    uint32_t edges)
+{
+	return pointer_op_start_resize(seat, view, edges, false, 0, 0);
+}
+
+bool
+cow_pointer_op_start_resize_warped(struct cow_seat *seat,
+    struct cow_view *view, uint32_t edges, int warp_x, int warp_y)
+{
+	return pointer_op_start_resize(seat, view, edges, true, warp_x, warp_y);
 }
 
 /*

@@ -34,15 +34,19 @@ static void	       do_resize_step(struct cow_view *, const char *, int,
 	       struct cmd_q *);
 static void do_set_size(struct cow_view *, const char *, const char *,
     struct cmd_q *);
-static void do_interactive(struct cow_view *, uint32_t edges);
+static void do_interactive(struct cow_view *, uint32_t, bool);
 static bool parse_edges(const char *, uint32_t *);
+static bool automatic_edges(struct cow_view *, struct cow_seat *, uint32_t *,
+    struct cmd_q *);
+static void resize_warp_position(struct cow_view *, struct cow_seat *,
+    uint32_t, int *, int *);
 
 struct cmd_entry cmd_resize_entry = {
 	"window-resize",
-	"t:gsd:w:h:e:",
+	"t:gsWd:w:h:e:",
 	0,
 	0,
-	"[-gs] [-d dir] [-e edges] [-w width] [-h height]",
+	"[-gs] [-d dir] [-e edges|automatic] [-W] [-w width] [-h height]",
 	cmd_resize_exec,
 	0,
 };
@@ -59,6 +63,16 @@ cmd_resize_exec(struct cmd *self, struct cmd_q *cmdq)
 	const char *dir_val = args_get(args, 'd');
 	const char *w_val   = args_get(args, 'w');
 	const char *h_val   = args_get(args, 'h');
+	const char *edges_str = args_get(args, 'e');
+	bool	    warp = args_has(args, 'W');
+	bool	    sized = args_has(args, 'g') || args_has(args, 's') ||
+	    w_val != NULL || h_val != NULL;
+
+	if (sized && (edges_str != NULL || warp)) {
+		cmdq_error(cmdq,
+		    "window-resize: -e and -W apply only to interactive resize");
+		return (CMD_RETURN_ERROR);
+	}
 
 	if (args_has(args, 'g')) {
 		do_resize_step(view, dir_val, +1, cmdq);
@@ -75,17 +89,94 @@ cmd_resize_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_NORMAL);
 	}
 
-	uint32_t    edges     = COW_EDGE_BOTTOM | COW_EDGE_RIGHT;
-	const char *edges_str = args_get(args, 'e');
-	if (edges_str != NULL && !parse_edges(edges_str, &edges)) {
-		cmdq_error(cmdq,
-		    "window-resize: -e: bad edge spec '%s' "
-		    "(expected n|s|e|w|ne|nw|se|sw)",
-		    edges_str);
-		return (CMD_RETURN_ERROR);
+	uint32_t edges = COW_EDGE_BOTTOM | COW_EDGE_RIGHT;
+	struct cow_seat *seat = cow_wm.current_interaction_seat;
+	if (seat == NULL)
+		seat = cow_seat_primary();
+	if (edges_str != NULL) {
+		if (strcmp(edges_str, "automatic") == 0) {
+			if (!automatic_edges(view, seat, &edges, cmdq))
+				return (CMD_RETURN_ERROR);
+			if (edges == 0)
+				return (CMD_RETURN_NORMAL);
+		} else if (!parse_edges(edges_str, &edges)) {
+			cmdq_error(cmdq,
+			    "window-resize: -e: bad edge spec '%s' "
+			    "(expected n|s|e|w|ne|nw|se|sw|automatic)",
+			    edges_str);
+			return (CMD_RETURN_ERROR);
+		}
 	}
-	do_interactive(view, edges);
+	do_interactive(view, edges, warp);
 	return (CMD_RETURN_NORMAL);
+}
+
+static bool
+automatic_edges(struct cow_view *view, struct cow_seat *seat, uint32_t *edges,
+    struct cmd_q *cmdq)
+{
+	if (seat == NULL || !seat->has_pointer_position) {
+		cmdq_error(cmdq,
+		    "window-resize: automatic direction requires a pointer");
+		return false;
+	}
+
+	struct cow_box frame = cow_view_frame_box(view);
+	int px = seat->pointer_x - frame.x;
+	int py = seat->pointer_y - frame.y;
+	if (px < 0 || py < 0 || px >= frame.width || py >= frame.height) {
+		cmdq_error(cmdq,
+		    "window-resize: pointer is outside the target window");
+		return false;
+	}
+
+	uint32_t found = 0;
+	if (px * 3 < frame.width)
+		found |= COW_EDGE_LEFT;
+	else if (px * 3 >= frame.width * 2)
+		found |= COW_EDGE_RIGHT;
+	if (py * 3 < frame.height)
+		found |= COW_EDGE_TOP;
+	else if (py * 3 >= frame.height * 2)
+		found |= COW_EDGE_BOTTOM;
+	if (found == 0) {
+		*edges = 0;
+		return true;
+	}
+
+	*edges = found;
+	return true;
+}
+
+static void
+resize_warp_position(struct cow_view *view, struct cow_seat *seat,
+    uint32_t edges, int *warp_x, int *warp_y)
+{
+	struct cow_box frame = cow_view_frame_box(view);
+	int x = seat->has_pointer_position ? seat->pointer_x :
+	    frame.x + frame.width / 2;
+	int y = seat->has_pointer_position ? seat->pointer_y :
+	    frame.y + frame.height / 2;
+	if (x < frame.x)
+		x = frame.x;
+	else if (x >= frame.x + frame.width)
+		x = frame.x + frame.width - 1;
+	if (y < frame.y)
+		y = frame.y;
+	else if (y >= frame.y + frame.height)
+		y = frame.y + frame.height - 1;
+
+	if (edges & COW_EDGE_LEFT)
+		x = frame.x;
+	else if (edges & COW_EDGE_RIGHT)
+		x = frame.x + frame.width - 1;
+	if (edges & COW_EDGE_TOP)
+		y = frame.y;
+	else if (edges & COW_EDGE_BOTTOM)
+		y = frame.y + frame.height - 1;
+
+	*warp_x = x;
+	*warp_y = y;
 }
 
 /*
@@ -261,7 +352,7 @@ do_set_size(struct cow_view *view, const char *ws, const char *hs,
 }
 
 static void
-do_interactive(struct cow_view *view, uint32_t edges)
+do_interactive(struct cow_view *view, uint32_t edges, bool warp)
 {
 	/* Only valid inside a manage sequence — see cmd-move.c */
 	if (cow_wm.sequence != COW_WM_SEQUENCE_MANAGE)
@@ -274,6 +365,14 @@ do_interactive(struct cow_view *view, uint32_t edges)
 	struct cow_seat *seat = cow_wm.current_interaction_seat;
 	if (seat == NULL)
 		seat = cow_seat_primary();
-	if (seat != NULL)
-		cow_pointer_op_start_resize(seat, view, edges);
+	if (seat == NULL)
+		return;
+	if (!warp) {
+		(void)cow_pointer_op_start_resize(seat, view, edges);
+		return;
+	}
+	int warp_x, warp_y;
+	resize_warp_position(view, seat, edges, &warp_x, &warp_y);
+	(void)cow_pointer_op_start_resize_warped(seat, view, edges, warp_x,
+	    warp_y);
 }
