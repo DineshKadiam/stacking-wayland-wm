@@ -172,6 +172,9 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 	    &cow_config->border_active);
 	cow_border_colour_copy(&dst->border_inactive,
 	    &cow_config->border_inactive);
+	memcpy(dst->border_resize, cow_config->border_resize,
+	    sizeof(dst->border_resize));
+	dst->has_border_resize = cow_config->has_border_resize;
 	cow_titlebar_config_copy(&dst->titlebar, &cow_config->titlebar);
 	cow_container_config_copy(&dst->container, &cow_config->container);
 	dst->icon_enabled	= cow_config->icon_enabled;
@@ -387,6 +390,11 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		break;
 	case COW_VIEW_CFG_BORDER_STYLE:
 		cfg->border_style = cow_config->border_style;
+		break;
+	case COW_VIEW_CFG_BORDER_RESIZE:
+		memcpy(cfg->border_resize, cow_config->border_resize,
+		    sizeof(cfg->border_resize));
+		cfg->has_border_resize = cow_config->has_border_resize;
 		break;
 	case COW_VIEW_CFG_BORDER_ACTIVE:
 		border_colour_set_all(&cfg->border_active,
@@ -889,7 +897,7 @@ window_handle_pointer_resize_requested(void *data,
 	struct cow_view *view = data;
 	struct cow_seat *seat = cow_seat_find(rs);
 	if (seat != NULL)
-		cow_pointer_op_start_resize(seat, view, edges);
+		cow_pointer_op_start_resize(seat, view, edges, false);
 }
 
 static void

@@ -198,6 +198,13 @@ cancel_first_press_op(struct cow_seat *seat)
 {
 	if (!seat->op_in_progress)
 		return;
+	if (seat->op.type == COW_POINTER_OP_RESIZE && seat->op.view != NULL &&
+	    !seat->op.view->closed) {
+		river_window_v1_inform_resize_end(
+		    seat->op.view->river_window);
+		seat->op.view->resize_indicator_edges = 0;
+		seat->op.view->dec.dirty = true;
+	}
 	river_seat_v1_op_end(seat->river_seat);
 	seat->op_in_progress = false;
 	seat->op.type	     = COW_POINTER_OP_NONE;

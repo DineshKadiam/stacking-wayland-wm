@@ -509,6 +509,8 @@ decor_option_id(const struct cow_option_entry *opt, const char *key)
 		return (COW_VIEW_CFG_CONTAINER_TAB_ACTIVE_IMAGE);
 	if (strcmp(key, "container.tab.inactive_image") == 0)
 		return (COW_VIEW_CFG_CONTAINER_TAB_INACTIVE_IMAGE);
+	if (strcmp(key, "border.resize") == 0)
+		return (COW_VIEW_CFG_BORDER_RESIZE);
 
 	int idx;
 	const char *field;
@@ -687,6 +689,7 @@ set_option_is_decor(const struct cow_option_entry *opt, const char *key)
 		return (false);
 	if (strcmp(key, "border.corner_length") == 0 ||
 	    strcmp(key, "border.width") == 0 ||
+	    strcmp(key, "border.resize") == 0 ||
 	    strcmp(key, "icon.enabled") == 0 ||
 	    strcmp(key, "icon.size") == 0 ||
 	    strcmp(key, "icon.label_area") == 0 ||
@@ -1811,6 +1814,22 @@ set_container_tab_colour(const char *key, const char *val, struct cmd_q *cmdq)
 static bool
 set_border_colour(const char *key, const char *val, struct cmd_q *cmdq)
 {
+	if (strcmp(key, "border.resize") == 0) {
+		struct cow_view_cfg *cfg = cfg_target(cmdq);
+		float *colour = cfg != NULL ? cfg->border_resize :
+		    cow_config->border_resize;
+		bool *has = cfg != NULL ? &cfg->has_border_resize :
+		    &cow_config->has_border_resize;
+
+		if (!cow_colour_parse(val, colour)) {
+			cmdq_error(cmdq, "set: invalid colour value");
+			return (true);
+		}
+		*has = true;
+		finish_visual_update(COW_VIEW_CFG_BORDER_RESIZE, cfg, cmdq);
+		return (true);
+	}
+
 	bool is_active = (strcmp(key, "border.active") == 0 ||
 	    strncmp(key, "border.active.", 14) == 0);
 	bool is_inactive = (strcmp(key, "border.inactive") == 0 ||

@@ -518,7 +518,7 @@ cow_pointer_op_finish_menu_select(struct cow_seat *seat)
 
 static bool
 pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
-    uint32_t edges, bool warp, int warp_x, int warp_y)
+    uint32_t edges, bool indicate, bool warp, int warp_x, int warp_y)
 {
 	if (seat == NULL || view == NULL || view->closed || seat->op_in_progress)
 		return false;
@@ -545,6 +545,10 @@ pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
 	seat->op.start_width  = view->content_width;
 	seat->op.start_height = view->content_height;
 	seat->op.resize_edges = edges;
+	view->resize_indicator_edges = indicate &&
+	    view->cfg.has_border_resize ? edges : 0;
+	if (view->resize_indicator_edges != 0)
+		view->dec.dirty = true;
 	seat->op_in_progress  = true;
 	seat->op_released     = false;
 	seat->op_dx	      = 0;
@@ -564,16 +568,18 @@ pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
 
 bool
 cow_pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
-    uint32_t edges)
+    uint32_t edges, bool indicate)
 {
-	return pointer_op_start_resize(seat, view, edges, false, 0, 0);
+	return pointer_op_start_resize(seat, view, edges, indicate, false, 0, 0);
 }
 
 bool
 cow_pointer_op_start_resize_warped(struct cow_seat *seat,
-    struct cow_view *view, uint32_t edges, int warp_x, int warp_y)
+    struct cow_view *view, uint32_t edges, bool indicate, int warp_x,
+    int warp_y)
 {
-	return pointer_op_start_resize(seat, view, edges, true, warp_x, warp_y);
+	return pointer_op_start_resize(seat, view, edges, indicate, true, warp_x,
+	    warp_y);
 }
 
 /*
@@ -707,6 +713,11 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 
 	if (seat->op.type == COW_POINTER_OP_RESIZE)
 		river_window_v1_inform_resize_end(view->river_window);
+	if (finished_type == COW_POINTER_OP_RESIZE &&
+	    view->resize_indicator_edges != 0) {
+		view->resize_indicator_edges = 0;
+		view->dec.dirty = true;
+	}
 
 	/*
 	 * Container drag (-C) completion.

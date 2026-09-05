@@ -34,7 +34,7 @@ static void	       do_resize_step(struct cow_view *, const char *, int,
 	       struct cmd_q *);
 static void do_set_size(struct cow_view *, const char *, const char *,
     struct cmd_q *);
-static void do_interactive(struct cow_view *, uint32_t, bool);
+static void do_interactive(struct cow_view *, uint32_t, bool, bool);
 static bool parse_edges(const char *, uint32_t *);
 static bool automatic_edges(struct cow_view *, struct cow_seat *, uint32_t *,
     struct cmd_q *);
@@ -107,7 +107,7 @@ cmd_resize_exec(struct cmd *self, struct cmd_q *cmdq)
 			return (CMD_RETURN_ERROR);
 		}
 	}
-	do_interactive(view, edges, warp);
+	do_interactive(view, edges, warp, edges_str != NULL);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -352,7 +352,8 @@ do_set_size(struct cow_view *view, const char *ws, const char *hs,
 }
 
 static void
-do_interactive(struct cow_view *view, uint32_t edges, bool warp)
+do_interactive(struct cow_view *view, uint32_t edges, bool warp,
+    bool indicate)
 {
 	/* Only valid inside a manage sequence — see cmd-move.c */
 	if (cow_wm.sequence != COW_WM_SEQUENCE_MANAGE)
@@ -368,11 +369,11 @@ do_interactive(struct cow_view *view, uint32_t edges, bool warp)
 	if (seat == NULL)
 		return;
 	if (!warp) {
-		(void)cow_pointer_op_start_resize(seat, view, edges);
+		(void)cow_pointer_op_start_resize(seat, view, edges, indicate);
 		return;
 	}
 	int warp_x, warp_y;
 	resize_warp_position(view, seat, edges, &warp_x, &warp_y);
-	(void)cow_pointer_op_start_resize_warped(seat, view, edges, warp_x,
-	    warp_y);
+	(void)cow_pointer_op_start_resize_warped(seat, view, edges, indicate,
+	    warp_x, warp_y);
 }

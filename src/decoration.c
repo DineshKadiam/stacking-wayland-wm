@@ -28,6 +28,7 @@
 #include "cow/font.h"
 #include "cow/format.h"
 #include "cow/memory.h"
+#include "cow/pointer_op.h"
 #include "cow/shm.h"
 #include "cow/titlebar.h"
 #include "cow/view.h"
@@ -41,6 +42,51 @@
  * Rebuilt whenever the font name changes (tracked via last_font_name). */
 static struct cow_font titlebar_font;
 static char	      *last_font_name = NULL;
+
+static void
+render_resize_indicator(uint32_t *pixels, int stride_px, int frame_w,
+    int frame_h, int border_width, int corner_length, uint32_t edges,
+    const float *colour)
+{
+	uint32_t pixel = cow_colour_to_pixel(colour);
+	bool horizontal = (edges & (COW_EDGE_TOP | COW_EDGE_BOTTOM)) != 0;
+	bool vertical = (edges & (COW_EDGE_LEFT | COW_EDGE_RIGHT)) != 0;
+	bool corner = horizontal && vertical;
+	int corner_x = corner_length < border_width ? border_width : corner_length;
+	int corner_y = corner_x;
+
+	if (corner_x > frame_w / 2)
+		corner_x = frame_w / 2;
+	if (corner_y > frame_h / 2)
+		corner_y = frame_h / 2;
+
+	for (int y = 0; y < frame_h; y++) {
+		bool in_horizontal_border = ((edges & COW_EDGE_TOP) != 0 &&
+		    y < border_width) || ((edges & COW_EDGE_BOTTOM) != 0 &&
+		    y >= frame_h - border_width);
+
+		for (int x = 0; x < frame_w; x++) {
+			bool in_horizontal_span = corner ?
+			    (((edges & COW_EDGE_LEFT) != 0 && x < corner_x) ||
+				((edges & COW_EDGE_RIGHT) != 0 &&
+				    x >= frame_w - corner_x)) :
+			    (x >= corner_x && x < frame_w - corner_x);
+			bool in_vertical_border = ((edges & COW_EDGE_LEFT) != 0 &&
+			    x < border_width) ||
+			    ((edges & COW_EDGE_RIGHT) != 0 &&
+				x >= frame_w - border_width);
+			bool in_vertical_span = corner ?
+			    (((edges & COW_EDGE_TOP) != 0 && y < corner_y) ||
+				((edges & COW_EDGE_BOTTOM) != 0 &&
+				    y >= frame_h - corner_y)) :
+			    (y >= corner_y && y < frame_h - corner_y);
+
+			if ((in_horizontal_border && in_horizontal_span) ||
+			    (in_vertical_border && in_vertical_span))
+				pixels[y * stride_px + x] = pixel;
+		}
+	}
+}
 
 static struct cow_font *
 get_titlebar_font(void)
@@ -1198,6 +1244,13 @@ cow_decoration_update(struct cow_view *view, bool active)
 				xfree(scratch);
 			}
 		}
+
+		if (bw > 0 && view->resize_indicator_edges != 0 &&
+		    view->cfg.has_border_resize)
+			render_resize_indicator(dec->buffer->data, stride_px,
+			    frame_w, frame_h, bw, cl,
+			    view->resize_indicator_edges,
+			    view->cfg.border_resize);
 	}
 
 	dec->frame_width	 = frame_w;

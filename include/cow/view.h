@@ -84,6 +84,7 @@ enum cow_view_cfg_option {
 	COW_VIEW_CFG_CORNER_LENGTH,
 	COW_VIEW_CFG_HANDLES,
 	COW_VIEW_CFG_BORDER_STYLE,
+	COW_VIEW_CFG_BORDER_RESIZE,
 	COW_VIEW_CFG_BORDER_ACTIVE,
 	COW_VIEW_CFG_BORDER_ACTIVE_N,
 	COW_VIEW_CFG_BORDER_ACTIVE_S,
@@ -278,6 +279,8 @@ struct cow_view_cfg {
 
 	struct cow_border_colour border_active;
 	struct cow_border_colour border_inactive;
+	float border_resize[4];
+	bool  has_border_resize;
 
 	struct cow_titlebar_config  titlebar;
 	struct cow_container_config container;
@@ -406,6 +409,7 @@ struct cow_view {
 	bool title_pressed;
 	int  pressed_button; /* -1 = none, otherwise titlebar button number */
 	int  icon_inverted_button; /* -1 = none, otherwise titlebar button number */
+	uint32_t resize_indicator_edges;
 
 	/* New window needs focus on next manage cycle */
 	bool needs_focus;

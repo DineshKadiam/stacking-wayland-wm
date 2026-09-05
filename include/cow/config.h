@@ -435,6 +435,8 @@ struct cow_config {
 	/* Colors */
 	struct cow_border_colour border_active;
 	struct cow_border_colour border_inactive;
+	float border_resize[4];
+	bool  has_border_resize;
 
 	/* Snap attraction distance (0 = disabled) */
 	int snap_distance;

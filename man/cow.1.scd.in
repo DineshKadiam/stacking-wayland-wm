@@ -1422,7 +1422,9 @@ mouse, from the bottom-right corner.
 	*se* (bottom-right) corner.  With _automatic_, the pointer position
 	in the target window's 3x3 grid selects the corresponding edge or
 	corner.  No resize starts from the centre cell or when the pointer is
-	outside the target window.
+	outside the target window.  If *border.resize* is configured, the
+	selected borders use that colour until the operation ends.  This visual
+	feedback applies only when *-e* is present.
 
 *-W*
 	Warp the pointer to the selected border before starting an interactive
@@ -1720,6 +1722,9 @@ feel of a window.  All of these can be used with *decor -d*.
 :< *Description*
 |  *border.active*
 :  Active (focused) window border colour.
+|  *border.resize*
+:  Temporary colour for borders selected by an interactive
+   *window-resize -e* operation.  When unset, no resize indication is drawn.
 |  *border.active.gradient*
 :  Border gradient.  Value is _HGradient colour colour_,
    _VGradient colour colour_, or _none_.

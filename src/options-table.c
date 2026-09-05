@@ -191,6 +191,13 @@ const struct cow_option_entry cow_options_table[] = {
 		.post = COW_OPTION_POST_REFRESH_VISUALS,
 	},
 	{
+		.name = "border.resize",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_MIXED,
+		.action = COW_OPTION_COLOUR,
+		.id = COW_VIEW_CFG_BORDER_RESIZE,
+	},
+	{
 		.name = "border.",
 		.match = COW_OPTION_PREFIX,
 		.scope = COW_OPTION_MIXED,

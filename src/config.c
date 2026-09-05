@@ -389,6 +389,9 @@ cow_config_reset_decor(struct cow_config *config)
 	config->border_style = defaults->border_style;
 	config->border_active = defaults->border_active;
 	config->border_inactive = defaults->border_inactive;
+	memcpy(config->border_resize, defaults->border_resize,
+	    sizeof(config->border_resize));
+	config->has_border_resize = defaults->has_border_resize;
 	config->font_name = defaults->font_name;
 	config->title_format = defaults->title_format;
 	config->icon_enabled = defaults->icon_enabled;
