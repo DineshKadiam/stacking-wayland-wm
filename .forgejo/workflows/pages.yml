@@ -9,19 +9,16 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "man/**"
-      - "site/**"
-      - "tools/cow-version-str.sh"
-      - ".forgejo/workflows/pages.yml"
 
 jobs:
   publish:
     name: Publish to Codeberg Pages
     runs-on: codeberg-small
-    timeout-minutes: 5
+    timeout-minutes: 10
     env:
       HUGO_VERSION: 0.164.0
+      RNA_VERSION: 1.7.3
+      RNA_SHA256: 3e7442dec237d092683b025521747c1a2ddb13613f79cafaeb558823ece34c7d
       SITE_URL: https://${{ forgejo.event.repository.owner.username }}.codeberg.page/${{ forgejo.event.repository.name }}/
     steps:
       - name: Check out repository
@@ -41,7 +38,24 @@ jobs:
       - name: Install manual-page tools
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y mandoc scdoc
+          sudo apt-get install --no-install-recommends -y jq mandoc scdoc
+
+      - name: Generate forthcoming release notes
+        env:
+          GITEA_TOKEN: ${{ forgejo.token }}
+        run: |
+          assistant="${{ runner.temp }}/release-notes-assistant"
+          preview="${{ runner.temp }}/cow-next-release.md"
+          changelog="${{ runner.temp }}/CHANGELOG.md"
+          url="https://code.forgejo.org/forgejo/release-notes-assistant/releases/download/v${RNA_VERSION}/release-notes-assistant"
+          curl -fsSL -o "$assistant" "$url"
+          printf '%s  %s\n' "$RNA_SHA256" "$assistant" | sha256sum -c -
+          chmod +x "$assistant"
+          cp CHANGELOG.md "$changelog"
+          version=$(sed -n 's/^VERSION=//p' tools/cow-version-str.sh)
+          tools/generate-changelog.sh "$version" "$assistant" \
+            "$preview" "$changelog"
+          printf 'COW_RELEASE_PREVIEW=%s\n' "$preview" >> "$FORGEJO_ENV"
 
       - name: Build site
         run: sh site/build.sh public "$SITE_URL"

@@ -17,6 +17,7 @@
     <nav aria-label="Primary navigation">
       <a href="{{ .Site.Params.repository }}">Source</a>
       <a href="{{ "man/" | relURL }}">Manuals</a>
+      <a href="{{ "changelog/development/" | relURL }}">Next release</a>
       <a href="{{ .Site.Params.documentation }}">Documentation</a>
       <a href="{{ .Site.Params.repository }}/issues">Issues</a>
       <a href="https://web.libera.chat/#cow-wayland">IRC</a>
@@ -45,6 +46,25 @@
         <a class="wm-button" href="{{ .Site.Params.changelog }}">View the changelog</a>
       </div>
     {{ partial "window-end.html" . }}
+
+    {{ with .Site.Params.releasePreview }}
+      {{ partial "window-start.html" (dict "id" "next-release" "class" "release-preview-window" "title" $.Params.upcoming.heading "heading_id" "next-release-title") }}
+        <div class="window-content release-preview-content">
+          <div>
+            <p>CoW {{ $.Site.Params.releasePreviewVersion }} currently includes
+              {{ $.Site.Params.releasePreviewChanges }} merged
+              {{ if eq $.Site.Params.releasePreviewChanges 1 }}change{{ else }}changes{{ end }}
+              since the latest release{{ if gt $.Site.Params.releasePreviewContributors 0 }},
+              with {{ $.Site.Params.releasePreviewContributors }} new
+              {{ if eq $.Site.Params.releasePreviewContributors 1 }}contributor{{ else }}contributors{{ end }}{{ end }}.</p>
+            <div class="release-preview-summary">
+              {{ $.RenderString $.Site.Params.releasePreviewSummary }}
+            </div>
+          </div>
+          <a class="wm-button" href="{{ "changelog/development/" | relURL }}">Preview the next release</a>
+        </div>
+      {{ partial "window-end.html" . }}
+    {{ end }}
 
     <div class="window-pair">
       {{ partial "window-start.html" (dict "id" "features" "title" .Params.about.heading "heading_id" "features-title") }}

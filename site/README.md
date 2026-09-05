@@ -14,6 +14,11 @@ first runs Hugo to generate the main website, then runs
 - `man/release/`, generated from the newest stable version tag reachable
   from the current branch.
 
+Published builds also pass the forthcoming release notes to `site/build.sh`
+through `COW_RELEASE_PREVIEW`. This adds a short summary to the home page and
+the complete latest-tag-to-`HEAD` preview at `changelog/development/`. The
+preview is generated during the build and is not committed to the repository.
+
 The page at `man/` links to both sets and shows the version represented by
 each. Pre-release tags containing a suffix, such as `0.2-rc`, do not replace
 the stable release manuals.
@@ -59,13 +64,13 @@ Or use `hugo` if it's already installed on your machine.
 
 ## Publishing
 
-The Forgejo workflow in `.forgejo/workflows/pages.yml` runs on pushes to
-`main` which change the website, manual sources, version script, or workflow.
-It also runs when a release is published and can be started manually. The
-checkout includes the complete tag history so the released manual sources
-can be extracted from their tag. The workflow installs Hugo, `scdoc`, and
-`mandoc`, builds into `public/`, and publishes that directory to Codeberg
-Pages.
+The Forgejo workflow in `.forgejo/workflows/pages.yml` runs on every push to
+`main`, because every merged pull request can change the forthcoming release
+preview. It also runs when a release is published and can be started manually.
+The checkout includes the complete tag history so the released manual sources
+can be extracted from their tag. The workflow installs Hugo, `scdoc`,
+`mandoc`, and release-notes-assistant, builds into `public/`, and publishes
+that directory to Codeberg Pages.
 
 The workflow also accepts `workflow_call`. An automated release workflow
 which publishes through the automatic Forgejo token must call the Pages
