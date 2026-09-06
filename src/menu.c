@@ -80,6 +80,9 @@ cow_menu_style_default(struct cow_menu_style *s)
 	s->icon_size		       = 16;
 	s->icon_gap		       = 4;
 	s->font			       = NULL;
+	s->side_width		       = 24;
+	memset(s->side_colour, 0, sizeof(s->side_colour));
+	s->side_image		       = NULL;
 	const char *xdg = getenv("XDG_CONFIG_HOME");
 	const char *home = getenv("HOME");
 	if (xdg != NULL && xdg[0] != '\0')
@@ -138,6 +141,9 @@ cow_menu_style_resolve(const struct cow_menu *menu, struct cow_menu_style *out)
 	APPLY(COW_MENU_STYLE_ICON_SIZE, icon_size);
 	APPLY(COW_MENU_STYLE_ICON_GAP, icon_gap);
 	APPLY(COW_MENU_STYLE_ICON_PATH, icon_path);
+	APPLY(COW_MENU_STYLE_SIDE_WIDTH, side_width);
+	APPLY(COW_MENU_STYLE_SIDE_COLOUR, side_colour);
+	APPLY(COW_MENU_STYLE_SIDE_IMAGE, side_image);
 	APPLY(COW_MENU_STYLE_FONT, font);
 	APPLY(COW_MENU_STYLE_TITLE_UNDERLINES, title_underlines);
 	APPLY(COW_MENU_STYLE_AUTOMATIC_HOTKEYS, automatic_hotkeys);
@@ -815,6 +821,7 @@ cow_menu_destroy(struct cow_menu *menu)
 	wl_list_remove(&menu->link);
 	xfree(menu->name);
 	xfree(menu->style.icon_path);
+	xfree(menu->style.side_image);
 	xfree(menu->style.font);
 	xfree(menu);
 }
@@ -1007,6 +1014,13 @@ popup_layout(struct cow_menu_popup *p)
 	(void)any_submenu;
 	int text_w = icon_gutter + max_label_w + ARROW_W;
 
+	p->side_w = st->side_image != NULL || st->side_colour[3] > 0.0f ?
+	    st->side_width : 0;
+	p->side_image_w = 0;
+	p->side_h = 0;
+	if (st->side_image != NULL && cow_image_dimensions(st->side_image,
+	    &p->side_image_w, &p->side_h) && p->side_image_w > p->side_w)
+		p->side_w = p->side_image_w;
 	int inner_w = text_w + st->padding_x * 2;
 	int height  = st->border_width * 2;
 	wl_list_for_each(it, &p->def->items, link)
@@ -1017,7 +1031,7 @@ popup_layout(struct cow_menu_popup *p)
 	}
 
 	p->item_h = content_h + st->padding_y * 2;
-	p->width  = inner_w + st->border_width * 2;
+	p->width  = inner_w + p->side_w + st->border_width * 2;
 	p->height = height;
 }
 
@@ -1289,12 +1303,23 @@ popup_render(struct cow_menu_popup *p)
 
 	fill_style_rect(&buf, 0, 0, p->width, p->height, st->bg,
 	    &st->bg_gradient);
+	if (p->side_w > 0) {
+		int content_h = p->height - st->border_width * 2;
+		if (st->side_colour[3] > 0.0f)
+			cow_draw_fill_rect(&buf, st->border_width,
+			    st->border_width, p->side_w, content_h,
+			    px(st->side_colour));
+		(void)cow_image_render_rect(st->side_image, &buf,
+		    st->border_width,
+		    st->border_width + content_h - p->side_h,
+		    p->side_image_w, p->side_h);
+	}
 
 	draw_menu_border(&buf, st, border_px);
 
 	int		 y	= st->border_width;
-	int		 x	= st->border_width;
-	int		 innerw = p->width - st->border_width * 2;
+	int		 x	= st->border_width + p->side_w;
+	int		 innerw = p->width - st->border_width * 2 - p->side_w;
 	int		 idx	= 0;
 	cairo_surface_t *cs =
 	    cairo_image_surface_create_for_data((unsigned char *)buf.pixels,

@@ -35,11 +35,11 @@
 #include "cow/wm.h"
 
 static char *
-menu_icon_validate(char *path)
+menu_image_validate(char *path, const char *what)
 {
 	char *cause = NULL;
 	if (!cow_image_validate(path, &cause)) {
-		cow_log_warn("menu-add: icon ignored: %s", cause);
+		cow_log_warn("%s ignored: %s", what, cause);
 		xfree(cause);
 		xfree(path);
 		return (NULL);
@@ -77,24 +77,24 @@ menu_icon_path_resolve(const char *paths, struct cmd_q *cmdq)
 }
 
 static char *
-menu_icon_resolve(const char *name, const struct cow_menu *menu)
+menu_image_resolve(const char *name, const struct cow_menu *menu,
+    const char *what)
 {
 	if (strchr(name, '/') != NULL) {
 		char *path = cow_path_resolve(NULL, name);
 		if (path == NULL) {
-			cow_log_warn("menu-add: icon ignored: cannot expand path: %s",
+			cow_log_warn("%s ignored: cannot expand path: %s", what,
 			    name);
 			return (NULL);
 		}
-		return (menu_icon_validate(path));
+		return (menu_image_validate(path, what));
 	}
 
 	struct cow_menu_style style;
 	cow_menu_style_resolve(menu, &style);
 	const char *search = style.icon_path;
 	if (search == NULL || search[0] == '\0') {
-		cow_log_warn("menu-add: icon ignored: icon.path is empty (%s)",
-		    name);
+		cow_log_warn("%s ignored: icon.path is empty (%s)", what, name);
 		return (NULL);
 	}
 	char *copy = xstrdup(search);
@@ -109,11 +109,10 @@ menu_icon_resolve(const char *name, const struct cow_menu *menu)
 			continue;
 		}
 		xfree(copy);
-		return (menu_icon_validate(path));
+		return (menu_image_validate(path, what));
 	}
 	xfree(copy);
-	cow_log_warn("menu-add: icon not found: %s (icon.path: %s)", name,
-	    search);
+	cow_log_warn("%s not found: %s (icon.path: %s)", what, name, search);
 	return (NULL);
 }
 
@@ -162,7 +161,9 @@ cmd_menu_add_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_ERROR);
 	}
 	struct cow_menu *m = cow_menu_find(name);
-	char *icon = icon_arg != NULL ? menu_icon_resolve(icon_arg, m) : NULL;
+	char *icon = icon_arg != NULL ?
+	    menu_image_resolve(icon_arg, m, "menu-add: icon") :
+	    NULL;
 	if (m == NULL)
 		m = cow_menu_create(name);
 	if (m == NULL) {
@@ -345,6 +346,12 @@ menu_style_field(const char *key)
 		return (COW_MENU_STYLE_ICON_GAP);
 	if (strcmp(key, "icon.path") == 0)
 		return (COW_MENU_STYLE_ICON_PATH);
+	if (strcmp(key, "side.colour") == 0)
+		return (COW_MENU_STYLE_SIDE_COLOUR);
+	if (strcmp(key, "side.image") == 0)
+		return (COW_MENU_STYLE_SIDE_IMAGE);
+	if (strcmp(key, "side.width") == 0)
+		return (COW_MENU_STYLE_SIDE_WIDTH);
 	if (strcmp(key, "font") == 0)
 		return (COW_MENU_STYLE_FONT);
 	if (strcmp(key, "title.underlines") == 0)
@@ -364,6 +371,9 @@ menu_style_field_changes_geometry(uint32_t field)
 	    field == COW_MENU_STYLE_PADDING_Y ||
 	    field == COW_MENU_STYLE_ICON_SIZE ||
 	    field == COW_MENU_STYLE_ICON_GAP ||
+	    field == COW_MENU_STYLE_SIDE_WIDTH ||
+	    field == COW_MENU_STYLE_SIDE_COLOUR ||
+	    field == COW_MENU_STYLE_SIDE_IMAGE ||
 	    field == COW_MENU_STYLE_FONT);
 }
 
@@ -448,6 +458,10 @@ cmd_menu_style_exec(struct cmd *self, struct cmd_q *cmdq)
 			xfree(menu->style.icon_path);
 			menu->style.icon_path = NULL;
 		}
+		if (field == COW_MENU_STYLE_SIDE_IMAGE) {
+			xfree(menu->style.side_image);
+			menu->style.side_image = NULL;
+		}
 		if (field == COW_MENU_STYLE_FONT) {
 			xfree(menu->style.font);
 			menu->style.font = NULL;
@@ -498,6 +512,41 @@ cmd_menu_style_exec(struct cmd *self, struct cmd_q *cmdq)
 		xfree(val);
 		return (CMD_RETURN_NORMAL);
 	}
+	if (strcmp(key, "side.image") == 0) {
+		char *path = NULL;
+		if (strcmp(val, "none") != 0) {
+			path = menu_image_resolve(val, menu,
+			    "menu-style: side.image");
+			if (path == NULL) {
+				cmdq_error(cmdq,
+				    "menu-style: side.image: cannot resolve image");
+				xfree(val);
+				return (CMD_RETURN_ERROR);
+			}
+		}
+		if (menu_name == NULL) {
+			xfree(cow_config->menu_style.side_image);
+			cow_config->menu_style.side_image = path;
+		} else {
+			if (menu == NULL)
+				menu = cow_menu_create(menu_name);
+			if (menu == NULL) {
+				cmdq_error(cmdq,
+				    "menu-style: cannot create menu \"%s\"",
+				    menu_name);
+				xfree(path);
+				xfree(val);
+				return (CMD_RETURN_ERROR);
+			}
+			xfree(menu->style.side_image);
+			menu->style.side_image = path;
+			menu->style_overrides |= field;
+		}
+		if (!cow_ipc.startup_mode)
+			cow_menu_style_refresh(menu, true);
+		xfree(val);
+		return (CMD_RETURN_NORMAL);
+	}
 	if (strcmp(key, "font") == 0) {
 		if (val[0] == '\0') {
 			cmdq_error(cmdq, "menu-style: font cannot be empty");
@@ -535,12 +584,18 @@ cmd_menu_style_exec(struct cmd *self, struct cmd_q *cmdq)
 		{ "title.fg", st->title_fg },
 		{ "separator", st->separator },
 		{ "border.colour", st->border },
+		{ "side.colour", st->side_colour },
 		{ NULL, NULL },
 	};
 	for (int i = 0; colours[i].name != NULL; i++) {
 		if (strcmp(key, colours[i].name) == 0) {
-			ret = menu_style_set_colour(key, val, colours[i].ptr,
-			    cmdq);
+			if (strcmp(key, "side.colour") == 0 &&
+			    strcmp(val, "none") == 0)
+				memset(colours[i].ptr, 0,
+				    sizeof(st->side_colour));
+			else
+				ret = menu_style_set_colour(key, val,
+				    colours[i].ptr, cmdq);
 			goto out;
 		}
 	}
@@ -572,6 +627,7 @@ cmd_menu_style_exec(struct cmd *self, struct cmd_q *cmdq)
 		{ "padding.y", &st->padding_y, 0, 100 },
 		{ "icon.size", &st->icon_size, 0, 256 },
 		{ "icon.gap", &st->icon_gap, 0, 100 },
+		{ "side.width", &st->side_width, 1, 256 },
 		{ "title.underlines", &st->title_underlines, 0, 2 },
 		{ NULL, NULL, 0, 0 },
 	};

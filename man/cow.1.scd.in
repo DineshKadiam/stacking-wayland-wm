@@ -2312,6 +2312,12 @@ The table below shows the possible values:
    colon-separated search path used by *menu-add -i*.  A leading *~/*,
    *$HOME/*, or *${HOME}/* in each entry is expanded when the setting is read;
    other relative entries use the directory containing the configuration file.
+|  *side.colour*
+:  none (background colour for the menu's side column; a colour or *none*)
+|  *side.width*
+:  24 (minimum width of the menu's side column in pixels)
+|  *side.image*
+:  none (PNG, SVG, or XPM image drawn in a column along the menu's left side)
 |  *title.underlines*
 :  2
 |  *automatic.hotkeys*
@@ -2330,6 +2336,22 @@ and the lighter one for bottom/right.
 
 The flat outer menu border is a solid *border.colour*. Raised and sunken
 borders derive light and dark edges from *border.colour*.
+
+The side column is present when either *side.colour* or *side.image* is set.
+Its minimum width is *side.width*, and it grows to the image's natural width
+when necessary.  Thus, *side.colour* and *side.image* can each be used on their
+own.  *side.image* accepts an explicit path or searches *icon.path* for a bare
+file name.  It is aligned with the bottom of the menu and cropped at the top
+if it is taller than the available space.  Use *0x00000000* or *none* for
+*side.colour* to leave the menu background visible, and set *side.image* to
+*none* to remove it.  For example:
+
+```
+menu-style icon.path ~/.config/cow/icons:/usr/local/share/cow/icons
+menu-style side.colour 0x303060
+menu-style side.width 32
+menu-style side.image menu-side.xpm
+```
 
 Gradient values use the same syntax as decoration gradients:
 *none*, *HGradient* _COLOUR_ _COLOUR_, or

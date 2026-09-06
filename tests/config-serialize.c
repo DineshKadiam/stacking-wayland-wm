@@ -145,9 +145,14 @@ test_menu(void)
 
 	record_string(menu, "name", "Root Menu");
 	record_number(menu, "style_overrides",
-	    COW_MENU_STYLE_BG | COW_MENU_STYLE_PADDING_X);
+	    COW_MENU_STYLE_BG | COW_MENU_STYLE_PADDING_X |
+	    COW_MENU_STYLE_SIDE_WIDTH | COW_MENU_STYLE_SIDE_COLOUR |
+	    COW_MENU_STYLE_SIDE_IMAGE);
 	record_string(style, "bg", "0x112233ff");
 	record_number(style, "padding_x", 8);
+	record_number(style, "side_width", 32);
+	record_string(style, "side_colour", "0x334455ff");
+	record_string(style, "side_image", "/tmp/menu-side.xpm");
 	record_string(style, "font", "");
 	state_record_set(menu, "style", style);
 	state_value_unref(style);
@@ -166,6 +171,9 @@ test_menu(void)
 	expect("menu", cow_config_serialize_topic("menu", menu),
 	    "menu-style -m \"Root Menu\" bg 0x112233ff\n"
 	    "menu-style -m \"Root Menu\" padding.x 8\n"
+	    "menu-style -m \"Root Menu\" side.width 32\n"
+	    "menu-style -m \"Root Menu\" side.colour 0x334455ff\n"
+	    "menu-style -m \"Root Menu\" side.image /tmp/menu-side.xpm\n"
 	    "menu-add -i /tmp/terminal.svg \"Root Menu\" Terminal "
 	    "\"exec foot\"\n");
 	state_value_unref(menu);

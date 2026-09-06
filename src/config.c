@@ -463,6 +463,7 @@ cow_config_destroy(struct cow_config *config)
 	}
 	xfree(config->output_bg_image);
 	xfree(config->menu_style.icon_path);
+	xfree(config->menu_style.side_image);
 	xfree(config->menu_style.font);
 	xfree(config->menu_repeat_keys);
 	xfree(config->cursor_theme);

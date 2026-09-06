@@ -51,10 +51,13 @@ struct cow_menu_style {
 	int   border_width; /* outer border thickness (px) */
 	int   padding_x;    /* horizontal padding within items (px) */
 	int   padding_y;    /* vertical padding above/below text (px) */
-	int   icon_size;    /* menu item icon size (px) */
-	int   icon_gap;     /* gap between icon and label (px) */
-	char *icon_path;    /* colon-separated menu icon search path */
-	char *font;         /* Pango font description, or NULL for global */
+	int   icon_size;      /* menu item icon size (px) */
+	int   icon_gap;       /* gap between icon and label (px) */
+	char *icon_path;      /* colon-separated menu icon search path */
+	int   side_width;     /* minimum width of the side column (px) */
+	float side_colour[4]; /* background of the side column */
+	char *side_image;     /* resolved side image path, or NULL */
+	char *font;           /* Pango font description, or NULL for global */
 	int   title_underlines;
 	bool  automatic_hotkeys;
 	enum cow_menu_selection_relief selection_relief;
@@ -81,6 +84,9 @@ enum cow_menu_style_field {
 	COW_MENU_STYLE_ICON_PATH		 = 1u << 16,
 	COW_MENU_STYLE_BORDER_RELIEF	 = 1u << 17,
 	COW_MENU_STYLE_FONT		 = 1u << 18,
+	COW_MENU_STYLE_SIDE_COLOUR	 = 1u << 19,
+	COW_MENU_STYLE_SIDE_IMAGE	 = 1u << 20,
+	COW_MENU_STYLE_SIDE_WIDTH	 = 1u << 21,
 };
 
 enum cow_menu_item_type {
@@ -119,6 +125,9 @@ struct cow_menu_popup {
 	int		 width;	   /* rendered width in pixels */
 	int		 height;   /* rendered height in pixels */
 	int		 item_h;   /* height of one item row */
+	int		 side_w;   /* width of optional side image column */
+	int		 side_image_w; /* natural width of optional side image */
+	int		 side_h;   /* natural height of optional side image */
 	int		 selected; /* highlighted item index (-1 = none) */
 	struct cow_menu_style style; /* resolved style snapshot */
 

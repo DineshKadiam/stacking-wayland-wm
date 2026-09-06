@@ -376,6 +376,9 @@ menu_style_snapshot(const struct cow_menu *menu)
 	rec_set_number(record, "icon_size", style.icon_size);
 	rec_set_number(record, "icon_gap", style.icon_gap);
 	rec_set_string(record, "icon_path", style.icon_path);
+	rec_set_number(record, "side_width", style.side_width);
+	rec_set_colour(record, "side_colour", style.side_colour);
+	rec_set_string(record, "side_image", style.side_image);
 	rec_set_string(record, "font", style.font);
 	rec_set_number(record, "title_underlines", style.title_underlines);
 	rec_set_bool(record, "automatic_hotkeys", style.automatic_hotkeys);

@@ -372,6 +372,9 @@ serialize_menu_style(struct config_buf *buf, const char *name,
 		{ "icon_size", "icon.size", COW_MENU_STYLE_ICON_SIZE },
 		{ "icon_gap", "icon.gap", COW_MENU_STYLE_ICON_GAP },
 		{ "icon_path", "icon.path", COW_MENU_STYLE_ICON_PATH },
+		{ "side_width", "side.width", COW_MENU_STYLE_SIDE_WIDTH },
+		{ "side_colour", "side.colour", COW_MENU_STYLE_SIDE_COLOUR },
+		{ "side_image", "side.image", COW_MENU_STYLE_SIDE_IMAGE },
 		{ "font", "font", COW_MENU_STYLE_FONT },
 		{ "title_underlines", "title.underlines",
 		    COW_MENU_STYLE_TITLE_UNDERLINES },
@@ -393,6 +396,11 @@ serialize_menu_style(struct config_buf *buf, const char *name,
 		if (strcmp(fields[i].config, "font") == 0 && text[0] == '\0') {
 			xfree(text);
 			continue;
+		}
+		if (strcmp(fields[i].config, "side.image") == 0 &&
+		    text[0] == '\0') {
+			xfree(text);
+			text = xstrdup("none");
 		}
 		const char *named[] = { "menu-style", "-m", name,
 		    fields[i].config, text };

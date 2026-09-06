@@ -79,38 +79,73 @@ blend_rgba(struct cow_pixbuf *dst, int x, int y, const unsigned char *src)
 	*dp = (a << 24) | (r << 16) | (g << 8) | b;
 }
 
-bool
-cow_image_validate(const char *path, char **cause)
+static bool
+image_info(const char *path, int *width, int *height, char **cause)
 {
-	int w, h, comp;
+	int w = 0;
+	int h = 0;
 
 	switch (image_type(path)) {
-	case COW_IMAGE_PNG:
-		if (stbi_info(path, &w, &h, &comp))
-			return true;
-		xasprintf(cause, "%s: not a readable PNG", path);
-		return false;
+	case COW_IMAGE_PNG: {
+		int comp;
+		if (!stbi_info(path, &w, &h, &comp)) {
+			if (cause != NULL)
+				xasprintf(cause, "%s: not a readable PNG", path);
+			return (false);
+		}
+		break;
+	}
 	case COW_IMAGE_SVG: {
 		NSVGimage *svg = nsvgParseFromFile(path, "px", 96.0f);
-		if (svg != NULL) {
-			nsvgDelete(svg);
-			return true;
+		if (svg == NULL) {
+			if (cause != NULL)
+				xasprintf(cause, "%s: not a readable SVG", path);
+			return (false);
 		}
-		xasprintf(cause, "%s: not a readable SVG", path);
-		return false;
+		w = (int)ceilf(svg->width);
+		h = (int)ceilf(svg->height);
+		nsvgDelete(svg);
+		break;
 	}
 	case COW_IMAGE_XPM: {
 		struct cow_xpm_image xpm;
-		if (cow_xpm_load(path, &xpm, cause)) {
-			cow_xpm_free(&xpm);
-			return true;
-		}
-		return false;
+		if (!cow_xpm_load(path, &xpm, cause))
+			return (false);
+		w = xpm.width;
+		h = xpm.height;
+		cow_xpm_free(&xpm);
+		break;
 	}
 	default:
-		xasprintf(cause, "%s: expected .png, .svg, or .xpm", path);
-		return false;
+		if (cause != NULL)
+			xasprintf(cause, "%s: expected .png, .svg, or .xpm", path);
+		return (false);
 	}
+
+	if (w <= 0 || h <= 0) {
+		if (cause != NULL)
+			xasprintf(cause, "%s: image has invalid dimensions", path);
+		return (false);
+	}
+	if (width != NULL)
+		*width = w;
+	if (height != NULL)
+		*height = h;
+	return (true);
+}
+
+bool
+cow_image_validate(const char *path, char **cause)
+{
+	return (path != NULL && image_info(path, NULL, NULL, cause));
+}
+
+bool
+cow_image_dimensions(const char *path, int *width, int *height)
+{
+	if (path == NULL || width == NULL || height == NULL)
+		return (false);
+	return (image_info(path, width, height, NULL));
 }
 
 static void
