@@ -21,11 +21,13 @@
 #include "cow/cmd.h"
 #include "cow/config.h"
 #include "cow/compat.h"
+#include "cow/decoration.h"
 #include "cow/desk_ops.h"
 #include "cow/ipc.h"
 #include "cow/log.h"
 #include "cow/memory.h"
 #include "cow/output.h"
+#include "cow/placement.h"
 #include "cow/style.h"
 #include "cow/update.h"
 #include "cow/util.h"
@@ -52,6 +54,7 @@ struct resolved_style {
 	char *y;
 	char *width;
 	char *height;
+	char *anchor;
 	char *maximized;
 	char *maximize_ignore_reserved;
 	char *fullscreen;
@@ -202,6 +205,7 @@ style_key_from_name(const char *name, enum cow_style_key *key)
 		{ "placement.y", COW_STYLE_PLACEMENT_Y },
 		{ "placement.width", COW_STYLE_PLACEMENT_WIDTH },
 		{ "placement.height", COW_STYLE_PLACEMENT_HEIGHT },
+		{ "placement.anchor", COW_STYLE_PLACEMENT_ANCHOR },
 		{ "state.maximized", COW_STYLE_STATE_MAXIMIZED },
 		{ "state.maximized.ignore_reserved",
 		    COW_STYLE_STATE_MAXIMIZED_IGNORE_RESERVED },
@@ -243,6 +247,8 @@ style_value_valid(enum cow_style_key key, const char *value)
 		    strcmp(value, "horizontal") == 0 ||
 		    strcmp(value, "vertical") == 0 ||
 		    strcmp(value, "both") == 0);
+	case COW_STYLE_PLACEMENT_ANCHOR:
+		return (cow_placement_anchor_parse(value, NULL));
 	default:
 		return (value[0] != '\0');
 	}
@@ -402,6 +408,7 @@ resolve_entry(struct resolved_style *resolved,
 	case COW_STYLE_PLACEMENT_Y: RESOLVE(y); break;
 	case COW_STYLE_PLACEMENT_WIDTH: RESOLVE(width); break;
 	case COW_STYLE_PLACEMENT_HEIGHT: RESOLVE(height); break;
+	case COW_STYLE_PLACEMENT_ANCHOR: RESOLVE(anchor); break;
 	case COW_STYLE_STATE_MAXIMIZED: RESOLVE(maximized); break;
 	case COW_STYLE_STATE_MAXIMIZED_IGNORE_RESERVED:
 	    RESOLVE(maximize_ignore_reserved); break;
@@ -429,6 +436,7 @@ resolved_style_fini(struct resolved_style *resolved)
 	xfree(resolved->y);
 	xfree(resolved->width);
 	xfree(resolved->height);
+	xfree(resolved->anchor);
 	xfree(resolved->maximized);
 	xfree(resolved->maximize_ignore_reserved);
 	xfree(resolved->fullscreen);
@@ -546,6 +554,7 @@ apply_decor(struct cow_view *view)
 		}
 	}
 	(void)cmdq_free(cmdq);
+	cow_decoration_sync_metrics(view);
 	view->dec.dirty = true;
 	cow_update_request(COW_UPDATE_MANAGE);
 }
@@ -575,10 +584,6 @@ static void
 apply_initial_state(struct cow_view *view,
     const struct resolved_style *resolved)
 {
-	if (resolved->page != NULL) {
-		const char *argv[] = { "window-move", "-P", resolved->page };
-		(void)run_argv(view, 3, argv);
-	}
 	if (resolved->x != NULL || resolved->y != NULL) {
 		const char *argv[5] = { "window-move" };
 		size_t argc = 1;
@@ -604,6 +609,14 @@ apply_initial_state(struct cow_view *view,
 			argv[argc++] = resolved->height;
 		}
 		(void)run_argv(view, argc, argv);
+	}
+	if (resolved->anchor != NULL) {
+		xstrset(&view->style_pending_anchor, resolved->anchor);
+		xstrset(&view->style_anchor, resolved->anchor);
+	}
+	if (resolved->page != NULL) {
+		const char *argv[] = { "window-move", "-P", resolved->page };
+		(void)run_argv(view, 3, argv);
 	}
 	if (resolved->maximized != NULL &&
 	    strcmp(resolved->maximized, "none") == 0) {
@@ -674,6 +687,50 @@ cow_style_apply_for_event(struct cow_view *view, bool initial)
 	if (reapply_pending && !applying_all) {
 		reapply_pending = false;
 		cow_style_apply_all_live();
+	}
+}
+
+void
+cow_style_apply_pending_initial(struct cow_view *view)
+{
+	if (view == NULL || view->style_pending_anchor == NULL)
+		return;
+
+	char *anchor = view->style_pending_anchor;
+	view->style_pending_anchor = NULL;
+	const char *argv[] = { "window-move", "-a", anchor };
+	(void)run_argv(view, 3, argv);
+	xfree(anchor);
+}
+
+void
+cow_style_cancel_pending_initial(struct cow_view *view)
+{
+	if (view == NULL)
+		return;
+	xfree(view->style_pending_anchor);
+	view->style_pending_anchor = NULL;
+	xfree(view->style_anchor);
+	view->style_anchor = NULL;
+}
+
+void
+cow_style_reflow_anchors(struct cow_output *output)
+{
+	if (output == NULL)
+		return;
+
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (view->closed || view->output != output ||
+		    view->style_anchor == NULL || !view->has_dimensions ||
+		    view->maximized || view->fullscreen)
+			continue;
+		const char *argv[] = {
+			"window-move", "-a", view->style_anchor,
+		};
+		(void)run_argv(view, 3, argv);
 	}
 }
 

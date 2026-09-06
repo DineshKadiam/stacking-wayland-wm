@@ -24,6 +24,7 @@
 #include "cow/policy.h"
 
 struct cmd_q;
+struct cow_output;
 struct cow_view;
 
 enum cow_style_key {
@@ -40,6 +41,7 @@ enum cow_style_key {
 	COW_STYLE_PLACEMENT_Y,
 	COW_STYLE_PLACEMENT_WIDTH,
 	COW_STYLE_PLACEMENT_HEIGHT,
+	COW_STYLE_PLACEMENT_ANCHOR,
 	COW_STYLE_STATE_MAXIMIZED,
 	COW_STYLE_STATE_MAXIMIZED_IGNORE_RESERVED,
 	COW_STYLE_STATE_FULLSCREEN,
@@ -70,6 +72,9 @@ void cow_style_destroy(struct cow_style *);
 bool cow_style_remove_by_name(const char *);
 bool cow_style_parse_body(struct cow_style *, const char *, struct cmd_q *);
 void cow_style_apply_for_event(struct cow_view *, bool);
+void cow_style_apply_pending_initial(struct cow_view *);
+void cow_style_cancel_pending_initial(struct cow_view *);
+void cow_style_reflow_anchors(struct cow_output *);
 void cow_style_apply_all_live(void);
 bool cow_style_is_applying(void);
 

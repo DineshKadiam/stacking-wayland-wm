@@ -30,8 +30,8 @@
 #include "cow/cmd.h"
 #include "cow/colour.h"
 #include "cow/config.h"
+#include "cow/decoration.h"
 #include "cow/desk_ops.h"
-#include "cow/font.h"
 #include "cow/gradient.h"
 #include "cow/image.h"
 #include "cow/ipc.h"
@@ -117,7 +117,6 @@ static void set_button_option(const char *, const char *, struct cmd_q *);
 static bool set_key_is_image(const char *);
 static char *set_image_resolve_path(const char *, struct cmd_q *);
 static void refresh_visuals(void);
-static int  configured_title_thickness(struct cow_view *);
 static void refresh_view_visuals(struct cow_view *);
 static void refresh_output_visuals(struct cow_output *);
 
@@ -2171,33 +2170,14 @@ refresh_visuals(void)
 	cow_update_request(COW_UPDATE_MANAGE);
 }
 
-static int
-configured_title_thickness(struct cow_view *view)
-{
-	if (view->cfg.titlebar.height > 0)
-		return (view->cfg.titlebar.height);
-
-	struct cow_font tb_font;
-	const char     *fname = view->cfg.font_name != NULL ?
-	      view->cfg.font_name :
-	      "monospace 10";
-	cow_font_init(&tb_font, fname);
-	return (cow_titlebar_compute_thickness(&tb_font));
-}
-
 static void
 refresh_view_visuals(struct cow_view *view)
 {
 	if (view->closed)
 		return;
 
-	view->dec.dirty                    = true;
-	view->dec.border_width             = view->cfg.border;
-	view->dec.nominal_title_thickness =
-	    configured_title_thickness(view);
-	view->dec.title_thickness = view->cfg.titlebar.enabled ?
-	    view->dec.nominal_title_thickness :
-	    0;
+	view->dec.dirty = true;
+	cow_decoration_sync_metrics(view);
 	view->dec.last_content_width       = -1;
 	view->dec.last_content_height      = -1;
 	if (view->dec.buffer != NULL) {

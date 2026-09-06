@@ -951,6 +951,13 @@ managed.  They are not replayed by a configuration reload or title change:
 :  Initial position, using the units accepted by *window-move*.
 |  *placement.width*, *placement.height*
 :  Initial size, using the units accepted by *window-resize*.
+|  *placement.anchor*
+:  Align the outer frame within the usable area after applying its initial
+   size.  One of *top-left*, *top*, *top-right*, *left*, *centre*, *right*,
+   *bottom-left*, *bottom*, or *bottom-right*.  Do not combine this with
+   *placement.x* or *placement.y*.  The alignment follows later changes to
+   the output's usable area, such as a layer-shell panel appearing.  An
+   explicit *window-move* releases the window from this alignment.
 |  *state.maximized*
 :  *none*, *horizontal*, *vertical*, or *both*.
 |  *state.maximized.ignore_reserved*
@@ -1337,7 +1344,7 @@ Operate on a window.
 	Container members share a single layer: setting *-L* on any
 	member updates every member of the container.
 
-## window-move [-C] [-w] [-t target] [-d dir [-n]] [-o output] [-c] [-k 0-9] [-x X] [-y Y] [-P col[,row]]
+## window-move [-C] [-w] [-t target] [-d dir [-n]] [-o output] [-a anchor] [-c] [-k 0-9] [-x X] [-y Y] [-P col[,row]]
 
 Move a window. With no flags, begin an interactive move using the mouse.
 
@@ -1381,6 +1388,12 @@ Move a window. With no flags, begin an interactive move using the mouse.
 
 *-c*
 	Centre the window on its current output.
+
+*-a* _anchor_
+	Align the window's outer frame within the current output's usable area
+	without changing its size.  _anchor_ is one of *top-left*, *top*,
+	*top-right*, *left*, *centre*, *right*, *bottom-left*, *bottom*, or
+	*bottom-right*.
 
 *-k* _0-9_
 	Move the window to desk number _0-9_.

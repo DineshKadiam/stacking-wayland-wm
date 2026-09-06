@@ -16,8 +16,65 @@
 #include "cow/placement.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 #include "cow/memory.h"
+
+bool
+cow_placement_anchor_parse(const char *name, enum cow_placement_anchor *anchor)
+{
+	static const struct {
+		const char *name;
+		enum cow_placement_anchor anchor;
+	} anchors[] = {
+		{ "top-left", COW_ANCHOR_TOP_LEFT },
+		{ "top", COW_ANCHOR_TOP },
+		{ "top-right", COW_ANCHOR_TOP_RIGHT },
+		{ "left", COW_ANCHOR_LEFT },
+		{ "centre", COW_ANCHOR_CENTRE },
+		{ "center", COW_ANCHOR_CENTRE },
+		{ "right", COW_ANCHOR_RIGHT },
+		{ "bottom-left", COW_ANCHOR_BOTTOM_LEFT },
+		{ "bottom", COW_ANCHOR_BOTTOM },
+		{ "bottom-right", COW_ANCHOR_BOTTOM_RIGHT },
+	};
+
+	for (size_t i = 0; i < sizeof(anchors) / sizeof(anchors[0]); i++) {
+		if (strcmp(name, anchors[i].name) != 0)
+			continue;
+		if (anchor != NULL)
+			*anchor = anchors[i].anchor;
+		return (true);
+	}
+	return (false);
+}
+
+void
+cow_placement_anchor(const struct cow_box *usable, int width, int height,
+    enum cow_placement_anchor anchor, int *x, int *y)
+{
+	if (anchor == COW_ANCHOR_TOP_LEFT ||
+	    anchor == COW_ANCHOR_LEFT ||
+	    anchor == COW_ANCHOR_BOTTOM_LEFT)
+		*x = usable->x;
+	else if (anchor == COW_ANCHOR_TOP ||
+	    anchor == COW_ANCHOR_CENTRE ||
+	    anchor == COW_ANCHOR_BOTTOM)
+		*x = usable->x + (usable->width - width) / 2;
+	else
+		*x = usable->x + usable->width - width;
+
+	if (anchor == COW_ANCHOR_TOP_LEFT ||
+	    anchor == COW_ANCHOR_TOP ||
+	    anchor == COW_ANCHOR_TOP_RIGHT)
+		*y = usable->y;
+	else if (anchor == COW_ANCHOR_LEFT ||
+	    anchor == COW_ANCHOR_CENTRE ||
+	    anchor == COW_ANCHOR_RIGHT)
+		*y = usable->y + (usable->height - height) / 2;
+	else
+		*y = usable->y + usable->height - height;
+}
 
 static int
 compare_box_x(const void *pa, const void *pb)

@@ -37,6 +37,7 @@
 #include "cow/pick.h"
 #include "cow/pointer_input.h"
 #include "cow/seat.h"
+#include "cow/style.h"
 #include "cow/view.h"
 
 #include "river-window-management-v1-client-protocol.h"
@@ -135,6 +136,7 @@ cow_output_recompute_usable_area(struct cow_output *output)
 		if (view->output == output)
 			cow_view_reflow_maximized(view);
 	}
+	cow_style_reflow_anchors(output);
 	cow_view_invalidate_auto_icon_positions(output);
 	cow_view_layout_icons_on_output(output);
 	cow_update_request(COW_UPDATE_STATUS);

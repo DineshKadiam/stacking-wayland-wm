@@ -475,6 +475,8 @@ struct cow_view {
 	uint32_t style_live_mask;
 	uint32_t policy_overrides;
 	bool     style_initial_applied;
+	char    *style_pending_anchor;
+	char    *style_anchor;
 };
 
 #define COW_VIEW_POLICY_LAYER          (1u << 0)

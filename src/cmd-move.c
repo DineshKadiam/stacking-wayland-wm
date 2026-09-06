@@ -24,21 +24,23 @@
 #include "cow/desk_ops.h"
 #include "cow/keybinding.h"
 #include "cow/output.h"
+#include "cow/placement.h"
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
+#include "cow/style.h"
 #include "cow/titlebar.h"
 #include "cow/view.h"
 #include "cow/update.h"
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_move_exec(struct cmd *, struct cmd_q *);
-static void	       do_centre(struct cow_view *);
 static void do_screen(struct cow_view *, const char *, struct cmd_q *);
 static void do_interactive(struct cow_view *);
 static void do_step(struct cow_view *, const char *, struct cmd_q *);
 static void do_snap(struct cow_view *, const char *, struct cmd_q *);
 static void do_xy(struct cow_view *, const char *, const char *,
     struct cmd_q *);
+static bool do_anchor(struct cow_view *, const char *, struct cmd_q *);
 static void do_desk(struct cow_view *, uint8_t, struct cmd_q *);
 static void do_transfer_to_output(struct cow_view *, struct cow_output *,
     const char *);
@@ -53,10 +55,10 @@ static void sync_pending_move_position(struct cow_view *);
 
 struct cmd_entry cmd_move_entry = {
 	"window-move",
-	"t:d:o:cCnwk:x:y:P:",
+	"t:d:o:a:cCnwk:x:y:P:",
 	0,
 	1,
-	"[-C] [-w] [-t target] [-d dir [-n]] [-o output] [-c] "
+	"[-C] [-w] [-t target] [-d dir [-n]] [-o output] [-a anchor] [-c] "
 	"[-k 0-9] [-x X] [-y Y] [-P col[,row]]",
 	cmd_move_exec,
 	0,
@@ -74,10 +76,21 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 	if (view->closed || !view->has_dimensions)
 		return (CMD_RETURN_NORMAL);
+	if (cmdq == NULL || !cmdq->in_style)
+		cow_style_cancel_pending_initial(view);
 
 	const char *dir_val = args_get(args, 'd');
 	const char *scr_val = args_get(args, 'o');
+	const char *anchor = args_get(args, 'a');
 	bool warp = args_has(args, 'w');
+	if (anchor != NULL && (dir_val != NULL || scr_val != NULL ||
+	    args_has(args, 'c') || args_has(args, 'C') ||
+	    args_has(args, 'k') || args_has(args, 'x') ||
+	    args_has(args, 'y') || args_has(args, 'P'))) {
+		cmdq_error(cmdq, "window-move: -a cannot be combined with "
+		    "another move operation");
+		return (CMD_RETURN_ERROR);
+	}
 	if (args->argc != 0 && args_get(args, 'P') == NULL) {
 		cmdq_error(cmdq, "usage: %s %s", self->entry->name,
 		    self->entry->usage);
@@ -113,8 +126,15 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_NORMAL);
 	}
 
+	if (anchor != NULL) {
+		if (!do_anchor(view, anchor, cmdq))
+			return (CMD_RETURN_ERROR);
+		finish_move(view, warp);
+		return (CMD_RETURN_NORMAL);
+	}
+
 	if (args_has(args, 'c')) {
-		do_centre(view);
+		(void)do_anchor(view, "centre", cmdq);
 		finish_move(view, warp);
 		return (CMD_RETURN_NORMAL);
 	}
@@ -423,20 +443,6 @@ output_neighbour_in_dir(struct cow_output *cur, const char *dir)
 	}
 
 	return best;
-}
-
-/* move centre */
-static void
-do_centre(struct cow_view *view)
-{
-	struct cow_box *ua = &view->output->usable_area;
-	int frame_w, frame_h, content_x, content_y;
-	move_frame_geometry(view, &frame_w, &frame_h, &content_x, &content_y);
-
-	unmax_if_needed(view);
-	view->x = ua->x + (ua->width - frame_w) / 2 + content_x;
-	view->y = ua->y + (ua->height - frame_h) / 2 + content_y;
-	apply_move(view);
 }
 
 static void
@@ -776,6 +782,31 @@ do_xy(struct cow_view *view, const char *xs, const char *ys, struct cmd_q *cmdq)
 			view->y = y;
 	}
 	apply_move(view);
+}
+
+static bool
+do_anchor(struct cow_view *view, const char *anchor, struct cmd_q *cmdq)
+{
+	enum cow_placement_anchor parsed;
+	if (!cow_placement_anchor_parse(anchor, &parsed)) {
+		cmdq_error(cmdq,
+		    "window-move: invalid anchor '%s'", anchor);
+		return (false);
+	}
+
+	int page_col = cow_view_page_col(view);
+	int page_row = cow_view_page_row(view);
+	unmax_if_needed(view);
+	int frame_w, frame_h, content_x, content_y;
+	int frame_x, frame_y;
+	move_frame_geometry(view, &frame_w, &frame_h, &content_x, &content_y);
+	const struct cow_box *ua = &view->output->usable_area;
+	cow_placement_anchor(ua, frame_w, frame_h, parsed, &frame_x, &frame_y);
+	view->x = frame_x + content_x;
+	view->y = frame_y + content_y;
+	apply_move(view);
+	cow_view_move_to_page(view, page_col, page_row);
+	return (true);
 }
 
 /* move desk N */

@@ -21,11 +21,26 @@
 
 #include "cow/cow_box.h"
 
+enum cow_placement_anchor {
+	COW_ANCHOR_TOP_LEFT,
+	COW_ANCHOR_TOP,
+	COW_ANCHOR_TOP_RIGHT,
+	COW_ANCHOR_LEFT,
+	COW_ANCHOR_CENTRE,
+	COW_ANCHOR_RIGHT,
+	COW_ANCHOR_BOTTOM_LEFT,
+	COW_ANCHOR_BOTTOM,
+	COW_ANCHOR_BOTTOM_RIGHT,
+};
+
 /*
  * Find the first unobstructed frame position in top-to-bottom,
  * left-to-right order.  The returned coordinates are the frame origin.
  */
 bool cow_placement_find_empty(const struct cow_box *, int, int,
     const struct cow_box *, size_t, int, int *, int *);
+bool cow_placement_anchor_parse(const char *, enum cow_placement_anchor *);
+void cow_placement_anchor(const struct cow_box *, int, int,
+    enum cow_placement_anchor, int *, int *);
 
 #endif

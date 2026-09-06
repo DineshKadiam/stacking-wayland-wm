@@ -61,6 +61,9 @@ struct cow_view_decoration {
  */
 void cow_decoration_init(struct cow_view *);
 
+/* Refresh geometry-affecting fields after changing a view's cfg snapshot. */
+void cow_decoration_sync_metrics(struct cow_view *);
+
 /*
  * Free all decoration resources.
  */

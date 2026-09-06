@@ -91,6 +91,28 @@ test_gap_is_enforced_before_obstacle(void)
 	CHECK(x == 107 && y == 0);
 }
 
+static void
+test_anchor(void)
+{
+	struct cow_box usable = { 10, 20, 100, 80 };
+	enum cow_placement_anchor anchor;
+	int x, y;
+
+	CHECK(cow_placement_anchor_parse("top-right", &anchor));
+	CHECK(anchor == COW_ANCHOR_TOP_RIGHT);
+	cow_placement_anchor(&usable, 30, 20, anchor, &x, &y);
+	CHECK(x == 80 && y == 20);
+
+	CHECK(cow_placement_anchor_parse("centre", &anchor));
+	cow_placement_anchor(&usable, 30, 20, anchor, &x, &y);
+	CHECK(x == 45 && y == 50);
+
+	CHECK(cow_placement_anchor_parse("bottom-left", &anchor));
+	cow_placement_anchor(&usable, 30, 20, anchor, &x, &y);
+	CHECK(x == 10 && y == 80);
+	CHECK(!cow_placement_anchor_parse("north-east", NULL));
+}
+
 int
 main(void)
 {
@@ -98,5 +120,6 @@ main(void)
 	test_reading_order();
 	test_gap_and_bottom_boundary();
 	test_gap_is_enforced_before_obstacle();
+	test_anchor();
 	return 0;
 }

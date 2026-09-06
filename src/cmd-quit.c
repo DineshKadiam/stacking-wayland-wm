@@ -25,6 +25,7 @@
 #include "cow/cmd.h"
 #include "cow/log.h"
 #include "cow/config.h"
+#include "cow/decoration.h"
 #include "cow/ipc.h"
 #include "cow/keybinding.h"
 #include "cow/menu.h"
@@ -122,7 +123,7 @@ do_reload(struct cmd_q *cmdq)
 			cow_view_cfg_apply_global(&view->cfg);
 			view->policy_overrides = 0;
 			view->dec.dirty	       = true;
-			view->dec.border_width = view->cfg.border;
+			cow_decoration_sync_metrics(view);
 		}
 	}
 

@@ -832,21 +832,35 @@ squeeze_paint_vertical_side(uint32_t *buf, const uint32_t *scratch,
 }
 
 void
+cow_decoration_sync_metrics(struct cow_view *view)
+{
+	struct cow_view_decoration *dec = &view->dec;
+	dec->border_width = view->cfg.border;
+
+	int h = view->cfg.titlebar.height;
+	if (h > 0) {
+		dec->nominal_title_thickness = h;
+	} else {
+		struct cow_font font;
+		const char *name = view->cfg.font_name != NULL ?
+		    view->cfg.font_name : "monospace 10";
+		cow_font_init(&font, name);
+		dec->nominal_title_thickness =
+		    cow_titlebar_compute_thickness(&font);
+		cow_font_fini(&font);
+	}
+	dec->title_thickness = view->cfg.titlebar.enabled ?
+	    dec->nominal_title_thickness :
+	    0;
+}
+
+void
 cow_decoration_init(struct cow_view *view)
 {
 	struct cow_view_decoration *dec = &view->dec;
 	memset(dec, 0, sizeof(*dec));
-	dec->dirty	  = true;
-	dec->border_width = view->cfg.border;
-
-	struct cow_font *font = get_titlebar_font();
-	int		 h    = view->cfg.titlebar.height;
-	dec->nominal_title_thickness = (h > 0) ?
-	    h :
-	    cow_titlebar_compute_thickness(font);
-	dec->title_thickness = view->cfg.titlebar.enabled ?
-	    dec->nominal_title_thickness :
-	    0;
+	dec->dirty = true;
+	cow_decoration_sync_metrics(view);
 }
 
 void
@@ -873,19 +887,7 @@ cow_decoration_update(struct cow_view *view, bool active)
 	 * event).  Reads on cow_config don't appear in the decoration
 	 * code path at all -- a view sees only its own snapshot.
 	 */
-	dec->border_width = view->cfg.border;
-	if (view->cfg.titlebar.enabled) {
-		if (dec->nominal_title_thickness == 0) {
-			struct cow_font *font = get_titlebar_font();
-			int		 h    = view->cfg.titlebar.height;
-			dec->nominal_title_thickness = (h > 0) ?
-			     h :
-			     cow_titlebar_compute_thickness(font);
-		}
-		dec->title_thickness = dec->nominal_title_thickness;
-	} else {
-		dec->title_thickness = 0;
-	}
+	cow_decoration_sync_metrics(view);
 
 	int bw	       = dec->border_width;
 	int tt	       = dec->title_thickness;

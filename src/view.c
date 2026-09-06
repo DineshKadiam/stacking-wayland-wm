@@ -787,6 +787,7 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 		    view->output);
 		cow_rule_fire(COW_RULE_ON_DESK, view, view->desk,
 		    view->output);
+		cow_style_apply_pending_initial(view);
 	}
 
 	view_refit_maximized(view);
@@ -1125,6 +1126,7 @@ cow_view_destroy(struct cow_view *view)
 	xfree(view->app_id);
 	xfree(view->application_icon);
 	xfree(view->title);
+	cow_style_cancel_pending_initial(view);
 	cow_view_clear_orphan(view);
 	cow_view_cfg_fini(&view->cfg);
 	xfree(view);
