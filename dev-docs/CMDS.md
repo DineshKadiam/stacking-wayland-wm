@@ -13,18 +13,17 @@ This operates on a window such that:
 * `-l` lowers a window (within its layer).
 * `-s` makes a window sticky (toggles)
 * `-i` iconifies a window (toggles)
-* `-L layer` sets the window's layer.  Accepts `N`, `=N`, `+N`,
-  `-N`, `top`, `bottom`, `=top`, `=bottom`.  `top`/`bottom` toggle
-  back to `default_layer` when already at the endpoint; `=top` /
-  `=bottom` always set (useful inside rules).
+* `-L layer` sets the window's layer. Accepts `N`, `=N`, `+N`, `-N`, `top`,
+  `bottom`, `=top`, `=bottom`. `top`/`bottom` toggle back to `default_layer`
+  when already at the endpoint; `=top` / `=bottom` always set (useful inside
+  rules).
 
 ## window-expand
 
 This expands a window, such at:
 
 * `-t` the target window.
-* `[-d direction]` N, S, E, W.  No direction given assumes all available
-  space.
+* `[-d direction]` N, S, E, W. No direction given assumes all available space.
 * `-m` Maximizes the window
 * `-M` Unmaximizes the window
 * `-T` Toggles maximize/unmaximize
@@ -35,7 +34,7 @@ This expands a window, such at:
 This shades a window in a given direction.
 
 * `-t` the target window.
-* `[-d direction]` N, S, E, W.  No direction given assumes `north` by default.
+* `[-d direction]` N, S, E, W. No direction given assumes `north` by default.
 
 ## desk
 
@@ -62,13 +61,13 @@ This shades a window in a given direction.
 * `-o output` -- warp to a named output.
 * `-t %app|/title/|#id` -- selector.
 * `-L` -- restrict `-n|-p|-d` to the focused view's layer.
-* `-l N` -- target layer `N`.  Standalone: focuses the topmost
-  focusable in `N`, or cycles within `N` when already there.
-  Combined with `-n|-p`: traverses only within `N`.
+* `-l N` -- target layer `N`. Standalone: focuses the topmost focusable in `N`,
+  or cycles within `N` when already there. Combined with `-n|-p`: traverses
+  only within `N`.
 
 ## window-list
 
-Open the transient keyboard window switcher.  `-F expr` filters candidate
+Open the transient keyboard window switcher. `-F expr` filters candidate
 windows, `-w` warps to the selection, and `-f format` controls each menu label.
 The format conversions expose the entry number (`%n`), displayed/raw title
 (`%t`/`%T`), app ID (`%a`), identifier (`%i`), output (`%o`/`%O`), desk
@@ -80,75 +79,71 @@ disables type-ahead without disabling numbered or arrow-key selection.
 ## bind
 
 `bind [-r] [contexts:]modifier+key action ...` accepts optional FVWM-style
-pointer contexts.  Unprefixed bindings are global fallbacks.  Supported
-primitive contexts are `R`, `W`, `T`, `[`/`]`/`-`/`_`, `<`/`^`/`>`/`v`, `I`,
-and titlebar buttons `0`-`9`; `S` and `F` expand to all sides and corners.
-Only the most specific matching binding for a keysym/modifier pair is enabled
-in River, preventing non-matching bindings from swallowing client input.
+pointer contexts. Unprefixed bindings are global fallbacks. Supported primitive
+contexts are `R`, `W`, `T`, `[`/`]`/`-`/`_`, `<`/`^`/`>`/`v`, `I`, and titlebar
+buttons `0`-`9`; `S` and `F` expand to all sides and corners. Only the most
+specific matching binding for a keysym/modifier pair is enabled in River,
+preventing non-matching bindings from swallowing client input.
 
 ## mouse
 
-`mouse [contexts:]modifier+button action ...` accepts the same pointer
-contexts and uses the same contextual-over-global precedence as `bind`.
-Contextual actions receive the window under the pointer as their default
-target.  River consumes a matching pointer binding before ordinary surface
-interaction, so contextual `mouse` bindings override decoration and client
-click handling only in their matching regions.
+`mouse [contexts:]modifier+button action ...` accepts the same pointer contexts
+and uses the same contextual-over-global precedence as `bind`. Contextual
+actions receive the window under the pointer as their default target. River
+consumes a matching pointer binding before ordinary surface interaction, so
+contextual `mouse` bindings override decoration and client click handling only
+in their matching regions.
 
 ## set
 
 Layer-related keys:
 
-* `default_layer` (uint, default 4) -- layer assigned to newly
-  mapped windows.
-* `max_layer` (uint, default 16) -- cap for `winops -L`.  Lowering
-  the cap clamps every existing view's layer.
+* `default_layer` (uint, default 4) -- layer assigned to newly mapped windows.
+* `max_layer` (uint, default 16) -- cap for `winops -L`. Lowering the cap
+  clamps every existing view's layer.
 
 ## script
 
-Evaluate an embedded `script { ... }` block.  The block may use
-`let` bindings, `for` loops over the named sources (`windows`,
-`desks`, `outputs`/`screens`, `rules`) with an optional `where` filter, and
-`if` / `else` conditionals; any cow command inside the block is
-invoked with the rest of its argv (with `#{expr}` interpolations
-expanded).  See the SCRIPTING section in cow(1) for full grammar
-and examples.
+Evaluate an embedded `script { ... }` block. The block may use `let` bindings,
+`for` loops over the named sources (`windows`, `desks`, `outputs`/`screens`,
+`rules`) with an optional `where` filter, and `if` / `else` conditionals; any
+cow command inside the block is invoked with the rest of its argv (with
+`#{expr}` interpolations expanded). See the SCRIPTING section in cow(1) for
+full grammar and examples.
 
 ## menu-add / menu-clear / menu-destroy / menu-show
 
 Define and operate popup menus.
 
-* `menu-add NAME LABEL ACTION` -- append an item to menu `NAME`
-  (creating it on first reference).  `ACTION` of `title` makes a
-  non-selectable header; `-` (with `LABEL` also `-`) adds a
-  separator; `popup OTHER` links to a sub-menu; `popup-pick OTHER`
-  links to a sub-menu whose child actions pick a window first when
-  no window context exists; anything else is the cow command run when
-  the item is selected.
+* `menu-add NAME LABEL ACTION` -- append an item to menu `NAME` (creating it on
+  first reference). `ACTION` of `title` makes a non-selectable header; `-`
+  (with `LABEL` also `-`) adds a separator; `popup OTHER` links to a sub-menu;
+  `popup-pick OTHER` links to a sub-menu whose child actions pick a window
+  first when no window context exists; anything else is the cow command run
+  when the item is selected.
 * `menu-clear NAME` -- empty a menu without destroying it.
 * `menu-destroy NAME` -- remove a menu.
-* `menu-show NAME [-x N] [-y N]` -- pop up the menu, defaulting to
-  the current pointer.  An explicit command queue target becomes the
-  menu context for selected item actions.  Use `popup-pick OTHER`
-  for root-menu submenus that should stay visible before selecting a
-  window target.
+* `menu-show NAME [-x N] [-y N]` -- pop up the menu, defaulting to the current
+  pointer. An explicit command queue target becomes the menu context for
+  selected item actions. Use `popup-pick OTHER` for root-menu submenus that
+  should stay visible before selecting a window target.
 
 An open menu takes keyboard focus and handles arrow keys, Enter, Escape,
 Backspace, and alphanumeric hotkeys directly.
 
-See the MENUS section in `cow(1)` for the full grammar, `menu-style`
-keys, and a worked example.
+See the MENUS section in `cow(1)` for the full grammar, `menu-style` keys, and
+a worked example.
 
-`menu-style KEY VALUE` changes the global style.  `menu-style -m NAME KEY
-VALUE` stores a per-menu override for any style property, creating the menu on
-first reference.  `menu-style -m NAME -r KEY` removes one override.  Unset
-properties resolve from the global style; submenus do not inherit their
-parent's overrides.
+`menu-style KEY VALUE` changes the global style. `menu-style -m NAME KEY VALUE`
+stores a per-menu override for any style property, creating the menu on first
+reference. `menu-style -m NAME -r KEY` removes one override. Unset properties
+resolve from the global style; submenus do not inherit their parent's
+overrides.
 
 `selection.relief` accepts `raised` (the traditional two-pixel relief around
-the selected item, with the menu background retained inside it) or `none` for
-a flat highlight.
+the selected item, with the menu background retained inside it) or `none` for a
+flat highlight.
 
-The `R` context on `mouse` binds cow's output background surface.  For example,
+The `R` context on `mouse` binds cow's output background surface. For example,
 `mouse R:0+left menu-show RootMenu` implements a root-window style menu without
 affecting clicks on client windows.

@@ -16,17 +16,17 @@ cowdiag - live diagnostics dashboard for cow and River
 
 # DESCRIPTION
 
-**cowdiag** is a read-only terminal dashboard for **cow**(1). It
-combines CoW's status snapshot with internal manage/render timing
-counters and process statistics for CoW and River.
+**cowdiag** is a read-only terminal dashboard for **cow**(1). It combines CoW's
+status snapshot with internal manage/render timing counters and process
+statistics for CoW and River.
 
-The timing panels distinguish work performed inside CoW callbacks from
-time spent waiting at the CoW/River protocol boundary. They do not
-measure River's GPU rendering or frame presentation time.
+The timing panels distinguish work performed inside CoW callbacks from time
+spent waiting at the CoW/River protocol boundary. They do not measure River's
+GPU rendering or frame presentation time.
 
-The interactive display adapts to the terminal width. Wide terminals
-show process, session, manage, render, and rolling-history panels.
-Narrow terminals use a compact layout.
+The interactive display adapts to the terminal width. Wide terminals show
+process, session, manage, render, and rolling-history panels. Narrow terminals
+use a compact layout.
 
 # OPTIONS
 
@@ -102,12 +102,12 @@ The render panel reports:
 - time spent by CoW handling a render cycle.
 
 CoW CPU time, process lifetime, and peak resident memory are portable.
-**cowdiag** also shows current CoW and River RSS and River CPU usage on
-Linux, FreeBSD, OpenBSD, and NetBSD. Linux uses procfs; the BSD
-implementations use their native process sysctl interfaces. River is
-identified from the peer credentials of the Wayland socket. Unsupported
-process fields are displayed as *n/a* on other systems. CPU percentages
-use a per-core scale: one fully occupied CPU is 100 percent.
+**cowdiag** also shows current CoW and River RSS and River CPU usage on Linux,
+FreeBSD, OpenBSD, and NetBSD. Linux uses procfs; the BSD implementations use
+their native process sysctl interfaces. River is identified from the peer
+credentials of the Wayland socket. Unsupported process fields are displayed as
+*n/a* on other systems. CPU percentages use a per-core scale: one fully
+occupied CPU is 100 percent.
 
 # ENVIRONMENT
 

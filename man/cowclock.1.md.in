@@ -16,19 +16,18 @@ cowclock - analogue clock for CoW
 
 **cowclock** is a resizable analogue clock.
 
-The system configuration is loaded first. Unless **-c** is used,
-cowclock then loads *\$XDG\_CONFIG\_HOME/cow/cowclock.conf* or
-*\$HOME/.config/cow/cowclock.conf* when present. A missing user
-configuration is not an error, as usable defaults are built in.
+The system configuration is loaded first. Unless **-c** is used, cowclock then
+loads *\$XDG\_CONFIG\_HOME/cow/cowclock.conf* or
+*\$HOME/.config/cow/cowclock.conf* when present. A missing user configuration
+is not an error, as usable defaults are built in.
 
-Send **SIGHUP** to reload theme and presentation settings while cowclock
-is running. The initial **size** does not resize an already-managed
-window.
+Send **SIGHUP** to reload theme and presentation settings while cowclock is
+running. The initial **size** does not resize an already-managed window.
 
-By default, the face background, foreground, and font follow CoW's
-current theme through the status socket. Explicit **font** and **style**
-settings override the inherited values. If CoW is unavailable, built-in
-black-on-white defaults are used.
+By default, the face background, foreground, and font follow CoW's current
+theme through the status socket. Explicit **font** and **style** settings
+override the inherited values. If CoW is unavailable, built-in black-on-white
+defaults are used.
 
 # OPTIONS
 
@@ -42,8 +41,8 @@ black-on-white defaults are used.
 
 # CONFIGURATION
 
-The configuration is line-oriented. Blank lines and lines beginning with
-*\#* are ignored. Values containing spaces may be double-quoted.
+The configuration is line-oriented. Blank lines and lines beginning with *\#*
+are ignored. Values containing spaces may be double-quoted.
 
 **size** *width* *height*
 

@@ -1,6 +1,6 @@
 # CoW Architecture
 
-CoW is a stacking window manager implemented as a Wayland client.  River remains
+CoW is a stacking window manager implemented as a Wayland client. River remains
 the compositor and display server; CoW supplies the window-management policy,
 state, commands, decorations, rules, and companion module interfaces.
 
@@ -28,7 +28,7 @@ The important split is:
         +------------- command socket: moocow, scripts, modules
 ```
 
-CoW can run without any of the companion modules.  The modules are ordinary
+CoW can run without any of the companion modules. The modules are ordinary
 clients which consume CoW's command and status sockets.
 
 ## Process Model
@@ -48,21 +48,21 @@ At startup CoW:
 5. Enters a libevent-backed loop around the Wayland fd, IPC sockets, timers,
    and signals.
 
-The configuration file and runtime IPC use the same command language.  This is
+The configuration file and runtime IPC use the same command language. This is
 intentional: a line in `cow.conf` should usually be usable through `moocow` as
 well.
 
-CoW does not need a CoW-specific file descriptor from River.  It connects like
-any other Wayland client by calling `wl_display_connect(NULL)`.  libwayland then
+CoW does not need a CoW-specific file descriptor from River. It connects like
+any other Wayland client by calling `wl_display_connect(NULL)`. libwayland then
 uses the standard environment, primarily `WAYLAND_DISPLAY` and
-`XDG_RUNTIME_DIR`, to find River's Wayland socket and open the client fd.  After
+`XDG_RUNTIME_DIR`, to find River's Wayland socket and open the client fd. After
 that, CoW obtains the Wayland fd with `wl_display_get_fd()` and registers it
 with libevent so River protocol events can drive the main loop.
 
 ## River Interface
 
-CoW depends on River-specific protocols generated from `protocol/*.xml`.
-The central bindings are:
+CoW depends on River-specific protocols generated from `protocol/*.xml`. The
+central bindings are:
 
 - `river_window_manager_v1`: manage/render sequencing, window/output/seat
   discovery.
@@ -73,27 +73,27 @@ The central bindings are:
 - `river_layer_shell_v1`: shell surfaces used by CoW-owned UI such as
   backgrounds, pan frames, drag ghosts, and the geometry overlay.
 
-CoW does not own the Wayland display.  It asks River to place nodes, focus
+CoW does not own the Wayland display. It asks River to place nodes, focus
 windows, raise/lower windows, show/hide surfaces, and commit compositor-visible
 state.
 
-CoW and River communicate by Wayland requests and events.  CoW can keep its own
+CoW and River communicate by Wayland requests and events. CoW can keep its own
 model of windows, desks, pages, decorations, and focus intent, but River is the
 authority for compositor objects and for when those objects may be safely
 updated.
 
-Chorded keyboard bindings are stored as per-seat binding maps.  Pressing a
+Chorded keyboard bindings are stored as per-seat binding maps. Pressing a
 prefix enables only the map below that prefix and asks
-`river_xkb_bindings_seat_v1` to consume the next non-modifier key.  A matching
+`river_xkb_bindings_seat_v1` to consume the next non-modifier key. A matching
 binding either enters another map or runs the final action; River reports an
 unmatched consumed key so CoW can restore the normal root bindings.
 
 For example, when a command asks to move a window, CoW records the desired
-position on the `cow_view`.  It does not directly mutate River's scene graph.
-Instead, CoW registers that another management pass is required.  At the end of
+position on the `cow_view`. It does not directly mutate River's scene graph.
+Instead, CoW registers that another management pass is required. At the end of
 the current event-loop turn, the update scheduler sends the coalesced request
-to River.  River later calls back into CoW with `manage_start`; CoW applies all
-pending policy decisions and replies with `manage_finish`.  River can then
+to River. River later calls back into CoW with `manage_start`; CoW applies all
+pending policy decisions and replies with `manage_finish`. River can then
 schedule a render pass, during which CoW updates decoration surfaces, node
 positions, and stacking before returning `render_finish`.
 
@@ -118,9 +118,9 @@ River render_start -> CoW commits visuals/order -> render_finish
 ## Wayland Round Trips
 
 In Wayland, requests from a client to the compositor are buffered and events
-from the compositor arrive asynchronously.  A round trip flushes pending
+from the compositor arrive asynchronously. A round trip flushes pending
 requests, asks the compositor to reply, and dispatches all events needed to get
-to that reply.  In code this is `wl_display_roundtrip()`.
+to that reply. In code this is `wl_display_roundtrip()`.
 
 CoW uses round trips at lifecycle boundaries:
 
@@ -131,18 +131,18 @@ CoW uses round trips at lifecycle boundaries:
 
 Runtime updates do not perform a round trip before requesting a manage pass.
 Wayland preserves request order, so `manage_dirty` follows any earlier requests
-already queued by CoW.  Avoiding a synchronous round trip keeps the main loop
-responsive.  CoW flushes the display normally and, if the socket would block,
+already queued by CoW. Avoiding a synchronous round trip keeps the main loop
+responsive. CoW flushes the display normally and, if the socket would block,
 temporarily watches it for writability before continuing the flush.
 
 A round trip is not a frame render and it is not an acknowledgement that every
-CoW policy decision has been applied to the screen.  It is a protocol
-synchronization point.  The visible result still flows through River's
+CoW policy decision has been applied to the screen. It is a protocol
+synchronization point. The visible result still flows through River's
 manage/render callbacks.
 
 ## Runtime Loop
 
-The main loop is driven by libevent.  The Wayland display fd is watched
+The main loop is driven by libevent. The Wayland display fd is watched
 alongside command/status sockets, timers, and signals.
 
 ```
@@ -166,8 +166,8 @@ alongside command/status sockets, timers, and signals.
 ```
 
 Mutating commands generally mark state dirty rather than directly forcing all
-Wayland updates immediately.  Once the triggering callback has completed, CoW
-drains the accumulated update mask.  The actual compositor synchronization
+Wayland updates immediately. Once the triggering callback has completed, CoW
+drains the accumulated update mask. The actual compositor synchronization
 happens at River's manage/render sequence boundaries.
 
 ## Update Scheduling
@@ -181,25 +181,25 @@ scheduler:
   snapshot has changed.
 
 Requests are bitwise flags and therefore coalesce naturally during an
-event-loop turn.  At the end of that turn, CoW emits at most one status snapshot
-and sends at most one `manage_dirty` request.  This keeps modules from observing
+event-loop turn. At the end of that turn, CoW emits at most one status snapshot
+and sends at most one `manage_dirty` request. This keeps modules from observing
 intermediate state when a command or River callback changes several related
 fields.
 
 Status updates are registered where authoritative fields actually change, not
-where an operation merely records an intention to change them.  Manage updates
-are registered when an operation creates work which River must apply.  Keeping
+where an operation merely records an intention to change them. Manage updates
+are registered when an operation creates work which River must apply. Keeping
 that distinction at mutation sites makes propagation part of the state change
 rather than an easily missed responsibility of its caller.
 
 ## State Queries
 
 The `show` command is the single command-socket interface for inspecting CoW
-state.  This includes quering windows, showing menu settings, bindings, etc.
+state. This includes quering windows, showing menu settings, bindings, etc.
 
 Commands which change reusable configuration are marked as persistent in their
 command-table entry. After successful execution their canonical command text is
-recorded in `cow_config`.  The command `show config` outputs this.
+recorded in `cow_config`. The command `show config` outputs this.
 
 The query implementation and in-process script iterators share the canonical
 record builders in `state-snapshot.c`. This keeps fields such as window
@@ -210,7 +210,7 @@ serialization; it is not tied to either interface.
 
 ## Manage And Render Sequences
 
-River drives two key phases through the `river_window_manager_v1` API.  These
+River drives two key phases through the `river_window_manager_v1` API. These
 are protocol callbacks from River to CoW, not ordinary internal function calls.
 CoW is expected to do its work for each phase and explicitly return control to
 River with the matching finish request.
@@ -233,15 +233,15 @@ render_start  ----->   render output backgrounds
 render_finish <-----
 ```
 
-The manage phase is where CoW decides what should happen.  It updates its model
+The manage phase is where CoW decides what should happen. It updates its model
 of windows, outputs, desks, pages, focus, pointer operations, and deferred
-actions.  It may propose dimensions, show or hide windows, request focus, mark
-views dirty, or arrange for later rendering work.  When that policy work is
+actions. It may propose dimensions, show or hide windows, request focus, mark
+views dirty, or arrange for later rendering work. When that policy work is
 done, CoW calls `river_window_manager_v1_manage_finish()`.
 
-The render phase is where CoW commits visual state and ordering to River.  It
+The render phase is where CoW commits visual state and ordering to River. It
 renders output backgrounds, window decorations, titlebars, icons, geometry
-overlays, drag feedback, and applies stack order.  When the visual work is done,
+overlays, drag feedback, and applies stack order. When the visual work is done,
 CoW calls `river_window_manager_v1_render_finish()`.
 
 The split is easiest to read as a small state machine:
@@ -282,16 +282,16 @@ The split is easiest to read as a small state machine:
 ```
 
 This API boundary is important because River remains in charge of compositor
-time.  CoW can request a new manage pass, but River decides when that pass
+time. CoW can request a new manage pass, but River decides when that pass
 starts and tells CoW when it is safe to apply the next batch of management or
-rendering work.  CoW therefore avoids applying protocol changes in arbitrary
+rendering work. CoW therefore avoids applying protocol changes in arbitrary
 command contexts when possible; it records intent and lets the next
 manage/render cycle make it visible.
 
 This split is why many commands set flags such as `needs_raise`,
-`pending_focus`, `pending_lower`, or `dec.dirty`, then register a manage update.
-It keeps command execution, River event handling, and compositor commits in a
-predictable order.
+`pending_focus`, `pending_lower`, or `dec.dirty`, then register a manage
+update. It keeps command execution, River event handling, and compositor
+commits in a predictable order.
 
 ## Diagnostics
 
@@ -312,7 +312,7 @@ memory statistics where the host operating system exposes them.
 
 ## Internal Model
 
-The global runtime state is `struct cow_wm`.  It owns lists of:
+The global runtime state is `struct cow_wm`. It owns lists of:
 
 - `cow_view`: one managed River window.
 - `cow_output`: one River output.
@@ -347,12 +347,12 @@ The core relationships are:
          +-- pointer state
 ```
 
-A view's logical position is CoW state.  River remains responsible for the
-actual surface tree and presentation.  A view also carries a decoration
+A view's logical position is CoW state. River remains responsible for the
+actual surface tree and presentation. A view also carries a decoration
 configuration snapshot so global decor changes and per-view overrides can be
 managed separately.
 
-Desks are per-output unless global desktop mode is configured.  Pages are stored
+Desks are per-output unless global desktop mode is configured. Pages are stored
 as viewport offsets on each desk (`page_vx`, `page_vy`) rather than as separate
 objects.
 
@@ -386,10 +386,10 @@ Commands can be loaded from:
 - titlebar button actions;
 - scripts using `script { ... }`.
 
-The small DSL is limited to `script` blocks.  It exists to add structured
-control flow without replacing the command language used elsewhere.  Commands
+The small DSL is limited to `script` blocks. It exists to add structured
+control flow without replacing the command language used elsewhere. Commands
 emitted by a script run through a child command queue before the following
-statement is evaluated.  A later collection snapshot therefore sees logical
+statement is evaluated. A later collection snapshot therefore sees logical
 state changes, including pending focus, made by earlier statements even though
 River applies the corresponding compositor request in the next manage cycle.
 
@@ -404,27 +404,27 @@ Rules bind command lists to lifecycle events such as map, move, resize, desk
 change, page change, startup, restart, title change, and output topology
 changes.
 
-Rules are evaluated with an event context.  That context can expose the current
+Rules are evaluated with an event context. That context can expose the current
 view, desk, or output to normal commands and to DSL scripts.
 
-Rules and styles share a policy definition containing the object's name,
-global or output/desk scope, optional window selector, and definition order.
-The shared matcher therefore gives `%app`, `/title/`, and `#identifier` the
-same meaning in both interfaces.
+Rules and styles share a policy definition containing the object's name, global
+or output/desk scope, optional window selector, and definition order. The
+shared matcher therefore gives `%app`, `/title/`, and `#identifier` the same
+meaning in both interfaces.
 
-Their payloads deliberately differ.  A rule associates an event with a command
-list and executes that list when the event occurs.  A style contains typed
+Their payloads deliberately differ. A rule associates an event with a command
+list and executes that list when the event occurs. A style contains typed
 window policy which can be resolved repeatedly and undone when the style stops
-matching.  For a window event, CoW resolves matching styles in definition order
-before dispatching matching rules.  Later styles override individual fields;
-a command subsequently issued by a rule or through IPC marks that field as an
+matching. For a window event, CoW resolves matching styles in definition order
+before dispatching matching rules. Later styles override individual fields; a
+command subsequently issued by a rule or through IPC marks that field as an
 explicit per-window override.
 
 Decoration policy uses three layers: the global configuration, sparse named or
-inline style overlays, and explicit per-window overrides.  Initial placement
-and state fields are applied once when the window is first managed.  Live
-fields such as decoration, layer, stickiness, and circulation are recomputed
-when relevant window or scope state changes and after configuration reload.
+inline style overlays, and explicit per-window overrides. Initial placement and
+state fields are applied once when the window is first managed. Live fields
+such as decoration, layer, stickiness, and circulation are recomputed when
+relevant window or scope state changes and after configuration reload.
 
 ## IPC And Modules
 
@@ -434,10 +434,10 @@ CoW exposes two Unix sockets:
 - `cow-$WAYLAND_DISPLAY-status.sock`: line-oriented JSON status stream.
 
 The default paths live under `XDG_RUNTIME_DIR`; if `WAYLAND_DISPLAY` is unset,
-CoW falls back to `cow-cmd.sock` and `cow-status.sock`.  `COW_IPC_SOCKET` and
+CoW falls back to `cow-cmd.sock` and `cow-status.sock`. `COW_IPC_SOCKET` and
 `COW_STATUS_SOCKET` can override the client paths.
 
-`moocow` is the command-line client for the command socket.  Companion programs
+`moocow` is the command-line client for the command socket. Companion programs
 such as `cowbar`, `cowpager`, `cowident`, `cowrearrange`, and `cowiconman` use
 the shared module helpers in `src/module.c` to connect to the sockets.
 
@@ -454,7 +454,7 @@ the shared module helpers in `src/module.c` to connect to the sockets.
 ```
 
 This keeps modules small: they do not need to bind River protocols or duplicate
-window-management state.  They observe CoW's coalesced status snapshots and ask
+window-management state. They observe CoW's coalesced status snapshots and ask
 CoW to act.
 
 Socket output is buffered with libevent. Command clients are closed only after
@@ -474,7 +474,7 @@ parsers and fixed-size state arrays.
 ## Decorations
 
 Server-side decorations are CoW-owned surfaces associated with each managed
-view.  CoW renders borders, titlebars, buttons, gradients, images, container
+view. CoW renders borders, titlebars, buttons, gradients, images, container
 tabs, icons, and geometry overlays, then asks River to position the resulting
 nodes.
 
@@ -491,7 +491,7 @@ specific windows, desks, or applications.
 ## State Persistence
 
 CoW saves and restores enough state to survive restart and compositor
-reconnection scenarios where River preserves windows.  Stable River window
+reconnection scenarios where River preserves windows. Stable River window
 identifiers are used to associate restored state with newly reported windows.
 
 State restoration is deferred until the first manage sequence after startup so
@@ -500,7 +500,7 @@ saved placement, desk, page, and related state.
 
 ## Design Boundaries
 
-CoW deliberately avoids becoming a compositor.  River owns:
+CoW deliberately avoids becoming a compositor. River owns:
 
 - the Wayland display;
 - monitor configuration;
@@ -516,6 +516,6 @@ CoW owns:
 - module-facing IPC and status;
 - state persistence.
 
-This boundary is the main design tradeoff.  CoW gains a smaller compositor
+This boundary is the main design tradeoff. CoW gains a smaller compositor
 surface area and can focus on FVWM/MWM-style window-management behaviour, while
 River remains the required compositor backend.

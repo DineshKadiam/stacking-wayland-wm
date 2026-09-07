@@ -10,13 +10,13 @@
   <a href="https://codeberg.org/cow-wm/cow/issues">Issues</a>
 </p>
 
-`cow` is a stacking window manager.  Unlike other compositors based on
-wlroots, `cow` is a window manager using [river](https://codeberg.org/river/river)
-as the compositor.
+`cow` is a stacking window manager. Unlike other compositors based on wlroots,
+`cow` is a window manager using [river](https://codeberg.org/river/river) as
+the compositor.
 
-This allows for more focus on writing the window manager part without having
-to worry too much about wayland protocol handling, etc., effectively lumping
-that in with being a wayland display server.
+This allows for more focus on writing the window manager part without having to
+worry too much about wayland protocol handling, etc., effectively lumping that
+in with being a wayland display server.
 
 ## Inspiration
 
@@ -48,20 +48,48 @@ In this screenshot you can see:
 * [wteddy](https://codeberg.org/thomasadam/wteddy): an xteddy clone.
 * cowident: showing information about wteddy.
 * cowbuttons: a telephone widget
-* cowiconman: an overview of windows on this screen; note iconified windows
-  are shown, indicated by the grey box.
-* An open menu, selecting this would allow the user to pick a window to
-  operate on.
+* cowiconman: an overview of windows on this screen; note iconified windows are
+  shown, indicated by the grey box.
+* An open menu, selecting this would allow the user to pick a window to operate
+  on.
 * Two icons on the bottom left.
 
 The window labelled `[9c3368e4] xterm` is actually owned by desktop 1 (as
-indicated by `waybar` at top of the screen.  The `1` button with an orange
-background is showing windows from that desk.  The window labelled
-`[9c3368e4] xterm` is actually owned by desktop 1 (as indicated by
-`waybar` at top of the screen.  The `1` button with an orange background is
-showing windows from that desk.  See the `-c` option to the `desk` command.
+indicated by `waybar` at top of the screen. The `1` button with an orange
+background is showing windows from that desk. The window labelled
+`[9c3368e4] xterm` is actually owned by desktop 1 (as indicated by `waybar` at
+top of the screen. The `1` button with an orange background is showing windows
+from that desk. See the `-c` option to the `desk` command.
 
 ## How do I build CoW?
+
+### Nix development environment
+
+The flake provides the compiler, build dependencies, manual-page tools, and
+Markdown formatter used by the project. From the repository root, enter it
+with:
+
+```
+nix develop
+```
+
+To run a single command without opening a shell, use, for example:
+
+```
+nix develop --command meson setup build
+```
+
+The older `nix-shell` interface is also supported:
+
+```
+nix-shell
+```
+
+No installation outside the Nix store is required. Enabling Nix's `flakes` and
+`nix-command` experimental features may be necessary on older Nix
+installations.
+
+### Other development environments
 
 Required packages:
 
@@ -71,11 +99,11 @@ Required packages:
 * cairo
 * libbsd (for non-BSD systems; linux, etc.)
 * bison (>= 3.0)
-* flex  (>= 2.6)
+* flex (>= 2.6)
 
 Optional packages:
 
-* scdoc
+* lowdown
 
 Note that the names of the libraries above will vary across systems.
 
@@ -86,6 +114,23 @@ configure, build, and install `cow`:
 meson setup build
 meson compile -C build && meson install -C build
 ```
+
+Markdown sources are formatted to 79 columns by a small Python 3 tool which
+only reflows blocks where doing so cannot change their meaning. Python 3 is
+therefore the only additional formatting dependency on systems without Nix.
+Format all Markdown sources, or merely check them, with:
+
+```
+tools/format-markdown.py
+tools/format-markdown.py --check
+```
+
+Use this formatter rather than `mdformat` or another CommonMark formatter.
+Generic formatters may remove escapes required by lowdown and alter the
+generated manual pages.
+
+Paragraphs are wrapped at 79 columns. Tables, headings, and literal examples
+may remain wider where Markdown cannot split them safely.
 
 Because `cow` is a window manager reliant on `river`, then the binary for
 `river` is required:
@@ -108,7 +153,7 @@ river
 ```
 
 This will set up the environment before river starts to enable screen-sharing,
-etc.  The [river init file](config/river/init) can be customised as needed.
+etc. The [river init file](config/river/init) can be customised as needed.
 
 Alternatively, a globally-installed `cow.desktop` file is installed allowing
 cow to be used with wayland login managers.
@@ -116,20 +161,21 @@ cow to be used with wayland login managers.
 ## CoW Themes
 
 CoW has support for themes -- see [the themes directory](examples/themes) for
-more information about how to use these.  They're currently a feeble and
-incomplete attempt at converting [fvwm-themes to cow](https://fvwm-themes.sourceforge.net/windowdecors/)
+more information about how to use these. They're currently a feeble and
+incomplete attempt at converting
+[fvwm-themes to cow](https://fvwm-themes.sourceforge.net/windowdecors/)
 
 ## Waybar
 
-*CoW* has no support for a bar, like waybar.  For that, see the [example
-file](./config/waybar/) -- this can be copied verbatim to `~/.config/`
+*CoW* has no support for a bar, like waybar. For that, see the
+[example file](./config/waybar/) -- this can be copied verbatim to `~/.config/`
 if desired to it can be configured to your liking.
 
 It is also suggested to look at cowbar(1) for sending information to waybar.
 
 ## Wiki
 
-See:  https://codeberg.org/cow-wm/cow/wiki/Home
+See: https://codeberg.org/cow-wm/cow/wiki/Home
 
 ## Old Screenshots
 
@@ -139,7 +185,8 @@ See: https://codeberg.org/cow-wm/cow/wiki/Screenshots
 
 ## Packages
 
-CoW is packaged by the following entries [found on the wiki](https://codeberg.org/cow-wm/cow/wiki/Packages)
+CoW is packaged by the following entries
+[found on the wiki](https://codeberg.org/cow-wm/cow/wiki/Packages)
 
 ## Contact and Support
 
@@ -147,7 +194,7 @@ You can email me at: thomas at xteddy dot org
 
 Or, use the IRC channel on `libera.chat` -- `#cow-wayland`
 
-IRC is preferred over other forms of communication.  Maybe I'll see you there?
+IRC is preferred over other forms of communication. Maybe I'll see you there?
 
 -----
 
@@ -167,9 +214,9 @@ That said though, I like cows and, I'm going to stick with that name for now.
 ## The cow logo isn't a cow.  Why?
 
 Astute observers will have noticed that the logo on the Codeberg page actually
-shows a Hereford bull, rather than a cow (which is female).  Although this is
-considered wholly incorrect use of grammar, I reserve the right to use the
-word `cow` to mean both cows and bulls.  Even though I should say "cattle".
+shows a Hereford bull, rather than a cow (which is female). Although this is
+considered wholly incorrect use of grammar, I reserve the right to use the word
+`cow` to mean both cows and bulls. Even though I should say "cattle".
 
 For more information see:
 
@@ -181,16 +228,16 @@ Yes, this is all tongue-in-cheek.
 
 ## Moocow?  Seriously?
 
-Well, the way I see it, if you want `cow` to do anything, you need to "moo
-(at) cow", so `moocow` as an external command seemed appropriate.
+Well, the way I see it, if you want `cow` to do anything, you need to "moo (at)
+cow", so `moocow` as an external command seemed appropriate.
 
 ## Are multi-monitors supported?
 
-Yes.  For now, one will need to edit [the start script](./tools/start.sh) to
-run `wlr-randr` with the appropriate values.
+Yes. For now, one will need to edit [the start script](./tools/start.sh) to run
+`wlr-randr` with the appropriate values.
 
 Note that this is controlled via river(1) and `cow` has no means of being able
-to set monitors directly.  To get a more visual overview of things, the
+to set monitors directly. To get a more visual overview of things, the
 `wdisplays` command is helpful, and is similar to `arandr` from xrandr.
 
 ## Is AI used in this project?

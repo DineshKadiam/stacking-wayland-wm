@@ -1,7 +1,8 @@
 # CoW Window Decoration Gallery
 
 These previews show an xterm window with each example decoration theme applied.
-They were captured from CoW using `moocow`, `xterm`, and `grim` on a running Wayland session.
+They were captured from CoW using `moocow`, `xterm`, and `grim` on a running
+Wayland session.
 
 ## afterstep
 

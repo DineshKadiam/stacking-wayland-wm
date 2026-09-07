@@ -270,3 +270,6 @@ fi
 	tail -n +2 "$changelog" | sed '1{/^$/d;}'
 } > "$updated"
 mv "$updated" "$changelog"
+
+# Keep generated release notes consistent with the repository's Markdown.
+tools/format-markdown.py "$release_notes" "$changelog"

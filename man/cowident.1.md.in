@@ -16,8 +16,8 @@ cowident - identify a window managed by cow
 
 **cowident** shows properties about the selected window.
 
-When invoked, **cowident** presents a fullscreen overlay with a
-crosshair cursor. A window can be selected with the mouse.
+When invoked, **cowident** presents a fullscreen overlay with a crosshair
+cursor. A window can be selected with the mouse.
 
 # CANCELLATION
 
@@ -27,8 +27,8 @@ The targeting overlay can be dismissed without selecting a window by:
 
 - pressing the right or middle mouse button.
 
-The cow window itself can be closed by clicking on the main window with
-the mouse.
+The cow window itself can be closed by clicking on the main window with the
+mouse.
 
 # SEE ALSO
 

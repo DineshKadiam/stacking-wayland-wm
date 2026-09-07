@@ -47,8 +47,7 @@ Included examples:
 |redmondxp | glossy blue Windows XP-style SVG textures
 |redmond98 | flat blue/grey Windows 98-style SVG textures
 
-The `twm` pack also includes a matching cowiconman configuration.  Run it
-with:
+The `twm` pack also includes a matching cowiconman configuration. Run it with:
 
 ```
     cowiconman -c /path/to/twm/cowiconman.conf

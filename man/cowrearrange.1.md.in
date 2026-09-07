@@ -19,8 +19,8 @@ cowrearrange - tile or cascade the windows on a given desk
 
 # DESCRIPTION
 
-**cowrearrange** arranges the windows on a desk into a **tile** (grid)
-or **cascade** layout.
+**cowrearrange** arranges the windows on a desk into a **tile** (grid) or
+**cascade** layout.
 
 Two subcommands are supported:
 

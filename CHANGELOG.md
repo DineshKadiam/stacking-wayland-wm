@@ -4,106 +4,176 @@
 
 ### New contributors
 
-- [@gsurkov](https://codeberg.org/gsurkov) contributed for the first time in [PR #340](https://codeberg.org/cow-wm/cow/pulls/340).
-- [@nwgh](https://codeberg.org/nwgh) contributed for the first time in [PR #342](https://codeberg.org/cow-wm/cow/pulls/342).
+- [@gsurkov](https://codeberg.org/gsurkov) contributed for the first time in
+  [PR #340](https://codeberg.org/cow-wm/cow/pulls/340).
+- [@nwgh](https://codeberg.org/nwgh) contributed for the first time in
+  [PR #342](https://codeberg.org/cow-wm/cow/pulls/342).
 
 ### Added
 
-- [PR](https://codeberg.org/cow-wm/cow/pulls/343): module: cowdiag ncurses TUI (render CoW/River diagnostics) — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/336): Add declarative window styles — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/322): module: add cowclock — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/343): module: cowdiag ncurses TUI
+  (render CoW/River diagnostics) —
+  [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/336): Add declarative window
+  styles — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/322): module: add cowclock —
+  [@thomasadam](https://codeberg.org/thomasadam)
 
 ### Fixed
 
-- [PR](https://codeberg.org/cow-wm/cow/pulls/360): menu: fix border and item alignment — [@gsurkov](https://codeberg.org/gsurkov)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/351): cowpager: keep the active desk border unobscured — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/347): decorations: retain handle size without titlebars — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/342): pointer op: fix build on FreeBSD — [@nwgh](https://codeberg.org/nwgh)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/341): cowident: free resources on exit — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/340): border: make mwm style look closer to original — [@gsurkov](https://codeberg.org/gsurkov)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/333): moocow: preserve shell arguments — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/320): kbd: report {caps,num}_lock status — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/360): menu: fix border and item
+  alignment — [@gsurkov](https://codeberg.org/gsurkov)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/351): cowpager: keep the active
+  desk border unobscured — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/347): decorations: retain handle
+  size without titlebars — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/342): pointer op: fix build on
+  FreeBSD — [@nwgh](https://codeberg.org/nwgh)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/341): cowident: free resources on
+  exit — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/340): border: make mwm style look
+  closer to original — [@gsurkov](https://codeberg.org/gsurkov)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/333): moocow: preserve shell
+  arguments — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/320): kbd: report {caps,num}_lock
+  status — [@thomasadam](https://codeberg.org/thomasadam)
 
 ### Changed
 
-- [PR](https://codeberg.org/cow-wm/cow/pulls/355): resize: add automatic direction selection — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/348): cowpager: expose config options for window bg, etc. — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/330): bindings: support chorded key sequences — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/327): menu: add selection.relief = sunken — [@hakfoo](https://codeberg.org/hakfoo)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/326): edge_scroll: allow modifiers to enable scrolling — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/355): resize: add automatic
+  direction selection — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/348): cowpager: expose config
+  options for window bg, etc. — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/330): bindings: support chorded
+  key sequences — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/327): menu: add selection.relief =
+  sunken — [@hakfoo](https://codeberg.org/hakfoo)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/326): edge_scroll: allow modifiers
+  to enable scrolling — [@thomasadam](https://codeberg.org/thomasadam)
 
 ### Internal improvements
 
-- [PR](https://codeberg.org/cow-wm/cow/pulls/323): modules: support shared output selectors — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/323): modules: support shared
+  output selectors — [@thomasadam](https://codeberg.org/thomasadam)
 
 ### Other changes
 
-- [PR](https://codeberg.org/cow-wm/cow/pulls/361): resize: give borders a visual indication — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/358): site: preview forthcoming release — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/357): release: add contributor details to changelog — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/353): border: improve handle marks rendering — [@gsurkov](https://codeberg.org/gsurkov)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/352): style fixes — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/349): cowpager: expose active desk border option — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/346): menus: select first item when opened — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/344): theme: add twm decor — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/339): repo: update links for Codeberg organisation — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/337): site: highlight changed dev man pages — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/335): river init: generalise (via OpenBSD) — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/332): show: allow for command serialisation and output — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/331): keyboard-layout: report scroll lock state — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/328): cowiconman: make padding around icon list customizable — [@hakfoo](https://codeberg.org/hakfoo)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/325): rule: add pattern matching to script expr — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/324): Add cowiconman colour styles — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/321): decor: restore maximized button state — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/318): internal: state management improvements — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/317): commands: accept comma-separated page coordinates — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/316): build: exclude more from tarball — [@thomasadam](https://codeberg.org/thomasadam)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/315): site: derive release information from tags — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/361): resize: give borders a
+  visual indication — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/358): site: preview forthcoming
+  release — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/357): release: add contributor
+  details to changelog — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/353): border: improve handle marks
+  rendering — [@gsurkov](https://codeberg.org/gsurkov)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/352): style fixes —
+  [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/349): cowpager: expose active desk
+  border option — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/346): menus: select first item
+  when opened — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/344): theme: add twm decor —
+  [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/339): repo: update links for
+  Codeberg organisation — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/337): site: highlight changed dev
+  man pages — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/335): river init: generalise (via
+  OpenBSD) — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/332): show: allow for command
+  serialisation and output — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/331): keyboard-layout: report
+  scroll lock state — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/328): cowiconman: make padding
+  around icon list customizable — [@hakfoo](https://codeberg.org/hakfoo)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/325): rule: add pattern matching
+  to script expr — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/324): Add cowiconman colour styles
+  — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/321): decor: restore maximized
+  button state — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/318): internal: state management
+  improvements — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/317): commands: accept
+  comma-separated page coordinates —
+  [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/316): build: exclude more from
+  tarball — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/315): site: derive release
+  information from tags — [@thomasadam](https://codeberg.org/thomasadam)
 
 ## [0.2](https://codeberg.org/cow-wm/cow/releases/tag/0.2) - 2026-08-26
 
 ### Fixed
 
-- [PR](https://codeberg.org/cow-wm/cow/pulls/296): modules: keep status data off thread stacks
-- [PR](https://codeberg.org/cow-wm/cow/pulls/279): Text: handle UTF-8 centrally, and make modules use this
-- [PR](https://codeberg.org/cow-wm/cow/pulls/272): menu: position correctly on screen
-- [PR](https://codeberg.org/cow-wm/cow/pulls/268): kbd: emit status on layout changes
+- [PR](https://codeberg.org/cow-wm/cow/pulls/296): modules: keep status data
+  off thread stacks
+- [PR](https://codeberg.org/cow-wm/cow/pulls/279): Text: handle UTF-8
+  centrally, and make modules use this
+- [PR](https://codeberg.org/cow-wm/cow/pulls/272): menu: position correctly on
+  screen
+- [PR](https://codeberg.org/cow-wm/cow/pulls/268): kbd: emit status on layout
+  changes
 
 ### Changed
 
-- [PR](https://codeberg.org/cow-wm/cow/pulls/309): key-bindings: add a '-x' option to specify a command when the bind is released
-- [PR](https://codeberg.org/cow-wm/cow/pulls/308): cowiconman: switch to using a config file
-- [PR](https://codeberg.org/cow-wm/cow/pulls/293): menu: open submenus after keyboard delay
-- [PR](https://codeberg.org/cow-wm/cow/pulls/292): menu: allow customisation of repeat keys
-- [PR](https://codeberg.org/cow-wm/cow/pulls/281): cowbar: make waybar output configurable
-- [PR](https://codeberg.org/cow-wm/cow/pulls/274): cowbuttons: allow for double-clicks, etc
-- [PR](https://codeberg.org/cow-wm/cow/pulls/271): keyboard: add 'show keyboard-layout'
-- [PR](https://codeberg.org/cow-wm/cow/pulls/263): maximize: add option to override reserved areas
+- [PR](https://codeberg.org/cow-wm/cow/pulls/309): key-bindings: add a '-x'
+  option to specify a command when the bind is released
+- [PR](https://codeberg.org/cow-wm/cow/pulls/308): cowiconman: switch to using
+  a config file
+- [PR](https://codeberg.org/cow-wm/cow/pulls/293): menu: open submenus after
+  keyboard delay
+- [PR](https://codeberg.org/cow-wm/cow/pulls/292): menu: allow customisation of
+  repeat keys
+- [PR](https://codeberg.org/cow-wm/cow/pulls/281): cowbar: make waybar output
+  configurable
+- [PR](https://codeberg.org/cow-wm/cow/pulls/274): cowbuttons: allow for
+  double-clicks, etc
+- [PR](https://codeberg.org/cow-wm/cow/pulls/271): keyboard: add 'show
+  keyboard-layout'
+- [PR](https://codeberg.org/cow-wm/cow/pulls/263): maximize: add option to
+  override reserved areas
 
 ### Other changes
 
-- [PR](https://codeberg.org/cow-wm/cow/pulls/305): workflow: add release mechanics
-- [PR](https://codeberg.org/cow-wm/cow/pulls/310): site: publish development and release manuals
-- [PR](https://codeberg.org/cow-wm/cow/pulls/307): cursor: allow for setting theme and size
-- [PR](https://codeberg.org/cow-wm/cow/pulls/306): parser: accept adjacent script blocks
-- [PR](https://codeberg.org/cow-wm/cow/pulls/301): cowiconman: Import colours and font from theme
-- [PR](https://codeberg.org/cow-wm/cow/pulls/302): titlebar: handle button release before pointer op
-- [PR](https://codeberg.org/cow-wm/cow/pulls/303): refactor: Centralise common code
-- [PR](https://codeberg.org/cow-wm/cow/pulls/291): Outputs: handle windows across non-linear geometries
-- [PR](https://codeberg.org/cow-wm/cow/pulls/299): bindings: restore window context after decorations
-- [PR](https://codeberg.org/cow-wm/cow/pulls/297): titlebar: finish button operation before dispatch
-- [PR](https://codeberg.org/cow-wm/cow/pulls/287): move: retain focus after keyboard moves
+- [PR](https://codeberg.org/cow-wm/cow/pulls/305): workflow: add release
+  mechanics
+- [PR](https://codeberg.org/cow-wm/cow/pulls/310): site: publish development
+  and release manuals
+- [PR](https://codeberg.org/cow-wm/cow/pulls/307): cursor: allow for setting
+  theme and size
+- [PR](https://codeberg.org/cow-wm/cow/pulls/306): parser: accept adjacent
+  script blocks
+- [PR](https://codeberg.org/cow-wm/cow/pulls/301): cowiconman: Import colours
+  and font from theme
+- [PR](https://codeberg.org/cow-wm/cow/pulls/302): titlebar: handle button
+  release before pointer op
+- [PR](https://codeberg.org/cow-wm/cow/pulls/303): refactor: Centralise common
+  code
+- [PR](https://codeberg.org/cow-wm/cow/pulls/291): Outputs: handle windows
+  across non-linear geometries
+- [PR](https://codeberg.org/cow-wm/cow/pulls/299): bindings: restore window
+  context after decorations
+- [PR](https://codeberg.org/cow-wm/cow/pulls/297): titlebar: finish button
+  operation before dispatch
+- [PR](https://codeberg.org/cow-wm/cow/pulls/287): move: retain focus after
+  keyboard moves
 - [PR](https://codeberg.org/cow-wm/cow/pulls/285): website: fix flex wrapping
 - [PR](https://codeberg.org/cow-wm/cow/pulls/284): Window placement: empty
-- [PR](https://codeberg.org/cow-wm/cow/pulls/280): website: publish HTML manual pages
+- [PR](https://codeberg.org/cow-wm/cow/pulls/280): website: publish HTML manual
+  pages
 - [PR](https://codeberg.org/cow-wm/cow/pulls/277): website: add release info
 - [PR](https://codeberg.org/cow-wm/cow/pulls/276): Add Codeberg Pages website
 - [PR](https://codeberg.org/cow-wm/cow/pulls/267): theme: add canoe
-- [PR](https://codeberg.org/cow-wm/cow/pulls/265): keyboard: expose the layout via CoW IPC mechanism(s)
-- [PR](https://codeberg.org/cow-wm/cow/pulls/266): cowrearrange: support maximized state
+- [PR](https://codeberg.org/cow-wm/cow/pulls/265): keyboard: expose the layout
+  via CoW IPC mechanism(s)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/266): cowrearrange: support
+  maximized state
 - [PR](https://codeberg.org/cow-wm/cow/pulls/261): colour: support RGBA values
-- [PR](https://codeberg.org/cow-wm/cow/pulls/260): state: preserve stacking across restart
-- [PR](https://codeberg.org/cow-wm/cow/pulls/257): Support titlebar buttons in bind-decoration
+- [PR](https://codeberg.org/cow-wm/cow/pulls/260): state: preserve stacking
+  across restart
+- [PR](https://codeberg.org/cow-wm/cow/pulls/257): Support titlebar buttons in
+  bind-decoration
 - [PR](https://codeberg.org/cow-wm/cow/pulls/255): README: clarify use of AI
 - [PR](https://codeberg.org/cow-wm/cow/pulls/254): set next version
 

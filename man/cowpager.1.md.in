@@ -10,23 +10,23 @@ cowpager - FvwmPager-style visual pager for the cow window manager
 
 # SYNOPSIS
 
-**cowpager** \[**-f** *path*\] \[**-r** *rows*\] \[**-c** *cols*\]
-\[**-m** *mon*\[,*mon*...\]\] \[**-1**\] \[**-h**\] \[*first* *last*\]
+**cowpager** \[**-f** *path*\] \[**-r** *rows*\] \[**-c** *cols*\] \[**-m**
+*mon*\[,*mon*...\]\] \[**-1**\] \[**-h**\] \[*first* *last*\]
 
 # DESCRIPTION
 
-**cowpager** is a small graphical pager that displays desks tracked by
-**cow** and the windows on them. By default, each desk is drawn as one
-canvas containing the full visible monitor layout, similar to
-**FvwmPager** when it is not tracking a specific monitor.
+**cowpager** is a small graphical pager that displays desks tracked by **cow**
+and the windows on them. By default, each desk is drawn as one canvas
+containing the full visible monitor layout, similar to **FvwmPager** when it is
+not tracking a specific monitor.
 
-Without any options, **cowpager** will show all desks and windows across
-all outputs.
+Without any options, **cowpager** will show all desks and windows across all
+outputs.
 
 On startup, **cowpager** reads *cowpager.conf* from
-*\$XDG\_CONFIG\_HOME/cow/cowpager.conf* or *~/.config/cow/cowpager.conf*
-when that file exists. Command-line options override settings loaded
-from the config file.
+*\$XDG\_CONFIG\_HOME/cow/cowpager.conf* or *~/.config/cow/cowpager.conf* when
+that file exists. Command-line options override settings loaded from the config
+file.
 
 # OPTIONS
 
@@ -81,8 +81,8 @@ The config file uses the same simple, whitespace-separated format as
 comment outside quoted strings.
 
 Top-level options act as defaults. A config may also contain named pager
-blocks, selected by top-level **show pager** lines. Each top-level
-**show pager** line creates one **cowpager** window:
+blocks, selected by top-level **show pager** lines. Each top-level **show
+pager** line creates one **cowpager** window:
 
     show pager main
     show pager compact
@@ -98,11 +98,11 @@ blocks, selected by top-level **show pager** lines. Each top-level
         monitors DP-1
     }
 
-When no **show pager** line is present, only top-level options are used.
-When a pager block is selectd, options inside that block override the
-top-level defaults. Multiple names may be listed on one **show pager**
-line; those matching blocks are combined into that one instance as they
-are encountered in the file.
+When no **show pager** line is present, only top-level options are used. When a
+pager block is selectd, options inside that block override the top-level
+defaults. Multiple names may be listed on one **show pager** line; those
+matching blocks are combined into that one instance as they are encountered in
+the file.
 
 The window title identifies both the selected pager definitions and, when
 exactly one monitor is selected, that monitor. For example, a **fvwm** instance
@@ -124,21 +124,20 @@ Supported layout commands:
     window-icons true
     window-icon-size 16
 
-**monitors** selects the outputs shown by this pager. Use a single
-output name or selector to track one monitor, or a comma-separated list
-to show several outputs in the given order. It accepts the same
-selectors as **-m**.
+**monitors** selects the outputs shown by this pager. Use a single output name
+or selector to track one monitor, or a comma-separated list to show several
+outputs in the given order. It accepts the same selectors as **-m**.
 
-**desks** selects the desks shown by this pager. The range is inclusive,
-so **desks 0 3** shows desks 0, 1, 2, and 3. It is mutually exclusive
-with **current-only true**: setting **desks** clears current-only mode,
-and setting **current-only true** clears the desk range.
+**desks** selects the desks shown by this pager. The range is inclusive, so
+**desks 0 3** shows desks 0, 1, 2, and 3. It is mutually exclusive with
+**current-only true**: setting **desks** clears current-only mode, and setting
+**current-only true** clears the desk range.
 
 **window-icons** controls whether application icons are drawn in window
-miniatures (default: *true*). **window-icon-size** sets their maximum
-square size in pixels (default: *16*). An icon is centred in its window
-miniature and automatically reduced further when the miniature is too
-small for the configured size.
+miniatures (default: *true*). **window-icon-size** sets their maximum square
+size in pixels (default: *16*). An icon is centred in its window miniature and
+automatically reduced further when the miniature is too small for the
+configured size.
 
 Supported colour roles:
 
@@ -157,10 +156,10 @@ Supported colour roles:
     style viewport.bg 0x00000000
     style viewport.border 0xda70d6
 
-Colours may be opaque **0xRRGGBB** values or **0xRRGGBBAA** values
-carrying an alpha component. Each background layer has its own colour.
-For example, the following makes the pager's principal backgrounds dark
-grey at 80 percent opacity:
+Colours may be opaque **0xRRGGBB** values or **0xRRGGBBAA** values carrying an
+alpha component. Each background layer has its own colour. For example, the
+following makes the pager's principal backgrounds dark grey at 80 percent
+opacity:
 
     style background 0x282828CC
     style desk.bg 0x282828CC
@@ -169,35 +168,33 @@ grey at 80 percent opacity:
     style label.bg 0x282828CC
     style label.active.bg 0x458588CC
 
-By default, **cowpager** derives these colours from cow's current
-configured theme. The output background becomes the pager background
-when one is configured; otherwise the inactive titlebar or tab colour is
-used. Active/inactive titlebar or tab colours are used for highlights
-and labels. Any **style** line in **cowpager.conf** overrides the
-derived value for that role.
+By default, **cowpager** derives these colours from cow's current configured
+theme. The output background becomes the pager background when one is
+configured; otherwise the inactive titlebar or tab colour is used.
+Active/inactive titlebar or tab colours are used for highlights and labels. Any
+**style** line in **cowpager.conf** overrides the derived value for that role.
 
-**background** is the default colour for the whole pager surface,
-including desk and page backgrounds. **desk.bg**, **page.bg**, and
-**page.active.bg** may be set when those areas should differ.
-**desk.active.border** controls the frame around the active desk.
+**background** is the default colour for the whole pager surface, including
+desk and page backgrounds. **desk.bg**, **page.bg**, and **page.active.bg** may
+be set when those areas should differ. **desk.active.border** controls the
+frame around the active desk.
 
-**window.bg** gives every unfocused window miniature the same colour.
-When it is not set, cowpager retains its default behaviour of deriving a
-stable colour from each window identifier. **window.focused.bg**
-controls the focused window miniature, and **window.border** controls
-miniature outlines.
+**window.bg** gives every unfocused window miniature the same colour. When it
+is not set, cowpager retains its default behaviour of deriving a stable colour
+from each window identifier. **window.focused.bg** controls the focused window
+miniature, and **window.border** controls miniature outlines.
 
-**viewport.bg** and **viewport.border** override the monitor-derived
-fill and outline used to mark the currently visible viewport. A fully
-transparent **viewport.bg**, such as **0x00000000**, leaves the active
-page colour unchanged.
+**viewport.bg** and **viewport.border** override the monitor-derived fill and
+outline used to mark the currently visible viewport. A fully transparent
+**viewport.bg**, such as **0x00000000**, leaves the active page colour
+unchanged.
 
 # DISPLAY
 
 ## DESKTOP AND MONITOR LABELS
 
-Each desk cell has a desktop label. When more than one output is shown,
-a second monitor-label row is drawn below it. Hence:
+Each desk cell has a desktop label. When more than one output is shown, a
+second monitor-label row is drawn below it. Hence:
 
 - the desktop label identifies the desk;
 
@@ -213,20 +210,19 @@ cow-assigned **number** when the name would overflow the slot.
 
 ## PAGE GRID AND VIEWPORTS
 
-Window miniatures are placed on the grid and coloured by their id. When
-CoW has resolved an application icon, cowpager centres it inside the
-corresponding miniature. The same effective **icon.image** is used for
-desktop icons and the pager, so decoration profiles and rules can
-override or disable the image for particular windows. The focused window
-is drawn in yellow by default.
+Window miniatures are placed on the grid and coloured by their id. When CoW has
+resolved an application icon, cowpager centres it inside the corresponding
+miniature. The same effective **icon.image** is used for desktop icons and the
+pager, so decoration profiles and rules can override or disable the image for
+particular windows. The focused window is drawn in yellow by default.
 
 Without **-m**, the page grid is scaled to the bounding box of all shown
 outputs. Window miniatures and viewport rectangles are placed using the
-physical monitor layout, so adjacent monitors appear adjacent in the
-pager instead of overlapping.
+physical monitor layout, so adjacent monitors appear adjacent in the pager
+instead of overlapping.
 
-For every output currently viewing a desk, a translucent rectangle marks
-that output's viewport position within that desk's page grid.
+For every output currently viewing a desk, a translucent rectangle marks that
+output's viewport position within that desk's page grid.
 
 # EXAMPLES
 

@@ -12,35 +12,32 @@ moocow - send commands to a running cow instance
 
 **moocow** *command* \[*args* ...\]
 
-**moocow** **-p** \[**-P** *prompt*\] \[**-S** *prompt*\] \[**-C**
-*colour*\]
+**moocow** **-p** \[**-P** *prompt*\] \[**-S** *prompt*\] \[**-C** *colour*\]
 
 # DESCRIPTION
 
-**moocow** is the command-line IPC client for the **cow**(1) window
-manager. It connects to the cow IPC socket, sends the given command,
-waits for the JSON response, and prints it as formatted JSON to standard
-output.
+**moocow** is the command-line IPC client for the **cow**(1) window manager. It
+connects to the cow IPC socket, sends the given command, waits for the JSON
+response, and prints it as formatted JSON to standard output.
 
-Each shell argument is encoded as a separate **cow** command argument.
-Normal shell quoting therefore preserves values containing spaces; it is
-not necessary to quote the entire command. For compatibility and
-advanced uses, a single argument is treated as a complete command
-string. The full command language is described in **cow**(1).
+Each shell argument is encoded as a separate **cow** command argument. Normal
+shell quoting therefore preserves values containing spaces; it is not necessary
+to quote the entire command. For compatibility and advanced uses, a single
+argument is treated as a complete command string. The full command language is
+described in **cow**(1).
 
-Options belonging to **moocow** must precede *command*. Once *command*
-is seen, all remaining options are passed to **cow** unchanged. An
-optional **--** may still be used before *command*, but is not required.
+Options belonging to **moocow** must precede *command*. Once *command* is seen,
+all remaining options are passed to **cow** unchanged. An optional **--** may
+still be used before *command*, but is not required.
 
-With **-p**, **moocow** stays running and reads commands from standard
-input. When run interactively it prints a connection banner containing
-the **moocow** version and client ID, then the prompt **\>\>\>** before
-each command. Incomplete commands use the prompt **...** until the
-command is complete. A backslash (**\\**) at the end of a line continues
-the command on the next line.
+With **-p**, **moocow** stays running and reads commands from standard input.
+When run interactively it prints a connection banner containing the **moocow**
+version and client ID, then the prompt **\>\>\>** before each command.
+Incomplete commands use the prompt **...** until the command is complete. A
+backslash (**\\**) at the end of a line continues the command on the next line.
 
-Persistent mode also recognises local commands which begin with **.**
-and are not sent to **cow**:
+Persistent mode also recognises local commands which begin with **.** and are
+not sent to **cow**:
 
 **.moocow-set pretty-print-json** *boolean*
 
@@ -147,13 +144,13 @@ List all available commands:
 
     moocow show -a command
 
-Write the current serializable configuration as commands which can be
-loaded by **cow**(1):
+Write the current serializable configuration as commands which can be loaded by
+**cow**(1):
 
     moocow show -f config config > cow.generated.conf
 
-Config-formatted responses are printed as plain text. Other responses
-retain their JSON envelope.
+Config-formatted responses are printed as plain text. Other responses retain
+their JSON envelope.
 
 Run commands persistently:
 

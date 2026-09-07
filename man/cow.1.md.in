@@ -10,23 +10,21 @@ cow - Compositor On Wayland
 
 # SYNOPSIS
 
-**cow** \[**-hv**\] \[**-c** *config*\] \[**-l** *level*\] \[**-o**
-*file*\] \[**-C** *auto\|always\|never*\]
+**cow** \[**-hv**\] \[**-c** *config*\] \[**-l** *level*\] \[**-o** *file*\]
+\[**-C** *auto\|always\|never*\]
 
 # DESCRIPTION
 
 **cow** is a window manager using River as the compositor.
 
-A large *virtual desktop* can be created, effectively splitting the
-screen into an *N* x *M* matrix, called *pages*. These pages can then be
-viewed by using the mouse on the edge of the screen, or by using the
-*scroll* command.
+A large *virtual desktop* can be created, effectively splitting the screen into
+an *N* x *M* matrix, called *pages*. These pages can then be viewed by using
+the mouse on the edge of the screen, or by using the *scroll* command.
 
-Desktops provide a means of aggregating open applications into different
-areas.
+Desktops provide a means of aggregating open applications into different areas.
 
-**cow** provides commands which can be used to change settings, setup
-key/mouse bindings, etc.
+**cow** provides commands which can be used to change settings, setup key/mouse
+bindings, etc.
 
 # OPTIONS
 
@@ -65,13 +63,12 @@ key/mouse bindings, etc.
 
 # LOGGING
 
-Log records contain a timestamp, severity, source file, line number,
-function, and message. For example:
+Log records contain a timestamp, severity, source file, line number, function,
+and message. For example:
 
     15:02:37.916 ERROR [src/wm.c:1542 cow_wm_init] failed to connect to Wayland display
 
-The selected level includes messages at that level and every more severe
-level:
+The selected level includes messages at that level and every more severe level:
 
 | **Level** | **Purpose** |
 |:---|:---|
@@ -82,60 +79,57 @@ level:
 | **error** | Operation failures which do not necessarily terminate **cow**. |
 | **fatal** | Unrecoverable failures before termination. |
 
-Raw Wayland protocol traffic is left to **WAYLAND\_DEBUG** and River's
-logging.
+Raw Wayland protocol traffic is left to **WAYLAND\_DEBUG** and River's logging.
 
 Trace output contains complete command strings and may therefore expose
-sensitive command arguments. Enable it only while diagnosing a problem
-and handle trace files accordingly.
+sensitive command arguments. Enable it only while diagnosing a problem and
+handle trace files accordingly.
 
-Log files are opened in append mode. Colour is enabled automatically
-only for terminal output; redirected output and explicit log files are
-plain text unless overridden with **-C always**.
+Log files are opened in append mode. Colour is enabled automatically only for
+terminal output; redirected output and explicit log files are plain text unless
+overridden with **-C always**.
 
 # COLOUR VALUES
 
-Colour settings accept **0xRRGGBB** for an opaque colour or
-**0xRRGGBBAA** for RGBA. In the latter form, **00** is fully transparent
-and **FF** is fully opaque. For example, **0x282828CC** is dark grey at
-80 percent opacity.
+Colour settings accept **0xRRGGBB** for an opaque colour or **0xRRGGBBAA** for
+RGBA. In the latter form, **00** is fully transparent and **FF** is fully
+opaque. For example, **0x282828CC** is dark grey at 80 percent opacity.
 
-Alpha applies to surfaces drawn by CoW and its companion programs,
-including window decorations, menus, icons, **cowpager**, and
-**cowbuttons**. It does not change the opacity of application content. A
-translucent output background reveals the compositor's background below
-CoW's background surface.
+Alpha applies to surfaces drawn by CoW and its companion programs, including
+window decorations, menus, icons, **cowpager**, and **cowbuttons**. It does not
+change the opacity of application content. A translucent output background
+reveals the compositor's background below CoW's background surface.
 
 # OUTPUT MANAGEMENT
 
-Neither **cow** nor **River** manages outputs (screens/monitors)
-directly. Instead, applications such as **wlr-randr(1)**, and
-**wdisplays** (for something similar to **xrandr**) can be used instead.
+Neither **cow** nor **River** manages outputs (screens/monitors) directly.
+Instead, applications such as **wlr-randr(1)**, and **wdisplays** (for
+something similar to **xrandr**) can be used instead.
 
-Because **cow** needs to know information about outputs after it has
-started, it is recommended that the dedicated file
-*~/.config/cow/after-start.sh* -- which is a shell-script, contains the
-relevant commands to set the output layout.
+Because **cow** needs to know information about outputs after it has started,
+it is recommended that the dedicated file *~/.config/cow/after-start.sh* --
+which is a shell-script, contains the relevant commands to set the output
+layout.
 
-**NOTE:** in this example, it is assumed that **\$XDG\_CONFIG\_HOME** is
-set to *~/.config*.
+**NOTE:** in this example, it is assumed that **\$XDG\_CONFIG\_HOME** is set to
+*~/.config*.
 
-**cow** will assign all outputs a number to a tree with a defined order.
-That order is top-down, left-to-right, so far example, the following
-diagram illustrates output configuration and their assigned number:
+**cow** will assign all outputs a number to a tree with a defined order. That
+order is top-down, left-to-right, so far example, the following diagram
+illustrates output configuration and their assigned number:
 
     out1 (1)
     out2 (2)    out3 (3)    out4 (4)
 
 # ANATOMY OF A WINDOW
 
-**cow** puts a decorative border around windows. This border consists of
-a bar on each side, and a small L-shaped section on each corner. There
-is an additional top bar called the *titlebar* which is used to display
-the name of the window.
+**cow** puts a decorative border around windows. This border consists of a bar
+on each side, and a small L-shaped section on each corner. There is an
+additional top bar called the *titlebar* which is used to display the name of
+the window.
 
-In addition, there are ten titlebar buttons which can be defined and
-bound to any **cow** command, such as close, maximize, or iconify.
+In addition, there are ten titlebar buttons which can be defined and bound to
+any **cow** command, such as close, maximize, or iconify.
 
 The diagram below shows an outline of a typical window in **cow**:
 
@@ -155,31 +149,27 @@ The diagram below shows an outline of a typical window in **cow**:
        +++──────────────────────────────────────────────────────────+++
        SW                              S                             SE
 
-The labels of the window indicate the different components that can be
-changed.
+The labels of the window indicate the different components that can be changed.
 
-A window is made up of sides -- and are referenced like that of a
-compass.
+A window is made up of sides -- and are referenced like that of a compass.
 
-All eight parts of the window border (including corners) can be styled
-via the **decor** command.
+All eight parts of the window border (including corners) can be styled via the
+**decor** command.
 
 The titlebar can also be styled or disabled completely via the **decor**
 command.
 
 # THE VIRTUAL DESKTOP
 
-**cow** provides up to ten virtual desktops. The screen is a viewport
-onto a *desktop* which may be larger than the screen. Several distinct
-desktops can be accessed (for example, having different desktops for
-different projects).
+**cow** provides up to ten virtual desktops. The screen is a viewport onto a
+*desktop* which may be larger than the screen. Several distinct desktops can be
+accessed (for example, having different desktops for different projects).
 
-Because the desktop can be larger than the physical screen, it can
-therefore be divided into *N* x *M* regions, called *pages*. This
-configuration is then applied to all desktops.
+Because the desktop can be larger than the physical screen, it can therefore be
+divided into *N* x *M* regions, called *pages*. This configuration is then
+applied to all desktops.
 
-For example, the following would define nine pages, arranged in a
-square:
+For example, the following would define nine pages, arranged in a square:
 
 **set** *desktop\_size* 3 3
 
@@ -198,29 +188,28 @@ Which would conceptually look like this:
 
 All *pages* are the same size.
 
-*Pages* can be moved to/from by enabling *edge\_scroll* by resting the
-mouse pointer at the screen edges. See the **set** command.
+*Pages* can be moved to/from by enabling *edge\_scroll* by resting the mouse
+pointer at the screen edges. See the **set** command.
 
 Windows on pages can be be viewed using the **cowpager(1)** command.
 
-Windows can also be moved between pages by dragging them to the edge of
-the output, assuming *edge\_scroll* has been enabled. See the **set**
-command.
+Windows can also be moved between pages by dragging them to the edge of the
+output, assuming *edge\_scroll* has been enabled. See the **set** command.
 
 **cow** keeps its windows in a Z-ordered stacking order. That is to say,
-windows can be raised or lowered over one another. This can be
-controlled via the *winops* command.
+windows can be raised or lowered over one another. This can be controlled via
+the *winops* command.
 
 # LAYERS
 
 Every window belongs to a numbered **layer**. The layer range is **\[0,
-max\_layer\]** (default 16) and newly mapped windows receive
-**default\_layer** (default 4).
+max\_layer\]** (default 16) and newly mapped windows receive **default\_layer**
+(default 4).
 
-A window in layer 8 is always above every window in layer 4 regardless
-of focus, raise, or lower. **winops -r** and **winops -l** operate
-**within** the window's own layer: they reorder among windows in that
-layer but never push the window across a layer boundary.
+A window in layer 8 is always above every window in layer 4 regardless of
+focus, raise, or lower. **winops -r** and **winops -l** operate **within** the
+window's own layer: they reorder among windows in that layer but never push the
+window across a layer boundary.
 
 For instance:
 
@@ -236,16 +225,16 @@ For instance:
 
     rule -g -n mpv-pip -T on-map -s %mpv winops -t %mpv -L =top
 
-Use **=top** (rather than bare **top**) inside rules so a re-map event
-never accidentally toggles the layer back to default.
+Use **=top** (rather than bare **top**) inside rules so a re-map event never
+accidentally toggles the layer back to default.
 
 Iconified windows' icons are pinned to layer 0 regardless of the parent
 window's layer.
 
-Focus-on-raise (the **raise\_on\_focus** setting) is layer-aware: focusing
-a layer-4 window with a layer-8 window present never visually pops the
-layer-4 window above the layer-8 one. The titlebar/border colours remain
-the only cross-layer signal of focus.
+Focus-on-raise (the **raise\_on\_focus** setting) is layer-aware: focusing a
+layer-4 window with a layer-8 window present never visually pops the layer-4
+window above the layer-8 one. The titlebar/border colours remain the only
+cross-layer signal of focus.
 
 The two layer-aware settings are:
 
@@ -254,21 +243,20 @@ The two layer-aware settings are:
 - **set max\_layer** *N* -- cap for **-L**; raising the cap re-permits bigger
   numbers, lowering it clamps every existing window's layer.
 
-The **on-layer-change** rule event fires whenever a window's layer
-changes -- this is the hook for visual cues that depend on layer. For
-example, to tint the titlebar of any window in the top layer:
+The **on-layer-change** rule event fires whenever a window's layer changes --
+this is the hook for visual cues that depend on layer. For example, to tint the
+titlebar of any window in the top layer:
 
     decor -d top-layer titlebar.active_colour 0xC04030
     rule -g -n top-layer-tint -T on-layer-change
         decor -a top-layer
 
-The rule receives the same per-view scope as other view-bearing events,
-so **-s** / **-t** selectors and per-view **decor** applies all work as
-expected.
+The rule receives the same per-view scope as other view-bearing events, so
+**-s** / **-t** selectors and per-view **decor** applies all work as expected.
 
 When the rule body is an **exec** line, the per-firing JSON payload is
-available to the spawned shell as the **COW\_EVENT** environment
-variable. For **on-layer-change** the payload is:
+available to the spawned shell as the **COW\_EVENT** environment variable. For
+**on-layer-change** the payload is:
 
     {"prev": P, "current": N}
 
@@ -278,24 +266,22 @@ so a rule like:
         exec sh -c 'printf "%s\n" "$COW_EVENT" >> ~/cow-layer.log'
 
 writes one line per layer transition. **jq** makes parsing trivial
-(`jq .current <<<"$COW_EVENT"`). Other rule events without structured
-payload leave **COW\_EVENT** unset; the variable is only visible inside
-the **exec**'d shell and never affects cow itself or other concurrent
-rules.
+(`jq .current <<<"$COW_EVENT"`). Other rule events without structured payload
+leave **COW\_EVENT** unset; the variable is only visible inside the **exec**'d
+shell and never affects cow itself or other concurrent rules.
 
 # SCRIPTING
 
-Beyond the line-oriented command language, **cow** understands **script
-{ ... }** blocks: small embedded scripts that can iterate collections,
-filter them, branch on conditions, and invoke any cow command on the
-results. A **script** block is itself a cow command, so it can appear
-anywhere a command is accepted: the top-level configuration file, or the
-body of a rule.
+Beyond the line-oriented command language, **cow** understands **script { ...
+}** blocks: small embedded scripts that can iterate collections, filter them,
+branch on conditions, and invoke any cow command on the results. A **script**
+block is itself a cow command, so it can appear anywhere a command is accepted:
+the top-level configuration file, or the body of a rule.
 
 ## Statements
 
-A block contains zero or more statements; whitespace (including
-newlines) separates them.
+A block contains zero or more statements; whitespace (including newlines)
+separates them.
 
 **let** *NAME* **=** *EXPR*
 
@@ -336,8 +322,8 @@ newlines) separates them.
 
 ## Expressions
 
-The expression language has no arithmetic; it covers what's needed to
-choose work to do.
+The expression language has no arithmetic; it covers what's needed to choose
+work to do.
 
 | **Form** | **Meaning** |
 |:---|:---|
@@ -355,8 +341,7 @@ choose work to do.
 | *A* **and** *B*, *A* **or** *B* | boolean operators (short-circuit) |
 | (*EXPR*) | grouping |
 
-For example, match every named cowiconman instance on a particular
-output:
+For example, match every named cowiconman instance on a particular output:
 
     if self.title matches "cowiconman:*" and self.output == "eDP-1" {
         # commands
@@ -364,26 +349,25 @@ output:
 
 ## Sources
 
-Each iterable source yields records whose fields match the corresponding
-**show -a** topic JSON. Common window fields include **id**,
-**app\_id**, **title**, **desk**, **output**, **layer**, **focused**,
-**iconified**, **keyboard\_layout**, **circulate\_skip**, **selected**,
-**selections**, **maximized**, **width**, **height**, **page\_col**,
-**page\_row**, **current\_page**, **current\_desk**, **current\_output**,
-**sticky\_desk**, **sticky\_page**, **border\_width**, **title\_thickness**,
-**squeeze**, and **squeezed\_rect**. Common desk
-fields include **nr**, **name**, **output**, **current**, **active**,
-**collected**, **window\_count**, **page\_col**, **page\_row**,
-**page\_cols**, **page\_rows**, **page\_vx**, and **page\_vy**. Common
-output fields include **name**, **number**, geometry, usable geometry,
-**current**, **current\_desk**, **current\_desk\_name**, and page state.
-Common rule fields include **name**, **type**, **global**, **output**,
-**desk**, **match**, and **body**. Selection records contain the unique
-selection **name** and its window **count**.
+Each iterable source yields records whose fields match the corresponding **show
+-a** topic JSON. Common window fields include **id**, **app\_id**, **title**,
+**desk**, **output**, **layer**, **focused**, **iconified**,
+**keyboard\_layout**, **circulate\_skip**, **selected**, **selections**,
+**maximized**, **width**, **height**, **page\_col**, **page\_row**,
+**current\_page**, **current\_desk**, **current\_output**, **sticky\_desk**,
+**sticky\_page**, **border\_width**, **title\_thickness**, **squeeze**, and
+**squeezed\_rect**. Common desk fields include **nr**, **name**, **output**,
+**current**, **active**, **collected**, **window\_count**, **page\_col**,
+**page\_row**, **page\_cols**, **page\_rows**, **page\_vx**, and **page\_vy**.
+Common output fields include **name**, **number**, geometry, usable geometry,
+**current**, **current\_desk**, **current\_desk\_name**, and page state. Common
+rule fields include **name**, **type**, **global**, **output**, **desk**,
+**match**, and **body**. Selection records contain the unique selection
+**name** and its window **count**.
 
-For window records, **current\_page** is relative to that window's
-output. Use **current\_output and current\_page** when matching windows
-only on the current output's current page.
+For window records, **current\_page** is relative to that window's output. Use
+**current\_output and current\_page** when matching windows only on the current
+output's current page.
 
 Inside a rule body, the identifier **self** resolves to a record for the
 event's target view; outside a rule body it is unbound.
@@ -418,8 +402,8 @@ Iconify every window not on the currently-focused desk:
         }
     }
 
-When **cow** starts, for the output (screen) *HDMI-A-1*, set every desk
-to start on page 1,1:
+When **cow** starts, for the output (screen) *HDMI-A-1*, set every desk to
+start on page 1,1:
 
     rule -g -T on-start -n startup-pages script {
         let output = "HDMI-A-1"
@@ -430,8 +414,8 @@ to start on page 1,1:
     }
 
 Start and position a separate cowpager for every output. The pager
-configuration used here should contain top-level settings rather than
-**show pager** instances, so **-m** determines each window's title:
+configuration used here should contain top-level settings rather than **show
+pager** instances, so **-m** determines each window's title:
 
     rule -g -T on-start -n output-pagers script {
         for o in (outputs) {
@@ -443,24 +427,23 @@ configuration used here should contain top-level settings rather than
         }
     }
 
-If that configuration selects a named pager such as **fvwm**, include it
-in the selector instead:
+If that configuration selects a named pager such as **fvwm**, include it in the
+selector instead:
 
     -s /cowpager:fvwm:#{o.name}/
 
 # DESKTOP BEHAVIOUR
 
-Desktops can be configured either independently of each output, or
-desktops are the same across all outputs. See the
-*deskstop\_configuration* setting.
+Desktops can be configured either independently of each output, or desktops are
+the same across all outputs. See the *deskstop\_configuration* setting.
 
 # CONFIGURATION
 
 ## Search Order
 
-Unless overridden with **-c** or **\$COW\_CONFIG**, the configuration
-file is located by searching the following paths in order, stopping at
-the first that exists:
+Unless overridden with **-c** or **\$COW\_CONFIG**, the configuration file is
+located by searching the following paths in order, stopping at the first that
+exists:
 
 1.  **\$COW\_CONFIG**
 
@@ -474,14 +457,14 @@ the first that exists:
 
 ## File Format
 
-The configuration file is plain text. Each line is a **cow** command,
-using the Lines beginning with **\#** are comments. A backslash (**\\**)
-at the end of a line continues the command on the next line.
+The configuration file is plain text. Each line is a **cow** command, using the
+Lines beginning with **\#** are comments. A backslash (**\\**) at the end of a
+line continues the command on the next line.
 
-The **include** command reads additional commands from another file.
-Absolute paths are used as-is, paths beginning with **~/** are resolved
-relative to **\$HOME**, and other relative paths are resolved relative
-to **\$XDG\_RUNTIME\_DIR**.
+The **include** command reads additional commands from another file. Absolute
+paths are used as-is, paths beginning with **~/** are resolved relative to
+**\$HOME**, and other relative paths are resolved relative to
+**\$XDG\_RUNTIME\_DIR**.
 
 Example:
 
@@ -497,25 +480,25 @@ Example:
 
 # COMMAND REFERENCING
 
-Commands in **cow** can operate on outputs, desktops, pages, and
-windows. The commands in **cow** are therefore pre-disposed to
-understand that they need one or more of those contexts to operate on.
+Commands in **cow** can operate on outputs, desktops, pages, and windows. The
+commands in **cow** are therefore pre-disposed to understand that they need one
+or more of those contexts to operate on.
 
-In some cases that's automatic (such as operating on the focused window,
-or the current output, etc.) but commands can be told to override that.
+In some cases that's automatic (such as operating on the focused window, or the
+current output, etc.) but commands can be told to override that.
 
 ## Source and Target Definitions
 
-Most commands have a target on which the command is going to operate on,
-and for consistency across those commands, that is the `-t` flag. The
-same concept exists for for a *source* window, via `-s`.
+Most commands have a target on which the command is going to operate on, and
+for consistency across those commands, that is the `-t` flag. The same concept
+exists for for a *source* window, via `-s`.
 
 The format for both is the following:
 
     output:desk.window
 
-That is to say, there's three components -- the delimiters between the
-parts are literal and must be specified:
+That is to say, there's three components -- the delimiters between the parts
+are literal and must be specified:
 
 **output**
 
@@ -545,16 +528,15 @@ In the case of using a substring, this is run through `fnmatch(3)`.
 
 # COMMAND CHAINING
 
-With any given command, it's possible to chain them together. For
-example:
+With any given command, it's possible to chain them together. For example:
 
     exec xterm \; exec notify-send "xterm executed"
 
-The command divider is `\;` and must be escaped in this way so as not
-to incur any shell interpretation.
+The command divider is `\;` and must be escaped in this way so as not to incur
+any shell interpretation.
 
-Also, line continuation between changed commands is also possible, and
-looks like this:
+Also, line continuation between changed commands is also possible, and looks
+like this:
 
     rule -g -T on-restart -n cleanup \
         exec killall waybar \; \
@@ -563,30 +545,29 @@ looks like this:
 
 # COMMAND OUTPUT
 
-Certain commands in **cow** are designed to return information. In such
-cases, the output is in JSON format.
+Certain commands in **cow** are designed to return information. In such cases,
+the output is in JSON format.
 
 This may be subject to change in the future.
 
 # GLOBAL COMMANDS
 
-The following details those commands which operate globally within
-**cow**. Note that the same command might also contain window/output
-settings, which will be also be added under the relevant section in this
-man page.
+The following details those commands which operate globally within **cow**.
+Note that the same command might also contain window/output settings, which
+will be also be added under the relevant section in this man page.
 
 ## alias name command ... \| alias -d name
 
-Define *name* as an alias for a CoW command. An alias can be used anywhere
-a built-in command is accepted, including directly through **moocow**(1),
-in a binding, menu, rule, or **script** block. It takes no arguments and
-inherits the window, desk, and output context of its caller.
+Define *name* as an alias for a CoW command. An alias can be used anywhere a
+built-in command is accepted, including directly through **moocow**(1), in a
+binding, menu, rule, or **script** block. It takes no arguments and inherits
+the window, desk, and output context of its caller.
 
-Defining an existing alias replaces its command. Existing bindings and
-menus resolve aliases when invoked, so they use the replacement without
-being redefined. Built-in command names and scripting-language keywords
-cannot be used as alias names. Define an alias before referring to it from
-a rule or script body. Recursive aliases are stopped with an error.
+Defining an existing alias replaces its command. Existing bindings and menus
+resolve aliases when invoked, so they use the replacement without being
+redefined. Built-in command names and scripting-language keywords cannot be
+used as alias names. Define an alias before referring to it from a rule or
+script body. Recursive aliases are stopped with an error.
 
 **-d**
 
@@ -603,23 +584,23 @@ Examples:
     bind L+Return terminal
     menu-add RootMenu "Tidy desktop" tidy-desktop
 
-Aliases are included in **show config**. Use **show alias** *name* or
-**show -a alias** to inspect active definitions.
+Aliases are included in **show config**. Use **show alias** *name* or **show -a
+alias** to inspect active definitions.
 
 ## bind \[-r\] \[-x release-action\] \[contexts:\]modifier+key\[,modifier+key...\] action ... \| bind -d pattern
 
-Key bindings are specified as a modifier string immediately followed by
-**+** and a keysym name, or **-** and a numeric keycode:
+Key bindings are specified as a modifier string immediately followed by **+**
+and a keysym name, or **-** and a numeric keycode:
 
     bind MODIFIERS+keysym  command
     bind MODIFIERS-keycode command
     bind CONTEXTS:MODIFIERS+keysym command
     bind MODIFIERS+keysym,MODIFIERS+keysym command
 
-Without a context prefix the binding is global. A context-qualified
-binding is enabled only while the pointer is in one of its regions. If
-the same key has both global and matching contextual bindings, the
-contextual binding wins; the global binding is the fallback.
+Without a context prefix the binding is global. A context-qualified binding is
+enabled only while the pointer is in one of its regions. If the same key has
+both global and matching contextual bindings, the contextual binding wins; the
+global binding is the fallback.
 
 For overlapping contextual bindings, the most specific context wins.
 
@@ -635,9 +616,9 @@ For overlapping contextual bindings, the most specific context wins.
 
 - 0 to 9: the corresponding titlebar button.
 
-Multiple characters combine regions. The context window becomes the
-command's default target, making window commands act on the window under
-that region rather than whichever window was previously focused.
+Multiple characters combine regions. The context window becomes the command's
+default target, making window commands act on the window under that region
+rather than whichever window was previously focused.
 
 **-r**
 
@@ -662,10 +643,9 @@ that region rather than whichever window was previously focused.
 
       bind -x "menu-destroy AllWindows" A+Tab menu-show AllWindows
 
-All **bind** options must appear before the key specification. On
-versions of the River XKB bindings protocol before version 3, modifier
-release cannot be observed, so the action instead runs when the main key
-is released.
+All **bind** options must appear before the key specification. On versions of
+the River XKB bindings protocol before version 3, modifier release cannot be
+observed, so the action instead runs when the main key is released.
 
 **Modifier characters:**
 
@@ -678,18 +658,18 @@ is released.
 | **A** / **M** | Alt (Mod1). **M** (for meta) is a synonym. |
 | **5**         | AltGr (Mod5).                              |
 
-Modifiers are combined by concatenation: **LS** means Logo+Shift,
-**LCA** means Logo+Control+Alt, and **CM** means Control+Meta. Use **0**
-to specify no modifier.
+Modifiers are combined by concatenation: **LS** means Logo+Shift, **LCA** means
+Logo+Control+Alt, and **CM** means Control+Meta. Use **0** to specify no
+modifier.
 
 Key symbols and codes can be determined with **wev**(1).
 
-Separate keys with commas to define a chorded binding. Every key except
-the last is a prefix: pressing it temporarily replaces the normal key
-bindings with the bindings below that prefix. A matching key continues
-the sequence; the final key executes the command and restores the normal
-bindings. An unmatched non-modifier key, including **Escape** unless
-explicitly bound, is consumed and cancels the sequence.
+Separate keys with commas to define a chorded binding. Every key except the
+last is a prefix: pressing it temporarily replaces the normal key bindings with
+the bindings below that prefix. A matching key continues the sequence; the
+final key executes the command and restores the normal bindings. An unmatched
+non-modifier key, including **Escape** unless explicitly bound, is consumed and
+cancels the sequence.
 
 Prefixes are shared, so several bindings may begin with the same keys:
 
@@ -698,11 +678,10 @@ Prefixes are shared, so several bindings may begin with the same keys:
     bind C+c,C+c winops -c
     bind C+x,0+4,C+f window-maximize
 
-Only the first key may have a binding context. Its context window
-remains the default command target throughout the sequence. A key cannot
-be both a complete binding and a prefix. The **-r** and **-x** options
-apply to the final key. Chorded bindings require version 2 or newer of
-River's XKB bindings protocol.
+Only the first key may have a binding context. Its context window remains the
+default command target throughout the sequence. A key cannot be both a complete
+binding and a prefix. The **-r** and **-x** options apply to the final key.
+Chorded bindings require version 2 or newer of River's XKB bindings protocol.
 
 Examples:
 
@@ -717,8 +696,8 @@ Examples:
 
 ## mouse \[contexts:\]key action ...
 
-Mouse bindings use the same modifier format as the **bind** command. The
-button name replaces the keysym:
+Mouse bindings use the same modifier format as the **bind** command. The button
+name replaces the keysym:
 
     mouse MODIFIERS+button command
     mouse CONTEXTS:MODIFIERS+button command
@@ -726,17 +705,16 @@ button name replaces the keysym:
 Button names: **left**, **right**, **middle**, **side**, **extra**,
 **forward**, **back**, **task**.
 
-Bind a pointer button combination to a command. The *key* format is the
-same as for **bind**, but the key name is a button name (see **MOUSE
-BINDINGS**). The optional contexts and their precedence are the same as
-for **bind**. Contextual commands target the window under the pointer. A
-matching contextual mouse binding consumes the click before normal
-pointer interaction, so it overrides a **bind-decoration** action or
-titlebar-button action in that region. Without a matching binding, the
-normal decoration or client click behaviour is unchanged.
+Bind a pointer button combination to a command. The *key* format is the same as
+for **bind**, but the key name is a button name (see **MOUSE BINDINGS**). The
+optional contexts and their precedence are the same as for **bind**. Contextual
+commands target the window under the pointer. A matching contextual mouse
+binding consumes the click before normal pointer interaction, so it overrides a
+**bind-decoration** action or titlebar-button action in that region. Without a
+matching binding, the normal decoration or client click behaviour is unchanged.
 
-In addition to the contexts accepted by **bind**, mouse bindings accept
-these non-button SSD decoration contexts:
+In addition to the contexts accepted by **bind**, mouse bindings accept these
+non-button SSD decoration contexts:
 
 - T: window titlebar, excluding its buttons.
 
@@ -750,8 +728,8 @@ these non-button SSD decoration contexts:
 
 - R: "root window" (output background)
 
-Multiple characters combine regions, so **TF:** applies to the titlebar
-or any frame corner.
+Multiple characters combine regions, so **TF:** applies to the titlebar or any
+frame corner.
 
 Example:
 
@@ -764,10 +742,10 @@ Example:
     mouse I:0+left winops -i
     mouse R:0+left menu-show RootMenu
 
-The **R** context applies to cow's output background surface and does
-not capture clicks on client windows. It supports the same buttons and
-modifiers as other mouse contexts and is useful for root-window style
-menus. See the *MENU* section for more information.
+The **R** context applies to cow's output background surface and does not
+capture clicks on client windows. It supports the same buttons and modifiers as
+other mouse contexts and is useful for root-window style menus. See the *MENU*
+section for more information.
 
 ## bind-decoration \[-2\] region command ...
 
@@ -775,8 +753,8 @@ Bind a primary-button click on a window's decoration to a command. Each
 window's frame is divided into regions. See the *ANATOMY\_OF\_A\_WINDOW*
 section.
 
-When a bound region of the window is clicked on, the attached action
-runs against that window.
+When a bound region of the window is clicked on, the attached action runs
+against that window.
 
 **-2**
 
@@ -814,15 +792,14 @@ The default bindings are:
 
 Double-clicks on edges and corners have no defaults.
 
-If a button has both single- and double-click bindings, CoW waits until
-the double-click interval has elapsed before running the single-click
-action. A second click on the same button runs only the double-click
-action. Other decoration regions retain immediate press-and-hold
-handling for interactive move and resize actions.
+If a button has both single- and double-click bindings, CoW waits until the
+double-click interval has elapsed before running the single-click action. A
+second click on the same button runs only the double-click action. Other
+decoration regions retain immediate press-and-hold handling for interactive
+move and resize actions.
 
-**Limitation:** **River** does not expose which button was used when
-clicking on the window decoration, so currently, only mouse button 1 is
-usable.
+**Limitation:** **River** does not expose which button was used when clicking
+on the window decoration, so currently, only mouse button 1 is usable.
 
 Examples:
 
@@ -853,11 +830,11 @@ Examples:
 
 Apply rules (groups of commands) to certain conditions (events).
 
-A rule has a *name* (via `-n`) which must be specified. Note that
-rules are globally stored, so any conflicting names will mean that rule
-will be rejected. It also has a *type* (via `-T`) which specifies when
-to run the rule. Multiple rules can be defined against the same *type*
-as long as their names are distinct.
+A rule has a *name* (via `-n`) which must be specified. Note that rules are
+globally stored, so any conflicting names will mean that rule will be rejected.
+It also has a *type* (via `-T`) which specifies when to run the rule. Multiple
+rules can be defined against the same *type* as long as their names are
+distinct.
 
 The following table shows which events are available:
 
@@ -882,8 +859,8 @@ The following table shows which events are available:
 | **on-desks-changed** | Fired after **set desks.count** successfully resizes the live desk sets. Fires once per command. Use with **-g** to rebuild menus, bindings, or other configuration derived from the available desks. |
 | **on-desk** | Used to change window styles on a particular desk. |
 
-Specificity of rules are such that global rules (via `-g`) run before
-any specific defined rules. For example:
+Specificity of rules are such that global rules (via `-g`) run before any
+specific defined rules. For example:
 
 
     # Define a global rule -- this will always run.
@@ -895,21 +872,21 @@ any specific defined rules. For example:
     decor -d desk2 border.inactive 0xB28E4C
     rule -t :2 -Ton-map -ndesk2 decor -a desk2
 
-Fullscreen transitions can change global settings or run more selective
-rules. For example, this disables edge scrolling while a window is
-fullscreen and restores it afterwards:
+Fullscreen transitions can change global settings or run more selective rules.
+For example, this disables edge scrolling while a window is fullscreen and
+restores it afterwards:
 
     rule -g -T on-fullscreen -n fullscreen-edge-scroll-off \
         set edge_scroll false
     rule -g -T on-unfullscreen -n fullscreen-edge-scroll-on \
         set edge_scroll true
 
-The setting is global. The example therefore assumes only one fullscreen
-window at a time. A selector or output scope can be added when the policy
-should apply only to particular windows or outputs.
+The setting is global. The example therefore assumes only one fullscreen window
+at a time. A selector or output scope can be added when the policy should apply
+only to particular windows or outputs.
 
-Rules can be deleted with the `-d` option. Additionally, `-n` is
-needed to specify the name, example:
+Rules can be deleted with the `-d` option. Additionally, `-n` is needed to
+specify the name, example:
 
     rule -d -ndesk2
 
@@ -917,19 +894,17 @@ Defined rules can be seen with the **show** command.
 
 ## style -d -n \<name\> \| -g \| -t output\[:desk\] -n \<name\> \[-s sel\] { ... }
 
-Define states for windows. Styles reuse the same names, scopes, and
-selectors as rules, but describe window state rather than executing
-commands in response to an event. Styles can override one another, the
-last match wins, with theat style overriding any previous properties
-within it/
+Define states for windows. Styles reuse the same names, scopes, and selectors
+as rules, but describe window state rather than executing commands in response
+to an event. Styles can override one another, the last match wins, with theat
+style overriding any previous properties within it/
 
-The selector forms are the same as for **rule**: **%app-id**,
-**/title/**, and **\#identifier**. A global style uses **-g**. With **-t
-output\[:desk\]**, either part may be omitted to match any output or
-desk.
+The selector forms are the same as for **rule**: **%app-id**, **/title/**, and
+**\#identifier**. A global style uses **-g**. With **-t output\[:desk\]**,
+either part may be omitted to match any output or desk.
 
-The following properties are reapplied when a window's title or scope
-changes and when the configuration is reloaded:
+The following properties are reapplied when a window's title or scope changes
+and when the configuration is reloaded:
 
 | **Property** | **Value** |
 |:---|:---|
@@ -940,8 +915,7 @@ changes and when the configuration is reloaded:
 | **decor { ... }** | Overlay decoration keys local to this style. The keys and values are the same as for **decor -d**. |
 
 These placement and state properties apply only when the window is first
-managed. They are not replayed by a configuration reload or title
-change:
+managed. They are not replayed by a configuration reload or title change:
 
 | **Property** | **Value** |
 |:---|:---|
@@ -956,13 +930,12 @@ change:
 | **state.fullscreen**, **state.shaded**, **state.iconified** | Initial boolean window states. |
 
 Styles are resolved before an event rule is executed. If a rule or later
-targeted command changes a live style field, that field becomes an
-explicit per-window override and is not subsequently replaced by style
-recomputation.
+targeted command changes a live style field, that field becomes an explicit
+per-window override and is not subsequently replaced by style recomputation.
 
-For example, give terminals a reusable base theme with a local border
-change, keep them in the normal layer, and initially place them on the
-left half of the work desk:
+For example, give terminals a reusable base theme with a local border change,
+keep them in the normal layer, and initially place them on the left half of the
+work desk:
 
     style -g -n terminal -s %foot {
         decor motif
@@ -988,38 +961,37 @@ An event rule can then make a particular terminal an explicit exception:
 
 Delete a style with **style -d -n name**.
 
-Styles can be inspected with the **show style name** and **show -a
-style** commands.
+Styles can be inspected with the **show style name** and **show -a style**
+commands.
 
 ## exec command ...
 
-Execute a shell command. During configuration loading, **exec** commands
-are deferred until **cow** has fully connected to River.
+Execute a shell command. During configuration loading, **exec** commands are
+deferred until **cow** has fully connected to River.
 
 ## draw-exec \[-F expr\] command ...
 
-Start an interactive pointer drag. On button release, run *command* and
-apply the drawn frame to the first newly mapped window which matches
-*expr*. Without **-F**, the first newly mapped window consumes the
-frame.
+Start an interactive pointer drag. On button release, run *command* and apply
+the drawn frame to the first newly mapped window which matches *expr*. Without
+**-F**, the first newly mapped window consumes the frame.
 
-The command is parsed as a CoW command, so launching an application
-usually uses **exec**:
+The command is parsed as a CoW command, so launching an application usually
+uses **exec**:
 
     mouse M+left draw-exec exec foot
     mouse M+middle draw-exec -F 'self.app_id == "foot"' exec foot
 
-If the command is a brace-delimited script block, the surrounding braces
-are removed before the block is evaluated.
+If the command is a brace-delimited script block, the surrounding braces are
+removed before the block is evaluated.
 
 ## show \[-f json\|config\] \[-t target\] topic \[name\]
 
 ## show -a \[-f json\|config\] \[-F expr\] topic
 
-Query window manager state and configured objects. Without **-a**, a
-topic returns one current or named record. With **-a**, it returns an
-array containing all records for that topic. When used via
-**moocow**(1), JSON is printed to standard output.
+Query window manager state and configured objects. Without **-a**, a topic
+returns one current or named record. With **-a**, it returns an array
+containing all records for that topic. When used via **moocow**(1), JSON is
+printed to standard output.
 
 **-a**
 
@@ -1174,34 +1146,33 @@ array containing all records for that topic. When used via
 
 ## quit \[-r\]
 
-Without any options, **cow** quits. With **-r**, reload the
-configuration from the file **cow** was started with, instead of
-quitting.
+Without any options, **cow** quits. With **-r**, reload the configuration from
+the file **cow** was started with, instead of quitting.
 
 Keybindings and window decorations are updated immediately on reload.
 
 ## include \_file\_
 
-Read and execute commands from *file*. Absolute paths are used as-is,
-**~/** is resolved relative to **\$HOME**, and other relative paths are
-resolved relative to **\$XDG\_RUNTIME\_DIR**.
+Read and execute commands from *file*. Absolute paths are used as-is, **~/** is
+resolved relative to **\$HOME**, and other relative paths are resolved relative
+to **\$XDG\_RUNTIME\_DIR**.
 
 ## keyboard-layout \[NAME\]
 
-Set the active XKB layout on every keyboard. *NAME* must match a
-descriptive layout name in the keyboard's current keymap. River ignores
-a name which does not exist. Without *NAME*, display a numbered typeahead
-menu of layout names observed by CoW during this session. River reports
-layout changes but does not expose the complete list of names in a keymap,
-so layouts appear in the chooser after they have been active at least once.
+Set the active XKB layout on every keyboard. *NAME* must match a descriptive
+layout name in the keyboard's current keymap. River ignores a name which does
+not exist. Without *NAME*, display a numbered typeahead menu of layout names
+observed by CoW during this session. River reports layout changes but does not
+expose the complete list of names in a keymap, so layouts appear in the chooser
+after they have been active at least once.
 
     keyboard-layout 'English (UK)'
 
-When **keyboard\_layout.per\_window** is enabled, running this command
-while a window is focused also records *NAME* for that window. The layout
-can instead be changed using the keyboard's normal XKB layout-switching
-keys; CoW observes the change and records it in the same way. It restores
-the remembered layout whenever that window receives focus again.
+When **keyboard\_layout.per\_window** is enabled, running this command while a
+window is focused also records *NAME* for that window. The layout can instead
+be changed using the keyboard's normal XKB layout-switching keys; CoW observes
+the change and records it in the same way. It restores the remembered layout
+whenever that window receives focus again.
 
 Layouts are remembered per window, not per physical keyboard. The command
 currently sends *NAME* to every keyboard exposed by River; independently
@@ -1213,63 +1184,59 @@ Do nothing.
 
 ## decor -d name key value
 
-Define or replace one key in a named, sparse decoration profile. The key
-is a decoration key without the **set** prefix.
+Define or replace one key in a named, sparse decoration profile. The key is a
+decoration key without the **set** prefix.
 
     decor -d alert border.width 8
     decor -d alert titlebar.active_colour 0xC04030
     decor -d alert border.inactive 0x303030
 
-Theme packs can be split into files and loaded with **include**, for
-example:
+Theme packs can be split into files and loaded with **include**, for example:
 
     include themes/fvwm
     decor -a fvwm
 
-Titlebar buttons may set their face and vector foreground colours
-separately for focused and unfocused windows:
+Titlebar buttons may set their face and vector foreground colours separately
+for focused and unfocused windows:
 
     decor -d motif titlebar.button.0.active_colour 0xC0C0C0
     decor -d motif titlebar.button.0.inactive_colour 0xC0C0C0
     decor -d motif titlebar.button.0.active_fg 0x000000
     decor -d motif titlebar.button.0.inactive_fg 0xFFFFFF
 
-The foreground properties affect native vector buttons. Image buttons
-render the colours contained in the image itself.
+The foreground properties affect native vector buttons. Image buttons render
+the colours contained in the image itself.
 
-Image values in a profile may name PNG, SVG, or XPM files. Relative
-image paths are resolved against the file containing the **decor -d**
-command, so a theme directory can keep its config and image assets
-together.
+Image values in a profile may name PNG, SVG, or XPM files. Relative image paths
+are resolved against the file containing the **decor -d** command, so a theme
+directory can keep its config and image assets together.
 
 XPM support covers the XPM3 format, including transparent *None* pixels,
-hexadecimal colours, the basic named colours, and *gray0* through
-*gray100* (also spelled *grey*).
+hexadecimal colours, the basic named colours, and *gray0* through *gray100*
+(also spelled *grey*).
 
 ## decor -a name \[-t target\]
 
-Apply a named decoration profile. Switching to a different global
-profile, or applying a profile to an explicit target, resets the target
-decoration to the base defaults before applying the profile entries.
-Reapplying the active global profile patches the current decoration in
-place. Profiles containing only **icon.\*** keys also patch in place.
-Profiles applied by rules are overlays, so layered rules can compose
-sparse profiles.
+Apply a named decoration profile. Switching to a different global profile, or
+applying a profile to an explicit target, resets the target decoration to the
+base defaults before applying the profile entries. Reapplying the active global
+profile patches the current decoration in place. Profiles containing only
+**icon.\*** keys also patch in place. Profiles applied by rules are overlays,
+so layered rules can compose sparse profiles.
 
-With **-t**, the target is that window. Without **-t**, the target is
-the global decoration defaults and existing windows. Rule bodies use the
-rule's default window target.
+With **-t**, the target is that window. Without **-t**, the target is the
+global decoration defaults and existing windows. Rule bodies use the rule's
+default window target.
 
 ## set \[-v\] key value
 
-Set a configuration option at runtime. **-v** prints the resulting
-value.
+Set a configuration option at runtime. **-v** prints the resulting value.
 
-The specific keys/values for this command are detailed under relevant
-section in this man page.
+The specific keys/values for this command are detailed under relevant section
+in this man page.
 
-However, there are global settings which don't fit into other command
-settings. These are listed below:
+However, there are global settings which don't fit into other command settings.
+These are listed below:
 
 | **Key** | **Description** |
 |:---|:---|
@@ -1460,8 +1427,8 @@ Move a window. With no flags, begin an interactive move using the mouse.
 
 ## window-resize \[-t target\] \[-gs\] \[-d dir\] \[-e edges\|automatic\] \[-W\] \[-w width\] \[-h height\]
 
-Resize a window. With no flags, begin an interactive resize operation
-with the mouse, from the bottom-right corner.
+Resize a window. With no flags, begin an interactive resize operation with the
+mouse, from the bottom-right corner.
 
 **-t** *target*
 
@@ -1510,15 +1477,14 @@ with the mouse, from the bottom-right corner.
   outer frame height to that percentage of the current output's usable
   height, accounting for borders and titlebar.
 
-Viewport units may contain decimals. For example, these bindings place
-the focused window in the left half and bottom-right quarter
-respectively:
+Viewport units may contain decimals. For example, these bindings place the
+focused window in the left half and bottom-right quarter respectively:
 
     bind L+Left  window-move -x 0vw -y 0vh ; window-resize -w 50vw -h 100vh
     bind L+3     window-move -x 50vw -y 50vh ; window-resize -w 50vw -h 50vh
 
-Automatic resize direction works identically with keyboard and mouse
-bindings. The first example also warps the pointer to the chosen border:
+Automatic resize direction works identically with keyboard and mouse bindings.
+The first example also warps the pointer to the chosen border:
 
     bind L+r       window-resize -e automatic -W
     mouse L+right  window-resize -e automatic
@@ -1607,17 +1573,16 @@ Move keyboard focus.
 
 ## window-list \[-I\] \[-n\] \[-p\] \[-w\] \[-F expr\] \[-f format\] \[-S sort\]
 
-Open a transient list of managed windows, centred on the target output
-unless **-p** is used. Press **1** through **9**, or **0** for the tenth
-entry, to select immediately. For longer lists use the arrow keys and
-Enter. Typing letters performs an incremental, case-insensitive filter
-over the displayed labels; only matching windows remain visible and the
-first match is selected. Backspace removes the last search character and
-expands the list again.
+Open a transient list of managed windows, centred on the target output unless
+**-p** is used. Press **1** through **9**, or **0** for the tenth entry, to
+select immediately. For longer lists use the arrow keys and Enter. Typing
+letters performs an incremental, case-insensitive filter over the displayed
+labels; only matching windows remain visible and the first match is selected.
+Backspace removes the last search character and expands the list again.
 
-Selecting an entry closes the list, switches to its output, desk, and
-page, restores it if iconified, activates its container tab if
-necessary, and focuses it.
+Selecting an entry closes the list, switches to its output, desk, and page,
+restores it if iconified, activates its container tab if necessary, and focuses
+it.
 
 **-I**
 
@@ -1690,14 +1655,13 @@ Examples:
     bind L+n "window-list -n"
     bind L+i "window-list -I -p"
 
-The popup takes keyboard focus while it is open, so no additional
-bindings are needed for these keys and normal keyboard input resumes
-when it closes.
+The popup takes keyboard focus while it is open, so no additional bindings are
+needed for these keys and normal keyboard input resumes when it closes.
 
 ## window-expand \[-t target\] \[-d dir\] \[-T\]
 
-Expand a window to fill available space between windows, or the whole
-monitor if the window is the only window on that monitor.
+Expand a window to fill available space between windows, or the whole monitor
+if the window is the only window on that monitor.
 
 Use **window-maximize -k** after expanding to retain the original window
 position so that it can be unmaximized.
@@ -1761,9 +1725,9 @@ Maximize or restore a window.
   reported automatically by River for layer-shell surfaces. Combined
   with **-h** or **-v**, it applies only to the requested axis.
 
-Per-axis maximised state is independent: **window-maximize -h** followed
-by **window-maximize -v** leaves the window maximised on both axes, and
-each axis can be restored separately with **-T -h** and **-T -v**.
+Per-axis maximised state is independent: **window-maximize -h** followed by
+**window-maximize -v** leaves the window maximised on both axes, and each axis
+can be restored separately with **-T -h** and **-T -v**.
 
 Examples:
 
@@ -1778,13 +1742,13 @@ Examples:
 
 ## pick-window \[-F expr\] command ... \| pick-window -m \[-F expr\] \[-n name\]
 
-Pick one or more windows with the mouse. The cursor changes to a crosshair
-icon while the picker is active.
+Pick one or more windows with the mouse. The cursor changes to a crosshair icon
+while the picker is active.
 
-Without **-m**, pick one window and run *command* targeting it. Right-click
-or *Escape* cancels. The picked window is passed to *command* as the default
-target, so a *command* without an explicit **-t** operates on the picked
-view. Any explicit **-t** in *command* takes precedence.
+Without **-m**, pick one window and run *command* targeting it. Right-click or
+*Escape* cancels. The picked window is passed to *command* as the default
+target, so a *command* without an explicit **-t** operates on the picked view.
+Any explicit **-t** in *command* takes precedence.
 
 **-m**
 
@@ -1878,8 +1842,8 @@ The resulting selection can then be acted upon as a group, for example:
 
 ## window-shade \[-t target\] -d dir
 
-Shade (roll up) a window in a given direction, hiding its content but
-leaving its border visible.
+Shade (roll up) a window in a given direction, hiding its content but leaving
+its border visible.
 
 **-t** *target*
 
@@ -1892,8 +1856,8 @@ leaving its border visible.
 
 # WINDOW DECORATION SETTINGS
 
-The following tables show which settings are available to control the
-look and feel of a window. All of these can be used with **decor -d**.
+The following tables show which settings are available to control the look and
+feel of a window. All of these can be used with **decor -d**.
 
 **General Decoration Settings:**
 
@@ -1975,29 +1939,29 @@ look and feel of a window. All of these can be used with **decor -d**.
 | **titlebar.squeeze.min\_width** | integer (pixels) | Minimum width for *natural* mode (floor applied after measurement). Default: *80*. |
 | **title\_format** | string | Controls the display title used in the titlebar. Default is: '\[%t\] %n' Supported escapes are **%n** for the raw window title, **%t** for **cow**'s unique short window id, **%I** for the full window id, **%c** for app\_id, and **%%** for a literal percent. The default is **\[%t\] %n**. |
 
-**Button vector format:** *N* *x1***X***y1***@***c1*
-*x2***X***y2***@***c2* **...** where *N* is the number of points,
-coordinates are 0-100 (percentages of the button area), and **@***c* is
-a colour index from 0 to 4. Coordinates may include a signed pixel
-offset with a *p* suffix, such as **100-5px50+1p@0**.
+**Button vector format:** *N* *x1***X***y1***@***c1* *x2***X***y2***@***c2*
+**...** where *N* is the number of points, coordinates are 0-100 (percentages
+of the button area), and **@***c* is a colour index from 0 to 4. Coordinates
+may include a signed pixel offset with a *p* suffix, such as
+**100-5px50+1p@0**.
 
 # WINDOW CONTAINERS
 
-Group windows into a tabbed container. A container is a meta-window that
-holds multiple application windows as tabs. Only the active tab's
-content is visible; all tabs share the container's position, size, and
-frame. The titlebar shows a clickable label for each member. Each label
-uses that window's **title\_format**, so substitutions such as **%n**
-track application title changes and decor profiles can customise
-individual labels. Clicking a label activates that tab.
+Group windows into a tabbed container. A container is a meta-window that holds
+multiple application windows as tabs. Only the active tab's content is visible;
+all tabs share the container's position, size, and frame. The titlebar shows a
+clickable label for each member. Each label uses that window's
+**title\_format**, so substitutions such as **%n** track application title
+changes and decor profiles can customise individual labels. Clicking a label
+activates that tab.
 
-For example, use the raw application title for all window and
-container-tab titles:
+For example, use the raw application title for all window and container-tab
+titles:
 
     set title_format "%n"
 
-Static text is also valid. It can be applied to a particular window
-using a decoration profile:
+Static text is also valid. It can be applied to a particular window using a
+decoration profile:
 
     decor -d editor-tab title_format "Editor"
     decor -a editor-tab -t %foot
@@ -2043,10 +2007,10 @@ using a decoration profile:
 : Move the tab containing *target* one position to the left in the tab
   strip. The tab remains active. No-op if it is already the first tab.
 
-See also **window-move -C**, which allows containers to be formed
-interactively by dragging a window's titlebar onto another. In
-environments where mouse modifier combinations are unreliable (e.g.
-VNC), bind **container add** to a key instead:
+See also **window-move -C**, which allows containers to be formed interactively
+by dragging a window's titlebar onto another. In environments where mouse
+modifier combinations are unreliable (e.g. VNC), bind **container add** to a
+key instead:
 
     bind L+g   window-container -a
     bind LS+g  window-container -r
@@ -2054,8 +2018,8 @@ VNC), bind **container add** to a key instead:
 
 ## Container Settings
 
-The following options can be used inside **decor -d** profile blocks to
-style container tabs:
+The following options can be used inside **decor -d** profile blocks to style
+container tabs:
 
 | **Key** | **Values** | **Description** |
 |:---|:---|:---|
@@ -2071,15 +2035,14 @@ style container tabs:
 
 # Icons
 
-Minimised windows can be represented as icons on the root window. These
-can have an image associated with them, or not. If there's no image
-associated with an icon, a blank rectangle is drawn, and the window's
-title appears underneath it.
+Minimised windows can be represented as icons on the root window. These can
+have an image associated with them, or not. If there's no image associated with
+an icon, a blank rectangle is drawn, and the window's title appears underneath
+it.
 
-Icons can be moved around the screen with the mouse. In doing so, a
-window will continue to iconify to that dragged position. Icons which
-are not moved manually will be placed automatically along the bottom of
-the output.
+Icons can be moved around the screen with the mouse. In doing so, a window will
+continue to iconify to that dragged position. Icons which are not moved
+manually will be placed automatically along the bottom of the output.
 
 The following commands control icons:
 
@@ -2093,10 +2056,9 @@ The following commands control icons:
 
 ## icon-placement \[-o OUTPUT\] reset
 
-Configure automatic icon placement. Without **-o**, the setting applies
-to all outputs. With **-o**, *OUTPUT* may be an output name or ordinal
-such as **@2**; only properties explicitly set for that output override
-the global policy.
+Configure automatic icon placement. Without **-o**, the setting applies to all
+outputs. With **-o**, *OUTPUT* may be an output name or ordinal such as **@2**;
+only properties explicitly set for that output override the global policy.
 
 **box** *GEOMETRY*
 
@@ -2134,19 +2096,19 @@ the global policy.
 : Restore the built-in global policy. With **-o**, remove all placement
   overrides for that output so it inherits the global policy again.
 
-Manually dragged icons retain their positions and reserve their
-rectangles so automatic icons do not overlap them. Placement changes
-immediately reflow only automatic icons. If a configured box is full,
-**cow** searches the full usable area; if that too is full, it uses a
-deterministic overlapping fallback and logs a warning.
+Manually dragged icons retain their positions and reserve their rectangles so
+automatic icons do not overlap them. Placement changes immediately reflow only
+automatic icons. If a configured box is full, **cow** searches the full usable
+area; if that too is full, it uses a deterministic overlapping fallback and
+logs a warning.
 
 Examples:
 
 The numbered boxes in these diagrams show the order in which free icon
 positions are considered.
 
-The traditional policy starts at the bottom-left. **right** is the
-primary direction and **up** is the wrapping direction:
+The traditional policy starts at the bottom-left. **right** is the primary
+direction and **up** is the wrapping direction:
 
     icon-placement fill right up
 
@@ -2171,9 +2133,8 @@ towards the left:
     +---------------------------------------+
 
 The same fill policy can be constrained to a box. In this example,
-**96x900-0+0** makes a 96 by 900 pixel strip at the top-right of the
-usable area; **-0** anchors its right edge and **+0** anchors its top
-edge:
+**96x900-0+0** makes a 96 by 900 pixel strip at the top-right of the usable
+area; **-0** anchors its right edge and **+0** anchors its top edge:
 
     icon-placement box 96x900-0+0
     icon-placement fill down left
@@ -2187,8 +2148,8 @@ edge:
     +-----------------------------------+-----+
                                   placement box
 
-Output-specific settings override only the named properties and inherit
-the remaining global policy:
+Output-specific settings override only the named properties and inherit the
+remaining global policy:
 
     icon-placement -o @2 box full
     icon-placement -o @2 fill right down
@@ -2198,10 +2159,10 @@ the remaining global policy:
 
 ## icon-reset \[-F expr\] \[-t target\]
 
-Reset manual icon positions. Without **-t**, all saved icon positions
-are cleared and iconified windows are returned to automatic placement.
-With **-t**, the target may be a window, output, or desk; for example
-**-t \#id**, **-t @1**, or **-t :2**.
+Reset manual icon positions. Without **-t**, all saved icon positions are
+cleared and iconified windows are returned to automatic placement. With **-t**,
+the target may be a window, output, or desk; for example **-t \#id**, **-t
+@1**, or **-t :2**.
 
 **-F** *expr*
 
@@ -2214,8 +2175,8 @@ Example:
 
 ## ICON SETTINGS
 
-The following table shows which settings can be applied to a given
-(named) decor to change aspects of how icons are controlled:
+The following table shows which settings can be applied to a given (named)
+decor to change aspects of how icons are controlled:
 
 | **Key** | **Description** |
 |:---|:---|
@@ -2229,9 +2190,9 @@ The following table shows which settings can be applied to a given
 
 # MENUS
 
-**cow** supports named popup menus. A menu is defined by appending items
-with **menu-add**, then opened with **menu-show**. Items may be **cow**
-commands, titles, separators, or links to sub-menus.
+**cow** supports named popup menus. A menu is defined by appending items with
+**menu-add**, then opened with **menu-show**. Items may be **cow** commands,
+titles, separators, or links to sub-menus.
 
 ## Defining menus
 
@@ -2307,19 +2268,18 @@ commands, titles, separators, or links to sub-menus.
   window is captured as the menu's "context view" so window-operation
   items target the right window even if focus drifts during navigation.
 
-Menus take keyboard focus while open. Arrow keys navigate, Enter
-selects, Escape closes, and a menu item's alphanumeric hotkey activates
-it. Keys listed in **menu.repeat\_keys** repeat while held, using
-**repeat\_delay\_ms** and **repeat\_interval\_ms**. Backspace edits the
-search text in menus such as **window-list** which support type-ahead.
-The first visible actionable item is initially highlighted. Pointer
-hover does not replace that selection until the pointer moves after the
-menu opens. Selecting a submenu item with Up or Down opens it after the
-same short delay used for pointer hover; Right continues to open it
-immediately.
+Menus take keyboard focus while open. Arrow keys navigate, Enter selects,
+Escape closes, and a menu item's alphanumeric hotkey activates it. Keys listed
+in **menu.repeat\_keys** repeat while held, using **repeat\_delay\_ms** and
+**repeat\_interval\_ms**. Backspace edits the search text in menus such as
+**window-list** which support type-ahead. The first visible actionable item is
+initially highlighted. Pointer hover does not replace that selection until the
+pointer moves after the menu opens. Selecting a submenu item with Up or Down
+opens it after the same short delay used for pointer hover; Right continues to
+open it immediately.
 
-The **mouse** command can bind a menu to cow's output background with
-the **R** context:
+The **mouse** command can bind a menu to cow's output background with the **R**
+context:
 
     mouse R:0+left "menu-show RootMenu"
 
@@ -2329,20 +2289,20 @@ the **R** context:
 **menu-style** **-m** *NAME* *KEY* *VALUE*\
 **menu-style** **-m** *NAME* **-r** *KEY*
 
-Without **-m**, sets the global menu style. With **-m**, sets an
-override for the named menu; the menu is created if it does not exist
-yet, so style declarations may precede **menu-add**. Properties not
-overridden by a named menu use the current global value.
+Without **-m**, sets the global menu style. With **-m**, sets an override for
+the named menu; the menu is created if it does not exist yet, so style
+declarations may precede **menu-add**. Properties not overridden by a named
+menu use the current global value.
 
 **-r** *KEY*
 
 : Remove the named menu's override for *KEY*, returning that property to
   the global menu style. This requires **-m**.
 
-All style properties may be overridden per menu. Submenus resolve their
-own named overrides directly against the global style rather than
-inheriting their parent menu's overrides. **menu-clear** preserves
-overrides; **menu-destroy** removes them with the menu.
+All style properties may be overridden per menu. Submenus resolve their own
+named overrides directly against the global style rather than inheriting their
+parent menu's overrides. **menu-clear** preserves overrides; **menu-destroy**
+removes them with the menu.
 
 The table below shows the possible values:
 
@@ -2372,25 +2332,24 @@ The table below shows the possible values:
 | **automatic.hotkeys** | true |
 | **selection.relief** | raised (the traditional two-pixel relief around the selected item); use **none** for a flat highlight or **sunken** for an inverted two-pixel relief |
 
-The default **raised** selection retains the menu background and derives
-a lighter top/left edge and darker bottom/right edge from the resolved
-**bg** colour. This also applies to per-menu background overrides,
-including very light and very dark colours; no **selection.relief**
-setting is required to enable it. The **sunken** selection applies the
-darker colour for top/left and the lighter one for bottom/right.
+The default **raised** selection retains the menu background and derives a
+lighter top/left edge and darker bottom/right edge from the resolved **bg**
+colour. This also applies to per-menu background overrides, including very
+light and very dark colours; no **selection.relief** setting is required to
+enable it. The **sunken** selection applies the darker colour for top/left and
+the lighter one for bottom/right.
 
-The flat outer menu border is a solid **border.colour**. Raised and
-sunken borders derive light and dark edges from **border.colour**.
+The flat outer menu border is a solid **border.colour**. Raised and sunken
+borders derive light and dark edges from **border.colour**.
 
-The side column is present when either **side.colour** or **side.image**
-is set. Its minimum width is **side.width**, and it grows to the image's
-natural width when necessary. Thus, **side.colour** and **side.image**
-can each be used on their own. **side.image** accepts an explicit path
-or searches **icon.path** for a bare file name. It is aligned with the
-bottom of the menu and cropped at the top if it is taller than the
-available space. Use **0x00000000** or **none** for **side.colour** to
-leave the menu background visible, and set **side.image** to **none** to
-remove it. For example:
+The side column is present when either **side.colour** or **side.image** is
+set. Its minimum width is **side.width**, and it grows to the image's natural
+width when necessary. Thus, **side.colour** and **side.image** can each be used
+on their own. **side.image** accepts an explicit path or searches **icon.path**
+for a bare file name. It is aligned with the bottom of the menu and cropped at
+the top if it is taller than the available space. Use **0x00000000** or
+**none** for **side.colour** to leave the menu background visible, and set
+**side.image** to **none** to remove it. For example:
 
     menu-style icon.path ~/.config/cow/icons:/usr/local/share/cow/icons
     menu-style side.colour 0x303060
@@ -2400,13 +2359,11 @@ remove it. For example:
 Gradient values use the same syntax as decoration gradients: **none**,
 **HGradient** *COLOUR* *COLOUR*, or **VGradient** *COLOUR* *COLOUR*.
 
-For hotkeys, a literal **&** before a label character marks that
-character as the item hotkey and underlines it. Use **&&** for a literal
-ampersand.
+For hotkeys, a literal **&** before a label character marks that character as
+the item hotkey and underlines it. Use **&&** for a literal ampersand.
 
-When **automatic.hotkeys** is enabled, **cow** assigns unique
-alphanumeric hotkeys to selectable items that do not have an explicit
-**&** marker.
+When **automatic.hotkeys** is enabled, **cow** assigns unique alphanumeric
+hotkeys to selectable items that do not have an explicit **&** marker.
 
 When **font** is not set, menus use the global font.
 
@@ -2420,8 +2377,8 @@ This allows menu and titlebar fonts to be selected independently:
     decor -d default titlebar.font 'Bitstream Vera Sans 10'
     menu-style font 'Bitstream Vera Sans 17'
 
-For example, these menus share the global geometry and default raised
-selection relief, but use different colour palettes:
+For example, these menus share the global geometry and default raised selection
+relief, but use different colour palettes:
 
     menu-style bg 0xbebebe
     menu-style fg 0x000000
@@ -2479,8 +2436,7 @@ selection relief, but use different colour palettes:
 
 # DESKTOP / OUTPUT COMMANDS
 
-This section details commands which affect desktops/pages often
-per-output.
+This section details commands which affect desktops/pages often per-output.
 
 ## scroll \[-t output\] \[-w\] \[-p\] \_H\_ \_V\_
 
@@ -2497,18 +2453,16 @@ per-output.
 Pan the virtual page viewport for the current desk.
 
 Each page has the logical width and height of its output. Reserved and
-layer-shell areas affect window placement and maximization, but do not
-change page dimensions or scroll distances.
+layer-shell areas affect window placement and maximization, but do not change
+page dimensions or scroll distances.
 
-Pages can be scrolled in either full pages, or part increments.
-Additionally, it's possible to in-effect, "drag" the viewport with the
-mouse to any position.
+Pages can be scrolled in either full pages, or part increments. Additionally,
+it's possible to in-effect, "drag" the viewport with the mouse to any position.
 
 In the deltas form (*H* *V*), *H* is the horizontal scroll and *V* the
-vertical. By default each value is a percentage of one page in that
-axis: *100* is one full page right (or down), *-100* one page left (or
-up), *50* is half a page, and so on. With **-p** the values are raw
-pixels instead.
+vertical. By default each value is a percentage of one page in that axis: *100*
+is one full page right (or down), *-100* one page left (or up), *50* is half a
+page, and so on. With **-p** the values are raw pixels instead.
 
 Options are:
 
@@ -2563,8 +2517,7 @@ Options are:
 : Paired with **-r**, makes the viewport follow the pointer in the
   **same** direction instead of opposite.
 
-Pages exist only when *desktop\_size N M* is configured with N \> 1 or M
-\> 1.
+Pages exist only when *desktop\_size N M* is configured with N \> 1 or M \> 1.
 
 Examples:
 
@@ -2632,10 +2585,10 @@ For example, bind a key to choose a desk by name or number:
 
 ## desk-name \[-t output\] N NAME \| -d N \| -l \| -r
 
-Manage the naming of virtual desktops. By default, **cow** sets ten
-desktops, whose names default to '0'..'9'. With this command it is
-possible to change that, either by increasing or decreasing the number
-of desktops, and/or renaming existing desks.
+Manage the naming of virtual desktops. By default, **cow** sets ten desktops,
+whose names default to '0'..'9'. With this command it is possible to change
+that, either by increasing or decreasing the number of desktops, and/or
+renaming existing desks.
 
 **-t** *output*
 
@@ -2673,8 +2626,8 @@ The following examples show how this command can be used:
     focus -t :main
     focus -t :0
 
-The minimum number of desks can be set with *desks.count*. Note that it
-is possible with the **desk-name** command to name desks greater than
+The minimum number of desks can be set with *desks.count*. Note that it is
+possible with the **desk-name** command to name desks greater than
 *desks.count* number, and that this will effectively create this desk.
 
 ## Desktop / Page Settings
@@ -2706,14 +2659,13 @@ For example, require Alt while dwelling at an edge:
     set edge_scroll true
     set edge_scroll_modifiers A
 
-The modifier applies both while moving a window and during ordinary
-pointer movement. Pressing it while the pointer is already at an edge
-starts the dwell, while releasing it cancels a pending page switch
-immediately.
+The modifier applies both while moving a window and during ordinary pointer
+movement. Pressing it while the pointer is already at an edge starts the dwell,
+while releasing it cancels a pending page switch immediately.
 
-**NOT£:** The *reserved.* settings are akin to X11's concept of a
-working-area. That is to say, these settings will reserve parts of the
-screen to be able to put taskbars, etc.
+**NOT£:** The *reserved.* settings are akin to X11's concept of a working-area.
+That is to say, these settings will reserve parts of the screen to be able to
+put taskbars, etc.
 
 ## Keyboard Settings
 
@@ -2727,8 +2679,8 @@ input and layout behaviour:
 | **menu.repeat\_keys** | comma-separated keysyms | Keys which repeat while held when a menu has keyboard focus. The default is *Up,Down*; for example, use *Up,Down,BackSpace* to repeat type-ahead deletion, or *none* to disable menu key repetition. |
 | **keyboard\_layout.per\_window** | *true* \| *false* | Remember the active keyboard layout for each window and ask River to restore it when that window receives focus. A window without a remembered layout inherits the current layout. Default: *false*. |
 
-A binding registered without **-r** fires exactly once per press,
-regardless of the repeat timing settings.
+A binding registered without **-r** fires exactly once per press, regardless of
+the repeat timing settings.
 
 For example, enable per-window keyboard layouts with:
 
@@ -2783,12 +2735,11 @@ connecting by sending:
 
     cow-client NAME
 
-The line is terminated by a newline. *NAME* is 1 to 63 characters and
-may contain ASCII letters, digits, dots, hyphens, and underscores. A
-command client then sends one command and receives its JSON response
-before the connection closes. A status client sends no further input and
-receives an initial JSON snapshot followed by a snapshot after each
-state change.
+The line is terminated by a newline. *NAME* is 1 to 63 characters and may
+contain ASCII letters, digits, dots, hyphens, and underscores. A command client
+then sends one command and receives its JSON response before the connection
+closes. A status client sends no further input and receives an initial JSON
+snapshot followed by a snapshot after each state change.
 
 # FILES
 

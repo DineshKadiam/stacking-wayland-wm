@@ -19,12 +19,12 @@ cowiconman - CoW Icon Manager
 Without a configuration file, one icon manager is created using built-in
 defaults. It shows every window in a single column, sorted by title.
 
-Its configuration can define several named icon managers. Each top-level
-**show iconman** line creates a separate cowiconman window.
+Its configuration can define several named icon managers. Each top-level **show
+iconman** line creates a separate cowiconman window.
 
 The window size follows the visible button grid, growing or shrinking as
-windows enter or leave the list. It is capped to the selected output's
-usable area.
+windows enter or leave the list. It is capped to the selected output's usable
+area.
 
 # OPTIONS
 
@@ -38,16 +38,14 @@ usable area.
 
 # CONFIGURATION
 
-The format is line-oriented. Blank lines and lines starting with **\#**
-are ignored. Values containing whitespace must be double quoted.
+The format is line-oriented. Blank lines and lines starting with **\#** are
+ignored. Values containing whitespace must be double quoted.
 
 By default, **cowiconman** reads *cowiconman.conf* from
-*\$XDG\_CONFIG\_HOME/cow/cowiconman.conf* or
-*~/.config/cow/cowiconman.conf*.
+*\$XDG\_CONFIG\_HOME/cow/cowiconman.conf* or *~/.config/cow/cowiconman.conf*.
 
-Top-level settings are shared defaults. Named **iconman** blocks
-override those defaults for the instances which select them. For
-example:
+Top-level settings are shared defaults. Named **iconman** blocks override those
+defaults for the instances which select them. For example:
 
     show iconman current
     show iconman applications
@@ -66,9 +64,9 @@ example:
         icons true
     }
 
-Each **show iconman** line creates one window. Multiple names on the
-same line combine those blocks into one instance, in the order in which
-their definitions occur:
+Each **show iconman** line creates one window. Multiple names on the same line
+combine those blocks into one instance, in the order in which their definitions
+occur:
 
     show iconman common current-output
 
@@ -188,30 +186,29 @@ Supported commands are described below.
 
 # APPEARANCE
 
-Without explicit **style** settings, focused and unfocused rows use
-CoW's active and inactive titlebar colours. The empty background follows
-the selected output, and an iconified row uses a darkened inactive
-background. Explicit styles override these inherited colours; an unset
-**iconified.bg** is derived from the effective **inactive.bg** colour.
+Without explicit **style** settings, focused and unfocused rows use CoW's
+active and inactive titlebar colours. The empty background follows the selected
+output, and an iconified row uses a darkened inactive background. Explicit
+styles override these inherited colours; an unset **iconified.bg** is derived
+from the effective **inactive.bg** colour.
 
 # USAGE
 
 Left-click a row to focus the window. If the window is iconified, it is
 restored and focused.
 
-Left-click a grouped row to open a selector for the windows in that
-group. The selector is a native cow menu using the current menu style.
-Its rows include the short window id, output, and desk. Selecting a
-window switches to its output, desk, and page, activates its container
-member when necessary, restores it when iconified, and focuses it.
-Type-ahead is disabled for these selectors by default; number keys, arrows,
-Enter, and Escape remain available. Set **group-typeahead true** to filter
-the selector by typing instead.
+Left-click a grouped row to open a selector for the windows in that group. The
+selector is a native cow menu using the current menu style. Its rows include
+the short window id, output, and desk. Selecting a window switches to its
+output, desk, and page, activates its container member when necessary, restores
+it when iconified, and focuses it. Type-ahead is disabled for these selectors
+by default; number keys, arrows, Enter, and Escape remain available. Set
+**group-typeahead true** to filter the selector by typing instead.
 
 Middle-click a row to toggle the window's iconified state.
 
-Use the pointer wheel to scroll when a fixed row layout has more entries
-than fit on screen.
+Use the pointer wheel to scroll when a fixed row layout has more entries than
+fit on screen.
 
 An anchored **rows 1** layout behaves like a bar: it spans the selected
 output's usable width and divides that space evenly between entries.
@@ -260,8 +257,7 @@ Show xterm windows but exclude titles containing "logs":
         match title=!logs
     }
 
-Remove cowiconman's own window decors while preserving the active decor
-theme:
+Remove cowiconman's own window decors while preserving the active decor theme:
 
     decor -d cowiconman-nodecor border.width 0
     decor -d cowiconman-nodecor border.handles false

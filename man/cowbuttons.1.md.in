@@ -14,13 +14,13 @@ cowbuttons - Button panel for the cow window manager
 
 # DESCRIPTION
 
-**cowbuttons** displays a small configurable grid of cells. Cells can
-run **cow**(1) commands, periodically display the output of scripts,
-show selected state from cow's status socket, or act as empty spacers.
+**cowbuttons** displays a small configurable grid of cells. Cells can run
+**cow**(1) commands, periodically display the output of scripts, show selected
+state from cow's status socket, or act as empty spacers.
 
-Wayland does not provide X11 window reparenting, so **cowbuttons** does
-not swallow clients. Use command buttons to launch or focus
-applications, and use cow rules to style or place companion windows.
+Wayland does not provide X11 window reparenting, so **cowbuttons** does not
+swallow clients. Use command buttons to launch or focus applications, and use
+cow rules to style or place companion windows.
 
 # OPTIONS
 
@@ -34,13 +34,13 @@ applications, and use cow rules to style or place companion windows.
 
 # CONFIGURATION
 
-The format is line-oriented. Blank lines and lines starting with **\#**
-are ignored. Labels and commands containing whitespace must be quoted.
+The format is line-oriented. Blank lines and lines starting with **\#** are
+ignored. Labels and commands containing whitespace must be quoted.
 
-Colours may be opaque **0xRRGGBB** values or **0xRRGGBBAA** values
-carrying an alpha component. In the latter form, **00** is fully
-transparent and **FF** is fully opaque. For example, **style button.bg
-0x282828CC** uses an 80-percent opaque dark grey.
+Colours may be opaque **0xRRGGBB** values or **0xRRGGBBAA** values carrying an
+alpha component. In the latter form, **00** is fully transparent and **FF** is
+fully opaque. For example, **style button.bg 0x282828CC** uses an 80-percent
+opaque dark grey.
 
 **cell** *W* *H*
 
@@ -261,8 +261,7 @@ Remove cowbuttons' own window decors using a cow rule:
 
 # SEE ALSO
 
-**cow**(1), **moocow**(1), **cowbar**(1), **cowiconman**(1),
-**cowpager**(1)
+**cow**(1), **moocow**(1), **cowbar**(1), **cowiconman**(1), **cowpager**(1)
 
 # AUTHORS
 

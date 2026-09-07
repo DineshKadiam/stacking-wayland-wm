@@ -10,23 +10,23 @@ cowbar - relay cow window manager status updates
 
 # SYNOPSIS
 
-**cowbar** \[**-h**\] \[**-n**\] \[**-c** *path*\] \[**-o** *output*\]
-\[**-f** *field*\] \[**-w** *module*\]
+**cowbar** \[**-h**\] \[**-n**\] \[**-c** *path*\] \[**-o** *output*\] \[**-f**
+*field*\] \[**-w** *module*\]
 
 # DESCRIPTION
 
-**cowbar** connects to the **cow**(1) status socket and relays JSON
-state snapshots to standard output, one per line, whenever window or
-desk state changes. It is intended to be used as a data source for
-status bars such as **waybar**(1) or **i3bar**(1).
+**cowbar** connects to the **cow**(1) status socket and relays JSON state
+snapshots to standard output, one per line, whenever window or desk state
+changes. It is intended to be used as a data source for status bars such as
+**waybar**(1) or **i3bar**(1).
 
-With no options, the full snapshot is relayed verbatim. The **-o**
-option filters snapshots to a single named output. The **-f** option
-extracts a single field from each snapshot.
+With no options, the full snapshot is relayed verbatim. The **-o** option
+filters snapshots to a single named output. The **-f** option extracts a single
+field from each snapshot.
 
-**cowbar** retries the socket connection up to 30 times (once per
-second), allowing it to be started concurrently with **cow** during
-session initialisation without requiring ordering guarantees.
+**cowbar** retries the socket connection up to 30 times (once per second),
+allowing it to be started concurrently with **cow** during session
+initialisation without requiring ordering guarantees.
 
 # OPTIONS
 
@@ -68,26 +68,24 @@ session initialisation without requiring ordering guarantees.
 
 # WAYBAR PRESENTATION
 
-Waybar modules emitted with **-w** use Pango markup so that individual
-desks within a single custom module can have different styles. Waybar
-CSS can still style the custom module as a whole, but cannot select the
-individual spans.
+Waybar modules emitted with **-w** use Pango markup so that individual desks
+within a single custom module can have different styles. Waybar CSS can still
+style the custom module as a whole, but cannot select the individual spans.
 
-The installed **cowbar.conf** supplies the default presentation. A
-readable *\$XDG\_CONFIG\_HOME/cow/cowbar.conf* or
-*~/.config/cow/cowbar.conf* override the defaults.
+The installed **cowbar.conf** supplies the default presentation. A readable
+*\$XDG\_CONFIG\_HOME/cow/cowbar.conf* or *~/.config/cow/cowbar.conf* override
+the defaults.
 
 Style lines have the form:
 
     style name attribute value [attribute value ...]
 
-Valid style names are **desk.active**, **desk.collected**,
-**desk.occupied**, **desk.separator**, **page.separator**, **page**,
-**status**, and **title**. Valid attributes are **foreground**,
-**background**, **weight**, **style**, and **underline**. Attribute
-values follow Pango markup conventions. Quote colours beginning with
-**\#**, since an unquoted **\#** begins a comment. The special value
-**none** clears an attribute inherited from the installed defaults.
+Valid style names are **desk.active**, **desk.collected**, **desk.occupied**,
+**desk.separator**, **page.separator**, **page**, **status**, and **title**.
+Valid attributes are **foreground**, **background**, **weight**, **style**, and
+**underline**. Attribute values follow Pango markup conventions. Quote colours
+beginning with **\#**, since an unquoted **\#** begins a comment. The special
+value **none** clears an attribute inherited from the installed defaults.
 
 Format lines have the form:
 
@@ -105,24 +103,23 @@ The supported formats and required conversions are:
 Use **%%** for a literal percent sign. Dynamic text and configured Pango
 attribute values are escaped before markup is emitted.
 
-The **layout** command controls the order of the three desk-module
-elements:
+The **layout** command controls the order of the three desk-module elements:
 
     layout desks page status
 
-Valid elements are **desks**, **page**, and **status**. Each may appear
-at most once. Omit an element to hide it. The installed default shown
-above preserves the traditional cowbar order.
+Valid elements are **desks**, **page**, and **status**. Each may appear at most
+once. Omit an element to hide it. The installed default shown above preserves
+the traditional cowbar order.
 
-Send **SIGHUP** to a running **cowbar** process to reload its
-configuration. A successful reload immediately re-renders the most
-recent Waybar snapshot. If the new configuration is invalid, cowbar
-reports the error and keeps the previous configuration active.
+Send **SIGHUP** to a running **cowbar** process to reload its configuration. A
+successful reload immediately re-renders the most recent Waybar snapshot. If
+the new configuration is invalid, cowbar reports the error and keeps the
+previous configuration active.
 
 # OUTPUT FORMAT
 
-Each line of output is a self-contained JSON object, suitable for
-parsing with **jq**(1) or any JSON library.
+Each line of output is a self-contained JSON object, suitable for parsing with
+**jq**(1) or any JSON library.
 
 **Full snapshot** (no **-f**):
 
@@ -148,9 +145,9 @@ parsing with **jq**(1) or any JSON library.
       }
     }
 
-The *language.caps\_lock*, *language.num\_lock*, and
-*language.scroll\_lock* values are *null* until River has reported those
-states for the keyboard providing the active layout.
+The *language.caps\_lock*, *language.num\_lock*, and *language.scroll\_lock*
+values are *null* until River has reported those states for the keyboard
+providing the active layout.
 
 **-f desks** output:
 
