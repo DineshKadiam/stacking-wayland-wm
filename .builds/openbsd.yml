@@ -12,7 +12,7 @@ packages:
   - meson
   - ninja
   - pango
-  - scdoc
+  - lowdown
   - wayland
   - wayland-protocols
 sources:

@@ -64,7 +64,7 @@ jobs:
             meson \
             ninja-build \
             pkg-config \
-            scdoc \
+            lowdown \
             wayland-protocols
 
       - name: Install release-notes-assistant

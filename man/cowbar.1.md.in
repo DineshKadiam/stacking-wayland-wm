@@ -1,0 +1,235 @@
+title: COWBAR
+section: 1
+date: @DATE@
+source: @VERSION@
+volume: cowbar - cow status relay
+
+# NAME
+
+cowbar - relay cow window manager status updates
+
+# SYNOPSIS
+
+**cowbar** \[**-h**\] \[**-n**\] \[**-c** *path*\] \[**-o** *output*\]
+\[**-f** *field*\] \[**-w** *module*\]
+
+# DESCRIPTION
+
+**cowbar** connects to the **cow**(1) status socket and relays JSON
+state snapshots to standard output, one per line, whenever window or
+desk state changes. It is intended to be used as a data source for
+status bars such as **waybar**(1) or **i3bar**(1).
+
+With no options, the full snapshot is relayed verbatim. The **-o**
+option filters snapshots to a single named output. The **-f** option
+extracts a single field from each snapshot.
+
+**cowbar** retries the socket connection up to 30 times (once per
+second), allowing it to be started concurrently with **cow** during
+session initialisation without requiring ordering guarantees.
+
+# OPTIONS
+
+**-c** *path*
+
+: Load style and format overrides from *path*. The installed defaults
+  are loaded first. An explicit file replaces those defaults.
+
+**-o** *output*
+
+: Filter snapshots to an output name or selector. Selectors are **@N**,
+  **@current**, **@next**, and **@prev**, with the same meaning as in
+  **cow**(1). When combined with **-f desks**, the desk information for
+  that output is extracted. When used alone, the full state object for
+  that output is emitted on each update.
+
+**-f** *field*
+
+: Extract a single field from each snapshot. Valid values:
+
+  - **desks** -- emit desk state for the selected output (or the first
+    output if **-o** is not given). The emitted object contains *desks*,
+    *current\_desk*, and *output* keys.
+  - **focused** -- emit the focused window object on each update. The
+    object includes *display\_title*, which is already formatted by
+    **cow**(1)'s *title\_format* setting.
+  - **language** -- emit the active keyboard layout and keyboard lock
+    states as a Waybar-compatible *text* object.
+  - **outputs** -- emit the full outputs array on each update.
+
+**-n**
+
+: When used with **-w desks**, render desk names instead of numbers
+  (falls back to the number when a desk has no name).
+
+**-h**
+
+: Print usage and exit.
+
+# WAYBAR PRESENTATION
+
+Waybar modules emitted with **-w** use Pango markup so that individual
+desks within a single custom module can have different styles. Waybar
+CSS can still style the custom module as a whole, but cannot select the
+individual spans.
+
+The installed **cowbar.conf** supplies the default presentation. A
+readable *\$XDG\_CONFIG\_HOME/cow/cowbar.conf* or
+*~/.config/cow/cowbar.conf* override the defaults.
+
+Style lines have the form:
+
+    style name attribute value [attribute value ...]
+
+Valid style names are **desk.active**, **desk.collected**,
+**desk.occupied**, **desk.separator**, **page.separator**, **page**,
+**status**, and **title**. Valid attributes are **foreground**,
+**background**, **weight**, **style**, and **underline**. Attribute
+values follow Pango markup conventions. Quote colours beginning with
+**\#**, since an unquoted **\#** begins a comment. The special value
+**none** clears an attribute inherited from the installed defaults.
+
+Format lines have the form:
+
+    format name "value"
+
+The supported formats and required conversions are:
+
+| **Name** | **Conversions** |
+|:---|:---|
+| **desk** | one **%s** (desk name or number) |
+| **page** | two **%d** values (column and row) |
+| **status** | **%s**, **%d**, **%s** (output, active-window count, desktop configuration) |
+| **title** | one **%s** (focused-window title) |
+
+Use **%%** for a literal percent sign. Dynamic text and configured Pango
+attribute values are escaped before markup is emitted.
+
+The **layout** command controls the order of the three desk-module
+elements:
+
+    layout desks page status
+
+Valid elements are **desks**, **page**, and **status**. Each may appear
+at most once. Omit an element to hide it. The installed default shown
+above preserves the traditional cowbar order.
+
+Send **SIGHUP** to a running **cowbar** process to reload its
+configuration. A successful reload immediately re-renders the most
+recent Waybar snapshot. If the new configuration is invalid, cowbar
+reports the error and keeps the previous configuration active.
+
+# OUTPUT FORMAT
+
+Each line of output is a self-contained JSON object, suitable for
+parsing with **jq**(1) or any JSON library.
+
+**Full snapshot** (no **-f**):
+
+    {
+      "outputs": [
+        {
+          "name": "DP-1",
+          "desks": [...],
+          "current_desk": 1
+        }
+      ],
+      "focused": {
+        "app_id": "foot",
+        "title": "fish",
+        "display_title": "[0123abcd] fish",
+        "desk": 1
+      },
+      "language": {
+        "name": "English (UK)",
+        "caps_lock": false,
+        "num_lock": true,
+        "scroll_lock": false
+      }
+    }
+
+The *language.caps\_lock*, *language.num\_lock*, and
+*language.scroll\_lock* values are *null* until River has reported those
+states for the keyboard providing the active layout.
+
+**-f desks** output:
+
+    {"desks": [...], "current_desk": 1, "output": "DP-1"}
+
+**-f focused** output:
+
+    {"app_id": "foot", "title": "fish", "display_title": "[0123abcd] fish", "desk": 1}
+
+**-f language** output:
+
+    {"text": "English (UK)", "caps_lock": false, "num_lock": true, "scroll_lock": false}
+
+**-f outputs** output:
+
+    [{"name": "DP-1", ...}, {"name": "HDMI-A-1", ...}]
+
+# ENVIRONMENT
+
+**XDG\_RUNTIME\_DIR**
+
+: Used to locate the status socket. Must be set.
+
+**WAYLAND\_DISPLAY**
+
+: Used to qualify the default status socket name so separate CoW
+  instances in the same runtime directory do not share a status socket.
+
+# FILES
+
+*/\<PREFIX\>/etc/cow/cowbar.conf*
+
+: Installed default Waybar styles and formats.
+
+*\$XDG\_CONFIG\_HOME/cow/cowbar.conf* or *~/.config/cow/cowbar.conf*
+
+: Optional per-user style and format overrides.
+
+*\$XDG\_RUNTIME\_DIR/cow-\$WAYLAND\_DISPLAY-status.sock*
+
+: Status broadcast socket created by **cow**(1). **cow** writes a JSON
+  snapshot to every connected client on each state change. If
+  **WAYLAND\_DISPLAY** is unset, the fallback path is
+  *\$XDG\_RUNTIME\_DIR/cow-status.sock*.
+
+# EXAMPLES
+
+Relay all state snapshots:
+
+    cowbar
+
+Filter to output DP-1:
+
+    cowbar -o DP-1
+
+Extract desk state for output DP-1:
+
+    cowbar -f desks -o DP-1
+
+Extract focused window information:
+
+    cowbar -f focused
+
+Show the current keyboard layout:
+
+    cowbar -f language
+
+Pipe into **jq**(1) for the title of the focused window:
+
+    cowbar -f focused | jq -r '.title // empty'
+
+Override the active desk colour while retaining all other defaults:
+
+    style desk.active foreground "#ffffff" background "#75507b"
+
+# SEE ALSO
+
+**cow**(1), **moocow**(1), **jq**(1)
+
+# AUTHORS
+
+Thomas Adam \<thomas@xteddy.org\>

@@ -1,0 +1,172 @@
+title: MOOCOW
+section: 1
+date: @DATE@
+source: @VERSION@
+volume: moocow - cow IPC client
+
+# NAME
+
+moocow - send commands to a running cow instance
+
+# SYNOPSIS
+
+**moocow** *command* \[*args* ...\]
+
+**moocow** **-p** \[**-P** *prompt*\] \[**-S** *prompt*\] \[**-C**
+*colour*\]
+
+# DESCRIPTION
+
+**moocow** is the command-line IPC client for the **cow**(1) window
+manager. It connects to the cow IPC socket, sends the given command,
+waits for the JSON response, and prints it as formatted JSON to standard
+output.
+
+Each shell argument is encoded as a separate **cow** command argument.
+Normal shell quoting therefore preserves values containing spaces; it is
+not necessary to quote the entire command. For compatibility and
+advanced uses, a single argument is treated as a complete command
+string. The full command language is described in **cow**(1).
+
+Options belonging to **moocow** must precede *command*. Once *command*
+is seen, all remaining options are passed to **cow** unchanged. An
+optional **--** may still be used before *command*, but is not required.
+
+With **-p**, **moocow** stays running and reads commands from standard
+input. When run interactively it prints a connection banner containing
+the **moocow** version and client ID, then the prompt **\>\>\>** before
+each command. Incomplete commands use the prompt **...** until the
+command is complete. A backslash (**\\**) at the end of a line continues
+the command on the next line.
+
+Persistent mode also recognises local commands which begin with **.**
+and are not sent to **cow**:
+
+**.moocow-set pretty-print-json** *boolean*
+
+: Enable or disable formatted JSON responses. The default is **true**.
+
+**.moocow-show**
+
+: Print current local **moocow** settings.
+
+# OPTIONS
+
+**-h**
+
+: Print usage and exit.
+
+**-p**
+
+: Read and evaluate commands persistently. The client ID shown in the
+  connection banner is the **moocow** process ID.
+
+**-P** *prompt*
+
+: Set the primary prompt used by **-p**. The default is **\>\>\>** .
+
+**-S** *prompt*
+
+: Set the continuation prompt used by **-p**. The default is **...** .
+
+**-C** *colour*
+
+: Set the prompt colour used by **-p**. The default is **red**.
+  Supported colours are **black**, **red**, **green**, **yellow**,
+  **blue**, **magenta**, **cyan**, **white**, and **none**.
+
+# EXIT STATUS
+
+**0**
+
+: The command was accepted and **cow** responded with *"ok": true*.
+
+**1**
+
+: A connection error occurred, or **cow** responded with *"ok": false*.
+  The error message is included in the JSON response and printed to
+  standard output. In **-p** mode, **moocow** keeps reading commands but
+  exits with status **1** if any command failed.
+
+# ENVIRONMENT
+
+**COW\_IPC\_SOCKET**
+
+: Override the socket path. When set, **moocow** connects to this path
+  instead of the default.
+
+**XDG\_RUNTIME\_DIR**
+
+: Used to locate the default socket path. Must be set if
+  **COW\_IPC\_SOCKET** is not.
+
+**WAYLAND\_DISPLAY**
+
+: Used to qualify the default socket name so separate CoW instances in
+  the same runtime directory do not share a command socket.
+
+# FILES
+
+*\$XDG\_RUNTIME\_DIR/cow-\$WAYLAND\_DISPLAY-cmd.sock*
+
+: Default IPC command socket created by **cow**(1). If
+  **WAYLAND\_DISPLAY** is unset, the fallback path is
+  *\$XDG\_RUNTIME\_DIR/cow-cmd.sock*.
+
+# EXAMPLES
+
+Query all managed windows:
+
+    moocow show -a window
+
+Apply a decoration profile:
+
+    moocow decor -a default
+
+Switch to desk 3:
+
+    moocow desk -d 3
+
+Reload the configuration:
+
+    moocow quit -r
+
+Close the focused window:
+
+    moocow winops -c
+
+Target a window whose title contains a space:
+
+    moocow winops -t '/Mozilla Firefox/' -c
+
+The equivalent raw-command form remains available:
+
+    moocow 'winops -t "/Mozilla Firefox/" -c'
+
+List all available commands:
+
+    moocow show -a command
+
+Write the current serializable configuration as commands which can be
+loaded by **cow**(1):
+
+    moocow show -f config config > cow.generated.conf
+
+Config-formatted responses are printed as plain text. Other responses
+retain their JSON envelope.
+
+Run commands persistently:
+
+    moocow -p
+
+Run persistently with custom prompts:
+
+    moocow -p -P 'cow> ' -S '...> ' -C green
+
+# SEE ALSO
+
+**cow**(1), **cowbar**(1)
+
+# AUTHORS
+
+Thomas Adam

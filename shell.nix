@@ -16,6 +16,7 @@ pkgs.mkShell {
     wayland-protocols
     xwayland
     meson
-    scdoc
+    lowdown
+    python3
   ];
 }

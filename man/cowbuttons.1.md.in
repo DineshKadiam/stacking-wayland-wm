@@ -1,0 +1,269 @@
+title: COWBUTTONS
+section: 1
+date: @DATE@
+source: @VERSION@
+volume: cowbuttons - button panel for cow
+
+# NAME
+
+cowbuttons - Button panel for the cow window manager
+
+# SYNOPSIS
+
+**cowbuttons** \[**-c** *config*\] \[**-h**\]
+
+# DESCRIPTION
+
+**cowbuttons** displays a small configurable grid of cells. Cells can
+run **cow**(1) commands, periodically display the output of scripts,
+show selected state from cow's status socket, or act as empty spacers.
+
+Wayland does not provide X11 window reparenting, so **cowbuttons** does
+not swallow clients. Use command buttons to launch or focus
+applications, and use cow rules to style or place companion windows.
+
+# OPTIONS
+
+**-c** *config*
+
+: Load *config* instead of the default configuration file.
+
+**-h**
+
+: Show usage.
+
+# CONFIGURATION
+
+The format is line-oriented. Blank lines and lines starting with **\#**
+are ignored. Labels and commands containing whitespace must be quoted.
+
+Colours may be opaque **0xRRGGBB** values or **0xRRGGBBAA** values
+carrying an alpha component. In the latter form, **00** is fully
+transparent and **FF** is fully opaque. For example, **style button.bg
+0x282828CC** uses an 80-percent opaque dark grey.
+
+**cell** *W* *H*
+
+: Set the default cell size in pixels. The default is 96 by 32.
+
+**grid** *rows* *cols*
+
+: Set the grid size.
+
+**col** *col* **width** *N*
+
+: Set one column's width in pixels.
+
+**show panel** *name* \[...\]
+
+: Show one or more named panel definitions from the configuration file.
+  Multiple names on the same **show panel** line are combined into one
+  cowbuttons window. Multiple top-level **show panel** lines create
+  separate cowbuttons windows from the same configuration file. Settings
+  outside panel blocks can be used as shared defaults.
+
+**panel** *name* \[*direction* \[*property* *value* ...\]\] **{**
+
+: Start a named panel definition. A panel is loaded when it is named by
+  **show panel**. When *direction* is **left**, **right**, **up**, or
+  **down**, cowbuttons adds an attached handle and opens the panel in
+  that direction. Pressing the handle collapses or expands the panel.
+  Handle properties use the same styling keys as **button**.
+
+**row** \[**height** *N*\] **{** ... **}**
+
+: Start a new visual row. Cells inside the block are appended
+  left-to-right.
+
+**if** \[**not**\] **command** *name* **{** ... **}**
+
+: Process the block only when *name* exists in **PATH** and is
+  executable.
+
+**if** \[**not**\] **file** *path* **{** ... **}**
+
+: Process the block only when *path* exists. Relative paths are resolved
+  against the configuration file's directory.
+
+**if** \[**not**\] **env** *name* **{** ... **}**
+
+: Process the block only when the environment variable *name* is set and
+  non-empty.
+
+**font** *name*
+
+: Set the font face used for labels.
+
+**resizable** *true*\|*false*
+
+: Allow the window to be resized. The configured grid remains the
+  minimum size; extra width and height are distributed across columns
+  and rows. The default is *false*.
+
+**style button.bg** *colour*
+
+: Set the normal button background colour.
+
+**style button.bg\_pressed** *colour*
+
+: Set the pressed button background colour.
+
+**style button.fg** *colour*
+
+: Set the normal button text colour.
+
+**style button.fg\_pressed** *colour*
+
+: Set the pressed button text colour.
+
+**style button.image** *path*
+
+: Draw a PNG, SVG, or XPM image in command buttons. Relative paths are
+  resolved against the configuration file's directory.
+
+**style button.image\_pressed** *path*
+
+: Draw a PNG, SVG, or XPM image while a command button is pressed.
+
+**style button.image\_size** *N*
+
+: Set the image size in pixels. The default is 16.
+
+**style button.image\_position** *left*\|*center*\|*right*\|*fill*
+
+: Set where button images are drawn. The default is *left*.
+
+**style button.justify** *left*\|*center*\|*right*
+
+: Set the default button text justification. The default is *left*.
+
+**button** *label* *command* \[*property* *value* ...\]
+
+: Create a clickable button. *command* is sent to cow as its left-click
+  action. Supported properties are **width**, **height**, **span**,
+  **bg**, **bg\_pressed**, **fg**, **fg\_pressed**, **image**,
+  **image\_pressed**, **image\_size**, **image\_position**, **justify**,
+  and the click-action properties described below.
+
+**leftclick** *command* **click** *command* **middleclick** *command* **rightclick** *command*
+
+: Set the single-click action for the specific button. **click** is an
+  alias for **leftclick**.
+
+**doubleclick** *command* **leftdoubleclick** *command* **middledoubleclick** *command* **rightdoubleclick** *command*
+
+: Set a double-click action. **doubleclick** is an alias for
+  **leftdoubleclick**. When both single- and double-click actions exist
+  for the same button, the single-click action is delayed for 300 ms.
+
+**script** *command* **interval** *seconds* \[*property* *value* ...\]
+
+: Create a cell whose label is supplied by an external command. The
+  command is run through the shell immediately after startup and then
+  again the configured number of seconds after each run finishes. Runs
+  never overlap.
+
+  The first line written to standard output, limited to 255 bytes,
+  replaces the cell's label when the command exits successfully. Empty
+  output clears the label. If the command fails, the previous successful
+  label is retained and an error is written to standard error.
+
+  Script cells support the same click actions, styling, and geometry
+  properties as **button** cells.
+
+**external** *command* \[*property* *value* ...\]
+
+: Create a panel slot managed by an external command. The command is
+  started when the panel is opened and terminated when it is collapsed.
+  External panels start collapsed. This is a lifecycle hook for cow
+  modules; generic Wayland clients are still separate toplevels.
+  Supported properties are **width**, **height**, **span**, **bg**,
+  **bg\_pressed**, **fg**, **fg\_pressed**, **image**, **image\_pressed**,
+  **image\_size**, **image\_position**, and **justify**.
+
+**status** *type* \[*property* *value* ...\]
+
+: Create a live status cell. Supported types are: **focused-title**,
+  **focused-app**, **current-output**, **current-desk**, and
+  **desk-list**.
+
+**spacer** \[*property* *value* ...\]
+
+: Create an empty cell.
+
+# EXAMPLES
+
+    show panel launcher
+    show panel telephone
+    show panel pager
+    show panel statusbar
+
+    resizable true
+
+    style button.bg 0x39414a
+    style button.bg_pressed 0x242a30
+    style button.fg 0x1f2933
+    style button.fg_pressed 0xffffff
+    style button.image_size 18
+
+    panel launcher {
+        cell 118 30
+        grid 2 4
+
+        row height 30 {
+            button "Terminal" "exec xterm" bg 0xcde7d8 image cowbuttons/svg/terminal.svg
+            button "Firefox" "exec firefox" bg 0xffddc8 image cowbuttons/svg/browser.svg
+            button "Files" "exec thunar" bg 0xffe4ad image cowbuttons/svg/files.svg
+            button "Editor" "exec emacs" bg 0xded7f5 image cowbuttons/svg/editor.svg
+        }
+
+        row height 30 {
+            button "Next" "focus -n" bg 0xf6e2a6
+            button "Prev" "focus -p" bg 0xcfe8db
+        }
+    }
+
+    panel telephone left bg 0xf2d6a6 {
+        cell 42 28
+        grid 5 3
+
+        row height 22 {
+            button "Telephone" "nop" span fill bg 0xe8d9f2
+        }
+    }
+
+    panel pager right bg 0x3f5b51 {
+        external "cowpager" width 420 height 120 bg 0x242a30
+    }
+
+    panel statusbar {
+        cell 140 30
+        grid 1 2
+
+        row {
+            script "~/.local/bin/clock.sh" interval 1 click "exec gsimplecal" justify center
+            script "~/.local/bin/battery.sh" interval 30 justify center
+        }
+    }
+
+Remove cowbuttons' own window decors using a cow rule:
+
+    decor -d cowbuttons-nodecor border.width 0
+    decor -d cowbuttons-nodecor border.handles false
+    decor -d cowbuttons-nodecor titlebar.enabled false
+    rule -g -Ton-map -ncowbuttons-chrome -s %cowbuttons decor -a cowbuttons-nodecor
+
+# FILES
+
+*\$XDG\_CONFIG\_HOME/cow/cowbuttons.conf*
+
+*~/.config/cow/cowbuttons.conf*
+
+# SEE ALSO
+
+**cow**(1), **moocow**(1), **cowbar**(1), **cowiconman**(1),
+**cowpager**(1)
+
+# AUTHORS
+
+Thomas Adam \<thomas@xteddy.org\>

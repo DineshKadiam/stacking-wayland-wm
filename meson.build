@@ -619,10 +619,14 @@ install_data(
 
 man_conf = configuration_data()
 man_conf.set('VERSION', meson.project_version())
+man_conf.set('DATE', run_command(
+    'date', '+%Y-%m-%d',
+    check: true,
+).stdout().strip())
 
-scdoc = dependency('scdoc', native: true, required: false)
-if scdoc.found()
-    scdoc_prog = find_program(scdoc.get_variable(pkgconfig: 'scdoc'), native: true)
+lowdown = find_program('lowdown', native: true, required: false)
+if lowdown.found()
+    lowdown_man = find_program('tools/lowdown-man.sh')
     foreach page : [
         ['cow', '1'], ['moocow', '1'], ['cowbar', '1'],
         ['cowbuttons', '1'], ['cowclock', '1'], ['cowdiag', '1'],
@@ -631,17 +635,16 @@ if scdoc.found()
     ]
         name    = page[0]
         section = page[1]
-        scd = configure_file(
-            input:         'man/@0@.@1@.scd.in'.format(name, section),
-            output:        '@0@.@1@.scd'.format(name, section),
+        markdown = configure_file(
+            input:         'man/@0@.@1@.md.in'.format(name, section),
+            output:        '@0@.@1@.md'.format(name, section),
             configuration: man_conf,
         )
         custom_target(
             '@0@.@1@'.format(name, section),
-            input:   scd,
+            input:   markdown,
             output:  '@0@.@1@'.format(name, section),
-            command: scdoc_prog,
-            feed:    true,
+            command: [lowdown_man, lowdown, '@INPUT@'],
             capture: true,
             install: true,
             install_dir: get_option('mandir') / 'man@0@'.format(section),
@@ -657,5 +660,5 @@ summary({
     'libbsd': libbsd,
     'libevent': libevent,
     'ncursesw (cowdiag)': cowdiag_ncurses,
-    'scdoc': scdoc,
+    'lowdown': lowdown,
 }, bool_yn: true, section: 'Dependencies')

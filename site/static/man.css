@@ -44,7 +44,7 @@
   text-align: center;
 }
 
-.manual-content h1.Sh {
+.manual-content h1 {
   max-width: none;
   margin: 1.8rem 0 0.6rem;
   padding-bottom: 0.2rem;
@@ -57,7 +57,7 @@
   white-space: normal;
 }
 
-.manual-content h2.Ss {
+.manual-content h2 {
   margin: 1.35rem 0 0.5rem;
   padding-left: 0.55rem;
   color: var(--manual-accent);
@@ -65,47 +65,19 @@
   font-size: 1.05rem;
 }
 
-.manual-content .permalink {
-  text-decoration: none;
-}
-
-.manual-content .manual-text a:not(.permalink) {
+.manual-content .manual-text a {
   color: var(--manual-accent);
   text-decoration-thickness: 1px;
   text-underline-offset: 0.15em;
 }
 
-.manual-content .manual-text a:not(.permalink):hover,
-.manual-content .manual-text a:not(.permalink):focus-visible {
+.manual-content .manual-text a:hover,
+.manual-content .manual-text a:focus-visible {
   color: var(--frame-dark);
 }
 
-.manual-content p.Pp {
+.manual-content p {
   margin: 0.65rem 0;
-}
-
-.manual-content .Nd,
-.manual-content .Bf,
-.manual-content .Op {
-  display: inline;
-}
-
-.manual-content .Pa,
-.manual-content .Ad {
-  font-style: italic;
-}
-
-.manual-content .Ms,
-.manual-content code.Nm,
-.manual-content .Fl,
-.manual-content .Cm,
-.manual-content .Ic,
-.manual-content code.In,
-.manual-content .Fd,
-.manual-content .Fn,
-.manual-content .Cd {
-  font-weight: 700;
-  font-family: inherit;
 }
 
 .manual-content pre {
@@ -119,7 +91,7 @@
   line-height: 1.2;
 }
 
-.manual-content table.tbl {
+.manual-content .manual-text table:not(.head):not(.foot) {
   width: 100%;
   margin: 0.8rem 0 1rem;
   border: 0 !important;
@@ -130,35 +102,33 @@
     inset -2px -2px 0 #fff;
 }
 
-.manual-content table.tbl td {
+.manual-content .manual-text table:not(.head):not(.foot) th,
+.manual-content .manual-text table:not(.head):not(.foot) td {
   padding: 0.3rem 0.5rem;
   border: 0;
   background: #ebe7d8;
   vertical-align: top;
 }
 
-.manual-content table.tbl tr:first-child td {
+.manual-content .manual-text table:not(.head):not(.foot) th {
   background: var(--paper-deep);
 }
 
-.manual-content dl.Bl-tag,
-.manual-content dl.Bl-diag {
+.manual-content dl {
   display: grid;
   grid-template-columns: minmax(10rem, auto) minmax(0, 1fr);
   gap: 0.35rem 1rem;
 }
 
-.manual-content dl.Bl-tag > dt,
-.manual-content dl.Bl-diag > dt {
+.manual-content dl > dt {
   font-weight: 700;
 }
 
-.manual-content dl.Bl-tag > dd,
-.manual-content dl.Bl-diag > dd {
+.manual-content dl > dd {
   margin-left: 0;
 }
 
-.manual-content #Search_Order ~ dl.Bl-tag {
+.manual-content #search-order ~ dl {
   grid-template-columns: max-content minmax(0, 1fr);
   column-gap: 0.7rem;
 }

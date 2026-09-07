@@ -148,48 +148,85 @@ cat >> "$index" <<-EOF
 	<ul class="manual-index">
 	EOF
 
-for source in "$source_root"/man/*.scd.in; do
+set -- "$source_root"/man/*.md.in
+if [ ! -e "$1" ]; then
+	set -- "$source_root"/man/*.scd.in
+fi
+
+for source do
 	filename=$(basename -- "$source")
 	source_relative=${source#"$source_root"/}
-	page=${filename%.scd.in}
+	case "$filename" in
+	*.md.in) page=${filename%.md.in}; source_format=markdown ;;
+	*.scd.in) page=${filename%.scd.in}; source_format=scdoc ;;
+	*) continue ;;
+	esac
 	name=${page%.*}
 	section=${page##*.}
-	roff=$tmpdir/$page
+	markdown=$tmpdir/$page.md
+	roff=$tmpdir/$page.roff
 	html_roff=$tmpdir/$page.html.roff
 	raw_fragment=$tmpdir/$page.raw.html
 	fragment=$tmpdir/$page.html
 
-	if ! source_date_epoch=$(git -C "$git_root" log -1 --format=%ct \
-	    "$git_ref" -- "$source_relative") || [ -z "$source_date_epoch" ]; then
-		source_date_epoch=$(date +%s)
+	if ! source_date=$(git -C "$git_root" log -1 --format=%cs \
+	    "$git_ref" -- "$source_relative") || [ -z "$source_date" ]; then
+		source_date=$(date -u +%Y-%m-%d)
 	fi
-	awk -v version="$version" '{ gsub(/@VERSION@/, version); print }' \
-	    "$source" | SOURCE_DATE_EPOCH=$source_date_epoch scdoc > "$roff"
-	# mandoc discards physical blank lines inside roff no-fill regions. Keep
-	# them as text through conversion, then remove the marker from the HTML.
-	awk '
-		$0 == ".nf" { in_literal = 1 }
-		in_literal && $0 == "" {
-			print "COW_HTML_BLANK_LINE_SENTINEL"
-			next
-		}
-		{ print }
-		$0 == ".fi" { in_literal = 0 }
-	' "$roff" > "$html_roff"
-	mandoc -Thtml -Ofragment,man=%N.%S.html "$html_roff" > "$raw_fragment"
-	# mandoc also emits redundant standalone <br/> elements in some <pre>
-	# blocks. The source newlines already provide the required line breaks.
-	awk '
-		/<pre([[:space:]>])/ { in_pre = 1 }
-		!(in_pre && /^[[:space:]]*<br[[:space:]]*\/>[[:space:]]*$/) {
-			gsub(/COW_HTML_BLANK_LINE_SENTINEL/, "")
-			print
-		}
-		/<\/pre>/ { in_pre = 0 }
-	' "$raw_fragment" > "$fragment"
+	if [ "$source_format" = markdown ]; then
+		awk -v version="$version" -v date="$source_date" '
+			{ gsub(/@VERSION@/, version); gsub(/@DATE@/, date); print }
+		' "$source" > "$markdown"
+		lowdown -t html "$markdown" > "$raw_fragment"
+		awk '
+			BEGIN {
+				split("cow cow-module-cmd cowbar cowbuttons cowclock cowdiag cowiconman cowident cowpager cowrearrange moocow", manuals)
+			}
+			{
+				for (i in manuals) {
+					from = "<strong>" manuals[i] "</strong>\\(1\\)"
+					to = "<a href=\"" manuals[i] ".1.html\"><strong>" manuals[i] "</strong>(1)</a>"
+					gsub(from, to)
+				}
+				print
+			}
+		' "$raw_fragment" > "$fragment"
+	else
+		if ! source_date_epoch=$(git -C "$git_root" log -1 --format=%ct \
+		    "$git_ref" -- "$source_relative") ||
+		    [ -z "$source_date_epoch" ]; then
+			source_date_epoch=$(date +%s)
+		fi
+		awk -v version="$version" '{ gsub(/@VERSION@/, version); print }' \
+		    "$source" | SOURCE_DATE_EPOCH=$source_date_epoch scdoc > "$roff"
+		awk '
+			$0 == ".nf" { in_literal = 1 }
+			in_literal && $0 == "" {
+				print "COW_HTML_BLANK_LINE_SENTINEL"
+				next
+			}
+			{ print }
+			$0 == ".fi" { in_literal = 0 }
+		' "$roff" > "$html_roff"
+		mandoc -Thtml -Ofragment,man=%N.%S.html "$html_roff" > "$raw_fragment"
+		awk '
+			/<pre([[:space:]>])/ { in_pre = 1 }
+			!(in_pre && /^[[:space:]]*<br[[:space:]]*\/>[[:space:]]*$/) {
+				gsub(/COW_HTML_BLANK_LINE_SENTINEL/, "")
+				print
+			}
+			/<\/pre>/ { in_pre = 0 }
+		' "$raw_fragment" > "$fragment"
+	fi
 
 	page_start "$name($section)" > "$output/$page.html"
+	if [ "$source_format" = markdown ]; then
+		printf '        <article class="manual-text">\n' >> "$output/$page.html"
+	fi
 	cat "$fragment" >> "$output/$page.html"
+	if [ "$source_format" = markdown ]; then
+		printf '        </article>\n' >> "$output/$page.html"
+	fi
 	page_end >> "$output/$page.html"
 
 	class=

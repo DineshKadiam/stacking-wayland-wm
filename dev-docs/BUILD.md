@@ -8,7 +8,10 @@ following runtime dependencies are linked into the produced binary:
 * `pangocairo` (and `cairo`)
 * `libbsd` on systems without native BSD libc extensions (most Linux
   distributions need this; FreeBSD does not)
-* `scdoc` for generating man pages
+
+The optional `lowdown` build-host tool generates manual pages from their
+Markdown sources. When it is unavailable, CoW still builds, but the manuals are
+not generated or installed.
 
 In addition, two build-host tools are required so the embedded
 scripting language used by `script { ... }` blocks can be compiled:
@@ -40,6 +43,12 @@ meson install -C build
 
 ## Running tests
 
-There are no automated tests at present; functional verification is
-done by running cow under a nested compositor (e.g. via `wayvnc`)
-and exercising the relevant commands.
+Run the automated test suite after building:
+
+```
+meson test -C build --print-errorlogs
+```
+
+Changes involving compositor interaction should also be verified by running CoW
+under a nested compositor (for example through `wayvnc`) and exercising the
+relevant commands.

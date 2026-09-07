@@ -17,7 +17,7 @@ packages:
   - xwayland-dev
   - meson
   - ncurses-dev
-  - scdoc
+  - lowdown
   - tar
   - wget
   - xz

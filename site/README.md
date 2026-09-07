@@ -11,8 +11,8 @@ first runs Hugo to generate the main website, then runs
 `site/build-man-pages.sh` to add two sets of manual pages:
 
 - `man/development/`, generated from the checked-out source tree.
-- `man/release/`, generated from the newest stable version tag reachable
-  from the current branch.
+- `man/release/`, generated from the newest stable version tag reachable from
+  the current branch.
 
 Published builds also pass the forthcoming release notes to `site/build.sh`
 through `COW_RELEASE_PREVIEW`. This adds a short summary to the home page and
@@ -25,37 +25,36 @@ the stable release manuals.
 
 On the development manual index, pages whose source differs from the latest
 stable release use a highlighted background. The comparison uses the
-`man/*.scd.in` sources rather than generated HTML, so changing only the
+`man/*.md.in` sources rather than generated HTML, so changing only the
 development version does not mark every manual as changed.
 
-The manual-page build performs the following steps for each
-`man/*.scd.in` file:
+The manual-page build performs the following steps for each `man/*.md.in` file:
 
-1. Replace `@VERSION@` with the version reported by
-   `tools/cow-version-str.sh`. The manual date comes from the latest Git
-   commit which changed that source file.
-2. Run `scdoc` to produce a roff manual page.
-3. Run `mandoc` to convert the roff into an HTML fragment.
-4. Wrap the fragment in the website's window decor and write it beneath the
+1. Replace `@VERSION@` with the version reported by `tools/cow-version-str.sh`.
+   The manual date comes from the latest Git commit which changed that source
+   file.
+2. Run `lowdown` to convert the Markdown directly into an HTML fragment.
+3. Wrap the fragment in the website's window decor and write it beneath the
    selected version directory.
 
-There is a small `awk` script which runs when man pages are generated.
+The installed roff manuals are generated from the same Markdown sources by
+Meson using `lowdown -s -t man`. The `@VERSION@` and `@DATE@` metadata
+placeholders are filled during each build.
 
-Blank lines inside roff no-fill regions are temporarily represented by an
-internal marker because `mandoc` otherwise drops them. After conversion, the
-marker is removed and redundant standalone `<br/>` elements inside `<pre>`
-blocks are discarded. This preserves the spacing without adding extra blank
-lines.
+Release tags made before the Markdown migration still contain scdoc sources.
+The Pages build retains a compatibility path through `scdoc` and `mandoc` for
+those archived manuals; this does not affect the installed manuals or new
+documentation.
 
-The manual-specific CSS is in `site/static/man.css`. Generated
-files are build artefacts and should not be edited directly.
+The manual-specific CSS is in `site/static/man.css`. Generated files are build
+artefacts and should not be edited directly.
 
 ## Local preview
 
 Build a local copy from the repository root with:
 
 ```sh
-nix-shell -p hugo scdoc mandoc --run \
+nix-shell -p hugo lowdown mandoc scdoc --run \
   'sh site/build.sh public http://localhost:8000/'
 python3 -m http.server 8000 --bind 0.0.0.0 --directory public
 ```
@@ -68,13 +67,12 @@ The Forgejo workflow in `.forgejo/workflows/pages.yml` runs on every push to
 `main`, because every merged pull request can change the forthcoming release
 preview. It also runs when a release is published and can be started manually.
 The checkout includes the complete tag history so the released manual sources
-can be extracted from their tag. The workflow installs Hugo, `scdoc`,
-`mandoc`, and release-notes-assistant, builds into `public/`, and publishes
-that directory to Codeberg Pages.
+can be extracted from their tag. The workflow installs Hugo, `lowdown`, the
+legacy release-manual tools, and release-notes-assistant, builds into
+`public/`, and publishes that directory to Codeberg Pages.
 
-The workflow also accepts `workflow_call`. An automated release workflow
-which publishes through the automatic Forgejo token must call the Pages
-workflow directly: events caused by that token do not start another
-workflow.
+The workflow also accepts `workflow_call`. An automated release workflow which
+publishes through the automatic Forgejo token must call the Pages workflow
+directly: events caused by that token do not start another workflow.
 
 This has been cobbled together from various other bits of Hugo themes, etc.

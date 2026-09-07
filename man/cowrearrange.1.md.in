@@ -1,0 +1,156 @@
+title: COWREARRANGE
+section: 1
+date: @DATE@
+source: @VERSION@
+volume: cowrearrange - rearrange windows on a given desk
+
+# NAME
+
+cowrearrange - tile or cascade the windows on a given desk
+
+# SYNOPSIS
+
+**cowrearrange tile** \[**-o** *output*\] \[**-d** *desk*\] \[**--rows**
+*N*\] \[**--cols** *N*\] \[**-r**\|**-R**\] \[**-i**\] \[**-m**\]
+\[**-x** *SELECTOR* ...\]\
+**cowrearrange cascade** \[**-o** *output*\] \[**-d** *desk*\]
+\[**--dx** *N*\] \[**--dy** *N*\] \[**-r**\|**-R**\] \[**-i**\]
+\[**-m**\] \[**-x** *SELECTOR* ...\]
+
+# DESCRIPTION
+
+**cowrearrange** arranges the windows on a desk into a **tile** (grid)
+or **cascade** layout.
+
+Two subcommands are supported:
+
+**tile**
+
+: Fill the area with a grid of non-overlapping windows, one per window.
+  By default the grid is approximately square; a partially-filled last
+  row stretches its cells to use the full width. **-r** (default for
+  **tile**) resizes each window to fill its cell; **-R** preserves the
+  current window sizes and only repositions.
+
+**cascade**
+
+: Stack the windows diagonally with a fixed pixel step between
+  consecutive windows. The default step is taken from the first window's
+  title-bar thickness plus border width so each cascaded window's
+  titlebar peeks out below the previous one. **-R** (default for
+  **cascade**) preserves each window's current size; **-r** resizes
+  every window to the same dimensions so the last cascaded window's
+  bottom-right edge meets the bottom-right of the workarea.
+
+By default only the current output's desk is rearranged.
+
+# OPTIONS
+
+**-o** *output*
+
+: Target an output name or selector. Selectors are **@N**, **@current**,
+  **@next**, and **@prev**, with the same meaning as in **cow**(1).
+  Defaults to **@current**.
+
+**-d** *desk*
+
+: Target the desk number *desk* (0-indexed) on the chosen output.
+  Defaults to the current desk.
+
+**--rows** *N*
+
+: **tile** only: fix the number of rows. When only **--rows** is given,
+  the number of columns is computed from the window count and **N**.
+  Combine with **--cols** to specify the grid exactly.
+
+**--cols** *N*
+
+: **tile** only: fix the number of columns. When only **--cols** is
+  given, rows are computed from the window count and **N**.
+
+**--dx** *N*
+
+: **cascade** only: horizontal pixel step between successive windows.
+  Default: first window's *title\_thickness* + *border\_width*.
+
+**--dy** *N*
+
+: **cascade** only: vertical pixel step between successive windows.
+  Default: first window's *title\_thickness* + *border\_width*.
+
+**-r**
+
+: Resize windows to fit the layout. Default for **tile**. Resized
+  windows are also marked tiled so clients that normally resize in
+  increments can honour the exact layout geometry.
+
+**-R**
+
+: Place only, do not resize. Default for **cascade**.
+
+**-i**
+
+: Include maximised and shaded windows. By default these are skipped
+  because their geometry is owned by the maximise / shade state and a
+  plain move would silently break the invariant.
+
+**-m**, **--maximize**
+
+: Mark each window maximised while retaining its original geometry.
+  Unmaximising the window restores it to its previous geometry.
+
+**-x** *SELECTOR*, **--exclude** *SELECTOR*
+
+: Exclude any window matching *SELECTOR* from the candidate set.
+  Repeatable: a window is dropped if it matches the selector on any
+  **-x** occurrence. *SELECTOR* follows the same window-selector syntax
+  cow uses for **-t** on its own commands:
+
+  - **%***app\_id* -- exact match against the window's *app\_id*.
+
+  - **\#***id* -- exact match against the river window *id* (the value
+    reported as "id" by **moocow show -a window**).
+
+  - **/***text***/** -- title substring match. Trailing */* optional;
+    **/foo** and **/foo/** behave identically.
+
+  If a container member is excluded by app\_id or title, the rest of the
+  container's members are NOT pulled in as a substitute -- containers
+  still count as a single layout entity, and excluding the active member
+  excludes the container.
+
+# EXAMPLES
+
+    # Tile the current desk into an approximately square grid.
+    cowrearrange tile
+
+    # Tile windows and retain the resulting geometry as their maximised state.
+    cowrearrange tile -m
+
+    # Tile into exactly three columns, preserving window sizes.
+    cowrearrange tile --cols 3 -R
+
+    # Cascade the current desk's windows, resizing them all to the same
+    # size so the last window's bottom-right lines up with the workarea.
+    cowrearrange cascade -r
+
+    # Cascade only on the right-hand monitor.
+    cowrearrange cascade -o DP-2
+
+    # Tile desk 2 on DP-1, including maximised / shaded windows.
+    cowrearrange tile -o DP-1 -d 2 -i
+
+    # Tile the current desk but leave the firefox window alone.
+    cowrearrange tile -x %firefox
+
+    # Cascade everything except Slack and any window with "Preferences"
+    # in its title.
+    cowrearrange cascade --exclude %Slack --exclude /Preferences/
+
+# SEE ALSO
+
+**cow**(1), **moocow**(1), **cowpager**(1), **cowident**(1)
+
+# AUTHORS
+
+Thomas Adam \<thomas@xteddy.org\>

@@ -34,7 +34,8 @@
               pango
               pixman
               pkg-config
-              scdoc
+              lowdown
+              python3
               wayland
               wayland-protocols
               wayland-scanner
