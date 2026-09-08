@@ -378,6 +378,7 @@ Each iterable source yields records whose fields match the corresponding
 *show -a* topic JSON (see *show -a window*, *show -a desk*, *show -a output*,
 and *show -a rule*). Common window fields include *id*, *app_id*,
 *title*, *desk*, *output*, *layer*, *focused*, *iconified*,
+*keyboard\_layout*,
 *circulate_skip*, *maximized*, *width*, *height*, *page_col*,
 *page_row*, *current_page*, *current_desk*, *current_output*,
 *sticky_desk*, *sticky_page*, *border_width*, *title_thickness*,
@@ -1148,6 +1149,7 @@ standard output.
 	_border.width_, _step_, _border.corner\_length_, _border.style_, _focus_,
 	_geometry\_window_, _clamp\_mode_, _placement_, page and edge-scroll
 	settings, _titlebar.font_, _title\_format_, cursor and repeat settings,
+	_keyboard\_layout.per\_window_,
 	_default\_layer_, _max\_layer_, _preserve\_desk\_on\_output\_loss_, and
 	_desks.count_.
 	With _desks.count_, *-t* may select the output to inspect.
@@ -1195,6 +1197,16 @@ which does not exist.
 ```
 keyboard-layout 'English (UK)'
 ```
+
+When *keyboard\_layout.per\_window* is enabled, running this command while a
+window is focused also records _NAME_ for that window. The layout can instead
+be changed using the keyboard's normal XKB layout-switching keys; CoW observes
+the change and records it in the same way. It restores the remembered layout
+whenever that window receives focus again.
+
+Layouts are remembered per window, not per physical keyboard. The command
+currently sends _NAME_ to every keyboard exposed by River; independently
+selecting a different layout for each keyboard is not supported.
 
 ## nop
 
@@ -2708,8 +2720,8 @@ put taskbars, etc.
 
 ## Keyboard Settings
 
-The following options can be used with the *set* command to tune repeatable
-keyboard input:
+The following options can be used with the *set* command to tune keyboard
+input and layout behaviour:
 
 [[ *Key*
 :[ *Values*
@@ -2729,9 +2741,20 @@ keyboard input:
 :  Keys which repeat while held when a menu has keyboard focus.
    The default is _Up,Down_; for example, use _Up,Down,BackSpace_ to repeat
    type-ahead deletion, or _none_ to disable menu key repetition.
+|  *keyboard\_layout.per\_window*
+:  _true_ | _false_
+:  Remember the active keyboard layout for each window and ask River to
+   restore it when that window receives focus. A window without a remembered
+   layout inherits the current layout. Default: _false_.
 
-A binding registered without *-r* fires exactly once per press,
-regardless of either setting.
+A binding registered without *-r* fires exactly once per press, regardless of
+the repeat timing settings.
+
+For example, enable per-window keyboard layouts with:
+
+```
+set keyboard_layout.per_window true
+```
 
 # SIGNALS
 

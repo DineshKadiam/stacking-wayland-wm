@@ -82,6 +82,7 @@ static const char *show_config_keys[] = {
 	"repeat_interval_ms",
 	"menu.repeat_keys",
 	"raise_on_focus",
+	"keyboard_layout.per_window",
 	"preserve_desk_on_output_loss",
 	"max_layer",
 	"default_layer",
@@ -640,6 +641,9 @@ show_config_value(const char *ckey, struct cmd_q *cmdq)
 		    cow_config->menu_repeat_keys : "");
 	else if (strcmp(ckey, "raise_on_focus") == 0)
 		val = cJSON_CreateBool(cow_config->raise_on_focus);
+	else if (strcmp(ckey, "keyboard_layout.per_window") == 0)
+		val = cJSON_CreateBool(
+		    cow_config->keyboard_layout_per_window);
 	else if (strcmp(ckey, "preserve_desk_on_output_loss") == 0)
 		val = cJSON_CreateBool(cow_config->preserve_desk_on_output_loss);
 	else if (strcmp(ckey, "default_layer") == 0)

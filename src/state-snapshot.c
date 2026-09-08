@@ -113,6 +113,7 @@ state_snapshot_view(const struct cow_view *view)
 	rec_set_string(r, "app_id", view->app_id);
 	rec_set_string(r, "icon", cow_view_icon_image(view));
 	rec_set_string(r, "title", view->title);
+	rec_set_string(r, "keyboard_layout", view->keyboard_layout);
 	char *display_title = cow_decoration_display_title(view);
 	rec_set_string(r, "display_title", display_title);
 	xfree(display_title);

@@ -37,6 +37,7 @@
 #include "cow/image.h"
 #include "cow/icon_placement.h"
 #include "cow/keybinding.h"
+#include "cow/keyboard_layout.h"
 #include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/placement.h"
@@ -1105,6 +1106,7 @@ cow_view_destroy(struct cow_view *view)
 	bool		   was_iconified = cow_view_is_iconified(view);
 
 	cow_update_request(COW_UPDATE_STATUS);
+	cow_keyboard_layout_forget_view(view);
 	view_clear_wm_refs(view);
 	view_clear_seat_refs(view);
 	view_detach_container_silent(view);
@@ -1127,6 +1129,7 @@ cow_view_destroy(struct cow_view *view)
 	xfree(view->application_icon);
 	xfree(view->title);
 	cow_style_cancel_pending_initial(view);
+	xfree(view->keyboard_layout);
 	cow_view_clear_orphan(view);
 	cow_view_cfg_fini(&view->cfg);
 	xfree(view);

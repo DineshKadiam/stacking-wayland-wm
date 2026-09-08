@@ -437,6 +437,7 @@ handle_wm_manage_start(__unused void *data,
 
 	manage_apply_deferred_views();
 	manage_apply_focus();
+	cow_keyboard_layout_reconcile_focus();
 	manage_apply_warp();
 
 	river_window_manager_v1_manage_finish(manager);

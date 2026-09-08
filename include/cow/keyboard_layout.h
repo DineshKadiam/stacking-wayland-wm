@@ -21,6 +21,7 @@
 #include <wayland-util.h>
 
 struct cJSON;
+struct cow_view;
 struct wl_registry;
 struct river_xkb_keyboard_v1;
 
@@ -44,5 +45,7 @@ void cow_keyboard_layout_fini(void);
 void cow_keyboard_layout_add_status(struct cJSON *);
 struct cJSON *cow_keyboard_layout_active_json(void);
 bool cow_keyboard_layout_set_name(const char *);
+void cow_keyboard_layout_reconcile_focus(void);
+void cow_keyboard_layout_forget_view(struct cow_view *);
 
 #endif

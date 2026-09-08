@@ -22,11 +22,13 @@
 #include "cow/log.h"
 #include "cow/memory.h"
 #include "cow/update.h"
+#include "cow/view.h"
 #include "cow/wm.h"
 
 #include "river-xkb-config-v1-client-protocol.h"
 
 static struct cow_keyboard_layout *active_layout;
+static struct cow_view *layout_focus_view;
 
 static void
 keyboard_removed(void *data, struct river_xkb_keyboard_v1 *river_keyboard)
@@ -44,6 +46,8 @@ keyboard_removed(void *data, struct river_xkb_keyboard_v1 *river_keyboard)
 		if (!wl_list_empty(&cow_wm.keyboard_layouts))
 			active_layout = wl_container_of(
 			    cow_wm.keyboard_layouts.next, active_layout, link);
+		layout_focus_view = NULL;
+		cow_update_request(COW_UPDATE_MANAGE);
 	}
 	cow_update_request(COW_UPDATE_STATUS);
 }
@@ -71,6 +75,10 @@ keyboard_layout(void *data,
 	if (changed) {
 		xstrset(&keyboard->name, name);
 		active_layout = keyboard;
+		if (cow_config != NULL &&
+		    cow_config->keyboard_layout_per_window &&
+		    cow_wm.focused_view != NULL)
+			xstrset(&cow_wm.focused_view->keyboard_layout, name);
 		cow_update_request(COW_UPDATE_STATUS);
 	}
 }
@@ -191,6 +199,7 @@ cow_keyboard_layout_init(void)
 {
 	wl_list_init(&cow_wm.keyboard_layouts);
 	active_layout = NULL;
+	layout_focus_view = NULL;
 }
 
 void
@@ -217,6 +226,7 @@ cow_keyboard_layout_fini(void)
 		xfree(keyboard);
 	}
 	active_layout = NULL;
+	layout_focus_view = NULL;
 
 	if (cow_wm.xkb_config != NULL)
 		river_xkb_config_v1_stop(cow_wm.xkb_config);
@@ -272,4 +282,41 @@ cow_keyboard_layout_set_name(const char *name)
 		found = true;
 	}
 	return found;
+}
+
+void
+cow_keyboard_layout_reconcile_focus(void)
+{
+	struct cow_view *view = cow_wm.focused_view;
+
+	if (cow_config == NULL || !cow_config->keyboard_layout_per_window) {
+		layout_focus_view = NULL;
+		return;
+	}
+	if (view == layout_focus_view)
+		return;
+
+	layout_focus_view = view;
+	if (view == NULL || active_layout == NULL ||
+	    !active_layout->has_layout || active_layout->name == NULL)
+		return;
+
+	if (view->keyboard_layout == NULL) {
+		view->keyboard_layout = xstrdup(active_layout->name);
+		return;
+	}
+	if (strcmp(view->keyboard_layout, active_layout->name) == 0)
+		return;
+
+	cow_log_debug("restore keyboard layout (id=%s layout=%s)",
+	    view->identifier != NULL ? view->identifier : "unknown",
+	    view->keyboard_layout);
+	cow_keyboard_layout_set_name(view->keyboard_layout);
+}
+
+void
+cow_keyboard_layout_forget_view(struct cow_view *view)
+{
+	if (layout_focus_view == view)
+		layout_focus_view = NULL;
 }

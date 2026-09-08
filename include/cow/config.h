@@ -415,6 +415,9 @@ struct cow_config {
 	/* Raise on focus: raise window when focused (default: on) */
 	bool raise_on_focus;
 
+	/* Restore the last active keyboard layout for each focused window. */
+	bool keyboard_layout_per_window;
+
 	/* Preserve desk number when migrating views to a different
 	 * output (e.g. when a monitor is unplugged). */
 	bool preserve_desk_on_output_loss;

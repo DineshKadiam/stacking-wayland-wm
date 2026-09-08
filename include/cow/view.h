@@ -362,6 +362,7 @@ struct cow_view {
 	int    orphan_page_vy;
 
 	char *orphan_output_name;
+	char *keyboard_layout;
 
 	/* Flags */
 	uint32_t flags;

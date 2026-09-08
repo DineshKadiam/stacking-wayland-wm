@@ -141,6 +141,9 @@ cow_state_save(void)
 		cJSON_AddNumberToObject(v, "layer", view->layer);
 		cJSON_AddNumberToObject(v, "z_order",
 		    view_stack_order(view));
+		if (view->keyboard_layout != NULL)
+			cJSON_AddStringToObject(v, "keyboard_layout",
+			    view->keyboard_layout);
 
 		if (view->desk != NULL)
 			cJSON_AddNumberToObject(v, "desk", view->desk->nr);
@@ -388,6 +391,11 @@ cow_state_restore(void)
 			}
 			if (vs == NULL)
 				continue;
+
+			const char *keyboard_layout;
+			if (cow_json_get_string(vs, "keyboard_layout",
+				&keyboard_layout))
+				xstrset(&view->keyboard_layout, keyboard_layout);
 
 			/*
 			 * River re-announces existing windows after exec.  They pass
