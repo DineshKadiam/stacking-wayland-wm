@@ -23,7 +23,7 @@
 #define DOUBLE_CLICK_MS 300
 
 /*
- * How long after the last output add/remove event before
+ * How long after the last output state event before
  * on-outputs-changed fires.  Generous enough that wlroots has time
  * to propagate every new wl_output global to other clients before a
  * rule body such as `exec wlr-randr ...` runs.
@@ -169,8 +169,9 @@ struct cow_wm {
 	struct wl_list new_views;    /* views created this sequence */
 	struct wl_list closed_views; /* views closed this sequence */
 
-	/* Debounced on-outputs-changed firing.  Each output add/remove
-	 * sets the deadline to now + COW_OUTPUTS_CHANGED_DEBOUNCE_MS.
+	/* Debounced on-outputs-changed firing.  Each output topology or
+	 * usable-area change sets the deadline to now +
+	 * COW_OUTPUTS_CHANGED_DEBOUNCE_MS.
 	 * The main loop fires the rule once and clears the deadline
 	 * after it expires, so a flurry of changes (e.g. a VT-switch
 	 * round-trip with seven monitors) results in exactly one fire
@@ -178,6 +179,7 @@ struct cow_wm {
 	 * propagate wl_output globals to other clients (such as
 	 * wlr-randr). */
 	long outputs_changed_deadline_ms;
+	bool output_state_dirty;
 
 	/* Deferred exec commands pending from config loading */
 	bool exec_pending;
@@ -282,6 +284,9 @@ void cow_wm_cursor_theme_configure(void);
  * set pending_warp / warp_x / warp_y by hand.
  */
 void cow_wm_request_pointer_warp(int, int);
+
+/* Restart the output-settling interval after an output state change. */
+void cow_wm_schedule_outputs_changed(void);
 
 /* Set by the event loop's SIGUSR1 event and checked after it exits. */
 extern volatile sig_atomic_t cow_wm_restart_requested;

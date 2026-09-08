@@ -613,6 +613,8 @@ apply_initial_state(struct cow_view *view,
 	if (resolved->anchor != NULL) {
 		xstrset(&view->style_pending_anchor, resolved->anchor);
 		xstrset(&view->style_anchor, resolved->anchor);
+		xstrset(&view->style_anchor_output,
+		    view->output != NULL ? view->output->name : NULL);
 	}
 	if (resolved->page != NULL) {
 		const char *argv[] = { "window-move", "-P", resolved->page };
@@ -712,6 +714,8 @@ cow_style_cancel_pending_initial(struct cow_view *view)
 	view->style_pending_anchor = NULL;
 	xfree(view->style_anchor);
 	view->style_anchor = NULL;
+	xfree(view->style_anchor_output);
+	view->style_anchor_output = NULL;
 }
 
 void
@@ -723,10 +727,14 @@ cow_style_reflow_anchors(struct cow_output *output)
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
-		if (view->closed || view->output != output ||
-		    view->style_anchor == NULL || !view->has_dimensions ||
+		if (view->closed || view->style_anchor == NULL ||
+		    view->style_anchor_output == NULL || output->name == NULL ||
+		    strcmp(view->style_anchor_output, output->name) != 0 ||
+		    !view->has_dimensions ||
 		    view->maximized || view->fullscreen)
 			continue;
+		if (view->output != output)
+			cow_view_reassign_output(view, output);
 		const char *argv[] = {
 			"window-move", "-a", view->style_anchor,
 		};

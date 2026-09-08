@@ -37,7 +37,6 @@
 #include "cow/pick.h"
 #include "cow/pointer_input.h"
 #include "cow/seat.h"
-#include "cow/style.h"
 #include "cow/view.h"
 
 #include "river-window-management-v1-client-protocol.h"
@@ -116,6 +115,7 @@ cow_output_recompute_usable_area(struct cow_output *output)
 	    old.height != output->usable_area.height);
 	if (!changed)
 		return (false);
+	cow_wm_schedule_outputs_changed();
 
 	cow_log_debug("usable area changed (output=%s source=%s "
 	    "old=%d,%d %dx%d new=%d,%d %dx%d "
@@ -136,7 +136,6 @@ cow_output_recompute_usable_area(struct cow_output *output)
 		if (view->output == output)
 			cow_view_reflow_maximized(view);
 	}
-	cow_style_reflow_anchors(output);
 	cow_view_invalidate_auto_icon_positions(output);
 	cow_view_layout_icons_on_output(output);
 	cow_update_request(COW_UPDATE_STATUS);
@@ -202,6 +201,8 @@ output_handle_position(void	    *data,
 	/* A monitor moved -- the raster-scan order may have changed. */
 	cow_outputs_renumber();
 	if (changed)
+		cow_wm_schedule_outputs_changed();
+	if (changed)
 		cow_update_request(COW_UPDATE_STATUS);
 }
 
@@ -231,6 +232,8 @@ output_handle_dimensions(void	    *data,
 	/* Startup creates pan frames once at the end of exec_pending. */
 	if (!cow_wm.exec_pending)
 		pan_frames_update_output(output);
+	if (changed)
+		cow_wm_schedule_outputs_changed();
 	if (changed)
 		cow_update_request(COW_UPDATE_STATUS);
 }
@@ -326,8 +329,7 @@ cow_output_create(struct river_output_v1 *river_output)
 	cow_outputs_renumber();
 
 	/* Debounce bursty topology changes. */
-	cow_wm.outputs_changed_deadline_ms = cow_mono_ms() +
-	    COW_OUTPUTS_CHANGED_DEBOUNCE_MS;
+	cow_wm_schedule_outputs_changed();
 
 	return output;
 }
@@ -556,7 +558,12 @@ cow_output_name_known(struct cow_output *output)
 	output_apply_configured_background(output);
 	output_session_restore(output);
 	output_adopt_orphan_views(output);
-	cow_update_request(COW_UPDATE_STATUS);
+	/* wl_output.name is outside River's window-management sequence.  Start
+	 * one so name-dependent state, including persistent anchors, is applied
+	 * at a manage boundary.
+	 */
+	cow_wm_schedule_outputs_changed();
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 }
 
 static void
@@ -635,8 +642,7 @@ cow_output_destroy(struct cow_output *output)
 	/* Numbering shifts when an output disappears. */
 	cow_outputs_renumber();
 
-	cow_wm.outputs_changed_deadline_ms = cow_mono_ms() +
-	    COW_OUTPUTS_CHANGED_DEBOUNCE_MS;
+	cow_wm_schedule_outputs_changed();
 }
 
 void

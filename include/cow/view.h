@@ -478,6 +478,7 @@ struct cow_view {
 	bool     style_initial_applied;
 	char    *style_pending_anchor;
 	char    *style_anchor;
+	char    *style_anchor_output;
 };
 
 #define COW_VIEW_POLICY_LAYER          (1u << 0)

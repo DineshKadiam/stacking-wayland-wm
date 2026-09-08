@@ -1857,6 +1857,14 @@ cow_wm_schedule_tick(struct event *tick_ev)
 	event_add(tick_ev, &tv);
 }
 
+void
+cow_wm_schedule_outputs_changed(void)
+{
+	cow_wm.output_state_dirty = true;
+	cow_wm.outputs_changed_deadline_ms = cow_mono_ms() +
+	    COW_OUTPUTS_CHANGED_DEBOUNCE_MS;
+}
+
 static void
 cow_wm_fire_outputs_changed(void)
 {
@@ -1882,6 +1890,13 @@ cow_wm_fire_outputs_changed(void)
 	}
 
 	cow_wm.outputs_changed_deadline_ms = -1;
+	if (cow_wm.output_state_dirty) {
+		struct cow_output *output;
+
+		cow_wm.output_state_dirty = false;
+		wl_list_for_each(output, &cow_wm.outputs, wm_link)
+			cow_style_reflow_anchors(output);
+	}
 	cow_rule_fire(COW_RULE_ON_OUTPUTS_CHANGED, NULL, NULL, NULL);
 	cow_update_request(COW_UPDATE_STATUS);
 }

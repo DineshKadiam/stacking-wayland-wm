@@ -984,8 +984,9 @@ managed.  They are not replayed by a configuration reload or title change:
    size.  One of *top-left*, *top*, *top-right*, *left*, *centre*, *right*,
    *bottom-left*, *bottom*, or *bottom-right*.  Do not combine this with
    *placement.x* or *placement.y*.  The alignment follows later changes to
-   the output's usable area, such as a layer-shell panel appearing.  An
-   explicit *window-move* releases the window from this alignment.
+   the output's usable area, such as a layer-shell panel appearing, and
+   remains attached to its selected output across output reconfiguration.
+   An explicit *window-move* releases the window from this alignment.
 |  *state.maximized*
 :  *none*, *horizontal*, *vertical*, or *both*.
 |  *state.maximized.ignore_reserved*
