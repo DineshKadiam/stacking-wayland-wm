@@ -93,6 +93,12 @@ When a pager block is selectd, options inside that block override the top-level
 defaults.  Multiple names may be listed on one *show pager* line; those matching
 blocks are combined into that one instance as they are encountered in the file.
 
+The window title identifies both the selected pager definitions and, when
+exactly one monitor is selected, that monitor.  For example, a *fvwm*
+instance restricted with *-m HDMI-A-1* is titled
+*cowpager:fvwm:HDMI-A-1*.  This allows cow rules and styles to distinguish
+per-output instances created from the same pager definition.
+
 Supported layout commands:
 
 ```

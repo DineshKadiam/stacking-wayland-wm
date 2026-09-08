@@ -3452,6 +3452,9 @@ build_instance_title(void)
 			break;
 		len += (size_t)n;
 	}
+	if (opt_n_monitors == 1)
+		snprintf(instance_title + len, sizeof(instance_title) - len,
+		    ":%s", opt_monitors[0]);
 }
 
 static char *

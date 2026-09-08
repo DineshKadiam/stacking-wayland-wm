@@ -451,6 +451,29 @@ rule -g -T on-start -n startup-pages script {
 }
 ```
 
+Start and position a separate cowpager for every output.  The pager
+configuration used here should contain top-level settings rather than
+*show pager* instances, so *-m* determines each window's title:
+
+```
+rule -g -T on-start -n output-pagers script {
+    for o in (outputs) {
+        style -g -n pager-#{o.name} -s /cowpager:#{o.name}/ {
+            placement.output #{o.name}
+            placement.anchor top-right
+        }
+        exec cowpager -f ~/.config/cow/cowpager-single.conf -m #{o.name}
+    }
+}
+```
+
+If that configuration selects a named pager such a *fvwm*, include it in
+the selector instead:
+
+```
+-s /cowpager:fvwm:#{o.name}/
+```
+
 # DESKTOP BEHAVIOUR
 
 Desktops can be configured either independently of each output, or desktops are
