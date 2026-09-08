@@ -37,7 +37,7 @@ static void do_set_size(struct cow_view *, const char *, const char *,
 static void do_interactive(struct cow_view *, uint32_t, bool, bool);
 static bool parse_edges(const char *, uint32_t *);
 static bool automatic_edges(struct cow_view *, struct cow_seat *, uint32_t *,
-    struct cmd_q *);
+    struct cmd_q *, bool);
 static void resize_warp_position(struct cow_view *, struct cow_seat *,
     uint32_t, int *, int *);
 
@@ -46,7 +46,7 @@ struct cmd_entry cmd_resize_entry = {
 	"t:gsWd:w:h:e:",
 	0,
 	0,
-	"[-gs] [-d dir] [-e edges|automatic] [-W] [-w width] [-h height]",
+	"[-gs] [-d dir] [-e edges|automatic|automatic-simple] [-W] [-w width] [-h height]",
 	cmd_resize_exec,
 	0,
 };
@@ -94,15 +94,16 @@ cmd_resize_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (seat == NULL)
 		seat = cow_seat_primary();
 	if (edges_str != NULL) {
-		if (strcmp(edges_str, "automatic") == 0) {
-			if (!automatic_edges(view, seat, &edges, cmdq))
+		bool simple = strcmp(edges_str, "automatic-simple") == 0;
+		if (simple || strcmp(edges_str, "automatic") == 0) {
+			if (!automatic_edges(view, seat, &edges, cmdq, simple))
 				return (CMD_RETURN_ERROR);
 			if (edges == 0)
 				return (CMD_RETURN_NORMAL);
 		} else if (!parse_edges(edges_str, &edges)) {
 			cmdq_error(cmdq,
 			    "window-resize: -e: bad edge spec '%s' "
-			    "(expected n|s|e|w|ne|nw|se|sw|automatic)",
+			    "(expected n|s|e|w|ne|nw|se|sw|automatic|automatic-simple)",
 			    edges_str);
 			return (CMD_RETURN_ERROR);
 		}
@@ -113,7 +114,7 @@ cmd_resize_exec(struct cmd *self, struct cmd_q *cmdq)
 
 static bool
 automatic_edges(struct cow_view *view, struct cow_seat *seat, uint32_t *edges,
-    struct cmd_q *cmdq)
+    struct cmd_q *cmdq, bool simple)
 {
 	if (seat == NULL || !seat->has_pointer_position) {
 		cmdq_error(cmdq,
@@ -131,18 +132,29 @@ automatic_edges(struct cow_view *view, struct cow_seat *seat, uint32_t *edges,
 	}
 
 	uint32_t found = 0;
-	if (px * 3 < frame.width)
-		found |= COW_EDGE_LEFT;
-	else if (px * 3 >= frame.width * 2)
-		found |= COW_EDGE_RIGHT;
-	if (py * 3 < frame.height)
-		found |= COW_EDGE_TOP;
-	else if (py * 3 >= frame.height * 2)
-		found |= COW_EDGE_BOTTOM;
-	if (found == 0) {
-		*edges = 0;
-		return true;
-	}
+        if (simple) {
+            if (px * 2 < frame.width)
+                found |= COW_EDGE_LEFT;
+            else
+                found |= COW_EDGE_RIGHT;
+            if (py * 2 < frame.height)
+                found |= COW_EDGE_TOP;
+            else
+                found |= COW_EDGE_BOTTOM;
+        } else {
+            if (px * 3 < frame.width)
+                    found |= COW_EDGE_LEFT;
+            else if (px * 3 >= frame.width * 2)
+                    found |= COW_EDGE_RIGHT;
+            if (py * 3 < frame.height)
+                    found |= COW_EDGE_TOP;
+            else if (py * 3 >= frame.height * 2)
+                    found |= COW_EDGE_BOTTOM;
+            if (found == 0) {
+                    *edges = 0;
+                    return true;
+            }
+        }
 
 	*edges = found;
 	return true;
