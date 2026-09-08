@@ -101,11 +101,12 @@ struct dsl_source_spec {
 %token SELF
 %token TRUE_LIT FALSE_LIT NIL_LIT
 %token <src> SOURCE_NAME
-%token <str> IDENT STRING_LIT RAW_STRING CMD_VERB
+%token <str> IDENT STRING_LIT RAW_STRING RAW_CONT CMD_VERB
 %token <num> NUMBER_LIT
 %token <cmp> CMP_OP
-%token INTERP_BEGIN INTERP_END
-%token STR_BEGIN STR_END
+%token INTERP_BEGIN INTERP_CONT_BEGIN INTERP_END
+%token STR_BEGIN STR_CONT_BEGIN STR_END
+%token BODY_BEGIN BODY_CONT_BEGIN BODY_END
 %token NEWLINE
 
 %type <node> script stmt_list stmt let_stmt for_stmt if_stmt control_stmt
@@ -233,10 +234,21 @@ cmd_stmt
 			dsl_cmd_append_raw(ctx->ast, $$, $2);
 			xfree($2);
 		}
+	| cmd_stmt RAW_CONT
+		{
+			$$ = $1;
+			dsl_cmd_str_push_raw(ctx->ast, $$, $2);
+			xfree($2);
+		}
 	| cmd_stmt INTERP_BEGIN expr INTERP_END
 		{
 			$$ = $1;
 			dsl_cmd_append_interp(ctx->ast, $$, $3);
+		}
+	| cmd_stmt INTERP_CONT_BEGIN expr INTERP_END
+		{
+			$$ = $1;
+			dsl_cmd_str_push_interp(ctx->ast, $$, $3);
 		}
 	| cmd_stmt STR_BEGIN
 		{
@@ -245,6 +257,29 @@ cmd_stmt
 	  str_pieces STR_END
 		{
 			$$ = $1;
+		}
+	| cmd_stmt STR_CONT_BEGIN str_pieces STR_END
+		{
+			$$ = $1;
+		}
+	| cmd_stmt BODY_BEGIN
+		{
+			dsl_cmd_begin_str_arg(ctx->ast, $1);
+			dsl_cmd_str_push_raw(ctx->ast, $1, "{");
+		}
+	  str_pieces BODY_END
+		{
+			$$ = $1;
+			dsl_cmd_str_push_raw(ctx->ast, $$, "}");
+		}
+	| cmd_stmt BODY_CONT_BEGIN
+		{
+			dsl_cmd_str_push_raw(ctx->ast, $1, "{");
+		}
+	  str_pieces BODY_END
+		{
+			$$ = $1;
+			dsl_cmd_str_push_raw(ctx->ast, $$, "}");
 		}
 	;
 

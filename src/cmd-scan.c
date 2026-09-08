@@ -69,7 +69,11 @@ cow_cmd_scan_buffer(struct cow_cmd_scan *scan, const char *buf, size_t len,
 			scan->in_dquote = true;
 			continue;
 		}
-		if (c == '#') {
+		/* #{...} is DSL interpolation, not a line comment.  Counting its
+		 * braces is harmless (the pair balances) and ensures any command
+		 * body following it on the same line is still seen.
+		 */
+		if (c == '#' && (i + 1 == len || buf[i + 1] != '{')) {
 			scan->in_comment = true;
 			continue;
 		}
@@ -138,7 +142,7 @@ cow_cmd_find_matching_brace(const char *buf, size_t len, size_t *end)
 			scan.in_dquote = true;
 			continue;
 		}
-		if (c == '#') {
+		if (c == '#' && (i + 1 == len || buf[i + 1] != '{')) {
 			while (i + 1 < len && buf[i + 1] != '\n')
 				i++;
 			continue;

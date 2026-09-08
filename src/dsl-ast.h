@@ -303,6 +303,8 @@ struct dsl_parse_ctx {
  */
 struct dsl_lexer_ctx {
 	int	 col;
+	int	 cmd_body_depth;
+	bool	 cmd_arg_continuation;
 	char	*strbuf;
 	size_t	 strbuf_len;
 	size_t	 strbuf_cap;

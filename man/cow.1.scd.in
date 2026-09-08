@@ -325,7 +325,11 @@ _COMMAND_ [_ARGS_ ...]
 	Invoke any registered cow command.  Each argument is either
 	a raw text chunk (passed verbatim) or an interpolation of
 	the form *#{*_EXPR_*}* which is replaced with the
-	stringified result before the command runs.
+	stringified result before the command runs.  A brace-delimited
+	command body is kept as one argument, so commands such as
+	*style* can use their normal multiline form inside a script.
+	Braces may be nested and interpolation remains available within
+	the body.
 
 ## Expressions
 

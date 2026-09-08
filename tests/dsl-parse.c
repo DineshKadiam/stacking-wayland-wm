@@ -21,14 +21,19 @@
 #include "cow/cmd.h"
 #include "cow/dsl.h"
 
+#include "dsl-ast.h"
+
 struct cmd_entry *
 cmd_find_cmd(const char *name)
 {
 	static struct cmd_entry nop = { .name = "nop" };
 	static struct cmd_entry bind = { .name = "bind" };
+	static struct cmd_entry style = { .name = "style" };
 
 	if (strcmp(name, "nop") == 0)
 		return (&nop);
+	if (strcmp(name, "style") == 0)
+		return (&style);
 	return (strcmp(name, "bind") == 0 ? &bind : NULL);
 }
 
@@ -61,6 +66,34 @@ check_invalid(const char *source)
 	dsl_error_fini(&error);
 }
 
+static void
+check_composite_arguments(void)
+{
+	const char *source =
+	    "{ style -g -n cp-#{o.name} -s /cowpager:#{o.name}/ {\n"
+	    "placement.output #{o.name}\n"
+	    "} }";
+	struct dsl_error error = { 0 };
+	struct dsl_ast *ast = dsl_parse(source, NULL, &error);
+
+	if (ast == NULL || ast->root->u.block.n != 1)
+		goto fail;
+	struct dsl_node *cmd = ast->root->u.block.stmts[0];
+	if (cmd->kind != DSL_N_CMD || cmd->u.cmd.n != 6 ||
+	    cmd->u.cmd.args[2].n != 2 || cmd->u.cmd.args[4].n != 3 ||
+	    cmd->u.cmd.args[5].n < 3)
+		goto fail;
+	dsl_free(ast);
+	dsl_error_fini(&error);
+	return;
+
+fail:
+	fprintf(stderr, "composite command arguments were split\n");
+	dsl_free(ast);
+	dsl_error_fini(&error);
+	exit(1);
+}
+
 int
 main(void)
 {
@@ -75,6 +108,19 @@ main(void)
 		"{ if self.title not matches \"cowiconman:*\" { nop } }",
 		"{ for w in (windows where w.title matches \"cowiconman:*\") "
 		    "{ nop } }",
+		"{ for o in (outputs) {\n"
+		    "style -g -n cp-#{o.name} -s /cowpager:#{o.name}/ {\n"
+		    "placement.output #{o.name}\n"
+		    "placement.anchor top-right\n"
+		    "}\n"
+		    "nop\n"
+		    "} }",
+		"{ style -g -n nested {\n"
+		    "decor {\n"
+		    "titlebar.font \"sans { regular }\"\n"
+		    "}\n"
+		    "# A comment containing } must not close the body.\n"
+		    "} }",
 	};
 
 	for (size_t repeat = 0; repeat < 100; repeat++) {
@@ -82,5 +128,6 @@ main(void)
 			check_valid(valid[i]);
 		check_invalid("{ if self.output == \"HDMI-A-1\"{");
 	}
+	check_composite_arguments();
 	return (0);
 }

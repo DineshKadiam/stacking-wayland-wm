@@ -154,6 +154,9 @@ classify_word(const char *word, YYSTYPE *lval, bool *push_cmd_arg)
 
 %x CMDARG
 %x CMDSTR
+%x CMDBODY
+%x CMDBODYSTR
+%x CMDBODYCOMMENT
 %x INTERP
 %x STRLIT
 
@@ -170,7 +173,7 @@ DEC	[0-9]+\.[0-9]+
 }
 
 <CMDARG>{
-	[ \t]+			{ /* skip inter-arg whitespace */ }
+	[ \t]+			{ yyextra->cmd_arg_continuation = false; }
 	\n			{
 				yyextra->col = 1;
 				yy_pop_state(yyscanner);
@@ -179,19 +182,117 @@ DEC	[0-9]+\.[0-9]+
 				yy_pop_state(yyscanner);
 			}
 	"#{"			{
+				bool continuation = yyextra->cmd_arg_continuation;
+				yyextra->cmd_arg_continuation = true;
 				yy_push_state(INTERP, yyscanner);
-				return (INTERP_BEGIN);
+				return (continuation ? INTERP_CONT_BEGIN :
+				    INTERP_BEGIN);
+			}
+	"{"			{
+				bool continuation = yyextra->cmd_arg_continuation;
+				yyextra->cmd_arg_continuation = true;
+				yyextra->cmd_body_depth = 1;
+				yy_push_state(CMDBODY, yyscanner);
+				return (continuation ? BODY_CONT_BEGIN : BODY_BEGIN);
 			}
 	\"			{
+				bool continuation = yyextra->cmd_arg_continuation;
+				yyextra->cmd_arg_continuation = true;
 				yy_push_state(CMDSTR, yyscanner);
-				return (STR_BEGIN);
+				return (continuation ? STR_CONT_BEGIN : STR_BEGIN);
 			}
 	"}"			{
 				/* Re-scan as a block close. */
 				yy_pop_state(yyscanner);
 				yyless(0);
 			}
-	[^ \t\n;#}\"]+		{
+	[^ \t\n;#{}\"]+		{
+				bool continuation = yyextra->cmd_arg_continuation;
+				yyextra->cmd_arg_continuation = true;
+				yylval->str = xstrdup(yytext);
+				return (continuation ? RAW_CONT : RAW_STRING);
+			}
+}
+
+	/* A brace-delimited command argument remains one argv element while
+	 * interpolation expressions are still exposed to the parser.
+	 */
+<CMDBODY>{
+	"#{"			{
+				yy_push_state(INTERP, yyscanner);
+				return (INTERP_BEGIN);
+			}
+	"\""			{
+				yy_push_state(CMDBODYSTR, yyscanner);
+				yylval->str = xstrdup(yytext);
+				return (RAW_STRING);
+			}
+	"#"			{
+				yy_push_state(CMDBODYCOMMENT, yyscanner);
+				yylval->str = xstrdup(yytext);
+				return (RAW_STRING);
+			}
+	"{"			{
+				yyextra->cmd_body_depth++;
+				yylval->str = xstrdup(yytext);
+				return (RAW_STRING);
+			}
+	"}"			{
+				if (--yyextra->cmd_body_depth == 0) {
+					yy_pop_state(yyscanner);
+					return (BODY_END);
+				}
+				yylval->str = xstrdup(yytext);
+				return (RAW_STRING);
+			}
+	\n			{
+				yyextra->col = 1;
+				yylval->str = xstrdup("\n");
+				return (RAW_STRING);
+			}
+	[^#{}\"\n]+		{
+				yylval->str = xstrdup(yytext);
+				return (RAW_STRING);
+			}
+}
+
+<CMDBODYSTR>{
+	"#{"			{
+				yy_push_state(INTERP, yyscanner);
+				return (INTERP_BEGIN);
+			}
+	\\(.|\n)		{
+				yylval->str = xstrdup(yytext);
+				return (RAW_STRING);
+			}
+	"\""			{
+				yy_pop_state(yyscanner);
+				yylval->str = xstrdup(yytext);
+				return (RAW_STRING);
+			}
+	\n			{
+				yyextra->col = 1;
+				yylval->str = xstrdup("\n");
+				return (RAW_STRING);
+			}
+	[^\\\"#\n]+		{
+				yylval->str = xstrdup(yytext);
+				return (RAW_STRING);
+			}
+	"#"			{
+				yylval->str = xstrdup(yytext);
+				return (RAW_STRING);
+			}
+}
+
+<CMDBODYCOMMENT>{
+	\n			{
+				yyextra->col = 1;
+				yy_pop_state(yyscanner);
+				yylval->str = xstrdup("\n");
+				return (RAW_STRING);
+			}
+	[^\n]+			{
 				yylval->str = xstrdup(yytext);
 				return (RAW_STRING);
 			}
@@ -298,6 +399,8 @@ DEC	[0-9]+\.[0-9]+
 				bool push_cmd_arg = false;
 				int  tok = classify_word(yytext, yylval,
 				    &push_cmd_arg);
+				if (push_cmd_arg)
+					yyextra->cmd_arg_continuation = false;
 				if (push_cmd_arg)
 					yy_push_state(CMDARG, yyscanner);
 				return (tok);

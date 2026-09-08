@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include "cow/cmd.h"
+#include "cow/cmd_scan.h"
 #include "cow/memory.h"
 
 static int    captured_argc;
@@ -78,6 +79,20 @@ check(const char *command, int expected_argc, const char *const *expected)
 	captured_free();
 }
 
+static void
+check_terminator(const char *command, enum cow_cmd_scan_result expected)
+{
+	size_t end = 0;
+	enum cow_cmd_scan_result result = cow_cmd_find_terminator(command,
+	    strlen(command), &end);
+
+	if (result != expected) {
+		fprintf(stderr, "expected scan result %d, got %d for:\n%s",
+		    expected, result, command);
+		exit(1);
+	}
+}
+
 int
 main(void)
 {
@@ -100,6 +115,18 @@ main(void)
 		"{\n    decor {\n        border.width 4\n    }\n"
 		"    layer top\n}",
 	};
+	static const char *const script_style[] = {
+		"script",
+		"{\n"
+		"    for o in (outputs) {\n"
+		"        style -g -n cp-#{o.name} -s /cowpager:#{o.name}/ {\n"
+		"            placement.output #{o.name}\n"
+		"            placement.anchor top-right\n"
+		"        }\n"
+		"        exec cowpager -m #{o.name}\n"
+		"    }\n"
+		"}",
+	};
 
 	check("script{}", 2, script);
 	check("script{}nop", 3, adjacent);
@@ -113,5 +140,29 @@ main(void)
 	check("style -g -n foot -s %foot {\n"
 	    "    decor {\n        border.width 4\n    }\n"
 	    "    layer top\n}", 7, style);
+	check("script {\n"
+	    "    for o in (outputs) {\n"
+	    "        style -g -n cp-#{o.name} -s /cowpager:#{o.name}/ {\n"
+	    "            placement.output #{o.name}\n"
+	    "            placement.anchor top-right\n"
+	    "        }\n"
+	    "        exec cowpager -m #{o.name}\n"
+	    "    }\n"
+	    "}", 2, script_style);
+	check_terminator("script {\n"
+	    "    for o in (outputs) {\n"
+	    "        style -g -n cp-#{o.name} -s /cowpager:#{o.name}/ {\n"
+	    "            placement.output #{o.name}\n"
+	    "        }\n"
+	    "    }\n",
+	    COW_CMD_SCAN_INCOMPLETE);
+	check_terminator("script {\n"
+	    "    for o in (outputs) {\n"
+	    "        style -g -n cp-#{o.name} -s /cowpager:#{o.name}/ {\n"
+	    "            placement.output #{o.name}\n"
+	    "        }\n"
+	    "    }\n"
+	    "}\n",
+	    COW_CMD_SCAN_COMPLETE);
 	return (0);
 }
