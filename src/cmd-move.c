@@ -27,6 +27,7 @@
 #include "cow/placement.h"
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
+#include "cow/selection.h"
 #include "cow/style.h"
 #include "cow/titlebar.h"
 #include "cow/view.h"
@@ -36,6 +37,7 @@
 static enum cmd_retval cmd_move_exec(struct cmd *, struct cmd_q *);
 static void do_screen(struct cow_view *, const char *, struct cmd_q *);
 static void do_interactive(struct cow_view *);
+static void do_interactive_group(struct cow_view *, const char *);
 static void do_step(struct cow_view *, const char *, struct cmd_q *);
 static void do_snap(struct cow_view *, const char *, struct cmd_q *);
 static void do_xy(struct cow_view *, const char *, const char *,
@@ -55,11 +57,11 @@ static void sync_pending_move_position(struct cow_view *);
 
 struct cmd_entry cmd_move_entry = {
 	"window-move",
-	"t:d:o:a:cCnwk:x:y:P:",
+	"t:d:o:a:cCGnwk:x:y:P:",
 	0,
 	1,
 	"[-C] [-w] [-t target] [-d dir [-n]] [-o output] [-a anchor] [-c] "
-	"[-k 0-9] [-x X] [-y Y] [-P col[,row]]",
+	"[-k 0-9] [-x X] [-y Y] [-P col[,row]] [-G [selection]]",
 	cmd_move_exec,
 	0,
 };
@@ -69,6 +71,51 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	struct args	*args = self->args;
 	struct cow_view *view = cmd_ctx_target_window(cmdq);
+	const char	*group_name = args->argc == 1 ? args->argv[0] : NULL;
+
+	if (args_has(args, 'G')) {
+		if (args->argc > 1 || args_get(args, 'd') != NULL ||
+		    args_get(args, 'o') != NULL || args_get(args, 'a') != NULL ||
+		    args_has(args, 'c') || args_has(args, 'C') ||
+		    args_has(args, 'n') || args_has(args, 'w') ||
+		    args_get(args, 'k') != NULL || args_get(args, 'x') != NULL ||
+		    args_get(args, 'y') != NULL || args_get(args, 'P') != NULL) {
+			cmdq_error(cmdq, "window-move: -G cannot be combined with "
+			    "another move operation");
+			return CMD_RETURN_ERROR;
+		}
+		if (group_name != NULL && group_name[0] == '\0') {
+			cmdq_error(cmdq,
+			    "window-move: selection name cannot be empty");
+			return CMD_RETURN_ERROR;
+		}
+		struct cow_view **selected = NULL;
+		size_t count = cow_selection_collect(group_name, &selected);
+		if (!cow_selection_has(view, group_name))
+			view = NULL;
+		if (view == NULL || view->closed || !view->has_dimensions ||
+		    view->output == NULL || cow_view_is_iconified(view)) {
+			view = NULL;
+			for (size_t i = 0; i < count; i++) {
+				if (selected[i] != NULL && !selected[i]->closed &&
+				    selected[i]->has_dimensions &&
+				    selected[i]->output != NULL &&
+				    !cow_view_is_iconified(selected[i])) {
+					view = selected[i];
+					break;
+				}
+			}
+		}
+		xfree(selected);
+		if (view == NULL) {
+			cmdq_error(cmdq, "window-move: selection is empty");
+			return CMD_RETURN_ERROR;
+		}
+		if (cmdq == NULL || !cmdq->in_style)
+			cow_style_cancel_pending_initial(view);
+		do_interactive_group(view, group_name);
+		return CMD_RETURN_NORMAL;
+	}
 
 	if (view == NULL || view->output == NULL) {
 		cmdq_error(cmdq, "move: no target window");
@@ -553,6 +600,18 @@ do_interactive(struct cow_view *view)
 		 * original state. */
 		cow_pointer_op_start_move(seat, view);
 	}
+}
+
+static void
+do_interactive_group(struct cow_view *view, const char *selection)
+{
+	if (cow_wm.sequence != COW_WM_SEQUENCE_MANAGE)
+		return;
+	struct cow_seat *seat = cow_wm.current_interaction_seat;
+	if (seat == NULL)
+		seat = cow_seat_primary();
+	if (seat != NULL)
+		cow_pointer_op_start_group_move(seat, view, selection);
 }
 
 static void

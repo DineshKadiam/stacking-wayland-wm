@@ -22,6 +22,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "cow/compat.h"
 #include "cow/config.h"
@@ -310,6 +311,7 @@ cow_seat_destroy(struct cow_seat *seat)
 		river_xkb_bindings_seat_v1_destroy(seat->xkb_seat);
 
 	river_seat_v1_destroy(seat->river_seat);
+	xfree(seat->op.group);
 	xfree(seat);
 }
 
@@ -443,6 +445,15 @@ cow_seat_forget_view(struct cow_seat *seat, struct cow_view *view)
 		seat->pressed_view = NULL;
 	if (seat->op.view == view)
 		seat->op.view = NULL;
+	for (size_t i = 0; i < seat->op.group_count;) {
+		if (seat->op.group[i].view != view) {
+			i++;
+			continue;
+		}
+		memmove(&seat->op.group[i], &seat->op.group[i + 1],
+		    (seat->op.group_count - i - 1) * sizeof(*seat->op.group));
+		seat->op.group_count--;
+	}
 	if (seat->binding_context_view == view) {
 		seat->binding_context_view = NULL;
 		seat->binding_context = 0;

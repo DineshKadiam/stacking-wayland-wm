@@ -17,11 +17,18 @@
 #define COW_POINTER_OP_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 struct cow_seat;
 struct cow_view;
 struct cow_output;
+
+struct cow_pointer_op_member {
+	struct cow_view *view;
+	int		 start_x;
+	int		 start_y;
+};
 
 /*
  * Type of interactive pointer operation.
@@ -73,6 +80,8 @@ struct cow_pointer_op {
 	 */
 	bool unmax_done;
 	bool icon_moved;
+	struct cow_pointer_op_member *group;
+	size_t			      group_count;
 
 	/* Initial dimensions when the op started */
 	int start_width, start_height;
@@ -104,6 +113,8 @@ struct cow_pointer_op {
  * Must be called during a manage sequence.
  */
 void cow_pointer_op_start_move(struct cow_seat *, struct cow_view *);
+void cow_pointer_op_start_group_move(struct cow_seat *, struct cow_view *,
+    const char *);
 void cow_pointer_op_start_icon_move(struct cow_seat *, struct cow_view *);
 
 /*

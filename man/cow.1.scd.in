@@ -379,8 +379,8 @@ Each iterable source yields records whose fields match the corresponding
 *show -a* topic JSON (see *show -a window*, *show -a desk*, *show -a output*,
 and *show -a rule*). Common window fields include *id*, *app_id*,
 *title*, *desk*, *output*, *layer*, *focused*, *iconified*,
-*keyboard\_layout*,
-*circulate_skip*, *maximized*, *width*, *height*, *page_col*,
+*keyboard\_layout*, *circulate_skip*, *selected*, *selections*,
+*maximized*, *width*, *height*, *page_col*,
 *page_row*, *current_page*, *current_desk*, *current_output*,
 *sticky_desk*, *sticky_page*, *border_width*, *title_thickness*,
 *squeeze*, and *squeezed_rect*.
@@ -1400,7 +1400,7 @@ Operate on a window.
 	Container members share a single layer: setting *-L* on any
 	member updates every member of the container.
 
-## window-move [-C] [-w] [-t target] [-d dir [-n]] [-o output] [-a anchor] [-c] [-k 0-9] [-x X] [-y Y] [-P col[,row]]
+## window-move [-C] [-G [selection]] [-w] [-t target] [-d dir [-n]] [-o output] [-a anchor] [-c] [-k 0-9] [-x X] [-y Y] [-P col[,row]]
 
 Move a window. With no flags, begin an interactive move using the mouse.
 
@@ -1432,6 +1432,14 @@ Move a window. With no flags, begin an interactive move using the mouse.
 	grouped into a container instead of completing a normal move. Releasing
 	over empty space performs a normal move. The target window's titlebar
 	highlights in orange while the pointer is over it.
+
+*-G* [_selection_]
+	Interactively move all windows in the named selection as a rigid group.
+	The target window, when selected, is the group leader; otherwise the first
+	movable selected window is used.  Snapping and screen clamping apply to the
+	leader and the resulting movement is applied to every group member.
+	_selection_ defaults to *default*.  This option cannot be combined with
+	other move operations.
 
 *-P* _col_[,_row_]
 	Move the window to the page at column _col_, row _row_ (0-indexed),
@@ -1733,15 +1741,24 @@ window-maximize -k     # mark maximised without changing size
 window-maximize -R     # maximise over panels and other reserved areas
 ```
 
-## pick-window [-F expr] command ...
+## pick-window [-F expr] command ... | pick-window -m [-F expr] [-n name]
 
-Pick a window with the mouse and run _command_ targeting that window.
-The cursor changes to a crosshair icon, indicating a target window should be
-selected. Right-click or _Escape_ cancels.
+Pick one or more windows with the mouse.  The cursor changes to a crosshair
+icon while the picker is active.
 
-The picked window is passed to _command_ as the default target, so a
-_command_ without an explicit *-t* operates on the picked view.  Any
-explicit *-t* in _command_ takes precedence. 
+Without *-m*, pick one window and run _command_ targeting it.  Right-click or
+_Escape_ cancels.  The picked window is passed to _command_ as the default
+target, so a _command_ without an explicit *-t* operates on the picked view.
+Any explicit *-t* in _command_ takes precedence.
+
+*-m*
+	Edit a named window selection.  Left-click toggles a window and selected
+	windows are outlined.  Press _Enter_ or right-click to accept the new
+	selection.  Press _Escape_ to cancel and preserve the previous selection.
+	The current selection is used as the starting point.
+
+*-n* _name_
+	With *-m*, edit _name_ rather than the *default* selection.
 
 *-F* _expr_
 	Only allow matching windows to be picked.  *self* is bound to each
@@ -1753,6 +1770,39 @@ Examples:
 bind Super+p pick-window winops -c
 bind Super+P pick-window { winops -c ; focus -L }
 bind Super+o pick-window -F 'self.current_output' focus
+bind Super+g pick-window -m
+bind Super+G pick-window -m -n work
+```
+
+## window-select [-t target] [-n name] [add|remove|toggle|clear]
+
+Change membership of a named window selection without opening the interactive
+picker.  The operation defaults to *toggle*, and _name_ defaults to *default*.
+*add*, *remove*, and *toggle* act on the target window.  *clear* empties the
+selection and does not require a target.
+
+The *selected* field in window snapshots reports membership of the default
+selection.  *selections* contains all selection names for the window.
+Selections are preserved across a CoW state restart, but are not configuration
+and therefore do not appear in *show config*.
+
+The DSL can apply any command to the selected windows.  Test *selected* for the
+default selection, or membership of *selections* for a named one.  For example:
+
+```
+bind L+g  pick-window -m
+bind LS+g window-move -G
+bind LA+g script {
+	for w in (windows where w.selected) {
+		winops -t #{w.id} -i
+	}
+}
+
+script {
+	for w in (windows where "work" in w.selections) {
+		winops -t #{w.id} -sS
+	}
+}
 ```
 
 ## window-shade [-t target] -d dir

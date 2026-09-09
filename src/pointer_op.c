@@ -30,6 +30,8 @@
 #include "cow/pointer_input.h"
 #include "cow/rule.h"
 #include "cow/seat.h"
+#include "cow/selection.h"
+#include "cow/style.h"
 #include "cow/titlebar.h"
 #include "cow/view.h"
 #include "cow/update.h"
@@ -151,6 +153,14 @@ pointer_op_type_name(enum cow_pointer_op_type type)
 	}
 }
 
+static void
+pointer_op_group_clear(struct cow_pointer_op *op)
+{
+	xfree(op->group);
+	op->group = NULL;
+	op->group_count = 0;
+}
+
 static bool
 seat_is_moving_view(const struct cow_seat *seat, const struct cow_view *view)
 {
@@ -217,9 +227,23 @@ snap_edges_against_rect(int fl, int ft, int fr, int fb, int rl, int rt, int rr,
 	try_snap(fb, rb, best_db, snap_b);
 }
 
+static bool
+pointer_op_group_contains(const struct cow_pointer_op *op,
+    const struct cow_view *view)
+{
+	if (op == NULL || op->type != COW_POINTER_OP_MOVE)
+		return false;
+	for (size_t i = 0; i < op->group_count; i++) {
+		if (op->group[i].view == view)
+			return true;
+	}
+	return false;
+}
+
 static void
 snap_edges(struct cow_view *view, int *frame_left, int *frame_top,
-    int *frame_right, int *frame_bottom, bool snap_size)
+    int *frame_right, int *frame_bottom, bool snap_size,
+    const struct cow_pointer_op *op)
 {
 	int sd = cow_config ? cow_config->snap_distance : 0; /* snap off */
 	if (sd <= 0)
@@ -258,7 +282,8 @@ snap_edges(struct cow_view *view, int *frame_left, int *frame_top,
 	struct cow_view *other;
 	wl_list_for_each(other, &cow_wm.views, wm_link)
 	{
-		if (other == view || !other->has_dimensions)
+		if (other == view || pointer_op_group_contains(op, other) ||
+		    !other->has_dimensions)
 			continue;
 		if (!cow_view_visible(other, view->output))
 			continue;
@@ -324,6 +349,7 @@ cow_pointer_op_start_move(struct cow_seat *seat, struct cow_view *view)
 {
 	if (view == NULL || view->closed || seat->op_in_progress)
 		return;
+	pointer_op_group_clear(&seat->op);
 
 	seat->op.type	 = COW_POINTER_OP_MOVE;
 	seat->op.view	 = view;
@@ -370,6 +396,36 @@ cow_pointer_op_start_move(struct cow_seat *seat, struct cow_view *view)
 	cow_pointer_cursor_hold_start();
 	river_seat_v1_op_start_pointer(seat->river_seat);
 	pointer_op_arm_attached(seat);
+}
+
+void
+cow_pointer_op_start_group_move(struct cow_seat *seat, struct cow_view *view,
+    const char *selection)
+{
+	struct cow_view **views = NULL;
+	size_t count = cow_selection_collect(selection, &views);
+
+	cow_pointer_op_start_move(seat, view);
+	if (!seat->op_in_progress || seat->op.type != COW_POINTER_OP_MOVE) {
+		xfree(views);
+		return;
+	}
+	for (size_t i = 0; i < count; i++) {
+		struct cow_view *member = views[i];
+		if (member == view || member == NULL || member->closed ||
+		    !member->has_dimensions || cow_view_is_iconified(member))
+			continue;
+		cow_style_cancel_pending_initial(member);
+		seat->op.group = xrealloc(seat->op.group,
+		    seat->op.group_count + 1, sizeof(*seat->op.group));
+		seat->op.group[seat->op.group_count++] =
+		    (struct cow_pointer_op_member) {
+			.view = member,
+			.start_x = member->x,
+			.start_y = member->y,
+		};
+	}
+	xfree(views);
 }
 
 void
@@ -696,6 +752,34 @@ pointer_op_reassign_output(struct cow_view *view, int x, int y, int width,
 	}
 }
 
+static void
+pointer_op_move_group(struct cow_seat *seat, int delta_x, int delta_y)
+{
+	for (size_t i = 0; i < seat->op.group_count; i++) {
+		struct cow_view *view = seat->op.group[i].view;
+		if (view == NULL || view->closed)
+			continue;
+		if ((delta_x != 0 || delta_y != 0) &&
+		    (view->maximized || view->expanded)) {
+			if (view->maximized)
+				cow_view_set_maximized(view, false);
+			cow_view_clear_expanded_state(view);
+			view->icon_inverted_button = -1;
+		}
+		int new_x = seat->op.group[i].start_x + delta_x;
+		int new_y = seat->op.group[i].start_y + delta_y;
+		if (new_x == view->x && new_y == view->y)
+			continue;
+		view->x = new_x;
+		view->y = new_y;
+		pointer_op_reassign_output(view, new_x, new_y,
+		    view->content_width, view->content_height, false);
+		cow_view_sync_vxy_from_global(view);
+		cow_view_sync_container_pos(view);
+		view->dec.dirty = true;
+	}
+}
+
 /*
  * Finalise a pointer op when seat->op_released is set.  Handles
  * resize-end notification, container-drag completion (uncontainerise,
@@ -783,6 +867,15 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 		pointer_op_reassign_output(view, view->x, view->y, width, height,
 		    seat->has_pointer_position);
 	}
+	if (finished_type == COW_POINTER_OP_MOVE) {
+		for (size_t i = 0; i < seat->op.group_count; i++) {
+			struct cow_view *member = seat->op.group[i].view;
+			if (member == NULL || member->closed)
+				continue;
+			pointer_op_reassign_output(member, member->x, member->y,
+			    member->content_width, member->content_height, false);
+		}
+	}
 
 	if (finished_type == COW_POINTER_OP_ICON_MOVE) {
 		cow_log_debug("pointer operation end (type=%s window=%s "
@@ -833,6 +926,15 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 			cow_rule_fire(COW_RULE_ON_RESIZE, view, view->desk,
 			    view->output);
 	}
+	if (finished_type == COW_POINTER_OP_MOVE) {
+		for (size_t i = 0; i < seat->op.group_count; i++) {
+			struct cow_view *member = seat->op.group[i].view;
+			if (member != NULL && !member->closed)
+				cow_rule_fire(COW_RULE_ON_MOVE, member, member->desk,
+				    member->output);
+		}
+	}
+	pointer_op_group_clear(&seat->op);
 	if (finished_type == COW_POINTER_OP_MOVE)
 		cow_update_request(COW_UPDATE_STATUS);
 }
@@ -937,6 +1039,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 		seat->op_in_progress = false;
 		seat->op_released    = false;
 		seat->op.type	     = COW_POINTER_OP_NONE;
+		pointer_op_group_clear(&seat->op);
 		cow_pointer_cursor_hold_end();
 		cow_geometry_window_hide();
 		return;
@@ -1007,7 +1110,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 		int ft = cy - content_y;
 		int fr = fl + frame_w;
 		int fb = ft + frame_h;
-		snap_edges(view, &fl, &ft, &fr, &fb, false);
+		snap_edges(view, &fl, &ft, &fr, &fb, false, &seat->op);
 
 		if (seat->container_drag) {
 			/* Container drag (-C): keep source in place, move ghost
@@ -1036,6 +1139,8 @@ cow_pointer_op_process(struct cow_seat *seat)
 
 			view->x = new_x;
 			view->y = new_y;
+			pointer_op_move_group(seat, new_x - seat->op.start_x,
+			    new_y - seat->op.start_y);
 
 			/*
 			 * Clamp against the output under the pointer so an adjoining
@@ -1144,7 +1249,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 			int ft		  = new_y - content_y;
 			int fr		  = fl + frame_w;
 			int fb		  = ft + frame_h;
-			snap_edges(view, &fl, &ft, &fr, &fb, true);
+			snap_edges(view, &fl, &ft, &fr, &fb, true, NULL);
 			if (edges & COW_EDGE_LEFT) {
 				new_x = fl + content_x;
 				new_w = fr - fl - frame_extra_w;
