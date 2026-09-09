@@ -22,6 +22,7 @@
 #include <wayland-util.h>
 
 struct wl_surface;
+struct cow_view;
 
 bool cow_pick_pointer_enter(struct wl_surface *, uint32_t, wl_fixed_t,
     wl_fixed_t);
@@ -35,5 +36,6 @@ bool cow_pick_pointer_button(uint32_t, uint32_t, uint32_t);
  */
 void cow_pick_cancel_active(void);
 void cow_pick_run_deferred(void);
+void cow_pick_forget_view(struct cow_view *);
 
 #endif /* COW_PICK_H */

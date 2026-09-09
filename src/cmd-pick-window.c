@@ -31,6 +31,7 @@
 #include "cow/output.h"
 #include "cow/pick.h"
 #include "cow/seat.h"
+#include "cow/selection.h"
 #include "cow/shm.h"
 #include "cow/view.h"
 #include "cow/update.h"
@@ -43,10 +44,11 @@ static enum cmd_retval cmd_pick_window_exec(struct cmd *, struct cmd_q *);
 
 struct cmd_entry cmd_pick_window_entry = {
 	"pick-window",
-	"F:",
-	1,
+	"F:mn:",
+	0,
 	-1,
-	"pick-window [-F expr] <command...>",
+	"pick-window [-F expr] <command...> | "
+	"pick-window -m [-F expr] [-n name]",
 	cmd_pick_window_exec,
 	0,
 };
@@ -56,6 +58,7 @@ struct pick_overlay {
 	struct wl_surface	     *surface;
 	struct zwlr_layer_surface_v1 *layer_surface;
 	struct cow_shm_buffer	     *buffer;
+	bool			      configured;
 };
 
 struct pick_session {
@@ -72,6 +75,10 @@ struct pick_session {
 	int		     cur_sx;
 	int		     cur_sy;
 	struct cmd_filter    filter;
+	bool		     multiple;
+	char		    *selection_name;
+	struct cow_view    **selected;
+	size_t		     n_selected;
 };
 
 struct deferred_pick_command {
@@ -89,6 +96,8 @@ static bool		deferred_pick_commands_ready;
 
 static void pick_session_destroy(struct pick_session *);
 static void pick_session_fire(struct pick_session *);
+static void pick_session_accept(struct pick_session *);
+static void pick_overlay_render(struct pick_session *, struct pick_overlay *);
 static char *pick_command_string(struct args *);
 static void pick_session_seed_pointer(struct pick_session *);
 static void pick_commands_init(void);
@@ -129,11 +138,13 @@ ls_configure(void *data, struct zwlr_layer_surface_v1 *lsurf, uint32_t serial,
 {
 	struct pick_overlay *ov = data;
 	zwlr_layer_surface_v1_ack_configure(lsurf, serial);
+	ov->configured = true;
 	if (ov->surface != NULL && ov->buffer != NULL) {
 		wl_surface_attach(ov->surface, ov->buffer->buffer, 0, 0);
 		wl_surface_damage_buffer(ov->surface, 0, 0, ov->buffer->width,
 		    ov->buffer->height);
 		wl_surface_commit(ov->surface);
+		ov->buffer->busy = true;
 	}
 }
 
@@ -205,6 +216,9 @@ kb_key(void *data, __unused struct wl_keyboard *kb, __unused uint32_t serial,
 	xkb_keysym_t sym = xkb_state_key_get_one_sym(s->kb_state, key + 8);
 	if (sym == XKB_KEY_Escape)
 		cow_pick_cancel_active();
+	else if (s->multiple &&
+	    (sym == XKB_KEY_Return || sym == XKB_KEY_KP_Enter))
+		pick_session_accept(s);
 }
 
 static void
@@ -249,8 +263,91 @@ make_pick_buffer(int w, int h)
 	return buf;
 }
 
+static void
+pick_draw_rect(struct cow_shm_buffer *buf, int x, int y, int w, int h)
+{
+	const int thickness = 3;
+	const uint32_t colour = 0xffffcc33;
+
+	if (w <= 0 || h <= 0)
+		return;
+	int x0 = x < 0 ? 0 : x;
+	int y0 = y < 0 ? 0 : y;
+	int x1 = x + w > buf->width ? buf->width : x + w;
+	int y1 = y + h > buf->height ? buf->height : y + h;
+	for (int py = y0; py < y1; py++) {
+		uint32_t *row = (uint32_t *)((char *)buf->data +
+		    (size_t)py * (size_t)buf->stride);
+		for (int px = x0; px < x1; px++) {
+			if (px < x + thickness || px >= x + w - thickness ||
+			    py < y + thickness || py >= y + h - thickness)
+				row[px] = colour;
+		}
+	}
+}
+
+static void
+pick_overlay_render(struct pick_session *s, struct pick_overlay *ov)
+{
+	struct cow_shm_buffer *buf = ov->buffer;
+	if (buf->busy)
+		return;
+
+	for (int y = 0; y < buf->height; y++) {
+		uint32_t *row = (uint32_t *)((char *)buf->data +
+		    (size_t)y * (size_t)buf->stride);
+		for (int x = 0; x < buf->width; x++)
+			row[x] = 0x22000000;
+	}
+	if (s->multiple) {
+		for (size_t i = 0; i < s->n_selected; i++) {
+			struct cow_view *view = s->selected[i];
+			if (view == NULL || view->closed || !view->has_dimensions ||
+			    view->output != ov->output ||
+			    !cow_view_visible(view, ov->output))
+				continue;
+			struct cow_box box = cow_view_frame_box(view);
+			pick_draw_rect(buf, box.x - ov->output->x,
+			    box.y - ov->output->y, box.width, box.height);
+		}
+	}
+	if (ov->configured && ov->surface != NULL) {
+		wl_surface_attach(ov->surface, buf->buffer, 0, 0);
+		wl_surface_damage_buffer(ov->surface, 0, 0, buf->width,
+		    buf->height);
+		wl_surface_commit(ov->surface);
+		buf->busy = true;
+	}
+}
+
+static void
+pick_session_redraw(struct pick_session *s)
+{
+	for (int i = 0; i < s->n_overlays; i++)
+		pick_overlay_render(s, &s->overlays[i]);
+}
+
+static void
+pick_session_toggle(struct pick_session *s, struct cow_view *view)
+{
+	for (size_t i = 0; i < s->n_selected; i++) {
+		if (s->selected[i] != view)
+			continue;
+		memmove(&s->selected[i], &s->selected[i + 1],
+		    (s->n_selected - i - 1) * sizeof(*s->selected));
+		s->n_selected--;
+		pick_session_redraw(s);
+		return;
+	}
+	s->selected = xrealloc(s->selected, s->n_selected + 1,
+	    sizeof(*s->selected));
+	s->selected[s->n_selected++] = view;
+	pick_session_redraw(s);
+}
+
 static bool
-overlay_init(struct pick_overlay *ov, struct cow_output *out)
+overlay_init(struct pick_session *s, struct pick_overlay *ov,
+    struct cow_output *out)
 {
 	if (out->wl_output == NULL || out->width <= 0 || out->height <= 0)
 		return false;
@@ -274,6 +371,7 @@ overlay_init(struct pick_overlay *ov, struct cow_output *out)
 		wl_surface_destroy(ov->surface);
 		return false;
 	}
+	pick_overlay_render(s, ov);
 
 	zwlr_layer_surface_v1_set_size(ov->layer_surface, out->width,
 	    out->height);
@@ -380,7 +478,10 @@ cow_pick_pointer_button(__unused uint32_t serial, uint32_t button, uint32_t stat
 		return true;
 	}
 	if (button == BTN_RIGHT) {
-		cow_pick_cancel_active();
+		if (s->multiple)
+			pick_session_accept(s);
+		else
+			cow_pick_cancel_active();
 		return true;
 	}
 	return false;
@@ -403,7 +504,12 @@ pick_session_fire(struct pick_session *s)
 	}
 
 	if (view == NULL || view->closed) {
-		pick_session_destroy(s);
+		if (!s->multiple)
+			pick_session_destroy(s);
+		return;
+	}
+	if (s->multiple) {
+		pick_session_toggle(s, view);
 		return;
 	}
 
@@ -418,6 +524,15 @@ pick_session_fire(struct pick_session *s)
 	s->cmd_str    = NULL;
 	pick_session_destroy(s);
 	pick_command_defer(cmd_str, view);
+}
+
+static void
+pick_session_accept(struct pick_session *s)
+{
+	if (s == NULL || !s->multiple)
+		return;
+	cow_selection_replace(s->selection_name, s->selected, s->n_selected);
+	pick_session_destroy(s);
 }
 
 static void
@@ -508,6 +623,35 @@ cow_pick_cancel_active(void)
 		pick_session_destroy(active_session);
 }
 
+void
+cow_pick_forget_view(struct cow_view *view)
+{
+	if (active_session != NULL) {
+		struct pick_session *s = active_session;
+		bool changed = false;
+		for (size_t i = 0; i < s->n_selected;) {
+			if (s->selected[i] != view) {
+				i++;
+				continue;
+			}
+			memmove(&s->selected[i], &s->selected[i + 1],
+			    (s->n_selected - i - 1) * sizeof(*s->selected));
+			s->n_selected--;
+			changed = true;
+		}
+		if (changed)
+			pick_session_redraw(s);
+	}
+	if (!deferred_pick_commands_ready)
+		return;
+	struct deferred_pick_command *cmd;
+	wl_list_for_each(cmd, &deferred_pick_commands, link)
+	{
+		if (cmd->target == view)
+			cmd->target = NULL;
+	}
+}
+
 static void
 pick_session_destroy(struct pick_session *s)
 {
@@ -539,6 +683,8 @@ pick_session_destroy(struct pick_session *s)
 	}
 	cmd_filter_free(&s->filter);
 	xfree(s->cmd_str);
+	xfree(s->selection_name);
+	xfree(s->selected);
 	xfree(s);
 
 	if (cow_wm.display != NULL)
@@ -546,55 +692,61 @@ pick_session_destroy(struct pick_session *s)
 }
 
 static enum cmd_retval
-cmd_pick_window_exec(struct cmd *self, struct cmd_q *cmdq)
+pick_session_begin(struct cmd_q *cmdq, const char *command,
+    const char *filter_expr, bool multiple, const char *selection_name,
+    char *cmd_str)
 {
-	struct args *args = self->args;
-	if (args->argc < 1) {
-		cmdq_error(cmdq, "pick-window: missing command");
-		return (CMD_RETURN_ERROR);
-	}
 	if (cow_wm.wl_layer_shell == NULL || cow_wm.compositor == NULL ||
 	    cow_wm.shm == NULL) {
-		cmdq_error(cmdq,
-		    "pick-window: layer-shell unavailable on this compositor");
+		cmdq_error(cmdq, "%s: layer-shell unavailable on this compositor",
+		    command);
+		xfree(cmd_str);
 		return (CMD_RETURN_ERROR);
 	}
 	if (active_session != NULL) {
-		cmdq_error(cmdq, "pick-window: already picking");
+		cmdq_error(cmdq, "%s: already picking", command);
+		xfree(cmd_str);
 		return (CMD_RETURN_ERROR);
 	}
 
 	struct cmd_filter filter;
-	if (!cmd_filter_parse(&filter, cmdq, "pick-window", "-F",
-		args_get(args, 'F')))
+	if (!cmd_filter_parse(&filter, cmdq, command, "-F", filter_expr)) {
+		xfree(cmd_str);
 		return (CMD_RETURN_ERROR);
+	}
 
 	int n_outs = 0;
 	struct cow_output *out;
 	wl_list_for_each(out, &cow_wm.outputs, wm_link) n_outs++;
 	if (n_outs == 0) {
 		cmd_filter_free(&filter);
-		cmdq_error(cmdq, "pick-window: no outputs");
+		cmdq_error(cmdq, "%s: no outputs", command);
+		xfree(cmd_str);
 		return (CMD_RETURN_ERROR);
 	}
 
 	struct pick_session *s = xcalloc(1, sizeof(*s));
 	s->filter = filter;
-	s->cmd_str = pick_command_string(args);
+	s->cmd_str = cmd_str;
+	s->multiple = multiple;
+	if (multiple) {
+		s->selection_name = xstrdup(cow_selection_name(selection_name));
+		s->n_selected = cow_selection_collect(selection_name, &s->selected);
+	}
 	s->overlays = xcalloc((size_t)n_outs, sizeof(*s->overlays));
 	s->n_overlays = 0;
 
 	int i = 0;
 	wl_list_for_each(out, &cow_wm.outputs, wm_link)
 	{
-		if (overlay_init(&s->overlays[i], out))
+		if (overlay_init(s, &s->overlays[i], out))
 			i++;
 	}
 	s->n_overlays = i;
 
 	if (s->n_overlays == 0) {
 		pick_session_destroy(s);
-		cmdq_error(cmdq, "pick-window: no usable output");
+		cmdq_error(cmdq, "%s: no usable output", command);
 		return (CMD_RETURN_ERROR);
 	}
 	pick_session_seed_pointer(s);
@@ -614,6 +766,39 @@ cmd_pick_window_exec(struct cmd *self, struct cmd_q *cmdq)
 	active_session = s;
 	wl_display_flush(cow_wm.display);
 	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+cmd_pick_window_exec(struct cmd *self, struct cmd_q *cmdq)
+{
+	struct args *args = self->args;
+	bool multi = args_has(args, 'm');
+	const char *name = args_get(args, 'n');
+
+	if (multi) {
+		if (args->argc != 0) {
+			cmdq_error(cmdq,
+			    "pick-window: -m does not accept a command");
+			return CMD_RETURN_ERROR;
+		}
+		if (name != NULL && name[0] == '\0') {
+			cmdq_error(cmdq,
+			    "pick-window: selection name cannot be empty");
+			return CMD_RETURN_ERROR;
+		}
+		return pick_session_begin(cmdq, "pick-window",
+		    args_get(args, 'F'), true, name, NULL);
+	}
+	if (name != NULL) {
+		cmdq_error(cmdq, "pick-window: -n requires -m");
+		return CMD_RETURN_ERROR;
+	}
+	if (args->argc < 1) {
+		cmdq_error(cmdq, "pick-window: missing command");
+		return CMD_RETURN_ERROR;
+	}
+	return pick_session_begin(cmdq, "pick-window", args_get(args, 'F'),
+	    false, NULL, pick_command_string(args));
 }
 
 static void

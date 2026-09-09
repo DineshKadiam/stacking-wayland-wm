@@ -41,6 +41,7 @@
 #include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/placement.h"
+#include "cow/pick.h"
 #include "cow/pointer_op.h"
 #include "cow/rule.h"
 #include "cow/seat.h"
@@ -1111,6 +1112,7 @@ cow_view_destroy(struct cow_view *view)
 	cow_keyboard_layout_forget_view(view);
 	view_clear_wm_refs(view);
 	view_clear_seat_refs(view);
+	cow_pick_forget_view(view);
 	view_detach_container_silent(view);
 	cow_view_icon_destroy(view);
 	cow_selection_fini_view(view);
