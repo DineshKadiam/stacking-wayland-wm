@@ -44,6 +44,7 @@
 #include "cow/pointer_op.h"
 #include "cow/rule.h"
 #include "cow/seat.h"
+#include "cow/selection.h"
 #include "cow/shm.h"
 #include "cow/stack.h"
 #include "cow/style.h"
@@ -1032,6 +1033,7 @@ cow_view_create(struct river_window_v1 *rw)
 
 	wl_list_init(&view->desk_views);
 	wl_list_init(&view->output_views);
+	wl_list_init(&view->selections);
 
 	river_window_v1_add_listener(rw, &window_listener, view);
 
@@ -1111,6 +1113,7 @@ cow_view_destroy(struct cow_view *view)
 	view_clear_seat_refs(view);
 	view_detach_container_silent(view);
 	cow_view_icon_destroy(view);
+	cow_selection_fini_view(view);
 
 	wl_list_remove(&view->wm_link);
 	wl_list_remove(&view->desk_views);

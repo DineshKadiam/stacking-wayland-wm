@@ -58,6 +58,7 @@ srcs = [
     'src/cmd-script.c',
     'src/cmd-scan.c',
     'src/cmd-scroll.c',
+    'src/cmd-selection.c',
     'src/cmd-set.c',
     'src/cmd-show.c',
     'src/cmd-string.c',
@@ -107,6 +108,7 @@ srcs = [
     'src/pointer_op.c',
     'src/policy.c',
     'src/rule.c',
+    'src/selection.c',
     'src/seat.c',
     'src/shm.c',
     'src/shm_util.c',
@@ -390,6 +392,15 @@ icon_placement_test = executable('test-icon-placement',
     dependencies: all_deps,
 )
 test('icon-placement', icon_placement_test)
+
+selection_test = executable('test-selection',
+    'tests/selection.c',
+    'src/selection.c',
+    'src/memory.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('selection', selection_test)
 
 command_quote_test = executable('test-command-quote',
     'tests/command-quote.c',

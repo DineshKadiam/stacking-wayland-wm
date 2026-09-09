@@ -275,6 +275,7 @@ extern struct cmd_entry cmd_script_entry;
 extern struct cmd_entry cmd_window_shade_entry;
 extern struct cmd_entry cmd_container_entry;
 extern struct cmd_entry cmd_pick_window_entry;
+extern struct cmd_entry cmd_window_select_entry;
 
 bool cmd_set_is_decor_key(const char *);
 char *cmd_set_normalize_decor_value(const char *, const char *,

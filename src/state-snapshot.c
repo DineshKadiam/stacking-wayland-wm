@@ -36,6 +36,7 @@
 #include "cow/menu.h"
 #include "cow/output.h"
 #include "cow/rule.h"
+#include "cow/selection.h"
 #include "cow/style.h"
 #include "cow/titlebar.h"
 #include "cow/view.h"
@@ -149,6 +150,17 @@ state_snapshot_view(const struct cow_view *view)
 	rec_set_bool(r, "current_output", cow_view_current_output(view));
 	rec_set_bool(r, "current_page", cow_view_current_page(view));
 	rec_set_bool(r, "focused", view == cow_wm_effective_focus());
+	rec_set_bool(r, "selected", cow_selection_has(view, NULL));
+	struct state_value *selections = state_value_list();
+	struct cow_selection_entry *selection;
+	wl_list_for_each(selection, &view->selections, link)
+	{
+		struct state_value *name = state_value_string(selection->name);
+		state_list_append(selections, name);
+		state_value_unref(name);
+	}
+	state_record_set(r, "selections", selections);
+	state_value_unref(selections);
 	rec_set_bool(r, "maximized", view->maximized);
 	rec_set_bool(r, "fullscreen", view->fullscreen);
 	rec_set_bool(r, "shaded", view->sd != COW_SHADE_NONE);

@@ -28,6 +28,7 @@
 #include "cow/json_util.h"
 #include "cow/memory.h"
 #include "cow/output.h"
+#include "cow/selection.h"
 #include "cow/stack.h"
 #include "cow/view.h"
 #include "cow/wm.h"
@@ -144,6 +145,11 @@ cow_state_save(void)
 		if (view->keyboard_layout != NULL)
 			cJSON_AddStringToObject(v, "keyboard_layout",
 			    view->keyboard_layout);
+		cJSON *selections = cJSON_AddArrayToObject(v, "selections");
+		struct cow_selection_entry *selection;
+		wl_list_for_each(selection, &view->selections, link)
+			cJSON_AddItemToArray(selections,
+			    cJSON_CreateString(selection->name));
 
 		if (view->desk != NULL)
 			cJSON_AddNumberToObject(v, "desk", view->desk->nr);
@@ -406,6 +412,17 @@ cow_state_restore(void)
 			 */
 			view->needs_focus = false;
 			view->needs_raise = false;
+
+			cJSON *selections = cJSON_GetObjectItem(vs, "selections");
+			if (cJSON_IsArray(selections)) {
+				cJSON *selection;
+				cJSON_ArrayForEach(selection, selections)
+				{
+					if (cJSON_IsString(selection))
+						(void)cow_selection_add(view,
+						    selection->valuestring);
+				}
+			}
 
 			long long layer;
 			int max_layer = cow_config != NULL ? cow_config->max_layer :

@@ -479,6 +479,9 @@ struct cow_view {
 	char    *style_pending_anchor;
 	char    *style_anchor;
 	char    *style_anchor_output;
+
+	/* Named runtime selections containing this view. */
+	struct wl_list selections;
 };
 
 #define COW_VIEW_POLICY_LAYER          (1u << 0)
