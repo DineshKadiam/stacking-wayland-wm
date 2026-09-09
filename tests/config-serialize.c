@@ -144,6 +144,7 @@ test_menu(void)
 	struct state_value *item = state_value_record();
 
 	record_string(menu, "name", "Root Menu");
+	record_bool(menu, "typeahead", true);
 	record_number(menu, "style_overrides",
 	    COW_MENU_STYLE_BG | COW_MENU_STYLE_PADDING_X |
 	    COW_MENU_STYLE_SIDE_WIDTH | COW_MENU_STYLE_SIDE_COLOUR |
@@ -174,7 +175,7 @@ test_menu(void)
 	    "menu-style -m \"Root Menu\" side.width 32\n"
 	    "menu-style -m \"Root Menu\" side.colour 0x334455ff\n"
 	    "menu-style -m \"Root Menu\" side.image /tmp/menu-side.xpm\n"
-	    "menu-add -i /tmp/terminal.svg \"Root Menu\" Terminal "
+	    "menu-add -T -i /tmp/terminal.svg \"Root Menu\" Terminal "
 	    "\"exec foot\"\n");
 	state_value_unref(menu);
 }

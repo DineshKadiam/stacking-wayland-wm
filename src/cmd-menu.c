@@ -122,7 +122,7 @@ cmd_menu_add_exec(struct cmd *self, struct cmd_q *cmdq)
 	struct args *args = self->args;
 	if (args->argc < 3) {
 		cmdq_error(cmdq,
-		    "menu-add: usage: [-i ICON] NAME LABEL ACTION [args]");
+		    "menu-add: usage: [-T] [-i ICON] NAME LABEL ACTION [args]");
 		return (CMD_RETURN_ERROR);
 	}
 	const char *name  = args->argv[0];
@@ -172,6 +172,8 @@ cmd_menu_add_exec(struct cmd *self, struct cmd_q *cmdq)
 		xfree(action);
 		return (CMD_RETURN_ERROR);
 	}
+	if (args_has(args, 'T'))
+		cow_menu_enable_typeahead(m);
 
 	cow_menu_item_add(m, type,
 	    type == COW_MENU_ITEM_SEPARATOR ? NULL : label, act, is_popup,
@@ -183,10 +185,10 @@ cmd_menu_add_exec(struct cmd *self, struct cmd_q *cmdq)
 
 struct cmd_entry cmd_menu_add_entry = {
 	"menu-add",
-	"+i:",
+	"+Ti:",
 	3,
 	-1,
-	"menu-add [-i ICON] NAME LABEL ACTION",
+	"menu-add [-T] [-i ICON] NAME LABEL ACTION",
 	cmd_menu_add_exec,
 	CMD_CONFIG,
 };

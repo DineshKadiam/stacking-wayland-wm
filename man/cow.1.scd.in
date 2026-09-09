@@ -2319,7 +2319,7 @@ items with *menu-add*, then opened with *menu-show*.  Items may be
 
 ## Defining menus
 
-*menu-add* [*-i* _ICON_] _NAME_ _LABEL_ _ACTION_
+*menu-add* [*-T*] [*-i* _ICON_] _NAME_ _LABEL_ _ACTION_
 	Append an item to menu _NAME_, creating the menu on first
 	reference.  Special _ACTION_ values:
 
@@ -2337,6 +2337,12 @@ items with *menu-add*, then opened with *menu-show*.  Items may be
 	Other names are searched for in *icon.path*.  Titles and separators
 	cannot have icons.  If an icon cannot be found or read, *cow* logs a
 	warning and retains the item without an icon.
+
+	*-T* enables typeahead for the containing menu.  Typing filters its
+	selectable items by label; Backspace removes the last character.  The
+	setting belongs to the named menu, so it need only be given on one
+	*menu-add* command.  It survives *menu-clear* and is removed by
+	*menu-destroy*.
 
 *menu-clear* _NAME_
 	Empty the named menu without destroying it.

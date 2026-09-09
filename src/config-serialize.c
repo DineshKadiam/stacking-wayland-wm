@@ -455,6 +455,7 @@ static void
 serialize_menu(struct config_buf *buf, const struct state_value *record)
 {
 	const char *name = string_field(record, "name");
+	bool typeahead = bool_field(record, "typeahead");
 	const struct state_value *style = field(record, "style",
 	    STATE_V_RECORD);
 	const struct state_value *override_value = state_record_get(record,
@@ -480,9 +481,13 @@ serialize_menu(struct config_buf *buf, const struct state_value *record)
 			    bool_field(item, "popup_pick_context") ?
 			    "popup-pick" : "popup", action);
 
-		const char *argv[6];
+		const char *argv[7];
 		size_t argc = 0;
 		argv[argc++] = "menu-add";
+		if (typeahead) {
+			argv[argc++] = "-T";
+			typeahead = false;
+		}
 		if (icon[0] != '\0') {
 			argv[argc++] = "-i";
 			argv[argc++] = icon;
