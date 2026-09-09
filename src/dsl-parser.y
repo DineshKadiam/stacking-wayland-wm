@@ -20,7 +20,7 @@
  * Productions follow the locked design: script blocks contain
  * statements (let / for / if / command); expressions form a small
  * tree with comparisons + boolean ops; sources are one of windows /
- * desks / outputs / rules.
+ * desks / outputs / rules / selections.
  */
 
 %define api.pure full

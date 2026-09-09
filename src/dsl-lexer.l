@@ -140,6 +140,10 @@ classify_word(const char *word, YYSTYPE *lval, bool *push_cmd_arg)
 		lval->src = DSL_SRC_RULES;
 		return (SOURCE_NAME);
 	}
+	if (strcmp(word, "selections") == 0) {
+		lval->src = DSL_SRC_SELECTIONS;
+		return (SOURCE_NAME);
+	}
 
 	if (cmd_find_cmd(word) != NULL) {
 		lval->str     = xstrdup(word);

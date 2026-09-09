@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "cow/memory.h"
@@ -149,4 +150,56 @@ cow_selection_replace(const char *name, struct cow_view **views, size_t count)
 		if (views[i] != NULL && !views[i]->closed)
 			(void)cow_selection_add(views[i], name);
 	}
+}
+
+static int
+summary_cmp(const void *a, const void *b)
+{
+	const struct cow_selection_summary *sa = a;
+	const struct cow_selection_summary *sb = b;
+
+	return strcmp(sa->name, sb->name);
+}
+
+size_t
+cow_selection_summaries(struct cow_selection_summary **summaries)
+{
+	size_t count = 0;
+	struct cow_view *view;
+
+	*summaries = NULL;
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (view->closed)
+			continue;
+		struct cow_selection_entry *entry;
+		wl_list_for_each(entry, &view->selections, link)
+		{
+			size_t i;
+			for (i = 0; i < count; i++) {
+				if (strcmp((*summaries)[i].name, entry->name) == 0)
+					break;
+			}
+			if (i == count) {
+				*summaries = xrealloc(*summaries, count + 1,
+				    sizeof(**summaries));
+				(*summaries)[count].name = xstrdup(entry->name);
+				(*summaries)[count].count = 0;
+				count++;
+			}
+			(*summaries)[i].count++;
+		}
+	}
+	if (count > 1)
+		qsort(*summaries, count, sizeof(**summaries), summary_cmp);
+	return count;
+}
+
+void
+cow_selection_summaries_free(struct cow_selection_summary *summaries,
+    size_t count)
+{
+	for (size_t i = 0; i < count; i++)
+		xfree(summaries[i].name);
+	xfree(summaries);
 }

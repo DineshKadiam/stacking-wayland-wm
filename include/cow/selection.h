@@ -30,6 +30,11 @@ struct cow_selection_entry {
 	char	      *name;
 };
 
+struct cow_selection_summary {
+	char   *name;
+	size_t  count;
+};
+
 const char *cow_selection_name(const char *);
 bool	    cow_selection_has(const struct cow_view *, const char *);
 bool	    cow_selection_add(struct cow_view *, const char *);
@@ -40,5 +45,7 @@ void	    cow_selection_fini_view(struct cow_view *);
 
 size_t cow_selection_collect(const char *, struct cow_view ***);
 void   cow_selection_replace(const char *, struct cow_view **, size_t);
+size_t cow_selection_summaries(struct cow_selection_summary **);
+void   cow_selection_summaries_free(struct cow_selection_summary *, size_t);
 
 #endif /* COW_SELECTION_H */

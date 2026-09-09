@@ -14,8 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <assert.h>
-
 #include "cow/compat.h"
 #include "cow/memory.h"
 #include "cow/selection.h"
@@ -24,6 +22,8 @@
 #include "cow/wm.h"
 
 struct cow_wm cow_wm;
+
+#define CHECK(expr) do { if (!(expr)) return 1; } while (0)
 
 void
 cow_update_request_at(__unused uint32_t flags, __unused const char *file,
@@ -49,28 +49,36 @@ main(void)
 	view_init(&b);
 	view_init(&c);
 
-	assert(cow_selection_add(&a, NULL));
-	assert(cow_selection_add(&b, "work"));
-	assert(!cow_selection_add(&a, NULL));
-	assert(cow_selection_has(&a, COW_SELECTION_DEFAULT));
-	assert(!cow_selection_has(&a, "work"));
+	CHECK(cow_selection_add(&a, NULL));
+	CHECK(cow_selection_add(&b, "work"));
+	CHECK(!cow_selection_add(&a, NULL));
+	CHECK(cow_selection_has(&a, COW_SELECTION_DEFAULT));
+	CHECK(!cow_selection_has(&a, "work"));
 
-	assert(cow_selection_collect(NULL, &views) == 1);
-	assert(views[0] == &a);
+	CHECK(cow_selection_collect(NULL, &views) == 1);
+	CHECK(views[0] == &a);
 	xfree(views);
 
 	struct cow_view *replacement[] = { &b, &c };
 	cow_selection_replace(NULL, replacement, 2);
-	assert(!cow_selection_has(&a, NULL));
-	assert(cow_selection_has(&b, NULL));
-	assert(cow_selection_has(&c, NULL));
-	assert(cow_selection_has(&b, "work"));
+	CHECK(!cow_selection_has(&a, NULL));
+	CHECK(cow_selection_has(&b, NULL));
+	CHECK(cow_selection_has(&c, NULL));
+	CHECK(cow_selection_has(&b, "work"));
 
-	assert(cow_selection_toggle(&b, "work"));
-	assert(!cow_selection_has(&b, "work"));
+	struct cow_selection_summary *summaries = NULL;
+	CHECK(cow_selection_summaries(&summaries) == 2);
+	CHECK(strcmp(summaries[0].name, "default") == 0);
+	CHECK(summaries[0].count == 2);
+	CHECK(strcmp(summaries[1].name, "work") == 0);
+	CHECK(summaries[1].count == 1);
+	cow_selection_summaries_free(summaries, 2);
+
+	CHECK(cow_selection_toggle(&b, "work"));
+	CHECK(!cow_selection_has(&b, "work"));
 	cow_selection_clear(NULL);
-	assert(!cow_selection_has(&b, NULL));
-	assert(!cow_selection_has(&c, NULL));
+	CHECK(!cow_selection_has(&b, NULL));
+	CHECK(!cow_selection_has(&c, NULL));
 
 	cow_selection_fini_view(&a);
 	cow_selection_fini_view(&b);

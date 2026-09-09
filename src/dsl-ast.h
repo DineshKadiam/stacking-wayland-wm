@@ -77,6 +77,7 @@ enum dsl_source {
 	DSL_SRC_DESKS,
 	DSL_SRC_OUTPUTS,
 	DSL_SRC_RULES,
+	DSL_SRC_SELECTIONS,
 };
 
 struct dsl_node;

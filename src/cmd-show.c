@@ -122,6 +122,8 @@ state_topic(const char *topic, enum state_source *source)
 		*source = STATE_SRC_BINDINGS;
 	else if (strcmp(topic, "command") == 0)
 		*source = STATE_SRC_COMMANDS;
+	else if (strcmp(topic, "selection") == 0)
+		*source = STATE_SRC_SELECTIONS;
 	else
 		return (false);
 	return (true);
@@ -282,6 +284,11 @@ cmd_show_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_ERROR);
 	}
 
+	if (strcmp(topic, "selection") == 0) {
+		cmdq_error(cmdq, "show: selection requires -a");
+		return (CMD_RETURN_ERROR);
+	}
+
 	if (strcmp(topic, "command") == 0) {
 		if (has_target) {
 			cmdq_error(cmdq, "show: -t is not valid with command");
@@ -394,7 +401,8 @@ show_collection(enum state_source source, const char *filter_expr,
 	    source == STATE_SRC_STYLES ? "style" :
 	    source == STATE_SRC_DECOR ? "decor" :
 	    source == STATE_SRC_MENUS ? "menu" :
-	    source == STATE_SRC_BINDINGS ? "binding" : "command";
+	    source == STATE_SRC_BINDINGS ? "binding" :
+	    source == STATE_SRC_SELECTIONS ? "selection" : "command";
 	return (show_record(topic, result, format, cmdq));
 }
 

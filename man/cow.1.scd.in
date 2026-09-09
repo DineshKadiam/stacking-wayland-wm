@@ -305,8 +305,9 @@ newlines) separates them.
 	Snapshot _SOURCE_ at loop entry and execute the body once
 	per matching element with _NAME_ bound to the current
 	record.  _SOURCE_ is one of *windows*, *desks*, *outputs*
-	(or *screens*), *rules*.  An optional *where* clause filters the snapshot
-	with the supplied expression (evaluated per element with
+	(or *screens*), *rules*, or *selections*.
+	An optional *where* clause filters the snapshot with the supplied
+	expression (evaluated per element with
 	_NAME_ in scope).  The body sees a fresh sub-scope; let
 	bindings inside the body don't leak out.
 
@@ -376,8 +377,7 @@ if self.title matches "cowiconman:*" and self.output == "eDP-1" {
 ## Sources
 
 Each iterable source yields records whose fields match the corresponding
-*show -a* topic JSON (see *show -a window*, *show -a desk*, *show -a output*,
-and *show -a rule*). Common window fields include *id*, *app_id*,
+*show -a* topic JSON. Common window fields include *id*, *app_id*,
 *title*, *desk*, *output*, *layer*, *focused*, *iconified*,
 *keyboard\_layout*, *circulate_skip*, *selected*, *selections*,
 *maximized*, *width*, *height*, *page_col*,
@@ -390,7 +390,8 @@ Common desk fields include *nr*, *name*, *output*, *current*,
 fields include *name*, *number*, geometry, usable geometry, *current*,
 *current_desk*, *current_desk_name*, and page state.  Common rule
 fields include *name*, *type*, *global*, *output*, *desk*, *match*,
-and *body*.
+and *body*.  Selection records contain the unique selection *name* and
+its window *count*.
 
 For window records, *current_page* is relative to that window's output.
 Use *current_output and current_page* when matching windows only on the
@@ -1080,9 +1081,8 @@ standard output.
 
 *-a*
 	Return all records for the topic. This is supported by _window_, _output_,
-	_desk_, _rule_, _style_, _decor_, _menu_, _binding_, and _command_. It
-	cannot be
-	combined with *-t* or a resource name.
+	_desk_, _rule_, _style_, _decor_, _menu_, _binding_, _command_, and
+	_selection_. It cannot be combined with *-t* or a resource name.
 
 *-f* _format_
 	Select the output format. _json_ is the default. _config_ emits commands
@@ -1172,6 +1172,13 @@ standard output.
 
 	Example:
 	*show -a -F 'self.type == "keyboard"' binding*
+
+*show -a selection*
+	Return every non-empty named window selection.  Records contain its
+	unique _name_ and window _count_.
+
+	Example:
+	*show -a -F 'self.count > 1' selection*
 
 *show command* _name_, *show -a command*
 	Return one named command or every registered command with its _name_ and
@@ -1802,6 +1809,22 @@ script {
 	for w in (windows where "work" in w.selections) {
 		winops -t #{w.id} -sS
 	}
+}
+```
+
+Selection names can also populate a typeahead menu dynamically:
+
+```
+menu-add -T SelectionMenu "Window selections" title
+
+script {
+	menu-clear SelectionMenu
+	menu-add SelectionMenu "Window selections" title
+	for s in (selections) {
+		menu-add SelectionMenu "#{s.name} (#{s.count})" \
+		    "window-move -G #{s.name}"
+	}
+	menu-show SelectionMenu
 }
 ```
 

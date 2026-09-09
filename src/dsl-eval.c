@@ -149,6 +149,8 @@ state_source_from_dsl(enum dsl_source source)
 		return (STATE_SRC_OUTPUTS);
 	case DSL_SRC_RULES:
 		return (STATE_SRC_RULES);
+	case DSL_SRC_SELECTIONS:
+		return (STATE_SRC_SELECTIONS);
 	}
 	return (STATE_SRC_WINDOWS);
 }

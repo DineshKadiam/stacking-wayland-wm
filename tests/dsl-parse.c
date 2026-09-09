@@ -121,6 +121,7 @@ main(void)
 		    "}\n"
 		    "# A comment containing } must not close the body.\n"
 		    "} }",
+		"{ for s in (selections where s.count > 1) { nop } }",
 	};
 
 	for (size_t repeat = 0; repeat < 100; repeat++) {

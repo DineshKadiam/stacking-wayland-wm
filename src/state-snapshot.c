@@ -596,6 +596,19 @@ state_snapshot_collection(enum state_source src)
 	case STATE_SRC_COMMANDS:
 		state_value_unref(list);
 		return (commands_snapshot());
+	case STATE_SRC_SELECTIONS: {
+		struct cow_selection_summary *summaries;
+		size_t count = cow_selection_summaries(&summaries);
+		for (size_t i = 0; i < count; i++) {
+			struct state_value *record = state_value_record();
+			rec_set_string(record, "name", summaries[i].name);
+			rec_set_number(record, "count", summaries[i].count);
+			state_list_append(list, record);
+			state_value_unref(record);
+		}
+		cow_selection_summaries_free(summaries, count);
+		break;
+	}
 	}
 
 	return (list);
