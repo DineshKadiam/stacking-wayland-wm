@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include "cow/cmd.h"
+#include "cow/cmd-filter.h"
 #include "cow/compat.h"
 #include "cow/config.h"
 #include "cow/desk_ops.h"
@@ -56,6 +57,8 @@ enum expand_dir {
 };
 
 static enum cmd_retval cmd_winops_exec(struct cmd *, struct cmd_q *);
+static enum cmd_retval winops_apply(struct cow_view *, struct args *,
+    struct cmd_q *);
 static enum cmd_retval cmd_window_expand_exec(struct cmd *, struct cmd_q *);
 static enum cmd_retval cmd_window_maximize_exec(struct cmd *, struct cmd_q *);
 static enum cmd_retval cmd_window_shade_exec(struct cmd *, struct cmd_q *);
@@ -79,10 +82,11 @@ static enum shade_direction resolve_shade_direction(struct cow_view *,
 
 struct cmd_entry cmd_winops_entry = {
 	"winops",
-	"t:crlsiSL:C:",
+	"F:t:crlsiSL:C:",
 	0,
 	0,
-	"[-cilrs] [-C on|off|toggle] [-L layer] [-t target window]",
+	"[-cilrs] [-C on|off|toggle] [-L layer] [-t target window] "
+	"[-F expr]",
 	cmd_winops_exec,
 	0,
 };
@@ -90,12 +94,48 @@ struct cmd_entry cmd_winops_entry = {
 static enum cmd_retval
 cmd_winops_exec(struct cmd *self, struct cmd_q *cmdq)
 {
-	struct args	*args = self->args;
-	struct cow_view *view = cmd_require_target_window(cmdq, "winops");
+	struct args *args = self->args;
+	const char *filter_expr = args_get(args, 'F');
 
-	if (view == NULL)
+	if (filter_expr == NULL) {
+		struct cow_view *view = cmd_require_target_window(cmdq, "winops");
+		if (view == NULL)
+			return (CMD_RETURN_ERROR);
+		return (winops_apply(view, args, cmdq));
+	}
+	if (args_has(args, 't')) {
+		cmdq_error(cmdq, "winops: -F cannot be combined with -t");
+		return (CMD_RETURN_ERROR);
+	}
+
+	struct cmd_filter filter;
+	if (!cmd_filter_parse(&filter, cmdq, "winops", "-F", filter_expr))
 		return (CMD_RETURN_ERROR);
 
+	enum cmd_retval retval = CMD_RETURN_NORMAL;
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (view->closed)
+			continue;
+		bool matches = false;
+		if (!cmd_filter_view(&filter, view, &matches))
+			break;
+		if (!matches)
+			continue;
+		retval = winops_apply(view, args, cmdq);
+		if (retval != CMD_RETURN_NORMAL)
+			break;
+	}
+	if (!cmd_filter_finish(&filter, cmdq))
+		retval = CMD_RETURN_ERROR;
+	cmd_filter_free(&filter);
+	return (retval);
+}
+
+static enum cmd_retval
+winops_apply(struct cow_view *view, struct args *args, struct cmd_q *cmdq)
+{
 	/* Close -- deferred to manage callback */
 	if (args_has(args, 'c')) {
 		view->pending_close = true;

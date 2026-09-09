@@ -1348,12 +1348,17 @@ These are listed below:
 
 The following details commands which operate on windows directly.
 
-## winops [-cilrs] [-C on|off|toggle] [-L layer] [-t target]
+## winops [-cilrs] [-C on|off|toggle] [-L layer] [-t target] [-F expr]
 
 Operate on a window.
 
 *-t* _target_
 	Target window (see *COMMAND REFERENCING*). Defaults to the focused window.
+	It cannot be combined with *-F*.
+
+*-F* _expr_
+	Apply the operations to every window matching the DSL expression instead
+	of a single target.  *self* is bound to each candidate window.
 
 *-c*
 	Close the window.
@@ -1406,6 +1411,14 @@ Operate on a window.
 
 	Container members share a single layer: setting *-L* on any
 	member updates every member of the container.
+
+For example, iconify the default selection or make every member of a named
+selection page-sticky:
+
+```
+winops -F 'self.selected' -i
+winops -F '"work" in self.selections' -S
+```
 
 ## window-move [-C] [-G [selection]] [-w] [-t target] [-d dir [-n]] [-o output] [-a anchor] [-c] [-k 0-9] [-x X] [-y Y] [-P col[,row]]
 
@@ -1799,11 +1812,7 @@ default selection, or membership of *selections* for a named one.  For example:
 ```
 bind L+g  pick-window -m
 bind LS+g window-move -G
-bind LA+g script {
-	for w in (windows where w.selected) {
-		winops -t #{w.id} -i
-	}
-}
+bind LA+g winops -F 'self.selected' -i
 
 script {
 	for w in (windows where "work" in w.selections) {
