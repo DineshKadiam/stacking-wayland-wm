@@ -95,6 +95,10 @@ Supported commands are described below.
 	Group matching windows into one row.  _MODE_ may be *none*, *app*,
 	*title*, *output*, or *desk*.  The default is *none*.
 
+*group-typeahead* _BOOLEAN_
+	Enable typeahead filtering in the native menu used to select a window
+	from a grouped row.  The default is *false*.
+
 *match* _FIELD_=_TEXT_
 	Only show windows whose _FIELD_ contains _TEXT_.  _FIELD_ may be
 	*title*, *app*, or *id*.  Matching is case-insensitive.  Repeat the
@@ -175,7 +179,8 @@ The selector is a native cow menu using the current menu style.  Its rows
 include the short window id, output, and desk.  Selecting a window switches to
 its output, desk, and page, activates its container member when necessary,
 restores it when iconified, and focuses it.  Type-ahead is disabled for these
-selectors; number keys, arrows, Enter, and Escape remain available.
+selectors by default; number keys, arrows, Enter, and Escape remain available.
+Set *group-typeahead true* to filter the selector by typing instead.
 
 Middle-click a row to toggle the window's iconified state.
 

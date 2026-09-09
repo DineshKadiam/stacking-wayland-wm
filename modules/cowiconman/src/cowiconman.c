@@ -252,6 +252,7 @@ static int		 page_x_arg, page_y_arg;
 static enum sort_mode	 sort_mode = SORT_TITLE;
 static enum anchor_mode	 anchor_mode = ANCHOR_NONE;
 static enum group_mode	 group_mode = GROUP_NONE;
+static int		 group_typeahead;
 static int		 show_self;
 static char		 label_format[128] = "%t";
 static int		 opt_rows;
@@ -644,6 +645,13 @@ load_iconman_option(char **fields, int n, const char **why)
 			*why = "bad group-by";
 			return false;
 		}
+	} else if (strcmp(fields[0], "group-typeahead") == 0) {
+		if (n != 2 ||
+		    !cow_module_config_parse_bool(fields[1], &enabled)) {
+			*why = "bad group-typeahead";
+			return false;
+		}
+		group_typeahead = enabled;
 	} else if (strcmp(fields[0], "match") == 0) {
 		if (n != 2 || !parse_match(fields[1])) {
 			*why = "bad match";
@@ -1722,7 +1730,8 @@ show_native_group(const struct row *r)
 	const char *argv[11];
 	size_t argc = 0;
 	argv[argc++] = "window-list";
-	argv[argc++] = "-n";
+	if (!group_typeahead)
+		argv[argc++] = "-n";
 	argv[argc++] = "-p";
 	if (show_icons)
 		argv[argc++] = "-I";
