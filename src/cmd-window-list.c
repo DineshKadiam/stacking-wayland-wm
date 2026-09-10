@@ -387,22 +387,14 @@ show_window_list(const char *filter_expr, const char *format,
 
 	sort_entries(entries, count, sort);
 
-	struct cow_menu *old = cow_menu_find(WINDOW_LIST_MENU);
-	if (old != NULL)
-		cow_menu_destroy(old);
-	struct cow_menu *menu = cow_menu_create(WINDOW_LIST_MENU);
+	struct cow_menu *menu = cow_menu_generated_begin(WINDOW_LIST_MENU,
+	    typeahead ? "Window List (type to search)" : "Window List", true,
+	    typeahead);
 	if (menu == NULL) {
 		xfree(entries);
 		cmdq_error(cmdq, "window-list: cannot create menu");
 		return (CMD_RETURN_ERROR);
 	}
-	cow_menu_enable_numbered_selection(menu);
-	if (typeahead)
-		cow_menu_enable_typeahead(menu);
-	cow_menu_item_add(menu, COW_MENU_ITEM_TITLE,
-	    typeahead ? "Window List (type to search)" : "Window List", NULL,
-	    false, false, NULL);
-
 	for (size_t i = 0; i < count; i++) {
 		view	    = entries[i].view;
 		char *label = format_label(format, view, (int)i + 1);

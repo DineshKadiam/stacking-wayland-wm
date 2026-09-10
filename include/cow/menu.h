@@ -25,6 +25,7 @@ struct river_shell_surface_v1;
 struct river_node_v1;
 struct cow_shm_buffer;
 struct cow_view;
+struct cow_output;
 
 
 enum cow_menu_selection_relief {
@@ -163,6 +164,10 @@ struct cow_menu *cow_menu_find(const char *name);
  */
 struct cow_menu *cow_menu_create(const char *name);
 
+/* Replace a generated menu and add its title and selection modes. */
+struct cow_menu *cow_menu_generated_begin(const char *, const char *, bool,
+    bool);
+
 /*
  * Remove all items from a menu without destroying the menu itself.
  */
@@ -193,6 +198,10 @@ struct cow_menu_popup *cow_menu_popup_open(struct cow_menu *menu, int x, int y,
 /* Open a root popup centred as a whole on the given position. */
 struct cow_menu_popup *cow_menu_popup_open_centered(struct cow_menu *, int,
     int, struct cow_view *);
+
+/* Open a generated menu in the centre of an output's usable area. */
+struct cow_menu_popup *cow_menu_popup_open_on_output(struct cow_menu *,
+    struct cow_output *, struct cow_view *);
 
 /* Make digit keys select menu items by ordinal. */
 void cow_menu_enable_numbered_selection(struct cow_menu *);

@@ -774,6 +774,25 @@ cow_menu_create(const char *name)
 	return (m);
 }
 
+struct cow_menu *
+cow_menu_generated_begin(const char *name, const char *title, bool numbered,
+    bool typeahead)
+{
+	struct cow_menu *old = cow_menu_find(name);
+	if (old != NULL)
+		cow_menu_destroy(old);
+	struct cow_menu *menu = cow_menu_create(name);
+	if (menu == NULL)
+		return (NULL);
+	if (numbered)
+		cow_menu_enable_numbered_selection(menu);
+	if (typeahead)
+		cow_menu_enable_typeahead(menu);
+	cow_menu_item_add(menu, COW_MENU_ITEM_TITLE, title, NULL, false, false,
+	    NULL);
+	return (menu);
+}
+
 static void
 menu_item_free(struct cow_menu_item *it)
 {
@@ -1662,6 +1681,21 @@ cow_menu_popup_open_centered(struct cow_menu *menu, int cx, int cy,
 	p->needs_create = true;
 	cow_update_request(COW_UPDATE_MANAGE);
 	return (p);
+}
+
+struct cow_menu_popup *
+cow_menu_popup_open_on_output(struct cow_menu *menu, struct cow_output *output,
+    struct cow_view *context_view)
+{
+	if (output == NULL)
+		output = cow_wm.current_output;
+	int cx = 0;
+	int cy = 0;
+	if (output != NULL) {
+		cx = output->usable_area.x + output->usable_area.width / 2;
+		cy = output->usable_area.y + output->usable_area.height / 2;
+	}
+	return cow_menu_popup_open_centered(menu, cx, cy, context_view);
 }
 
 static void

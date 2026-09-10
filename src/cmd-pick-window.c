@@ -28,6 +28,7 @@
 #include "cow/cmd-filter.h"
 #include "cow/compat.h"
 #include "cow/memory.h"
+#include "cow/menu.h"
 #include "cow/output.h"
 #include "cow/pick.h"
 #include "cow/seat.h"
@@ -35,12 +36,15 @@
 #include "cow/shm.h"
 #include "cow/view.h"
 #include "cow/update.h"
+#include "cow/util.h"
 #include "cow/wm.h"
 
 #include "cursor-shape-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 
 static enum cmd_retval cmd_pick_window_exec(struct cmd *, struct cmd_q *);
+
+#define SELECTION_PICK_MENU "\037cow-selection-pick"
 
 struct cmd_entry cmd_pick_window_entry = {
 	"pick-window",
@@ -103,6 +107,7 @@ static void pick_session_seed_pointer(struct pick_session *);
 static void pick_commands_init(void);
 static void pick_command_defer(char *, struct cow_view *);
 static void pick_command_run(struct deferred_pick_command *);
+static enum cmd_retval choose_pick_selection(struct cmd_q *, const char *);
 
 static struct cow_view *
 pick_view_at(struct pick_session *s, int x, int y)
@@ -786,6 +791,22 @@ cmd_pick_window_exec(struct cmd *self, struct cmd_q *cmdq)
 			    "pick-window: selection name cannot be empty");
 			return CMD_RETURN_ERROR;
 		}
+		if (name == NULL) {
+			struct cow_selection_summary *summaries = NULL;
+			size_t count = cow_selection_summaries(&summaries);
+			bool have_named = false;
+			for (size_t i = 0; i < count; i++) {
+				if (strcmp(summaries[i].name,
+					COW_SELECTION_DEFAULT) != 0) {
+					have_named = true;
+					break;
+				}
+			}
+			cow_selection_summaries_free(summaries, count);
+			if (have_named)
+				return choose_pick_selection(cmdq,
+				    args_get(args, 'F'));
+		}
 		return pick_session_begin(cmdq, "pick-window",
 		    args_get(args, 'F'), true, name, NULL);
 	}
@@ -799,6 +820,61 @@ cmd_pick_window_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 	return pick_session_begin(cmdq, "pick-window", args_get(args, 'F'),
 	    false, NULL, pick_command_string(args));
+}
+
+static enum cmd_retval
+choose_pick_selection(struct cmd_q *cmdq, const char *filter_expr)
+{
+	struct cow_selection_summary *summaries = NULL;
+	size_t count = cow_selection_summaries(&summaries);
+	struct cow_menu *menu = cow_menu_generated_begin(SELECTION_PICK_MENU,
+	    "Edit Selection (type to search)", true, true);
+	if (menu == NULL) {
+		cow_selection_summaries_free(summaries, count);
+		cmdq_error(cmdq, "pick-window: cannot create selection menu");
+		return CMD_RETURN_ERROR;
+	}
+
+	size_t default_count = 0;
+	for (size_t i = 0; i < count; i++) {
+		if (strcmp(summaries[i].name, COW_SELECTION_DEFAULT) == 0) {
+			default_count = summaries[i].count;
+			break;
+		}
+	}
+	for (size_t pass = 0; pass < count + 1; pass++) {
+		const char *name;
+		size_t members;
+		if (pass == 0) {
+			name = COW_SELECTION_DEFAULT;
+			members = default_count;
+		} else {
+			name = summaries[pass - 1].name;
+			members = summaries[pass - 1].count;
+			if (strcmp(name, COW_SELECTION_DEFAULT) == 0)
+				continue;
+		}
+		char *label;
+		xasprintf(&label, "%s (%zu window%s)", name, members,
+		    members == 1 ? "" : "s");
+		const char *argv[6] = { "pick-window", "-m" };
+		size_t argc = 2;
+		if (filter_expr != NULL) {
+			argv[argc++] = "-F";
+			argv[argc++] = filter_expr;
+		}
+		argv[argc++] = "-n";
+		argv[argc++] = name;
+		char *action = cow_command_from_argv(argc, argv);
+		cow_menu_item_add(menu, COW_MENU_ITEM_NORMAL, label, action,
+		    false, false, NULL);
+		xfree(action);
+		xfree(label);
+	}
+	cow_selection_summaries_free(summaries, count);
+	cow_menu_popup_open_on_output(menu, cmd_ctx_target_output(cmdq), NULL);
+	cow_update_request(COW_UPDATE_MANAGE);
+	return CMD_RETURN_NORMAL;
 }
 
 static void

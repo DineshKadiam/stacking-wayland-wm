@@ -23,6 +23,7 @@
 #include "cow/config.h"
 #include "cow/desk_ops.h"
 #include "cow/keybinding.h"
+#include "cow/menu.h"
 #include "cow/output.h"
 #include "cow/placement.h"
 #include "cow/pointer_op.h"
@@ -32,9 +33,15 @@
 #include "cow/titlebar.h"
 #include "cow/view.h"
 #include "cow/update.h"
+#include "cow/util.h"
 #include "cow/wm.h"
 
+#define SELECTION_MOVE_MENU "\037cow-selection-move"
+
 static enum cmd_retval cmd_move_exec(struct cmd *, struct cmd_q *);
+static enum cmd_retval move_group(struct cow_view *, const char *,
+    struct cmd_q *);
+static enum cmd_retval choose_move_group(struct cow_view *, struct cmd_q *);
 static void do_screen(struct cow_view *, const char *, struct cmd_q *);
 static void do_interactive(struct cow_view *);
 static void do_interactive_group(struct cow_view *, const char *);
@@ -89,32 +96,9 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 			    "window-move: selection name cannot be empty");
 			return CMD_RETURN_ERROR;
 		}
-		struct cow_view **selected = NULL;
-		size_t count = cow_selection_collect(group_name, &selected);
-		if (!cow_selection_has(view, group_name))
-			view = NULL;
-		if (view == NULL || view->closed || !view->has_dimensions ||
-		    view->output == NULL || cow_view_is_iconified(view)) {
-			view = NULL;
-			for (size_t i = 0; i < count; i++) {
-				if (selected[i] != NULL && !selected[i]->closed &&
-				    selected[i]->has_dimensions &&
-				    selected[i]->output != NULL &&
-				    !cow_view_is_iconified(selected[i])) {
-					view = selected[i];
-					break;
-				}
-			}
-		}
-		xfree(selected);
-		if (view == NULL) {
-			cmdq_error(cmdq, "window-move: selection is empty");
-			return CMD_RETURN_ERROR;
-		}
-		if (cmdq == NULL || !cmdq->in_style)
-			cow_style_cancel_pending_initial(view);
-		do_interactive_group(view, group_name);
-		return CMD_RETURN_NORMAL;
+		if (group_name == NULL)
+			return choose_move_group(view, cmdq);
+		return move_group(view, group_name, cmdq);
 	}
 
 	if (view == NULL || view->output == NULL) {
@@ -271,6 +255,84 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 		}
 	}
 	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+move_group(struct cow_view *view, const char *name, struct cmd_q *cmdq)
+{
+	struct cow_view **selected = NULL;
+	size_t count = cow_selection_collect(name, &selected);
+
+	if (!cow_selection_has(view, name))
+		view = NULL;
+	if (view == NULL || view->closed || !view->has_dimensions ||
+	    view->output == NULL || cow_view_is_iconified(view)) {
+		view = NULL;
+		for (size_t i = 0; i < count; i++) {
+			if (selected[i] != NULL && !selected[i]->closed &&
+			    selected[i]->has_dimensions &&
+			    selected[i]->output != NULL &&
+			    !cow_view_is_iconified(selected[i])) {
+				view = selected[i];
+				break;
+			}
+		}
+	}
+	xfree(selected);
+	if (view == NULL) {
+		cmdq_error(cmdq, "window-move: selection is empty");
+		return CMD_RETURN_ERROR;
+	}
+	if (cmdq == NULL || !cmdq->in_style)
+		cow_style_cancel_pending_initial(view);
+	do_interactive_group(view, name);
+	return CMD_RETURN_NORMAL;
+}
+
+static enum cmd_retval
+choose_move_group(struct cow_view *view, struct cmd_q *cmdq)
+{
+	struct cow_selection_summary *summaries = NULL;
+	size_t count = cow_selection_summaries(&summaries);
+
+	if (count == 0) {
+		cmdq_error(cmdq, "window-move: no non-empty selections");
+		return CMD_RETURN_ERROR;
+	}
+	if (count == 1) {
+		enum cmd_retval retval = move_group(view, summaries[0].name, cmdq);
+		cow_selection_summaries_free(summaries, count);
+		return retval;
+	}
+
+	struct cow_menu *menu = cow_menu_generated_begin(SELECTION_MOVE_MENU,
+	    "Move Selection (type to search)", true, true);
+	if (menu == NULL) {
+		cow_selection_summaries_free(summaries, count);
+		cmdq_error(cmdq, "window-move: cannot create selection menu");
+		return CMD_RETURN_ERROR;
+	}
+	for (size_t i = 0; i < count; i++) {
+		char *label;
+		xasprintf(&label, "%s (%zu window%s)", summaries[i].name,
+		    summaries[i].count, summaries[i].count == 1 ? "" : "s");
+		const char *argv[] = { "window-move", "-G", summaries[i].name };
+		char *action = cow_command_from_argv(3, argv);
+		cow_menu_item_add(menu, COW_MENU_ITEM_NORMAL, label, action, false,
+		    false, NULL);
+		xfree(action);
+		xfree(label);
+	}
+	cow_selection_summaries_free(summaries, count);
+
+	struct cow_output *output = view != NULL ? view->output : NULL;
+	if (output == NULL)
+		output = cmd_ctx_target_output(cmdq);
+	if (output == NULL)
+		output = cow_wm.current_output;
+	cow_menu_popup_open_on_output(menu, output, view);
+	cow_update_request(COW_UPDATE_MANAGE);
+	return CMD_RETURN_NORMAL;
 }
 
 static void
