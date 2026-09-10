@@ -1239,11 +1239,14 @@ Read and execute commands from _file_.  Absolute paths are used as-is, *~/* is
 resolved relative to *$HOME*, and other relative paths are resolved relative to
 *$XDG\_RUNTIME\_DIR*.
 
-## keyboard-layout NAME
+## keyboard-layout [NAME]
 
 Set the active XKB layout on every keyboard. _NAME_ must match a
 descriptive layout name in the keyboard's current keymap. River ignores a name
-which does not exist.
+which does not exist.  Without _NAME_, display a numbered typeahead menu of
+layout names observed by CoW during this session.  River reports layout changes
+but does not expose the complete list of names in a keymap, so layouts appear in
+the chooser after they have been active at least once.
 
 ```
 keyboard-layout 'English (UK)'
@@ -1458,8 +1461,10 @@ Move a window. With no flags, begin an interactive move using the mouse.
 	The target window, when selected, is the group leader; otherwise the first
 	movable selected window is used.  Snapping and screen clamping apply to the
 	leader and the resulting movement is applied to every group member.
-	_selection_ defaults to *default*.  This option cannot be combined with
-	other move operations.
+	When _selection_ is omitted, the only non-empty selection is used
+	automatically, or a numbered typeahead menu is shown when several are
+	available.  Give *default* explicitly to bypass the chooser.  This option
+	cannot be combined with other move operations.
 
 *-P* _col_[,_row_]
 	Move the window to the page at column _col_, row _row_ (0-indexed),
@@ -1775,7 +1780,10 @@ Any explicit *-t* in _command_ takes precedence.
 	Edit a named window selection.  Left-click toggles a window and selected
 	windows are outlined.  Press _Enter_ or right-click to accept the new
 	selection.  Press _Escape_ to cancel and preserve the previous selection.
-	The current selection is used as the starting point.
+	The current selection is used as the starting point.  If named selections
+	already exist and *-n* is omitted, a numbered typeahead menu chooses which
+	selection to edit.  The menu includes the *default* selection.  If no named
+	selection exists, editing begins immediately with *default* as before.
 
 *-n* _name_
 	With *-m*, edit _name_ rather than the *default* selection.
