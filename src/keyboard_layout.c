@@ -30,6 +30,29 @@
 static struct cow_keyboard_layout *active_layout;
 static struct cow_view *layout_focus_view;
 
+struct observed_layout {
+	struct wl_list link;
+	char          *name;
+};
+
+static struct wl_list observed_layouts;
+
+static void
+keyboard_layout_observe(const char *name)
+{
+	if (name == NULL || name[0] == '\0')
+		return;
+	struct observed_layout *layout;
+	wl_list_for_each(layout, &observed_layouts, link)
+	{
+		if (strcmp(layout->name, name) == 0)
+			return;
+	}
+	layout = xcalloc(1, sizeof(*layout));
+	layout->name = xstrdup(name);
+	wl_list_insert(observed_layouts.prev, &layout->link);
+}
+
 static void
 keyboard_removed(void *data, struct river_xkb_keyboard_v1 *river_keyboard)
 {
@@ -73,6 +96,7 @@ keyboard_layout(void *data,
 	keyboard->index = index;
 	keyboard->has_layout = true;
 	if (changed) {
+		keyboard_layout_observe(name);
 		xstrset(&keyboard->name, name);
 		active_layout = keyboard;
 		if (cow_config != NULL &&
@@ -198,6 +222,7 @@ void
 cow_keyboard_layout_init(void)
 {
 	wl_list_init(&cow_wm.keyboard_layouts);
+	wl_list_init(&observed_layouts);
 	active_layout = NULL;
 	layout_focus_view = NULL;
 }
@@ -227,6 +252,13 @@ cow_keyboard_layout_fini(void)
 	}
 	active_layout = NULL;
 	layout_focus_view = NULL;
+	struct observed_layout *layout, *layout_tmp;
+	wl_list_for_each_safe(layout, layout_tmp, &observed_layouts, link)
+	{
+		wl_list_remove(&layout->link);
+		xfree(layout->name);
+		xfree(layout);
+	}
 
 	if (cow_wm.xkb_config != NULL)
 		river_xkb_config_v1_stop(cow_wm.xkb_config);
@@ -319,4 +351,48 @@ cow_keyboard_layout_forget_view(struct cow_view *view)
 {
 	if (layout_focus_view == view)
 		layout_focus_view = NULL;
+}
+
+static int
+keyboard_layout_summary_cmp(const void *a, const void *b)
+{
+	const struct cow_keyboard_layout_summary *sa = a;
+	const struct cow_keyboard_layout_summary *sb = b;
+
+	return strcmp(sa->name, sb->name);
+}
+
+size_t
+cow_keyboard_layout_summaries(struct cow_keyboard_layout_summary **summaries)
+{
+	size_t count = 0;
+	struct observed_layout *layout;
+
+	*summaries = NULL;
+	wl_list_for_each(layout, &observed_layouts, link) count++;
+	if (count == 0)
+		return 0;
+	*summaries = xcalloc(count, sizeof(**summaries));
+	size_t i = 0;
+	wl_list_for_each(layout, &observed_layouts, link)
+	{
+		(*summaries)[i].name = xstrdup(layout->name);
+		(*summaries)[i].active = active_layout != NULL &&
+		    active_layout->name != NULL &&
+		    strcmp(active_layout->name, layout->name) == 0;
+		i++;
+	}
+	if (count > 1)
+		qsort(*summaries, count, sizeof(**summaries),
+		    keyboard_layout_summary_cmp);
+	return count;
+}
+
+void
+cow_keyboard_layout_summaries_free(
+    struct cow_keyboard_layout_summary *summaries, size_t count)
+{
+	for (size_t i = 0; i < count; i++)
+		xfree(summaries[i].name);
+	xfree(summaries);
 }

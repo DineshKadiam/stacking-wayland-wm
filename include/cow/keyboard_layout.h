@@ -17,6 +17,7 @@
 #define COW_KEYBOARD_LAYOUT_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <wayland-util.h>
 
@@ -39,6 +40,11 @@ struct cow_keyboard_layout {
 	bool			 has_scroll_lock;
 };
 
+struct cow_keyboard_layout_summary {
+	char *name;
+	bool  active;
+};
+
 void cow_keyboard_layout_init(void);
 void cow_keyboard_layout_bind(struct wl_registry *, uint32_t, uint32_t);
 void cow_keyboard_layout_fini(void);
@@ -47,5 +53,8 @@ struct cJSON *cow_keyboard_layout_active_json(void);
 bool cow_keyboard_layout_set_name(const char *);
 void cow_keyboard_layout_reconcile_focus(void);
 void cow_keyboard_layout_forget_view(struct cow_view *);
+size_t cow_keyboard_layout_summaries(struct cow_keyboard_layout_summary **);
+void cow_keyboard_layout_summaries_free(struct cow_keyboard_layout_summary *,
+    size_t);
 
 #endif
