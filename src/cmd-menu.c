@@ -122,7 +122,8 @@ cmd_menu_add_exec(struct cmd *self, struct cmd_q *cmdq)
 	struct args *args = self->args;
 	if (args->argc < 3) {
 		cmdq_error(cmdq,
-		    "menu-add: usage: [-T] [-i ICON] NAME LABEL ACTION [args]");
+		    "menu-add: usage: [-M] [-T] [-i ICON] NAME LABEL ACTION "
+		    "[args]");
 		return (CMD_RETURN_ERROR);
 	}
 	const char *name  = args->argv[0];
@@ -140,6 +141,9 @@ cmd_menu_add_exec(struct cmd *self, struct cmd_q *cmdq)
 		act  = NULL;
 	} else if (strcmp(action, "title") == 0) {
 		type = COW_MENU_ITEM_TITLE;
+		act  = NULL;
+	} else if (strcmp(action, "accept") == 0) {
+		type = COW_MENU_ITEM_ACCEPT;
 		act  = NULL;
 	} else if (strncmp(action, "popup ", 6) == 0) {
 		is_popup = true;
@@ -174,6 +178,8 @@ cmd_menu_add_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 	if (args_has(args, 'T'))
 		cow_menu_enable_typeahead(m);
+	if (args_has(args, 'M'))
+		cow_menu_enable_multi_select(m);
 
 	cow_menu_item_add(m, type,
 	    type == COW_MENU_ITEM_SEPARATOR ? NULL : label, act, is_popup,
@@ -185,10 +191,10 @@ cmd_menu_add_exec(struct cmd *self, struct cmd_q *cmdq)
 
 struct cmd_entry cmd_menu_add_entry = {
 	"menu-add",
-	"+Ti:",
+	"+MTi:",
 	3,
 	-1,
-	"menu-add [-T] [-i ICON] NAME LABEL ACTION",
+	"menu-add [-M] [-T] [-i ICON] NAME LABEL ACTION",
 	cmd_menu_add_exec,
 	CMD_CONFIG,
 };

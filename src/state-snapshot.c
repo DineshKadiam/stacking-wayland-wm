@@ -417,6 +417,7 @@ state_snapshot_menu(const struct cow_menu *menu)
 	rec_set_string(record, "name", menu->name);
 	rec_set_bool(record, "numbered", menu->numbered);
 	rec_set_bool(record, "typeahead", menu->typeahead);
+	rec_set_bool(record, "multi_select", menu->multi_select);
 	rec_set_number(record, "style_overrides", menu->style_overrides);
 	state_record_set(record, "style", style);
 	state_value_unref(style);
@@ -427,7 +428,7 @@ state_snapshot_menu(const struct cow_menu *menu)
 		struct state_value *entry = state_value_record();
 		const char *type = item->type == COW_MENU_ITEM_SEPARATOR ?
 		    "separator" : item->type == COW_MENU_ITEM_TITLE ? "title" :
-		    "normal";
+		    item->type == COW_MENU_ITEM_ACCEPT ? "accept" : "normal";
 
 		rec_set_string(entry, "type", type);
 		rec_set_string(entry, "label", item->label);

@@ -1845,6 +1845,32 @@ script {
 }
 ```
 
+A multi-select menu can instead choose several windows at once.  This example
+builds a menu from the current window list; accepting it toggles membership of
+each checked window in the _work_ selection:
+
+```
+bind L+w script {
+	menu-clear WorkWindows
+	menu-add -MT WorkWindows "Toggle work windows" title
+	for w in (windows) {
+		menu-add WorkWindows \
+		    "#{w.output}:#{w.desk} - #{w.title}" \
+		    "window-select -n work -t #{w.id} toggle"
+	}
+	menu-add WorkWindows - -
+	menu-add WorkWindows "Apply changes" accept
+	menu-show WorkWindows
+}
+```
+
+The resulting selection can then be acted upon as a group, for example:
+
+```
+window-move -G work
+winops -F '"work" in self.selections' -i
+```
+
 ## window-shade [-t target] -d dir
 
 Shade (roll up) a window in a given direction, hiding its content but leaving
@@ -2359,12 +2385,13 @@ items with *menu-add*, then opened with *menu-show*.  Items may be
 
 ## Defining menus
 
-*menu-add* [*-T*] [*-i* _ICON_] _NAME_ _LABEL_ _ACTION_
+*menu-add* [*-M*] [*-T*] [*-i* _ICON_] _NAME_ _LABEL_ _ACTION_
 	Append an item to menu _NAME_, creating the menu on first
 	reference.  Special _ACTION_ values:
 
 	- *title* -- _LABEL_ becomes a non-selectable title row.
 	- *-* (with _LABEL_ also *-*) -- adds a separator.
+	- *accept* -- _LABEL_ accepts a multi-selection.
 	- *popup* _OTHER_ -- the item opens sub-menu _OTHER_.
 	- *popup-pick* _OTHER_ -- the item opens sub-menu _OTHER_; when
 	  no window context is known, the selected child action first
@@ -2383,6 +2410,27 @@ items with *menu-add*, then opened with *menu-show*.  Items may be
 	setting belongs to the named menu, so it need only be given on one
 	*menu-add* command.  It survives *menu-clear* and is removed by
 	*menu-destroy*.
+
+	*-M* makes the containing menu multi-select.  Clicking an ordinary item
+	or pressing Space toggles its checkbox without running its action.  Enter
+	or an *accept* item closes the menu and runs every checked action in menu
+	order.  Escape closes it without running anything.  Checked items remain
+	selected when hidden by a typeahead filter.  Like *-T*, this setting belongs
+	to the menu and only needs to appear on one *menu-add* command.
+
+	For example, this menu launches any chosen combination of applications:
+
+```
+menu-add -MT Session "Start a session" title
+menu-add Session "Terminal" "exec foot"
+menu-add Session "Browser"  "exec firefox"
+menu-add Session "Editor"   "exec gvim"
+menu-add Session "Files"    "exec thunar"
+menu-add Session - -
+menu-add Session "Launch selected" accept
+
+bind L+s menu-show Session
+```
 
 *menu-clear* _NAME_
 	Empty the named menu without destroying it.

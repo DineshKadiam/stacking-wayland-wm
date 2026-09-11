@@ -51,6 +51,10 @@
 
 #include "river-window-management-v1-client-protocol.h"
 
+#define MENU_ARROW_GUTTER 14
+#define MENU_CHECK_GUTTER 16
+#define MENU_CHECK_SIZE 9
+
 void
 cow_menu_style_default(struct cow_menu_style *s)
 {
@@ -259,6 +263,9 @@ menu_keyboard_dispatch(xkb_keysym_t sym)
 	case XKB_KEY_Return:
 	case XKB_KEY_KP_Enter:
 		direction = "select";
+		break;
+	case XKB_KEY_space:
+		direction = "toggle";
 		break;
 	case XKB_KEY_Escape:
 		direction = "close";
@@ -903,6 +910,13 @@ cow_menu_enable_typeahead(struct cow_menu *menu)
 	menu->typeahead_query[0] = '\0';
 }
 
+void
+cow_menu_enable_multi_select(struct cow_menu *menu)
+{
+	if (menu != NULL)
+		menu->multi_select = true;
+}
+
 static int
 item_row_height(const struct cow_menu_item *it, int text_h,
     const struct cow_menu_style *st)
@@ -911,6 +925,7 @@ item_row_height(const struct cow_menu_item *it, int text_h,
 	case COW_MENU_ITEM_SEPARATOR:
 		return (2);
 	case COW_MENU_ITEM_TITLE:
+	case COW_MENU_ITEM_ACCEPT:
 	case COW_MENU_ITEM_NORMAL:
 	default:
 		return (text_h + st->padding_y * 2);
@@ -920,7 +935,8 @@ item_row_height(const struct cow_menu_item *it, int text_h,
 static bool
 item_selectable(const struct cow_menu_item *it)
 {
-	return (it != NULL && it->type == COW_MENU_ITEM_NORMAL);
+	return (it != NULL && (it->type == COW_MENU_ITEM_NORMAL ||
+	    it->type == COW_MENU_ITEM_ACCEPT));
 }
 
 static bool
@@ -1000,8 +1016,6 @@ static void
 popup_layout(struct cow_menu_popup *p)
 {
 	const struct cow_menu_style *st = &p->style;
-	const int ARROW_W = 14;
-
 	int		      max_label_w = 0;
 	int		      max_text_h  = 0;
 	bool		      any_submenu = false;
@@ -1031,7 +1045,9 @@ popup_layout(struct cow_menu_popup *p)
 	/* Always reserve the arrow gutter so columns align whether or
 	 * not any one item is a submenu link. */
 	(void)any_submenu;
-	int text_w = icon_gutter + max_label_w + ARROW_W;
+	int check_gutter = p->def->multi_select ? MENU_CHECK_GUTTER : 0;
+	int text_w = check_gutter + icon_gutter + max_label_w +
+	    MENU_ARROW_GUTTER;
 
 	p->side_w = st->side_image != NULL || st->side_colour[3] > 0.0f ?
 	    st->side_width : 0;
@@ -1302,6 +1318,21 @@ menu_item_draw_icon(cairo_surface_t *target, struct cow_menu_item *item,
 }
 
 static void
+menu_draw_checkbox(struct cow_pixbuf *buf, int x, int y, bool checked,
+    uint32_t colour)
+{
+	cow_draw_hline(buf, x, x + MENU_CHECK_SIZE - 1, y, colour);
+	cow_draw_hline(buf, x, x + MENU_CHECK_SIZE - 1,
+	    y + MENU_CHECK_SIZE - 1, colour);
+	cow_draw_vline(buf, x, y, y + MENU_CHECK_SIZE - 1, colour);
+	cow_draw_vline(buf, x + MENU_CHECK_SIZE - 1, y,
+	    y + MENU_CHECK_SIZE - 1, colour);
+	if (checked)
+		cow_draw_fill_rect(buf, x + 2, y + 2, MENU_CHECK_SIZE - 4,
+		    MENU_CHECK_SIZE - 4, colour);
+}
+
+static void
 popup_render(struct cow_menu_popup *p)
 {
 	if (p == NULL || p->buffer == NULL || p->buffer->data == NULL)
@@ -1345,9 +1376,9 @@ popup_render(struct cow_menu_popup *p)
 		CAIRO_FORMAT_ARGB32, p->width, p->height, p->buffer->stride);
 
 	/* Keep submenu arrows aligned across rows. */
-	const int ARROW_GUTTER = 14;
 	const int ARROW_SIZE   = 4;
 	const int ICON_GUTTER  = menu_icon_gutter(p->def, st);
+	const int CHECK_GUTTER = p->def->multi_select ? MENU_CHECK_GUTTER : 0;
 
 	struct cow_menu_item *it;
 	wl_list_for_each(it, &p->def->items, link)
@@ -1412,13 +1443,23 @@ popup_render(struct cow_menu_popup *p)
 				}
 			}
 
-			int label_x = x + st->padding_x + ICON_GUTTER;
+			int label_x = x + st->padding_x + CHECK_GUTTER +
+			    ICON_GUTTER;
 			int label_w = innerw - st->padding_x * 2 -
-			    ARROW_GUTTER - ICON_GUTTER;
+			    MENU_ARROW_GUTTER - ICON_GUTTER - CHECK_GUTTER;
 			if (label_w < 1)
 				label_w = 1;
+			if (p->def->multi_select &&
+			    it->type == COW_MENU_ITEM_NORMAL) {
+				bool checked = (size_t)idx < p->checked_count &&
+				    p->checked[idx];
+				menu_draw_checkbox(&buf, x + st->padding_x,
+				    y + (rh - MENU_CHECK_SIZE) / 2, checked,
+				    px(st->fg));
+			}
 			if (it->icon != NULL && st->icon_size > 0)
-				menu_item_draw_icon(cs, it, x + st->padding_x,
+				menu_item_draw_icon(cs, it,
+				    x + st->padding_x + CHECK_GUTTER,
 				    y + (rh - st->icon_size) / 2,
 				    st->icon_size);
 			char label[512];
@@ -1430,7 +1471,7 @@ popup_render(struct cow_menu_popup *p)
 
 			if (it->is_popup) {
 				int cy = y + rh / 2;
-				int cx = x + innerw - ARROW_GUTTER / 2 -
+				int cx = x + innerw - MENU_ARROW_GUTTER / 2 -
 				    ARROW_SIZE / 2;
 				draw_submenu_arrow(&buf, cx, cy, ARROW_SIZE,
 				    open_child);
@@ -1479,6 +1520,12 @@ popup_alloc(struct cow_menu *def)
 	p->def			 = def;
 	p->selected		 = -1;
 	p->child_item		 = -1;
+	if (def->multi_select) {
+		p->checked_count = wl_list_length(&def->items);
+		if (p->checked_count > 0)
+			p->checked = xcalloc(p->checked_count,
+			    sizeof(*p->checked));
+	}
 	cow_menu_style_resolve(def, &p->style);
 	return (p);
 }
@@ -1505,6 +1552,7 @@ popup_destroy(struct cow_menu_popup *p)
 		p->surface = NULL;
 	}
 	ext_release(p);
+	xfree(p->checked);
 	xfree(p);
 }
 
@@ -1998,6 +2046,79 @@ seat_by_name(uint32_t name)
 	return (NULL);
 }
 
+static void
+menu_defer_action(struct cow_menu_popup *p, const char *action)
+{
+	xfree(g_deferred_action);
+	xfree(g_deferred_context_id);
+	g_deferred_action = xstrdup(action);
+	g_deferred_context_id = cow_wm.menu_context_view != NULL &&
+	    cow_wm.menu_context_view->identifier != NULL ?
+	    xstrdup(cow_wm.menu_context_view->identifier) : NULL;
+	g_deferred_pick_context = p->pick_target_on_action;
+	g_deferred_seat_name = cow_wm.menu_context_seat != NULL ?
+	    cow_wm.menu_context_seat->wl_seat_name : 0;
+	g_deferred_action_ready = false;
+	cow_menu_close_all();
+}
+
+static void
+menu_multi_toggle(struct cow_menu_popup *p, int idx)
+{
+	struct cow_menu_item *it = item_at_index(p->def, idx);
+	if (it == NULL || it->type != COW_MENU_ITEM_NORMAL || it->is_popup ||
+	    idx < 0 || (size_t)idx >= p->checked_count)
+		return;
+	p->checked[idx] = !p->checked[idx];
+	cow_menu_popup_redraw(p);
+}
+
+static void
+menu_multi_accept(struct cow_menu_popup *p)
+{
+	size_t total = 1;
+	size_t count = 0;
+	int idx = 0;
+	struct cow_menu_item *it;
+	wl_list_for_each(it, &p->def->items, link)
+	{
+		if ((size_t)idx < p->checked_count && p->checked[idx] &&
+		    it->type == COW_MENU_ITEM_NORMAL && !it->is_popup &&
+		    it->action != NULL) {
+			total += strlen(it->action) + (count == 0 ? 0 : 3);
+			count++;
+		}
+		idx++;
+	}
+	if (count == 0) {
+		cow_menu_close_all();
+		return;
+	}
+
+	char *actions = xmalloc(total);
+	char *dst = actions;
+	count = 0;
+	idx = 0;
+	wl_list_for_each(it, &p->def->items, link)
+	{
+		if ((size_t)idx < p->checked_count && p->checked[idx] &&
+		    it->type == COW_MENU_ITEM_NORMAL && !it->is_popup &&
+		    it->action != NULL) {
+			if (count++ != 0) {
+				memcpy(dst, " ; ", 3);
+				dst += 3;
+			}
+			size_t len = strlen(it->action);
+			memcpy(dst, it->action, len);
+			dst += len;
+		}
+		idx++;
+	}
+	*dst = '\0';
+	menu_defer_action(p, actions);
+	xfree(actions);
+}
+
 void
 cow_menu_run_deferred_action(void)
 {
@@ -2030,7 +2151,14 @@ cow_menu_run_deferred_action(void)
 static void
 dispatch_item(struct cow_menu_popup *p, struct cow_menu_item *it)
 {
-	if (it == NULL || it->action == NULL)
+	if (it == NULL)
+		return;
+	if (it->type == COW_MENU_ITEM_ACCEPT) {
+		if (p->def->multi_select)
+			menu_multi_accept(p);
+		return;
+	}
+	if (it->action == NULL)
 		return;
 	if (it->is_popup) {
 		struct cow_menu *sub = cow_menu_find(it->action);
@@ -2060,18 +2188,21 @@ dispatch_item(struct cow_menu_popup *p, struct cow_menu_item *it)
 		}
 		return;
 	}
+	if (p->def->multi_select) {
+		int idx = 0;
+		struct cow_menu_item *iter;
+		wl_list_for_each(iter, &p->def->items, link)
+		{
+			if (iter == it) {
+				menu_multi_toggle(p, idx);
+				return;
+			}
+			idx++;
+		}
+		return;
+	}
 
-	xfree(g_deferred_action);
-	xfree(g_deferred_context_id);
-	g_deferred_action = xstrdup(it->action);
-	g_deferred_context_id = cow_wm.menu_context_view != NULL &&
-	    cow_wm.menu_context_view->identifier != NULL ?
-	    xstrdup(cow_wm.menu_context_view->identifier) : NULL;
-	g_deferred_pick_context = p->pick_target_on_action;
-	g_deferred_seat_name = cow_wm.menu_context_seat != NULL ?
-	    cow_wm.menu_context_seat->wl_seat_name : 0;
-	g_deferred_action_ready = false;
-	cow_menu_close_all();
+	menu_defer_action(p, it->action);
 }
 
 static void
@@ -2377,9 +2508,17 @@ menu_navigate(const char *direction)
 		if (p->parent != NULL)
 			cow_menu_popup_close(p);
 	} else if (strcmp(direction, "select") == 0) {
-		struct cow_menu_item *it = item_at_index(p->def, p->selected);
-		if (it != NULL)
-			dispatch_item(p, it);
+		if (p->def->multi_select)
+			menu_multi_accept(p);
+		else {
+			struct cow_menu_item *it =
+			    item_at_index(p->def, p->selected);
+			if (it != NULL)
+				dispatch_item(p, it);
+		}
+	} else if (strcmp(direction, "toggle") == 0) {
+		if (p->def->multi_select)
+			menu_multi_toggle(p, p->selected);
 	} else if (strcmp(direction, "close") == 0) {
 		cow_menu_close_all();
 	} else if (p->def->typeahead && strcmp(direction, "backspace") == 0) {

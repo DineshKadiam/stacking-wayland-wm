@@ -94,6 +94,7 @@ enum cow_menu_item_type {
 	COW_MENU_ITEM_NORMAL,	 /* selectable item with an action */
 	COW_MENU_ITEM_SEPARATOR, /* horizontal rule, no action */
 	COW_MENU_ITEM_TITLE,	 /* non-selectable label (bold heading) */
+	COW_MENU_ITEM_ACCEPT,	 /* accept a multi-selection */
 };
 
 struct cow_menu_item {
@@ -117,6 +118,7 @@ struct cow_menu {
 	struct wl_list       link;  /* in cow_wm.menus */
 	bool	       numbered;  /* digits select items by ordinal */
 	bool	       typeahead; /* letters search instead of activating hotkeys */
+	bool	       multi_select; /* defer checked item actions */
 	char	       typeahead_query[128];
 };
 
@@ -130,6 +132,8 @@ struct cow_menu_popup {
 	int		 side_image_w; /* natural width of optional side image */
 	int		 side_h;   /* natural height of optional side image */
 	int		 selected; /* highlighted item index (-1 = none) */
+	bool		*checked; /* per-item state for multi-selection */
+	size_t		 checked_count;
 	struct cow_menu_style style; /* resolved style snapshot */
 
 	/* Created from the render hook. */
@@ -208,6 +212,9 @@ void cow_menu_enable_numbered_selection(struct cow_menu *);
 
 /* Make alphanumeric menu navigation filter items by their labels. */
 void cow_menu_enable_typeahead(struct cow_menu *);
+
+/* Defer checked item actions until the multi-selection is accepted. */
+void cow_menu_enable_multi_select(struct cow_menu *);
 
 /*
  * Close a single popup level (and recursively its child).
