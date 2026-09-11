@@ -387,7 +387,11 @@ Commands can be loaded from:
 - scripts using `script { ... }`.
 
 The small DSL is limited to `script` blocks.  It exists to add structured
-control flow without replacing the command language used elsewhere.
+control flow without replacing the command language used elsewhere.  Commands
+emitted by a script run through a child command queue before the following
+statement is evaluated.  A later collection snapshot therefore sees logical
+state changes, including pending focus, made by earlier statements even though
+River applies the corresponding compositor request in the next manage cycle.
 
 ## Rules And Styles
 

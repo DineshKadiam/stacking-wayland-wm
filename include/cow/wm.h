@@ -247,6 +247,9 @@ struct cow_wl_output_entry {
 
 extern struct cow_wm cow_wm;
 
+/* Focus requested by CoW, or compositor-confirmed focus when none is pending. */
+struct cow_view *cow_wm_effective_focus(void);
+
 /*
  * Initialize the WM state and connect to the Wayland display.
  * Returns false on failure.

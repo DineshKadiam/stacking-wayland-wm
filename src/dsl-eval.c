@@ -540,13 +540,17 @@ enqueue_command(struct dsl_eval_ctx *ctx, struct dsl_env *env,
 	TAILQ_INIT(&cl->list);
 	TAILQ_INSERT_TAIL(&cl->list, cmd, qentry);
 
-	cmdq_append(ctx->cmdq, cl);
-	/* Keep only the queue's reference. */
+	bool ok = cmdq_run_immediate(ctx->cmdq, cl);
 	cmd_list_free(cl);
 
 	for (size_t i = 0; i < argc; i++)
 		xfree(argv[i]);
 	xfree(argv);
+	if (!ok) {
+		fail_at(ctx, cmd_node->line, cmd_node->col,
+		    "command failed: %s", cmd_node->u.cmd.verb);
+		return (false);
+	}
 	return (true);
 
 fail:

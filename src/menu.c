@@ -1598,7 +1598,7 @@ cow_menu_popup_open(struct cow_menu *menu, int x, int y,
 			cow_keybinding_suspend_context(
 			    cow_wm.menu_context_seat);
 		}
-		g_menu_restore_view = cow_wm.focused_view;
+		g_menu_restore_view = cow_wm_effective_focus();
 		g_menu_restore_pending = false;
 		g_menu_focus_requested = false;
 	}
@@ -1644,7 +1644,7 @@ cow_menu_popup_open_centered(struct cow_menu *menu, int cx, int cy,
 		    cow_wm.menu_context_seat->binding_context_view;
 		cow_keybinding_suspend_context(cow_wm.menu_context_seat);
 	}
-	g_menu_restore_view = cow_wm.focused_view;
+	g_menu_restore_view = cow_wm_effective_focus();
 	g_menu_restore_pending = false;
 	g_menu_focus_requested = false;
 	p->keep_centered = true;

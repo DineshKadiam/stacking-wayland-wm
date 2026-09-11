@@ -75,6 +75,14 @@
 
 struct cow_wm cow_wm;
 
+struct cow_view *
+cow_wm_effective_focus(void)
+{
+	if (cow_wm.pending_focus != NULL && !cow_wm.pending_focus->closed)
+		return cow_wm.pending_focus;
+	return cow_wm.focused_view;
+}
+
 /*
  * Signal events only set flags; shutdown and restart run after the loop.
  */

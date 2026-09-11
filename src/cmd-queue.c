@@ -124,6 +124,24 @@ cmdq_append(struct cmd_q *cmdq, struct cmd_list *cmdlist)
 	cmdlist->references++;
 }
 
+/* Execute a DSL-emitted command before evaluating the next statement. */
+bool
+cmdq_run_immediate(struct cmd_q *parent, struct cmd_list *cmdlist)
+{
+	struct cmd_q *cmdq = cmdq_new();
+
+	cmdq->client_fd = parent->client_fd;
+	cmdq->default_target = parent->default_target;
+	cmdq->in_rule = parent->in_rule;
+	cmdq->in_style = parent->in_style;
+	if (parent->event_json != NULL)
+		cmdq_set_event_json(cmdq, xstrdup(parent->event_json));
+	cmdq_run(cmdq, cmdlist);
+	bool ok = !cmdq->failed;
+	cmdq_free(cmdq);
+	return ok;
+}
+
 /* Continue processing command queue. Returns 1 if finishes empty. */
 int
 cmdq_continue(struct cmd_q *cmdq)
@@ -182,6 +200,7 @@ cmdq_continue(struct cmd_q *cmdq)
 					cmdq_error(cmdq, "-t: %s", ctx_cause);
 					xfree(ctx_cause);
 					retval = CMD_RETURN_ERROR;
+					cmdq->failed = true;
 					break;
 				}
 			} else if (!own_ts) {
@@ -210,6 +229,7 @@ cmdq_continue(struct cmd_q *cmdq)
 					cmdq_error(cmdq, "-s: %s", ctx_cause);
 					xfree(ctx_cause);
 					retval = CMD_RETURN_ERROR;
+					cmdq->failed = true;
 					break;
 				}
 			}
@@ -228,8 +248,10 @@ cmdq_continue(struct cmd_q *cmdq)
 			    cmdq->number, retval,
 			    command_elapsed_us(&started, &finished), command);
 
-			if (retval == CMD_RETURN_ERROR)
+			if (retval == CMD_RETURN_ERROR) {
+				cmdq->failed = true;
 				break;
+			}
 			bool save_config =
 			    (cmdq->cmd->entry->flags & CMD_CONFIG) != 0 ||
 			    (cow_ipc.startup_mode &&

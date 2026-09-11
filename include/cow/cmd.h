@@ -138,6 +138,7 @@ TAILQ_HEAD(cmd_q_items, cmd_q_item);
 struct cmd_q {
 	int references;
 	int dead;
+	bool failed;
 
 	struct cmd_q_items queue;
 	struct cmd_q_item *item;
@@ -320,6 +321,7 @@ int		 cmdq_free(struct cmd_q *);
 void printflike2 cmdq_error(struct cmd_q *, const char *, ...);
 void		 cmdq_run(struct cmd_q *, struct cmd_list *);
 void		 cmdq_append(struct cmd_q *, struct cmd_list *);
+bool		 cmdq_run_immediate(struct cmd_q *, struct cmd_list *);
 int		 cmdq_continue(struct cmd_q *);
 void		 cmdq_flush(struct cmd_q *);
 void		 cmdq_set_default_target(struct cmd_q *, struct cow_view *,

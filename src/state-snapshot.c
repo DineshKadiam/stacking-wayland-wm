@@ -148,7 +148,7 @@ state_snapshot_view(const struct cow_view *view)
 	rec_set_bool(r, "current_desk", cow_view_current_desk(view));
 	rec_set_bool(r, "current_output", cow_view_current_output(view));
 	rec_set_bool(r, "current_page", cow_view_current_page(view));
-	rec_set_bool(r, "focused", view == cow_wm.focused_view);
+	rec_set_bool(r, "focused", view == cow_wm_effective_focus());
 	rec_set_bool(r, "maximized", view->maximized);
 	rec_set_bool(r, "fullscreen", view->fullscreen);
 	rec_set_bool(r, "shaded", view->sd != COW_SHADE_NONE);

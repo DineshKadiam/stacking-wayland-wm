@@ -182,7 +182,7 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 	 */
 	int target_layer = -1;
 	if (same_layer) {
-		struct cow_view *f = cow_wm.focused_view;
+		struct cow_view *f = cow_wm_effective_focus();
 		if (f != NULL && !f->closed)
 			target_layer = (int)cow_view_effective_layer(f);
 		else
@@ -321,7 +321,7 @@ find_circulatable(struct cow_view *focused, bool forward, int target_layer)
 static enum cmd_retval
 do_next(int target_layer, struct cmd_filter *filter, struct cmd_q *cmdq)
 {
-	struct cow_view *focused = cow_wm.focused_view;
+	struct cow_view *focused = cow_wm_effective_focus();
 	g_filter = filter;
 	struct cow_view *next = find_circulatable(focused, true, target_layer);
 	g_filter = NULL;
@@ -337,7 +337,7 @@ do_next(int target_layer, struct cmd_filter *filter, struct cmd_q *cmdq)
 static enum cmd_retval
 do_prev(int target_layer, struct cmd_filter *filter, struct cmd_q *cmdq)
 {
-	struct cow_view *focused = cow_wm.focused_view;
+	struct cow_view *focused = cow_wm_effective_focus();
 	g_filter = filter;
 	struct cow_view *prev = find_circulatable(focused, false, target_layer);
 	g_filter = NULL;
@@ -359,7 +359,7 @@ static void
 do_layer_focus(int layer, struct cmd_q *cmdq)
 {
 	(void)cmdq; /* no-op when layer empty; quiet rather than error */
-	struct cow_view *focused = cow_wm.focused_view;
+	struct cow_view *focused = cow_wm_effective_focus();
 
 	if (focused != NULL && !focused->closed &&
 	    (int)cow_view_effective_layer(focused) == layer) {
@@ -435,7 +435,7 @@ do_id(const char *id, struct cmd_q *cmdq)
 static void
 do_directional(enum cow_direction dir, int target_layer, struct cmd_q *cmdq)
 {
-	struct cow_view *focused = cow_wm.focused_view;
+	struct cow_view *focused = cow_wm_effective_focus();
 
 	if (focused == NULL || focused->output == NULL) {
 		cmdq_error(cmdq, "focus: no focused window");
