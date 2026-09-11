@@ -2719,6 +2719,11 @@ mouse CM+left scroll -r
 
 Switch or manipulate virtual desks.
 
+With no operation, display a numbered typeahead menu of desks on the target
+output.  If only one desk exists, it is selected directly.  A bare *desk*
+command at the top level of the configuration has no effect; use it as a
+binding action to open the chooser interactively.
+
 *-t* _output_
 	Target the named output instead of the current one.
 
@@ -2734,6 +2739,12 @@ Switch or manipulate virtual desks.
 *-c* _N_
 	Toggle collection of desk _N_: overlay its windows on top of the
 	current desk without switching.
+
+For example, bind a key to choose a desk by name or number:
+
+```
+bind L+d desk
+```
 
 ## desk-name [-t output] N NAME | -d N | -l | -r
 
