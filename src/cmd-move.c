@@ -23,7 +23,7 @@
 #include "cow/config.h"
 #include "cow/desk_ops.h"
 #include "cow/keybinding.h"
-#include "cow/menu.h"
+#include "cow/menu_choice.h"
 #include "cow/output.h"
 #include "cow/placement.h"
 #include "cow/pointer_op.h"
@@ -299,40 +299,40 @@ choose_move_group(struct cow_view *view, struct cmd_q *cmdq)
 		cmdq_error(cmdq, "window-move: no non-empty selections");
 		return CMD_RETURN_ERROR;
 	}
-	if (count == 1) {
-		enum cmd_retval retval = move_group(view, summaries[0].name, cmdq);
-		cow_selection_summaries_free(summaries, count);
-		return retval;
-	}
-
-	struct cow_menu *menu = cow_menu_generated_begin(SELECTION_MOVE_MENU,
-	    "Move Selection (type to search)", true, true);
-	if (menu == NULL) {
-		cow_selection_summaries_free(summaries, count);
-		cmdq_error(cmdq, "window-move: cannot create selection menu");
-		return CMD_RETURN_ERROR;
-	}
+	struct cow_menu_choice *choices = xcalloc(count, sizeof(*choices));
 	for (size_t i = 0; i < count; i++) {
 		char *label;
 		xasprintf(&label, "%s (%zu window%s)", summaries[i].name,
 		    summaries[i].count, summaries[i].count == 1 ? "" : "s");
 		const char *argv[] = { "window-move", "-G", summaries[i].name };
-		char *action = cow_command_from_argv(3, argv);
-		cow_menu_item_add(menu, COW_MENU_ITEM_NORMAL, label, action, false,
-		    false, NULL);
-		xfree(action);
+		if (!cow_menu_choice_init(&choices[i], label, 3, argv)) {
+			xfree(label);
+			cow_menu_choices_free(choices, count);
+			cow_selection_summaries_free(summaries, count);
+			cmdq_error(cmdq,
+			    "window-move: cannot build selection menu");
+			return CMD_RETURN_ERROR;
+		}
 		xfree(label);
 	}
-	cow_selection_summaries_free(summaries, count);
 
 	struct cow_output *output = view != NULL ? view->output : NULL;
 	if (output == NULL)
 		output = cmd_ctx_target_output(cmdq);
 	if (output == NULL)
 		output = cow_wm.current_output;
-	cow_menu_popup_open_on_output(menu, output, view);
-	cow_update_request(COW_UPDATE_MANAGE);
-	return CMD_RETURN_NORMAL;
+	enum cow_menu_choice_result result = cow_menu_choose(SELECTION_MOVE_MENU,
+	    "Move Selection (type to search)", choices, count, output, view);
+	enum cmd_retval retval = CMD_RETURN_NORMAL;
+	if (result == COW_MENU_CHOICE_SINGLE)
+		retval = move_group(view, summaries[0].name, cmdq);
+	else if (result == COW_MENU_CHOICE_ERROR) {
+		cmdq_error(cmdq, "window-move: cannot create selection menu");
+		retval = CMD_RETURN_ERROR;
+	}
+	cow_menu_choices_free(choices, count);
+	cow_selection_summaries_free(summaries, count);
+	return (retval);
 }
 
 static void

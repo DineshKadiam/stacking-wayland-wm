@@ -16,10 +16,9 @@
 
 #include "cow/cmd.h"
 #include "cow/keyboard_layout.h"
-#include "cow/menu.h"
+#include "cow/memory.h"
+#include "cow/menu_choice.h"
 #include "cow/output.h"
-#include "cow/update.h"
-#include "cow/util.h"
 #include "cow/wm.h"
 
 #define KEYBOARD_LAYOUT_MENU "\037cow-keyboard-layout"
@@ -52,32 +51,39 @@ cmd_keyboard_layout_exec(struct cmd *self, struct cmd_q *cmdq)
 			    "keyboard-layout: no layouts have been reported");
 			return CMD_RETURN_ERROR;
 		}
-		struct cow_menu *menu = cow_menu_generated_begin(
-		    KEYBOARD_LAYOUT_MENU, "Keyboard Layout (type to search)",
-		    true, true);
-		if (menu == NULL) {
-			cow_keyboard_layout_summaries_free(summaries, count);
-			cmdq_error(cmdq,
-			    "keyboard-layout: cannot create layout menu");
-			return CMD_RETURN_ERROR;
-		}
+		struct cow_menu_choice *choices =
+		    xcalloc(count, sizeof(*choices));
 		for (size_t i = 0; i < count; i++) {
 			char *label;
 			xasprintf(&label, "%s%s", summaries[i].name,
 			    summaries[i].active ? " (active)" : "");
 			const char *argv[] = { "keyboard-layout",
 			    summaries[i].name };
-			char *action = cow_command_from_argv(2, argv);
-			cow_menu_item_add(menu, COW_MENU_ITEM_NORMAL, label,
-			    action, false, false, NULL);
-			xfree(action);
+			if (!cow_menu_choice_init(&choices[i], label, 2, argv)) {
+				xfree(label);
+				cow_menu_choices_free(choices, count);
+				cow_keyboard_layout_summaries_free(summaries,
+				    count);
+				cmdq_error(cmdq,
+				    "keyboard-layout: cannot build layout menu");
+				return CMD_RETURN_ERROR;
+			}
 			xfree(label);
 		}
+		enum cow_menu_choice_result result = cow_menu_choose(
+		    KEYBOARD_LAYOUT_MENU, "Keyboard Layout (type to search)",
+		    choices, count, cmd_ctx_target_output(cmdq), NULL);
+		bool ok = true;
+		if (result == COW_MENU_CHOICE_SINGLE)
+			ok = cow_keyboard_layout_set_name(summaries[0].name);
+		else if (result == COW_MENU_CHOICE_ERROR) {
+			cmdq_error(cmdq,
+			    "keyboard-layout: cannot create layout menu");
+			ok = false;
+		}
+		cow_menu_choices_free(choices, count);
 		cow_keyboard_layout_summaries_free(summaries, count);
-		cow_menu_popup_open_on_output(menu,
-		    cmd_ctx_target_output(cmdq), NULL);
-		cow_update_request(COW_UPDATE_MANAGE);
-		return CMD_RETURN_NORMAL;
+		return (ok ? CMD_RETURN_NORMAL : CMD_RETURN_ERROR);
 	}
 
 	if (!cow_keyboard_layout_set_name(self->args->argv[0])) {

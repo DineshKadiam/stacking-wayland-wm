@@ -28,7 +28,7 @@
 #include "cow/cmd-filter.h"
 #include "cow/compat.h"
 #include "cow/memory.h"
-#include "cow/menu.h"
+#include "cow/menu_choice.h"
 #include "cow/output.h"
 #include "cow/pick.h"
 #include "cow/seat.h"
@@ -792,20 +792,7 @@ cmd_pick_window_exec(struct cmd *self, struct cmd_q *cmdq)
 			return CMD_RETURN_ERROR;
 		}
 		if (name == NULL) {
-			struct cow_selection_summary *summaries = NULL;
-			size_t count = cow_selection_summaries(&summaries);
-			bool have_named = false;
-			for (size_t i = 0; i < count; i++) {
-				if (strcmp(summaries[i].name,
-					COW_SELECTION_DEFAULT) != 0) {
-					have_named = true;
-					break;
-				}
-			}
-			cow_selection_summaries_free(summaries, count);
-			if (have_named)
-				return choose_pick_selection(cmdq,
-				    args_get(args, 'F'));
+			return choose_pick_selection(cmdq, args_get(args, 'F'));
 		}
 		return pick_session_begin(cmdq, "pick-window",
 		    args_get(args, 'F'), true, name, NULL);
@@ -827,13 +814,8 @@ choose_pick_selection(struct cmd_q *cmdq, const char *filter_expr)
 {
 	struct cow_selection_summary *summaries = NULL;
 	size_t count = cow_selection_summaries(&summaries);
-	struct cow_menu *menu = cow_menu_generated_begin(SELECTION_PICK_MENU,
-	    "Edit Selection (type to search)", true, true);
-	if (menu == NULL) {
-		cow_selection_summaries_free(summaries, count);
-		cmdq_error(cmdq, "pick-window: cannot create selection menu");
-		return CMD_RETURN_ERROR;
-	}
+	struct cow_menu_choice *choices = xcalloc(count + 1, sizeof(*choices));
+	size_t choice_count = 0;
 
 	size_t default_count = 0;
 	for (size_t i = 0; i < count; i++) {
@@ -865,16 +847,32 @@ choose_pick_selection(struct cmd_q *cmdq, const char *filter_expr)
 		}
 		argv[argc++] = "-n";
 		argv[argc++] = name;
-		char *action = cow_command_from_argv(argc, argv);
-		cow_menu_item_add(menu, COW_MENU_ITEM_NORMAL, label, action,
-		    false, false, NULL);
-		xfree(action);
+		if (!cow_menu_choice_init(&choices[choice_count], label, argc,
+			argv)) {
+			xfree(label);
+			cow_menu_choices_free(choices, count + 1);
+			cow_selection_summaries_free(summaries, count);
+			cmdq_error(cmdq,
+			    "pick-window: cannot build selection menu");
+			return CMD_RETURN_ERROR;
+		}
+		choice_count++;
 		xfree(label);
 	}
+	enum cow_menu_choice_result result = cow_menu_choose(SELECTION_PICK_MENU,
+	    "Edit Selection (type to search)", choices, choice_count,
+	    cmd_ctx_target_output(cmdq), NULL);
+	enum cmd_retval retval = CMD_RETURN_NORMAL;
+	if (result == COW_MENU_CHOICE_SINGLE) {
+		retval = pick_session_begin(cmdq, "pick-window", filter_expr, true,
+		    COW_SELECTION_DEFAULT, NULL);
+	} else if (result == COW_MENU_CHOICE_ERROR) {
+		cmdq_error(cmdq, "pick-window: cannot create selection menu");
+		retval = CMD_RETURN_ERROR;
+	}
+	cow_menu_choices_free(choices, choice_count);
 	cow_selection_summaries_free(summaries, count);
-	cow_menu_popup_open_on_output(menu, cmd_ctx_target_output(cmdq), NULL);
-	cow_update_request(COW_UPDATE_MANAGE);
-	return CMD_RETURN_NORMAL;
+	return (retval);
 }
 
 static void

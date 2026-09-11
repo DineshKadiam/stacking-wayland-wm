@@ -48,6 +48,7 @@ srcs = [
     'src/cmd-menu.c',
     'src/cmd-mouse.c',
     'src/menu.c',
+    'src/menu_choice.c',
     'src/cmd-move.c',
     'src/cmd-nop.c',
     'src/cmd-pick-window.c',
