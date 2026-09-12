@@ -2531,6 +2531,7 @@ cow_view_fullscreen(struct cow_view *view)
 {
 	if (view->output == NULL)
 		return;
+	bool was_fullscreen = view->fullscreen;
 
 	cow_view_clear_expanded_state(view);
 
@@ -2559,11 +2560,16 @@ cow_view_fullscreen(struct cow_view *view)
 	view->fullscreen = true;
 	view->use_ssd	 = false;
 	cow_update_request(COW_UPDATE_STATUS);
+	if (!was_fullscreen)
+		cow_rule_fire(COW_RULE_ON_FULLSCREEN, view, view->desk,
+		    view->output);
 }
 
 void
 cow_view_exit_fullscreen(struct cow_view *view)
 {
+	bool was_fullscreen = view->fullscreen;
+
 	/*
 	 * saved_x/saved_y hold the virtual (vx/vy) coordinates from before
 	 * fullscreen — restore them directly.  The render cycle will compute
@@ -2585,6 +2591,9 @@ cow_view_exit_fullscreen(struct cow_view *view)
 	view->fullscreen = false;
 	view->use_ssd	 = true;
 	cow_update_request(COW_UPDATE_STATUS);
+	if (was_fullscreen)
+		cow_rule_fire(COW_RULE_ON_UNFULLSCREEN, view, view->desk,
+		    view->output);
 }
 
 /* ================================================================

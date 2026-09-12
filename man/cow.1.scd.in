@@ -880,6 +880,10 @@ The following table shows which events are available:
 :  Fired when a window is shaded.
 |  *on-unshade*
 :  Fired when a window is unshaded.
+|  *on-fullscreen*
+:  Fired when a window enters fullscreen mode.
+|  *on-unfullscreen*
+:  Fired when a window leaves fullscreen mode.
 |  *on-iconify*
 :  Fired when a window is iconified.
 |  *on-deiconify*
@@ -923,6 +927,21 @@ decor -d desk2 titlebar.inactive_colour 0xB28E4C
 decor -d desk2 border.inactive 0xB28E4C
 rule -t :2 -Ton-map -ndesk2 decor -a desk2
 ```
+
+Fullscreen transitions can change global settings or run more selective rules.
+For example, this disables edge scrolling while a window is fullscreen and
+restores it afterwards:
+
+```
+rule -g -T on-fullscreen -n fullscreen-edge-scroll-off \
+    set edge_scroll false
+rule -g -T on-unfullscreen -n fullscreen-edge-scroll-on \
+    set edge_scroll true
+```
+
+The setting is global.  The example therefore assumes only one fullscreen
+window at a time.  A selector or output scope can be added when the policy
+should apply only to particular windows or outputs.
 
 Rules can be deleted with the `-d` option.  Additionally, `-n` is needed to
 specify the name, example:

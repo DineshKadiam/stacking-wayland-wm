@@ -40,6 +40,8 @@ static const struct {
 	{ COW_RULE_ON_RESIZE,	      "on-resize"	  },
 	{ COW_RULE_ON_SHADE,	     "on-shade"	},
 	{ COW_RULE_ON_UNSHADE,      "on-unshade"	    },
+	{ COW_RULE_ON_FULLSCREEN,   "on-fullscreen"    },
+	{ COW_RULE_ON_UNFULLSCREEN, "on-unfullscreen"  },
 	{ COW_RULE_ON_ICONIFY,      "on-iconify"	    },
 	{ COW_RULE_ON_DEICONIFY,	 "on-deiconify"	},
 	{ COW_RULE_ON_LAYER_CHANGE, "on-layer-change" },
@@ -240,6 +242,8 @@ event_carries_view(enum cow_rule_type type)
 	case COW_RULE_ON_RESIZE:
 	case COW_RULE_ON_SHADE:
 	case COW_RULE_ON_UNSHADE:
+	case COW_RULE_ON_FULLSCREEN:
+	case COW_RULE_ON_UNFULLSCREEN:
 	case COW_RULE_ON_ICONIFY:
 	case COW_RULE_ON_DEICONIFY:
 	case COW_RULE_ON_LAYER_CHANGE:
