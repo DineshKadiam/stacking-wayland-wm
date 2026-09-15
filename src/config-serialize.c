@@ -563,6 +563,30 @@ serialize_bindings(struct config_buf *buf, const struct state_value *value)
 		serialize_binding(buf, value->u.list.items[i]);
 }
 
+static void
+serialize_alias(struct config_buf *buf, const struct state_value *record)
+{
+	const char *argv[] = {
+		"alias",
+		string_field(record, "name"),
+		string_field(record, "command"),
+	};
+	buf_command(buf, 3, argv);
+}
+
+static void
+serialize_aliases(struct config_buf *buf, const struct state_value *value)
+{
+	if (value->type == STATE_V_RECORD) {
+		serialize_alias(buf, value);
+		return;
+	}
+	if (value->type != STATE_V_LIST)
+		return;
+	for (size_t i = 0; i < value->u.list.n; i++)
+		serialize_alias(buf, value->u.list.items[i]);
+}
+
 static bool
 serialize_topic(struct config_buf *buf, const char *topic,
 	const struct state_value *value)
@@ -577,6 +601,8 @@ serialize_topic(struct config_buf *buf, const char *topic,
 		serialize_menus(buf, value);
 	else if (strcmp(topic, "binding") == 0)
 		serialize_bindings(buf, value);
+	else if (strcmp(topic, "alias") == 0)
+		serialize_aliases(buf, value);
 	else
 		return (false);
 	return (true);

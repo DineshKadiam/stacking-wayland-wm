@@ -28,6 +28,7 @@
 
 #include <string.h>
 
+#include "cow/alias.h"
 #include "cow/cmd.h"
 #include "cow/colour.h"
 #include "cow/config.h"
@@ -507,7 +508,29 @@ commands_snapshot(void)
 		state_list_append(list, record);
 		state_value_unref(record);
 	}
+	const struct wl_list *head = cow_aliases_head();
+	if (head != NULL) {
+		struct cow_alias *alias;
+		wl_list_for_each(alias, head, link)
+		{
+			struct state_value *record = state_value_record();
+			rec_set_string(record, "name", alias->name);
+			rec_set_string(record, "usage", alias->command);
+			rec_set_bool(record, "alias", true);
+			state_list_append(list, record);
+			state_value_unref(record);
+		}
+	}
 	return (list);
+}
+
+struct state_value *
+state_snapshot_alias(const struct cow_alias *alias)
+{
+	struct state_value *record = state_value_record();
+	rec_set_string(record, "name", alias->name);
+	rec_set_string(record, "command", alias->command);
+	return (record);
 }
 
 struct state_value *
@@ -608,6 +631,20 @@ state_snapshot_collection(enum state_source src)
 			state_value_unref(record);
 		}
 		cow_selection_summaries_free(summaries, count);
+		break;
+	}
+	case STATE_SRC_ALIASES: {
+		const struct wl_list *head = cow_aliases_head();
+		if (head != NULL) {
+			struct cow_alias *alias;
+			wl_list_for_each(alias, head, link)
+			{
+				struct state_value *record =
+				    state_snapshot_alias(alias);
+				state_list_append(list, record);
+				state_value_unref(record);
+			}
+		}
 		break;
 	}
 	}

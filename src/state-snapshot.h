@@ -25,6 +25,7 @@ struct cow_desk;
 struct cow_rule;
 struct cow_style;
 struct cow_menu;
+struct cow_alias;
 
 enum state_source {
 	STATE_SRC_WINDOWS,
@@ -37,6 +38,7 @@ enum state_source {
 	STATE_SRC_BINDINGS,
 	STATE_SRC_COMMANDS,
 	STATE_SRC_SELECTIONS,
+	STATE_SRC_ALIASES,
 };
 
 /*
@@ -51,6 +53,7 @@ struct state_value *state_snapshot_desk(const struct cow_desk *);
 struct state_value *state_snapshot_rule(const struct cow_rule *);
 struct state_value *state_snapshot_style(const struct cow_style *);
 struct state_value *state_snapshot_menu(const struct cow_menu *);
+struct state_value *state_snapshot_alias(const struct cow_alias *);
 struct state_value *state_snapshot_menu_style(void);
 
 #endif /* COW_STATE_SNAPSHOT_H */

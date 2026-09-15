@@ -180,6 +180,21 @@ test_menu(void)
 	state_value_unref(menu);
 }
 
+static void
+test_alias(void)
+{
+	struct state_value *aliases = state_value_list();
+	struct state_value *alias = state_value_record();
+	record_string(alias, "name", "terminal");
+	record_string(alias, "command", "exec foot --title CoW Terminal");
+	state_list_append(aliases, alias);
+	state_value_unref(alias);
+
+	expect("alias", cow_config_serialize_topic("alias", aliases),
+	    "alias terminal \"exec foot --title CoW Terminal\"\n");
+	state_value_unref(aliases);
+}
+
 int
 main(void)
 {
@@ -187,5 +202,6 @@ main(void)
 	test_rules();
 	test_styles();
 	test_menu();
+	test_alias();
 	return (failures != 0);
 }

@@ -111,6 +111,7 @@ struct cmd_entry {
 struct cmd {
 	const struct cmd_entry *entry;
 	struct args	       *args;
+	char		       *invoked_name; /* dynamic alias name */
 
 	char *file;
 	u_int line;
@@ -165,6 +166,7 @@ struct cmd_q {
 
 	int in_rule;
 	int in_style;
+	unsigned int alias_depth;
 };
 
 /* Error cause list. */
@@ -240,6 +242,8 @@ void cow_exec_run_deferred(void);
 
 /* Built-in commands. */
 extern struct cmd_entry cmd_menu_add_entry;
+extern struct cmd_entry cmd_alias_entry;
+extern struct cmd_entry cmd_alias_invoke_entry;
 extern struct cmd_entry cmd_menu_clear_entry;
 extern struct cmd_entry cmd_menu_destroy_entry;
 extern struct cmd_entry cmd_menu_show_entry;

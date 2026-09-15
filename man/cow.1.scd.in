@@ -587,6 +587,38 @@ The following details those commands which operate globally within *cow*.
 Note that the same command might also contain window/output settings, which will
 be also be added under the relevant section in this man page.
 
+## alias name command ... | alias -d name
+
+Define _name_ as an alias for a CoW command.  An alias can be used anywhere a
+built-in command is accepted, including directly through *moocow*(1), in a
+binding, menu, rule, or *script* block.  It takes no arguments and inherits the
+window, desk, and output context of its caller.
+
+Defining an existing alias replaces its command.  Existing bindings and menus
+resolve aliases when invoked, so they use the replacement without being
+redefined.  Built-in command names and scripting-language keywords cannot be
+used as alias names.  Define an alias before referring to it from a rule or
+script body.  Recursive aliases are stopped with an error.
+
+*-d*
+	Delete _name_.
+
+Examples:
+
+```
+alias terminal exec foot
+alias tidy-desktop script {
+	winops -F 'self.current_desk and self.iconified' -i
+	focus -n -w
+}
+
+bind L+Return terminal
+menu-add RootMenu "Tidy desktop" tidy-desktop
+```
+
+Aliases are included in *show config*.  Use *show alias* _name_ or
+*show -a alias* to inspect active definitions.
+
 ## bind [-r] [-x release-action] [contexts:]modifier+key[,modifier+key...] action ... | bind -d pattern
 
 Key bindings are specified as a modifier string immediately followed by *+* and
@@ -1082,13 +1114,14 @@ standard output.
 *-a*
 	Return all records for the topic. This is supported by _window_, _output_,
 	_desk_, _rule_, _style_, _decor_, _menu_, _binding_, _command_, and
-	_selection_. It cannot be combined with *-t* or a resource name.
+	_selection_, and _alias_. It cannot be combined with *-t* or a resource
+	name.
 
 *-f* _format_
 	Select the output format. _json_ is the default. _config_ emits commands
 	accepted by *cow.conf* and is available for _config_, _rule_, _style_,
-	_decor_, _menu_, and _binding_. With *-a*, filters are applied before the collection
-	is serialized.
+	_decor_, _menu_, _binding_, and _alias_. With *-a*, filters are applied
+	before the collection is serialized.
 
 *-t* _target_
 	Select the resource returned by *show window*, *show output*, or
@@ -1180,6 +1213,9 @@ standard output.
 	Example:
 	*show -a -F 'self.count > 1' selection*
 
+*show alias* _name_, *show -a alias*
+	Return one alias or every alias with its _name_ and expanded _command_.
+
 *show command* _name_, *show -a command*
 	Return one named command or every registered command with its _name_ and
 	_usage_. This replaces the former *list-commands* command and supports
@@ -1193,7 +1229,7 @@ standard output.
 *show config* [_key_]
 	With no key, return all serializable configuration grouped into _commands_,
 	_settings_, _decor_, _menu\_style_, _menus_, _bindings_, _rules_, and
-	_styles_. The
+	_styles_, and _aliases_. The
 	_commands_ array is the ordered, directly reusable configuration record.
 	With a key,
 	return only that setting. Supported setting keys:

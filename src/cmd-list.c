@@ -94,6 +94,7 @@ cmd_list_free(struct cmd_list *cmdlist)
 		TAILQ_REMOVE(&cmdlist->list, cmd, qentry);
 		args_free(cmd->args);
 		xfree(cmd->file);
+		xfree(cmd->invoked_name);
 		xfree(cmd);
 	}
 
@@ -157,7 +158,8 @@ cmd_to_config(struct cmd *cmd)
 	char *buf = xstrdup("");
 	size_t len = 0;
 
-	config_append(&buf, &len, cmd->entry->name);
+	config_append(&buf, &len, cmd->invoked_name != NULL ?
+	    cmd->invoked_name : cmd->entry->name);
 
 	struct args_entry *entry;
 	RB_FOREACH (entry, args_tree, &cmd->args->tree) {

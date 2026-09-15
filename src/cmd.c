@@ -21,6 +21,7 @@
 #include <ctype.h>
 
 #include "cow/compat.h"
+#include "cow/alias.h"
 #include "cow/cmd.h"
 #include "cow/cmd_scan.h"
 #include "cow/util.h"
@@ -29,6 +30,7 @@
 struct causelist cfg_causes;
 
 struct cmd_entry *cmd_table[] = {
+	&cmd_alias_entry,
 	&cmd_bind_entry,
 	&cmd_bind_decoration_entry,
 	&cmd_container_entry,
@@ -85,6 +87,8 @@ cmd_find_cmd(const char *cmd_name)
 		}
 	}
 
+	if (cmd_p == NULL && cow_alias_find(cmd_name) != NULL)
+		cmd_p = &cmd_alias_invoke_entry;
 	return (cmd_p);
 }
 
@@ -207,7 +211,9 @@ cmd_print(struct cmd *cmd, char *buf, size_t len)
 {
 	size_t off, used;
 
-	off = snprintf(buf, len, "%s ", cmd->entry->name);
+	const char *name = cmd->invoked_name != NULL ? cmd->invoked_name :
+	    cmd->entry->name;
+	off = snprintf(buf, len, "%s ", name);
 	if (off + 1 < len) {
 		used = args_print(cmd->args, buf + off, len - off - 1);
 		if (used == 0)
@@ -232,7 +238,9 @@ cmd_parse(int argc, char **argv, const char *file, u_int line, char **cause)
 		return (NULL);
 	}
 
-	if ((entry = cmd_find_cmd(argv[0])) == NULL) {
+	if ((entry = cmd_find_cmd(argv[0])) == NULL && file != NULL)
+		entry = &cmd_alias_invoke_entry;
+	if (entry == NULL) {
 		xasprintf(cause, "unknown command: %s", argv[0]);
 		return (NULL);
 	}
@@ -248,6 +256,8 @@ cmd_parse(int argc, char **argv, const char *file, u_int line, char **cause)
 	cmd	   = xcalloc(1, sizeof *cmd);
 	cmd->entry = entry;
 	cmd->args  = args;
+	if (entry == &cmd_alias_invoke_entry)
+		cmd->invoked_name = xstrdup(argv[0]);
 
 	if (file != NULL)
 		cmd->file = xstrdup(file);

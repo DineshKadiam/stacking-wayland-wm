@@ -17,6 +17,7 @@
 #include <cJSON.h>
 #include <string.h>
 
+#include "cow/alias.h"
 #include "cow/cmd.h"
 #include "cow/cmd-filter.h"
 #include "cow/config.h"
@@ -124,6 +125,8 @@ state_topic(const char *topic, enum state_source *source)
 		*source = STATE_SRC_COMMANDS;
 	else if (strcmp(topic, "selection") == 0)
 		*source = STATE_SRC_SELECTIONS;
+	else if (strcmp(topic, "alias") == 0)
+		*source = STATE_SRC_ALIASES;
 	else
 		return (false);
 	return (true);
@@ -289,6 +292,25 @@ cmd_show_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_ERROR);
 	}
 
+	if (strcmp(topic, "alias") == 0) {
+		if (has_target) {
+			cmdq_error(cmdq, "show: -t is not valid with alias");
+			return (CMD_RETURN_ERROR);
+		}
+		if (args->argc != 2) {
+			cmdq_error(cmdq, "show: alias requires a name or -a");
+			return (CMD_RETURN_ERROR);
+		}
+		struct cow_alias *alias = cow_alias_find(args->argv[1]);
+		if (alias == NULL) {
+			cmdq_error(cmdq, "show: no alias named '%s'",
+			    args->argv[1]);
+			return (CMD_RETURN_ERROR);
+		}
+		return (show_record(topic, state_snapshot_alias(alias), format,
+		    cmdq));
+	}
+
 	if (strcmp(topic, "command") == 0) {
 		if (has_target) {
 			cmdq_error(cmdq, "show: -t is not valid with command");
@@ -305,10 +327,19 @@ cmd_show_exec(struct cmd *self, struct cmd_q *cmdq)
 			return (CMD_RETURN_ERROR);
 		}
 		struct state_value *record = state_value_record();
-		struct state_value *name = state_value_string(entry->name);
-		struct state_value *usage = state_value_string(entry->usage);
+		struct cow_alias *alias = entry == &cmd_alias_invoke_entry ?
+		    cow_alias_find(args->argv[1]) : NULL;
+		struct state_value *name = state_value_string(alias != NULL ?
+		    alias->name : entry->name);
+		struct state_value *usage = state_value_string(alias != NULL ?
+		    alias->command : entry->usage);
 		state_record_set(record, "name", name);
 		state_record_set(record, "usage", usage);
+		if (alias != NULL) {
+			struct state_value *is_alias = state_value_bool(true);
+			state_record_set(record, "alias", is_alias);
+			state_value_unref(is_alias);
+		}
 		state_value_unref(name);
 		state_value_unref(usage);
 		return (show_record(topic, record, format, cmdq));
@@ -402,7 +433,8 @@ show_collection(enum state_source source, const char *filter_expr,
 	    source == STATE_SRC_DECOR ? "decor" :
 	    source == STATE_SRC_MENUS ? "menu" :
 	    source == STATE_SRC_BINDINGS ? "binding" :
-	    source == STATE_SRC_SELECTIONS ? "selection" : "command";
+	    source == STATE_SRC_SELECTIONS ? "selection" :
+	    source == STATE_SRC_ALIASES ? "alias" : "command";
 	return (show_record(topic, result, format, cmdq));
 }
 
@@ -477,6 +509,8 @@ do_show_config(const char *ckey, const char *format, struct cmd_q *cmdq)
 		    state_snapshot_collection(STATE_SRC_RULES));
 		json_add_snapshot(all, "styles",
 		    state_snapshot_collection(STATE_SRC_STYLES));
+		json_add_snapshot(all, "aliases",
+		    state_snapshot_collection(STATE_SRC_ALIASES));
 		cow_ipc_respond_data(cmdq->client_fd, all);
 	}
 	return (CMD_RETURN_NORMAL);

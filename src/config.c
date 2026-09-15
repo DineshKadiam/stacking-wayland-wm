@@ -21,6 +21,7 @@
 #include <strings.h>
 #include <unistd.h>
 
+#include "cow/alias.h"
 #include "cow/colour.h"
 #include "cow/compat.h"
 #include "cow/memory.h"
@@ -366,6 +367,7 @@ cow_config_create(void)
 	wl_list_init(&config->keyboard_bindings);
 	wl_list_init(&config->mouse_bindings);
 	wl_list_init(&config->decoration_bindings);
+	wl_list_init(&config->aliases);
 	wl_list_init(&config->output_backgrounds);
 	wl_list_init(&config->configured_commands);
 	cow_icon_placement_config_init(config);
@@ -444,6 +446,14 @@ cow_config_destroy(struct cow_config *config)
 		wl_list_remove(&db->link);
 		xfree(db->action_string);
 		xfree(db);
+	}
+	struct cow_alias *alias, *alias_tmp;
+	wl_list_for_each_safe(alias, alias_tmp, &config->aliases, link)
+	{
+		wl_list_remove(&alias->link);
+		xfree(alias->name);
+		xfree(alias->command);
+		xfree(alias);
 	}
 
 	struct cow_output_background_config *ob, *ob_tmp;

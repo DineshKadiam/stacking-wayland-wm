@@ -493,7 +493,7 @@ struct cow_config {
 	struct wl_list keyboard_bindings;   /* cow_binding_entry.link */
 	struct wl_list mouse_bindings;	    /* cow_mouse_binding_entry.link */
 	struct wl_list decoration_bindings; /* cow_dec_binding_entry.link */
-	struct wl_list actions;		    /* cow_action_entry.link */
+	struct wl_list aliases;		    /* cow_alias.link */
 };
 
 extern struct cow_config *cow_config;
@@ -539,11 +539,6 @@ char *cow_config_commands_string(const struct cow_config *);
 typedef void (*cow_config_command_cb)(const char *, void *);
 void cow_config_visit_commands(const struct cow_config *,
     cow_config_command_cb, void *);
-
-/*
- * Find an action entry by name. Returns the command string, or NULL.
- */
-const char *cow_config_find_action(struct cow_config *, const char *);
 
 /*
  * Parse a region name ("N", "south", "ne", "titlebar", ...) into a
