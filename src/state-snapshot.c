@@ -377,6 +377,7 @@ menu_style_snapshot(const struct cow_menu *menu)
 	rec_set_colour(record, "title_bg", style.title_bg);
 	rec_set_colour(record, "title_fg", style.title_fg);
 	rec_set_colour(record, "separator", style.separator);
+	rec_set_colour(record, "disabled", style.disabled);
 	rec_set_colour(record, "border", style.border);
 	gradient = gradient_snapshot(&style.bg_gradient);
 	state_record_set(record, "bg_gradient", gradient);
@@ -429,7 +430,8 @@ state_snapshot_menu(const struct cow_menu *menu)
 		struct state_value *entry = state_value_record();
 		const char *type = item->type == COW_MENU_ITEM_SEPARATOR ?
 		    "separator" : item->type == COW_MENU_ITEM_TITLE ? "title" :
-		    item->type == COW_MENU_ITEM_ACCEPT ? "accept" : "normal";
+		    item->type == COW_MENU_ITEM_ACCEPT ? "accept" :
+		    item->type == COW_MENU_ITEM_DISABLED ? "disabled" : "normal";
 
 		rec_set_string(entry, "type", type);
 		rec_set_string(entry, "label", item->label);

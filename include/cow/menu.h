@@ -46,6 +46,7 @@ struct cow_menu_style {
 	float title_bg[4];  /* title item background */
 	float title_fg[4];  /* title item text colour */
 	float separator[4]; /* separator line colour */
+	float disabled[4];	    /* background colour */
 	float border[4];    /* outer border colour */
 	struct cow_gradient bg_gradient;
 	struct cow_gradient title_bg_gradient;
@@ -88,6 +89,7 @@ enum cow_menu_style_field {
 	COW_MENU_STYLE_SIDE_COLOUR	 = 1u << 19,
 	COW_MENU_STYLE_SIDE_IMAGE	 = 1u << 20,
 	COW_MENU_STYLE_SIDE_WIDTH	 = 1u << 21,
+	COW_MENU_STYLE_DISABLED	 = 1u << 22,
 };
 
 enum cow_menu_item_type {
@@ -95,6 +97,7 @@ enum cow_menu_item_type {
 	COW_MENU_ITEM_SEPARATOR, /* horizontal rule, no action */
 	COW_MENU_ITEM_TITLE,	 /* non-selectable label (bold heading) */
 	COW_MENU_ITEM_ACCEPT,	 /* accept a multi-selection */
+	COW_MENU_ITEM_DISABLED,   /* non-selectable label without special heading */
 };
 
 struct cow_menu_item {

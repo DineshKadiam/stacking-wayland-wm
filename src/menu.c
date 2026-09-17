@@ -74,6 +74,10 @@ cow_menu_style_default(struct cow_menu_style *s)
 	s->separator[1] = 0.40f;
 	s->separator[2] = 0.40f;
 	s->separator[3] = 1.0f;
+	s->disabled[0] = 0.40f;
+	s->disabled[1] = 0.40f;
+	s->disabled[2] = 0.40f;
+	s->disabled[3] = 1.0f;
 	cow_colour_convert(s->border, 0x000000);
 	s->bg_gradient.mode	       = COW_GRADIENT_NONE;
 	s->title_bg_gradient.mode      = COW_GRADIENT_NONE;
@@ -135,6 +139,7 @@ cow_menu_style_resolve(const struct cow_menu *menu, struct cow_menu_style *out)
 	APPLY(COW_MENU_STYLE_TITLE_BG, title_bg);
 	APPLY(COW_MENU_STYLE_TITLE_FG, title_fg);
 	APPLY(COW_MENU_STYLE_SEPARATOR, separator);
+	APPLY(COW_MENU_STYLE_DISABLED, disabled);
 	APPLY(COW_MENU_STYLE_BORDER_COLOUR, border);
 	APPLY(COW_MENU_STYLE_BG_GRADIENT, bg_gradient);
 	APPLY(COW_MENU_STYLE_TITLE_BG_GRADIENT, title_bg_gradient);
@@ -927,6 +932,7 @@ item_row_height(const struct cow_menu_item *it, int text_h,
 	case COW_MENU_ITEM_TITLE:
 	case COW_MENU_ITEM_ACCEPT:
 	case COW_MENU_ITEM_NORMAL:
+	case COW_MENU_ITEM_DISABLED:
 	default:
 		return (text_h + st->padding_y * 2);
 	}
@@ -1006,7 +1012,7 @@ menu_icon_gutter(const struct cow_menu *menu, const struct cow_menu_style *style
 	wl_list_for_each(it, &menu->items, link)
 	{
 		if (menu_item_visible(menu, it) &&
-		    it->type == COW_MENU_ITEM_NORMAL && it->icon != NULL)
+		    (it->type == COW_MENU_ITEM_NORMAL || it->type == COW_MENU_ITEM_DISABLED) && it->icon != NULL)
 			return (style->icon_size + style->icon_gap);
 	}
 	return (0);
@@ -1421,6 +1427,25 @@ popup_render(struct cow_menu_popup *p)
 				    sep_px);
 			}
 			break;
+		case COW_MENU_ITEM_DISABLED: {
+			int label_x = x + st->padding_x + CHECK_GUTTER +
+			    ICON_GUTTER;
+			int label_w = innerw - st->padding_x * 2 -
+			    MENU_ARROW_GUTTER - ICON_GUTTER - CHECK_GUTTER;
+			if (label_w < 1)
+				label_w = 1;
+			if (it->icon != NULL && st->icon_size > 0)
+				menu_item_draw_icon(cs, it,
+				    x + st->padding_x + CHECK_GUTTER,
+				    y + (rh - st->icon_size) / 2,
+				    st->icon_size);
+			char label[512];
+			menu_label_resolve(p->def, it, label, sizeof(label),
+			    NULL);
+			render_text(cs, label_x, y, label_w, rh,
+			    label, -1, st->disabled, st, false, 0);
+			break;
+		}
 		case COW_MENU_ITEM_NORMAL:
 		default: {
 			bool hovered = (idx == p->selected);
@@ -1479,7 +1504,6 @@ popup_render(struct cow_menu_popup *p)
 			break;
 		}
 		}
-
 		y += rh;
 		idx++;
 	}

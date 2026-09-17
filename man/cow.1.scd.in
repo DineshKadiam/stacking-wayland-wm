@@ -2421,7 +2421,7 @@ items with *menu-add*, then opened with *menu-show*.  Items may be
 
 ## Defining menus
 
-*menu-add* [*-M*] [*-T*] [*-i* _ICON_] _NAME_ _LABEL_ _ACTION_
+*menu-add* [*-M*] [*-T*] [*-i* _ICON_] [-d] _NAME_ _LABEL_ _ACTION_
 	Append an item to menu _NAME_, creating the menu on first
 	reference.  Special _ACTION_ values:
 
@@ -2434,12 +2434,15 @@ items with *menu-add*, then opened with *menu-show*.  Items may be
 	  picks a target window.
 	- anything else -- a cow command line run when the item is
 	  selected.
+	  
+	*-d* marks the entry as disabled.  It can't be selected or filtered 
+	by typeahead, and the entry's text will be in the *disabled* colour.
 
-	*-i* adds a PNG, SVG, or XPM icon to a selectable item.  Absolute paths and
-	paths beginning with *~/*, *$HOME/*, or *${HOME}/* are used directly.
-	Other names are searched for in *icon.path*.  Titles and separators
-	cannot have icons.  If an icon cannot be found or read, *cow* logs a
-	warning and retains the item without an icon.
+	*-i* adds a PNG, SVG, or XPM icon to a selectable or disabled item.
+	Absolute paths and paths beginning with *~/*, *$HOME/*, or *${HOME}/*
+	are used directly.  Other names are searched for in *icon.path*.  
+	Titles and separators cannot have icons.  If an icon cannot be found
+	or read, *cow* logs a warning and retains the item without an icon.
 
 	*-T* enables typeahead for the containing menu.  Typing filters its
 	selectable items by label; Backspace removes the last character.  The
@@ -2542,6 +2545,8 @@ The table below shows the possible values:
 :  near-black
 |  *separator*
 :  mid-grey (title underline colour)
+|  *disabled*
+:  mid-grey (disabled menu item colour)
 |  *border.colour*
 :  0x000000 (solid outer border colour)
 |  *border.width*

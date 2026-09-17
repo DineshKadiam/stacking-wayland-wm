@@ -122,7 +122,7 @@ cmd_menu_add_exec(struct cmd *self, struct cmd_q *cmdq)
 	struct args *args = self->args;
 	if (args->argc < 3) {
 		cmdq_error(cmdq,
-		    "menu-add: usage: [-M] [-T] [-i ICON] NAME LABEL ACTION "
+		    "menu-add: usage: [-M] [-T] [-i ICON] [-d] NAME LABEL ACTION "
 		    "[args]");
 		return (CMD_RETURN_ERROR);
 	}
@@ -138,6 +138,9 @@ cmd_menu_add_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	if (strcmp(label, "-") == 0 && strcmp(action, "-") == 0) {
 		type = COW_MENU_ITEM_SEPARATOR;
+		act  = NULL;
+	} else if (args_has(args, 'd')) {
+		type = COW_MENU_ITEM_DISABLED;
 		act  = NULL;
 	} else if (strcmp(action, "title") == 0) {
 		type = COW_MENU_ITEM_TITLE;
@@ -158,7 +161,7 @@ cmd_menu_add_exec(struct cmd *self, struct cmd_q *cmdq)
 			act++;
 	}
 	const char *icon_arg = args_get(args, 'i');
-	if (icon_arg != NULL && type != COW_MENU_ITEM_NORMAL) {
+	if (icon_arg != NULL && type != COW_MENU_ITEM_NORMAL && type != COW_MENU_ITEM_DISABLED) {
 		cmdq_error(cmdq,
 		    "menu-add: icons may only be set on selectable items");
 		xfree(action);
@@ -191,10 +194,10 @@ cmd_menu_add_exec(struct cmd *self, struct cmd_q *cmdq)
 
 struct cmd_entry cmd_menu_add_entry = {
 	"menu-add",
-	"+MTi:",
+	"+MTi:d",
 	3,
 	-1,
-	"menu-add [-M] [-T] [-i ICON] NAME LABEL ACTION",
+	"menu-add [-M] [-T] [-i ICON] [-d] NAME LABEL ACTION",
 	cmd_menu_add_exec,
 	CMD_CONFIG,
 };
@@ -334,6 +337,8 @@ menu_style_field(const char *key)
 		return (COW_MENU_STYLE_TITLE_FG);
 	if (strcmp(key, "separator") == 0)
 		return (COW_MENU_STYLE_SEPARATOR);
+	if (strcmp(key, "disabled") == 0)
+		return (COW_MENU_STYLE_DISABLED);
 	if (strcmp(key, "border.colour") == 0)
 		return (COW_MENU_STYLE_BORDER_COLOUR);
 	if (strcmp(key, "bg.gradient") == 0)
@@ -591,6 +596,7 @@ cmd_menu_style_exec(struct cmd *self, struct cmd_q *cmdq)
 		{ "title.bg", st->title_bg },
 		{ "title.fg", st->title_fg },
 		{ "separator", st->separator },
+		{ "disabled", st->disabled },
 		{ "border.colour", st->border },
 		{ "side.colour", st->side_colour },
 		{ NULL, NULL },
