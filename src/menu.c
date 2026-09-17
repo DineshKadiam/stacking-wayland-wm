@@ -2325,7 +2325,10 @@ cow_menu_process_input(void)
 
 	struct cow_seat *seat = cow_seat_primary();
 	if (seat != NULL && seat->menu_click_pending) {
+		bool released = seat->menu_click_released;
 		seat->menu_click_pending = false;
+		seat->menu_click_released = false;
+		seat->menu_click_button = 0;
 		if (over == NULL) {
 			cow_menu_close_all();
 			return (true);
@@ -2337,7 +2340,9 @@ cow_menu_process_input(void)
 		}
 		struct cow_menu_item *it = item_at_index(over->def, idx);
 		if (item_selectable(it)) {
-			cow_pointer_op_start_menu_select(seat);
+			/* A fast click may already have released before this pass. */
+			if (!released)
+				cow_pointer_op_start_menu_select(seat);
 			dispatch_item(over, it);
 		} else if (it != NULL && it->is_popup) {
 			dispatch_item(over, it);

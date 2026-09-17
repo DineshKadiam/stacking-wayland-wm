@@ -944,8 +944,13 @@ cow_pointer_op_process(struct cow_seat *seat)
 {
 	if (!seat->op_in_progress)
 		return;
-	if (seat->op.type == COW_POINTER_OP_MENU_SELECT)
+	/* Popup and multi-select clicks need no deferred action, but their
+	 * pointer grab must still end when the button is released.
+	 */
+	if (seat->op.type == COW_POINTER_OP_MENU_SELECT) {
+		(void)cow_pointer_op_finish_menu_select(seat);
 		return;
+	}
 
 	/*
 	 * SCROLL_DRAG is view-less: pan the bound output's viewport

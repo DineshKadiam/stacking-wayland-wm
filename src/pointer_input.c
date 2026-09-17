@@ -578,10 +578,16 @@ pointer_button(void *data, struct wl_pointer *pointer, uint32_t serial,
 		cow_pointer_cursor_hold_end();
 
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED && cow_menu_is_open()) {
-		if (seat != NULL)
+		if (seat != NULL) {
 			seat->menu_click_pending = true;
+			seat->menu_click_released = false;
+			seat->menu_click_button = button;
+		}
 		cow_update_request(COW_UPDATE_MANAGE);
 	}
+	if (state == WL_POINTER_BUTTON_STATE_RELEASED && seat != NULL &&
+	    seat->menu_click_pending && seat->menu_click_button == button)
+		seat->menu_click_released = true;
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED && seat != NULL &&
 	    seat->binding_context == COW_BIND_CONTEXT_ICON &&
 	    seat->binding_context_view != NULL && !cow_menu_is_open()) {

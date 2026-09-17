@@ -129,6 +129,9 @@ struct cow_seat {
 	 * open; consumed and acted on in cow_menu_process_input().
 	 */
 	bool menu_click_pending;
+	/* The click may be released before its pending menu selection runs. */
+	bool menu_click_released;
+	uint32_t menu_click_button;
 
 	/*
 	 * Set when the current window-move was started with -C (container
