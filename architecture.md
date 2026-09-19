@@ -393,6 +393,11 @@ statement is evaluated.  A later collection snapshot therefore sees logical
 state changes, including pending focus, made by earlier statements even though
 River applies the corresponding compositor request in the next manage cycle.
 
+Each command queue also owns its error list. Child queues transfer errors to
+their parent explicitly, as happens for `include` and DSL execution. Keeping
+errors out of process-global state prevents an IPC command, key binding, or
+configuration load from consuming failures produced by another event.
+
 ## Rules And Styles
 
 Rules bind command lists to lifecycle events such as map, move, resize, desk
@@ -451,6 +456,20 @@ the shared module helpers in `src/module.c` to connect to the sockets.
 This keeps modules small: they do not need to bind River protocols or duplicate
 window-management state.  They observe CoW's coalesced status snapshots and ask
 CoW to act.
+
+Socket output is buffered with libevent. Command clients are closed only after
+their response has drained, and a slow status client retains at most one queued
+snapshot. This avoids truncating nonblocking writes without allowing an
+unbounded backlog of obsolete state.
+
+Modules use `module_status.c` for event-driven connection, reconnection, and
+line framing. The helper stores incoming data on the heap, so module threads do
+not need large stack buffers; modules remain in their Wayland/libevent main
+thread. The canonical status snapshot contains outputs, desks, windows, focus,
+and theme data. `module_snapshot.c` parses that state for modules which need a
+local model, notably cowpager and cowiconman. Those modules therefore do not
+issue a second synchronous `show -a window` request or maintain separate JSON
+parsers and fixed-size state arrays.
 
 ## Decorations
 
