@@ -52,6 +52,10 @@ static const struct {
 	{ COW_RULE_ON_TITLE_CHANGE, "on-title-change" },
 	{ COW_RULE_ON_OUTPUTS_CHANGED, "on-outputs-changed" },
 	{ COW_RULE_ON_DESKS_CHANGED, "on-desks-changed" },
+	{ COW_RULE_ON_EDGEDROP_N,	    "on-edgedrop-n" },
+	{ COW_RULE_ON_EDGEDROP_E,	    "on-edgedrop-e" },
+	{ COW_RULE_ON_EDGEDROP_S,	    "on-edgedrop-s" },
+	{ COW_RULE_ON_EDGEDROP_W,	    "on-edgedrop-w" },
 	{ COW_RULE_ON_DESK,	    "on-desk"	      },
 };
 
@@ -63,6 +67,8 @@ static const struct {
  */
 static struct wl_list rules;
 static bool	      rules_initialised;
+
+bool rule_exists_for_event[COW_RULE_TYPE_COUNT];
 
 static void
 rules_lazy_init(void)
@@ -84,6 +90,17 @@ cow_rule_free(struct cow_rule *rule)
 {
 	if (rule == NULL)
 		return;
+	/* Only delete the 'rules exist' cache flag if it's the last one
+	 * for the event type */
+	bool others_exist_for_event = false;
+	struct cow_rule *r;
+	wl_list_for_each(r, &rules, link)
+	{
+		if (r->type == rule->type && r != rule)
+			others_exist_for_event = true;
+	}
+	if (!others_exist_for_event)
+		rule_exists_for_event[rule->type] = false;
 	cow_policy_fini(&rule->policy);
 	if (rule->cmdlist != NULL)
 		cmd_list_free(rule->cmdlist);
@@ -146,6 +163,17 @@ cow_rule_find_by_name(const char *name)
 	return NULL;
 }
 
+/* Convenience function.  Cache when rules are created or deleted for
+ * a given event type so we don't have to walk the entire list just to
+ * say "did we have any rules for COW_RULE_ON_EDGEDROP_S?" */
+bool
+cow_rule_set_for_type(enum cow_rule_type type)
+{
+	if (type >= 0 && type < COW_RULE_TYPE_COUNT)
+		return rule_exists_for_event[type];
+	return false;
+}
+
 const struct wl_list *
 cow_rules_head(void)
 {
@@ -160,6 +188,7 @@ cow_rule_add(struct cow_rule *rule)
 		return;
 	rules_lazy_init();
 	wl_list_insert(rules.prev, &rule->link);
+	rule_exists_for_event[rule->type] = true;
 }
 
 bool
@@ -248,6 +277,10 @@ event_carries_view(enum cow_rule_type type)
 	case COW_RULE_ON_DEICONIFY:
 	case COW_RULE_ON_LAYER_CHANGE:
 	case COW_RULE_ON_TITLE_CHANGE:
+	case COW_RULE_ON_EDGEDROP_N:
+	case COW_RULE_ON_EDGEDROP_E:
+	case COW_RULE_ON_EDGEDROP_S:
+	case COW_RULE_ON_EDGEDROP_W:
 		return true;
 	case COW_RULE_ON_NEW_DESK:
 	case COW_RULE_ON_NEW_PAGE:

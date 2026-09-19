@@ -23,6 +23,7 @@
 #include "cow/output.h"
 #include "cow/pan_frames.h"
 #include "cow/pointer_op.h"
+#include "cow/rule.h"
 #include "cow/seat.h"
 #include "cow/shm.h"
 #include "cow/util.h"
@@ -74,7 +75,6 @@ cow_pan_edge_mask(int cur_col, int cur_row, int cols, int rows)
 static void pan_frame_destroy(struct cow_output *output, int edge);
 static void pan_frame_paint(struct cow_output *output, int edge, bool orange);
 static void pan_frame_set_level(struct cow_output *output, int edge, int level);
-static void pan_disarm(void);
 static void pan_fire(struct cow_output *output, int edge);
 
 /* Cooldown after a fire so the post-warp cursor doesn't re-arm. */
@@ -158,7 +158,44 @@ pan_edge_has_page(const struct cow_output *output, int edge)
 	int cur_col = cow_page_col(output);
 	int cur_row = cow_page_row(output);
 	unsigned mask = cow_pan_edge_mask(cur_col, cur_row, cols, rows);
+	struct cow_view *drag = cow_pointer_op_active_move_view();
+	if (drag) {
+		/* Allow arming edges when you have a drag taking place in a
+		 * direction we have an "edgedrop" rule
+		 * 
+		 * in pan_fire this will not actually warp, but perform 
+		 * the specified rule */
+		if (cow_rule_set_for_type(COW_RULE_ON_EDGEDROP_E))
+			mask |= COW_PAN_EDGE_BIT(COW_PAN_RIGHT);
+		if (cow_rule_set_for_type(COW_RULE_ON_EDGEDROP_W))
+			mask |= COW_PAN_EDGE_BIT(COW_PAN_LEFT);
+		if (cow_rule_set_for_type(COW_RULE_ON_EDGEDROP_N))
+			mask |= COW_PAN_EDGE_BIT(COW_PAN_TOP);
+		if (cow_rule_set_for_type(COW_RULE_ON_EDGEDROP_S))
+			mask |= COW_PAN_EDGE_BIT(COW_PAN_BOTTOM);
+	}
+	
 	return (mask & COW_PAN_EDGE_BIT(edge)) != 0;
+}
+
+static enum cow_rule_type 
+match_edge_to_rule(int edge)
+{
+	switch(edge) {
+		case COW_PAN_TOP:
+			return COW_RULE_ON_EDGEDROP_N;
+			break;
+		case COW_PAN_BOTTOM:
+			return COW_RULE_ON_EDGEDROP_S;
+			break;
+		case COW_PAN_LEFT:
+			return COW_RULE_ON_EDGEDROP_W;
+			break;
+		case COW_PAN_RIGHT:
+			return COW_RULE_ON_EDGEDROP_E;
+			break;
+	}
+	return COW_RULE_NONE;
 }
 
 static void
@@ -213,7 +250,7 @@ cow_pan_frame_pointer_leave(struct cow_output *output, int edge)
 		pan_disarm();
 }
 
-static void
+void
 pan_disarm(void)
 {
 	struct cow_output *out	= cow_wm.pan_lock_output;
@@ -406,6 +443,9 @@ pan_frame_destroy(struct cow_output *output, int edge)
 		output->pan_edge = -1;
 }
 
+/* Used if we want to restrict the edges to only scrollable ones based
+ * on desktop layout, but we currently surface all edges since we filter
+ * which ones actually have event or scroll triggers */ 
 static bool
 edge_is_scrollable(struct cow_output *output, int edge)
 {
@@ -588,7 +628,10 @@ void
 pan_frames_update_output(struct cow_output *output)
 {
 	for (int e = 0; e < 4; e++) {
-		bool needed = edge_is_scrollable(output, e);
+		/* Always generate all four frames
+		 * but mask access based on scrollability or
+		 * bindings to edges later */
+		bool needed = true;
 		bool exists = output->pan_surf[e] != NULL;
 
 		if (needed && !exists) {
@@ -654,6 +697,23 @@ pan_edge_for_pointer(const struct cow_output *output, int px, int py, int strip)
 	int	 cur_col = cow_page_col(output);
 	int	 cur_row = cow_page_row(output);
 	unsigned mask	 = cow_pan_edge_mask(cur_col, cur_row, cols, rows);
+
+	struct cow_view *drag = cow_pointer_op_active_move_view();
+	if (drag) {
+		/* Allow arming edges when you have a drag taking place in a
+		 * direction we have an "edgedrop" rule
+		 * 
+		 * in pan_fire this will not actually warp, but perform 
+		 * the specified rule */
+		if (cow_rule_set_for_type(COW_RULE_ON_EDGEDROP_E))
+			mask |= COW_PAN_EDGE_BIT(COW_PAN_RIGHT);
+		if (cow_rule_set_for_type(COW_RULE_ON_EDGEDROP_W))
+			mask |= COW_PAN_EDGE_BIT(COW_PAN_LEFT);
+		if (cow_rule_set_for_type(COW_RULE_ON_EDGEDROP_N))
+			mask |= COW_PAN_EDGE_BIT(COW_PAN_TOP);
+		if (cow_rule_set_for_type(COW_RULE_ON_EDGEDROP_S))
+			mask |= COW_PAN_EDGE_BIT(COW_PAN_BOTTOM);
+	}
 
 	if ((mask & COW_PAN_EDGE_BIT(COW_PAN_TOP)) &&
 	    py <= output->y + strip)
@@ -786,16 +846,38 @@ pan_adjust_drags(struct cow_output *output, int warp_dx, int warp_dy)
 	}
 }
 
+void 
+pan_update_cooldowns(struct cow_output *output)
+{
+	long now = cow_mono_ms();
+	output->pan_last_fire_ms      = now;
+	output->pan_giveup_until_ms   = now + PAN_GIVEUP_COOLDOWN_MS;
+	cow_wm.pan_global_cooldown_ms = now + PAN_GIVEUP_COOLDOWN_MS;
+}
+
 static void
 pan_fire(struct cow_output *output, int edge)
 {
 	if (output == NULL || edge < 0)
 		return;
 
-	long now = cow_mono_ms();
-	output->pan_last_fire_ms      = now;
-	output->pan_giveup_until_ms   = now + PAN_GIVEUP_COOLDOWN_MS;
-	cow_wm.pan_global_cooldown_ms = now + PAN_GIVEUP_COOLDOWN_MS;
+	struct cow_view *drag = cow_pointer_op_active_move_view();
+	bool override_for_edgedrop = false;
+	if (drag) {
+		if (cow_rule_set_for_type(match_edge_to_rule(edge))) {
+			override_for_edgedrop = true;
+		}
+	}
+	
+	if (drag && override_for_edgedrop) {
+		/* Tag that we want an event, but don't proceed to the actual
+		 * action or warp.  This is handled at pointer release */
+		drag->edgedrop_event_queued = match_edge_to_rule(edge);
+		return;
+	}
+
+	pan_update_cooldowns(output);
+	
 	int cur_col = cow_page_col(output);
 	int cur_row = cow_page_row(output);
 
@@ -818,7 +900,6 @@ pan_fire(struct cow_output *output, int edge)
 	if (ptr_y >= output->y + output->height)
 		ptr_y = output->y + output->height - 1;
 
-	struct cow_view *drag = cow_pointer_op_active_move_view();
 	int		 warp_x, warp_y;
 	pan_warp_target(output, edge, ptr_x, ptr_y, drag, &warp_x, &warp_y);
 
@@ -906,6 +987,16 @@ cow_output_pan_pointer_enter(void)
 	cow_update_request(COW_UPDATE_MANAGE);
 }
 
+void
+pan_lock_edges_hide(void)
+{
+	struct cow_output * output;
+	wl_list_for_each(output, &cow_wm.outputs, wm_link) {
+		for (int i = 0; i < 4; i++) {
+			pan_frame_set_orange(output, i, false);
+		}
+	}
+}
 /* Drag-mode arming: when a window is being moved, the cursor's
  * position dwells at an edge → fire after edge_scroll_delay_ms.
  * Driven by pointer_op processing rather than wl_pointer events
@@ -946,19 +1037,25 @@ cow_output_pan_op_arm(struct cow_seat *seat)
 		int edge = pan_edge_for_pointer(output, px, py, strip);
 
 		if (edge < 0) {
-			if (output->pan_edge >= 0) {
-				pan_frame_set_level(output, output->pan_edge, 0);
-				output->pan_edge   = -1;
-				output->pan_arm_ms = 0;
-			}
+			/* We've left the drop area.  Remove any queued event and
+			 * reset the border trim*/
+			struct cow_view *drag = cow_pointer_op_active_move_view();
+			if (drag)
+				drag->edgedrop_event_queued = COW_RULE_NONE;
+
+			/* If you have two adjacent edges with edge-drop events, arming
+			 * one, then moving to the next output, doesn't reset the orange trim
+			 * if we just reset it on the current output. */
+			pan_disarm();
 			continue;
 		}
 
 		if (output->pan_edge != edge) {
+			/* Entering a (new) drop area.  Hide the old edge and arm the new */
 			if (output->pan_edge >= 0)
 				pan_frame_set_level(output, output->pan_edge, 0);
-			output->pan_edge   = edge;
-			output->pan_arm_ms = now;
+
+			pan_arm_edge(output, edge);
 		}
 
 		if (now < cow_wm.pan_global_cooldown_ms)

@@ -482,6 +482,8 @@ struct cow_view {
 
 	/* Named runtime selections containing this view. */
 	struct wl_list selections;
+	
+	int edgedrop_event_queued;
 };
 
 #define COW_VIEW_POLICY_LAYER          (1u << 0)

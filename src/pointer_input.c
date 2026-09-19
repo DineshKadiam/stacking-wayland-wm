@@ -384,7 +384,6 @@ pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 {
 	(void)data;
 	(void)pointer;
-
 	cow_wm_note_cursor_focus(serial, true);
 
 	struct cow_menu_popup *popup = surface_to_menu_popup(surface);

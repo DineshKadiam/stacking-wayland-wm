@@ -868,6 +868,16 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 		    seat->has_pointer_position);
 	}
 	if (finished_type == COW_POINTER_OP_MOVE) {
+		if (view->edgedrop_event_queued) {
+			cow_rule_fire(view->edgedrop_event_queued, view, view->desk,
+			    view->output);
+			view->edgedrop_event_queued = COW_RULE_NONE;
+			pan_update_cooldowns(view->output);
+		}
+		pan_disarm();
+		/* Ensure this cleans up any lit-up trim leftover */
+		pan_lock_edges_hide();
+
 		for (size_t i = 0; i < seat->op.group_count; i++) {
 			struct cow_view *member = seat->op.group[i].view;
 			if (member == NULL || member->closed)
