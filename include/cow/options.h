@@ -90,4 +90,7 @@ struct cow_option_entry {
 
 extern const struct cow_option_entry cow_options_table[];
 
+const struct cow_option_entry *cow_option_for_view_cfg(
+    enum cow_view_cfg_option);
+
 #endif

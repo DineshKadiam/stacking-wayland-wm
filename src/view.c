@@ -40,6 +40,7 @@
 #include "cow/keyboard_layout.h"
 #include "cow/memory.h"
 #include "cow/output.h"
+#include "cow/options.h"
 #include "cow/placement.h"
 #include "cow/pick.h"
 #include "cow/pointer_op.h"
@@ -314,6 +315,30 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 	    (cfg->overrides[word] & bit) != 0)
 		return;
 
+	const struct cow_option_entry *entry =
+	    cow_option_for_view_cfg(option);
+	if (entry != NULL) {
+		void *dst = (char *)cfg + entry->view_offset;
+		const void *src = (const char *)cow_config + entry->config_offset;
+		switch (entry->action) {
+		case COW_OPTION_SCALAR_BOOL:
+			memcpy(dst, src, sizeof(bool));
+			return;
+		case COW_OPTION_SCALAR_INT:
+			memcpy(dst, src, sizeof(int));
+			return;
+		case COW_OPTION_SCALAR_STRING:
+		case COW_OPTION_IMAGE:
+			xstrset(dst, *(char *const *)src);
+			return;
+		case COW_OPTION_COLOUR:
+			memcpy(dst, src, sizeof(float) * 4);
+			return;
+		default:
+			break;
+		}
+	}
+
 	int idx = titlebar_button_vector_index(option);
 	if (idx != -1) {
 		cfg->titlebar.buttons[idx].vector =
@@ -382,15 +407,6 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 	}
 
 	switch (option) {
-	case COW_VIEW_CFG_BORDER:
-		cfg->border = cow_config->border;
-		break;
-	case COW_VIEW_CFG_CORNER_LENGTH:
-		cfg->corner_length = cow_config->corner_length;
-		break;
-	case COW_VIEW_CFG_HANDLES:
-		cfg->handles = cow_config->handles;
-		break;
 	case COW_VIEW_CFG_BORDER_STYLE:
 		cfg->border_style = cow_config->border_style;
 		break;
@@ -490,9 +506,6 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 			xstrset(dst, *src);
 		break;
 	}
-	case COW_VIEW_CFG_TITLEBAR_ENABLED:
-		cfg->titlebar.enabled = cow_config->titlebar.enabled;
-		break;
 	case COW_VIEW_CFG_TITLEBAR_ACTIVE_COLOUR:
 		memcpy(cfg->titlebar.active_colour,
 		    cow_config->titlebar.active_colour, sizeof(float) * 4);
@@ -608,35 +621,8 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		cfg->container.has_tab_fg_inactive =
 		    cow_config->container.has_tab_fg_inactive;
 		break;
-	case COW_VIEW_CFG_CONTAINER_TAB_SUNKEN:
-		cfg->container.tab_sunken_inactive =
-		    cow_config->container.tab_sunken_inactive;
-		break;
 	case COW_VIEW_CFG_FONT:
 		xstrset(&cfg->font_name, cow_config->font_name);
-		break;
-	case COW_VIEW_CFG_TITLE_FORMAT:
-		xstrset(&cfg->title_format, cow_config->title_format);
-		break;
-	case COW_VIEW_CFG_ICON_ENABLED:
-		cfg->icon_enabled = cow_config->icon_enabled;
-		break;
-	case COW_VIEW_CFG_ICON_SIZE:
-		cfg->icon_size = cow_config->icon_size;
-		break;
-	case COW_VIEW_CFG_ICON_LABEL_AREA:
-		cfg->icon_label_area = cow_config->icon_label_area;
-		break;
-	case COW_VIEW_CFG_ICON_IMAGE:
-		xstrset(&cfg->icon_image, cow_config->icon_image);
-		break;
-	case COW_VIEW_CFG_ICON_BACKGROUND:
-		memcpy(cfg->icon_background, cow_config->icon_background,
-		    sizeof(float) * 4);
-		break;
-	case COW_VIEW_CFG_ICON_FOREGROUND:
-		memcpy(cfg->icon_foreground, cow_config->icon_foreground,
-		    sizeof(float) * 4);
 		break;
 	case COW_VIEW_CFG_ICON_TITLE_RELIEF:
 		cfg->icon_title_relief = cow_config->icon_title_relief;

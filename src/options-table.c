@@ -632,3 +632,25 @@ const struct cow_option_entry cow_options_table[] = {
 	},
 	{ .name = NULL },
 };
+
+const struct cow_option_entry *
+cow_option_for_view_cfg(enum cow_view_cfg_option option)
+{
+	for (const struct cow_option_entry *entry = cow_options_table;
+	    entry->name != NULL; entry++) {
+		if (entry->match != COW_OPTION_EXACT || entry->id != option ||
+		    entry->view_offset == COW_OPTION_NO_OFFSET)
+			continue;
+		switch (entry->action) {
+		case COW_OPTION_SCALAR_BOOL:
+		case COW_OPTION_SCALAR_INT:
+		case COW_OPTION_SCALAR_STRING:
+		case COW_OPTION_COLOUR:
+		case COW_OPTION_IMAGE:
+			return entry;
+		default:
+			break;
+		}
+	}
+	return NULL;
+}
