@@ -894,7 +894,8 @@ main(int argc, char *argv[])
 	}
 	setvbuf(f, NULL, _IONBF, 0);
 
-	char  line[COW_MODULE_RESPONSE_INITIAL];
+	char *line = NULL;
+	size_t line_capacity = 0;
 	char *last_line = NULL;
 	char *last_language = NULL;
 	for (;;) {
@@ -934,11 +935,11 @@ main(int argc, char *argv[])
 			break;
 		if (!(fds[0].revents & POLLIN))
 			continue;
-		if (fgets(line, sizeof(line), f) == NULL)
+		ssize_t line_length = getline(&line, &line_capacity, f);
+		if (line_length < 0)
 			break;
-		size_t len = strlen(line);
-		if (len > 0 && line[len - 1] == '\n')
-			line[len - 1] = '\0';
+		if (line_length > 0 && line[line_length - 1] == '\n')
+			line[--line_length] = '\0';
 		if (!process_state(line, waybar_mod, output_filter, field,
 		    show_names, &last_language))
 			continue;
@@ -950,6 +951,7 @@ main(int argc, char *argv[])
 	}
 
 	free(last_line);
+	free(line);
 	cJSON_free(last_language);
 	fclose(f);
 	close(reload_pipe[0]);

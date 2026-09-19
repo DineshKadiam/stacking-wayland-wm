@@ -34,9 +34,7 @@
 #include <cJSON.h>
 #include <ctype.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <math.h>
-#include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,6 +55,7 @@
 #include "cow/output_selector.h"
 #include "cow/text.h"
 #include "cow/module_shm.h"
+#include "cow/module_status.h"
 #include "xdg-shell-client-protocol.h"
 
 #define PROG "cowpager"
@@ -447,24 +446,19 @@ pager_selections_free(void)
 }
 
 static state_t	       g_state;
-static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static int	       g_dirty;
-static int	       wake_pipe[2];
+static struct event   *redraw_event;
+static struct cow_module_status_stream status_stream;
 
 static void do_render(const state_t *);
 
 static void
-handle_wake(void)
+redraw_cb(__unused evutil_socket_t fd, __unused short events,
+    __unused void *data)
 {
-	char buf[64];
-	while (read(wake_pipe[0], buf, sizeof(buf)) > 0)
-		;
-
-	pthread_mutex_lock(&g_lock);
 	int dirty = g_dirty;
 	g_dirty	  = 0;
 	state_t st = g_state;
-	pthread_mutex_unlock(&g_lock);
 
 	if (dirty && surface_configured) {
 		apply_theme_defaults(&st);
@@ -473,18 +467,18 @@ handle_wake(void)
 }
 
 static void
+schedule_render(void)
+{
+	if (redraw_event != NULL)
+		event_active(redraw_event, EV_TIMEOUT, 0);
+}
+
+static void
 wayland_cb(__unused evutil_socket_t fd, __unused short events,
     __unused void *data)
 {
 	if (wl_display_dispatch(display) < 0)
 		opt_running = 0;
-}
-
-static void
-wake_cb(__unused evutil_socket_t fd, __unused short events,
-    __unused void *data)
-{
-	handle_wake();
 }
 
 static void
@@ -2303,9 +2297,7 @@ xdg_surface_configure(__unused void *data, struct xdg_surface *xs,
 	xdg_surface_ack_configure(xs, serial);
 	surface_configured = 1;
 
-	pthread_mutex_lock(&g_lock);
 	state_t st = g_state;
-	pthread_mutex_unlock(&g_lock);
 	apply_theme_defaults(&st);
 	do_render(&st);
 }
@@ -2382,8 +2374,7 @@ ptr_motion(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t t,
 		drag_cur_x = ptr_x;
 		drag_cur_y = ptr_y;
 		g_dirty	   = 1;
-		char b	   = 1;
-		(void)write(wake_pipe[1], &b, 1);
+		schedule_render();
 	}
 }
 
@@ -2407,11 +2398,9 @@ static void
 ptr_button(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t s,
     __unused uint32_t t, __unused uint32_t btn, uint32_t state)
 {
-	pthread_mutex_lock(&g_lock);
 	state_t st = g_state;
 	char	user_out[64];
 	strlcpy(user_out, cp_user_output, sizeof(user_out));
-	pthread_mutex_unlock(&g_lock);
 
 	/*
 	 * Press path: maybe start a monitor-drag from an overlay
@@ -2438,8 +2427,7 @@ ptr_button(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t s,
 				    "(%.0f,%.0f)\n",
 				    drag_monitor, ptr_x, ptr_y);
 			g_dirty = 1;
-			char b	= 1;
-			(void)write(wake_pipe[1], &b, 1);
+			schedule_render();
 			return;
 		}
 		/* not a plate press: fall through to plain-click logic */
@@ -2481,8 +2469,7 @@ ptr_button(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t s,
 			dragging	= 0;
 			drag_monitor[0] = '\0';
 			g_dirty		= 1;
-			char b		= 1;
-			(void)write(wake_pipe[1], &b, 1);
+			schedule_render();
 			return;
 		}
 		/* Plain release with no drag: nothing else to do.  The
@@ -3038,7 +3025,6 @@ parse_status(const char *json)
 	 * output is cowpager's own, leave the sticky alone -- the
 	 * previously cached value is the best guess.
 	 */
-	pthread_mutex_lock(&g_lock);
 	for (int i = 0; i < st.n_outs; i++) {
 		if (!st.outs[i].current)
 			continue;
@@ -3053,7 +3039,6 @@ parse_status(const char *json)
 	memcpy(st.wins, g_state.wins, sizeof(st.wins));
 	g_state = st;
 	g_dirty = 1;
-	pthread_mutex_unlock(&g_lock);
 }
 
 static void
@@ -3112,39 +3097,17 @@ fetch_windows(void)
 	}
 	cJSON_Delete(root);
 
-	pthread_mutex_lock(&g_lock);
 	g_state.n_wins = nw;
 	memcpy(g_state.wins, wins, sizeof(pwin_t) * (size_t)nw);
 	g_dirty = 1;
-	pthread_mutex_unlock(&g_lock);
 }
 
-static void *
-status_thread(__unused void *arg)
+static void
+handle_status_line(const char *line, __unused void *data)
 {
-	int fd = cow_module_status_connect("cowpager",
-	    COW_MODULE_STATUS_RETRIES, COW_MODULE_STATUS_RETRY_DELAY);
-	if (fd < 0)
-		return NULL;
-
-	FILE *f = fdopen(fd, "r");
-	if (!f) {
-		close(fd);
-		return NULL;
-	}
-	setlinebuf(f);
-	static char line[COW_MODULE_STATUS_LINE_MAX];
-	while (opt_running && fgets(line, sizeof(line), f)) {
-		size_t len = strlen(line);
-		if (len > 0 && line[len - 1] == '\n')
-			line[len - 1] = '\0';
-		parse_status(line);
-		fetch_windows();
-		char b = 1;
-		write(wake_pipe[1], &b, 1);
-	}
-	fclose(f);
-	return NULL;
+	parse_status(line);
+	fetch_windows();
+	schedule_render();
 }
 
 static bool
@@ -3585,12 +3548,6 @@ main(int argc, char *argv[])
 	}
 	build_instance_title();
 
-	if (pipe(wake_pipe) < 0) {
-		perror("pipe");
-		return 1;
-	}
-	fcntl(wake_pipe[0], F_SETFL, O_NONBLOCK);
-
 	display = wl_display_connect(NULL);
 	if (!display) {
 		fprintf(stderr, "%s: no Wayland display\n", PROG);
@@ -3626,12 +3583,8 @@ main(int argc, char *argv[])
 	/* No min/max -- cowpager reflows to whatever size the user picks. */
 	wl_surface_commit(surface);
 
-	pthread_t tid;
-	pthread_create(&tid, NULL, status_thread, NULL);
-	pthread_detach(tid);
-
 	struct event_base *base = event_base_new();
-	struct event	  *wl_ev = NULL, *wake_ev = NULL;
+	struct event	  *wl_ev = NULL;
 	if (base == NULL) {
 		fprintf(stderr, "%s: failed to initialise event loop\n", PROG);
 		return 1;
@@ -3639,10 +3592,11 @@ main(int argc, char *argv[])
 
 	wl_ev = event_new(base, wl_display_get_fd(display), EV_READ | EV_PERSIST,
 	    wayland_cb, NULL);
-	wake_ev = event_new(base, wake_pipe[0], EV_READ | EV_PERSIST,
-	    wake_cb, NULL);
-	if (wl_ev == NULL || wake_ev == NULL ||
-	    event_add(wl_ev, NULL) < 0 || event_add(wake_ev, NULL) < 0) {
+	redraw_event = event_new(base, -1, 0, redraw_cb, NULL);
+	if (wl_ev == NULL || redraw_event == NULL ||
+	    event_add(wl_ev, NULL) < 0 ||
+	    !cow_module_status_stream_init(&status_stream, base, PROG,
+	    handle_status_line, NULL)) {
 		fprintf(stderr, "%s: failed to add events\n", PROG);
 		opt_running = 0;
 	}
@@ -3657,8 +3611,11 @@ main(int argc, char *argv[])
 
 	if (wl_ev != NULL)
 		event_free(wl_ev);
-	if (wake_ev != NULL)
-		event_free(wake_ev);
+	cow_module_status_stream_fini(&status_stream);
+	if (redraw_event != NULL) {
+		event_free(redraw_event);
+		redraw_event = NULL;
+	}
 	event_base_free(base);
 
 	xdg_toplevel_destroy(xdg_toplevel);

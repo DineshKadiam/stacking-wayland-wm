@@ -19,7 +19,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
-#include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -41,6 +40,7 @@
 #include "cow/module_cursor.h"
 #include "cow/module_draw.h"
 #include "cow/module_shm.h"
+#include "cow/module_status.h"
 #include "cow/text.h"
 #include "cow/vector.h"
 #include "xdg-shell-client-protocol.h"
@@ -273,7 +273,6 @@ static int	   pressed_cell = -1;
 static int	   pressed_button = -1;
 static double	   ptr_x;
 static double	   ptr_y;
-static int	   wake_pipe[2];
 static struct cow_module_shm_buffer buffers[2];
 static int	   current_row = -1;
 static int	   current_col;
@@ -282,7 +281,7 @@ static bool	   in_row;
 static struct block blocks[MAX_BLOCKS];
 static int	   n_blocks;
 
-static pthread_mutex_t state_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct cow_module_status_stream status_stream;
 static struct state    current_state;
 static int	       dirty = 1;
 static char	      *config_dir;
@@ -2200,10 +2199,8 @@ render(void)
 	if (buf == NULL)
 		return;
 
-	pthread_mutex_lock(&state_lock);
 	st = current_state;
 	dirty = 0;
-	pthread_mutex_unlock(&state_lock);
 
 	cs = cairo_image_surface_create_for_data(buf->data, CAIRO_FORMAT_ARGB32,
 	    win_w, win_h, win_w * 4);
@@ -3093,7 +3090,7 @@ state_from_json(struct state *st, cJSON *root)
 }
 
 static void
-handle_status_line(const char *line)
+handle_status_line(const char *line, __unused void *data)
 {
 	cJSON *root = cJSON_Parse(line);
 	if (root == NULL)
@@ -3103,56 +3100,9 @@ handle_status_line(const char *line)
 	state_from_json(&st, root);
 	cJSON_Delete(root);
 
-	pthread_mutex_lock(&state_lock);
 	current_state = st;
 	dirty = 1;
-	pthread_mutex_unlock(&state_lock);
-
-	if (wake_pipe[1] >= 0)
-		write(wake_pipe[1], "x", 1);
-}
-
-static void *
-status_thread(__unused void *arg)
-{
-	int fd = cow_module_status_connect(PROG, COW_MODULE_STATUS_RETRIES,
-	    COW_MODULE_STATUS_RETRY_DELAY);
-	static char buf[COW_MODULE_STATUS_LINE_MAX];
-	size_t len = 0;
-
-	if (fd < 0)
-		return NULL;
-	for (;;) {
-		char ch;
-		ssize_t n = read(fd, &ch, 1);
-
-		if (n < 0) {
-			if (errno == EINTR)
-				continue;
-			break;
-		}
-		if (n == 0)
-			break;
-		if (ch == '\n') {
-			buf[len] = '\0';
-			handle_status_line(buf);
-			len = 0;
-			continue;
-		}
-		if (len + 1 < sizeof(buf))
-			buf[len++] = ch;
-	}
-	close(fd);
-	return NULL;
-}
-
-static void
-handle_wake(void)
-{
-	char buf[64];
-	while (read(wake_pipe[0], buf, sizeof(buf)) > 0)
-		;
-	if (dirty)
+	if (configured)
 		render();
 }
 
@@ -3162,13 +3112,6 @@ wayland_cb(__unused evutil_socket_t fd, __unused short events,
 {
 	if (wl_display_dispatch(display) < 0)
 		running = 0;
-}
-
-static void
-wake_cb(__unused evutil_socket_t fd, __unused short events,
-    __unused void *data)
-{
-	handle_wake();
 }
 
 static void
@@ -3485,9 +3428,8 @@ main(int argc, char **argv)
 {
 	char *config_path = NULL;
 	struct wl_registry *reg;
-	pthread_t tid;
 	struct event_base *base;
-	struct event *wl_ev = NULL, *wake_ev = NULL, *external_ev = NULL;
+	struct event *wl_ev = NULL, *external_ev = NULL;
 	struct timeval external_tv = {
 		.tv_sec = 0,
 		.tv_usec = EXTERNAL_SYNC_MS * 1000,
@@ -3515,13 +3457,6 @@ main(int argc, char **argv)
 	}
 	cow_module_config_instances_spawn(&config_instances, argv);
 	free(config_path);
-
-	if (pipe(wake_pipe) < 0) {
-		perror("pipe");
-		return 1;
-	}
-	fcntl(wake_pipe[0], F_SETFL, O_NONBLOCK);
-	fcntl(wake_pipe[1], F_SETFL, O_NONBLOCK);
 
 	display = wl_display_connect(NULL);
 	if (display == NULL) {
@@ -3556,9 +3491,6 @@ main(int argc, char **argv)
 	externals_sync();
 
 	state_clear(&current_state);
-	pthread_create(&tid, NULL, status_thread, NULL);
-	pthread_detach(tid);
-
 	base = event_base_new();
 	if (base == NULL) {
 		fprintf(stderr, "%s: failed to initialise event loop\n", PROG);
@@ -3566,17 +3498,17 @@ main(int argc, char **argv)
 	}
 	wl_ev = event_new(base, wl_display_get_fd(display), EV_READ | EV_PERSIST,
 	    wayland_cb, NULL);
-	wake_ev = event_new(base, wake_pipe[0], EV_READ | EV_PERSIST, wake_cb,
-	    NULL);
 	click_timer = evtimer_new(base, click_timer_cb, NULL);
 	if (external_panels_exist())
 		external_ev = event_new(base, -1, EV_PERSIST,
 		    external_sync_cb, NULL);
-	if (wl_ev == NULL || wake_ev == NULL || click_timer == NULL ||
-	    event_add(wl_ev, NULL) < 0 || event_add(wake_ev, NULL) < 0 ||
+	if (wl_ev == NULL || click_timer == NULL ||
+	    event_add(wl_ev, NULL) < 0 ||
 	    (external_ev != NULL &&
 	    event_add(external_ev, &external_tv) < 0) ||
-	    !script_cells_start(base)) {
+	    !script_cells_start(base) ||
+	    !cow_module_status_stream_init(&status_stream, base, PROG,
+	    handle_status_line, NULL)) {
 		fprintf(stderr, "%s: failed to add events\n", PROG);
 		running = 0;
 	}
@@ -3590,8 +3522,6 @@ main(int argc, char **argv)
 
 	if (wl_ev != NULL)
 		event_free(wl_ev);
-	if (wake_ev != NULL)
-		event_free(wake_ev);
 	if (external_ev != NULL)
 		event_free(external_ev);
 	if (click_timer != NULL) {
@@ -3599,6 +3529,7 @@ main(int argc, char **argv)
 		click_timer = NULL;
 	}
 	script_cells_stop();
+	cow_module_status_stream_fini(&status_stream);
 	event_base_free(base);
 	externals_stop_all();
 

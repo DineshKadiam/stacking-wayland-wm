@@ -17,8 +17,6 @@
 #include <cairo.h>
 #include <cJSON.h>
 #include <errno.h>
-#include <event2/buffer.h>
-#include <event2/bufferevent.h>
 #include <event2/event.h>
 #include <math.h>
 #include <pango/pangocairo.h>
@@ -36,6 +34,7 @@
 #include "cow/module_config.h"
 #include "cow/module_draw.h"
 #include "cow/module_shm.h"
+#include "cow/module_status.h"
 #include "cow/module_theme.h"
 #include "cow/text.h"
 #include "xdg-shell-client-protocol.h"
@@ -130,7 +129,7 @@ static struct xdg_toplevel *xdg_toplevel;
 static struct cow_module_shm_buffer buffers[2];
 static struct event_base *event_base;
 static struct event *timer_event;
-static struct bufferevent *status_bev;
+static struct cow_module_status_stream status_stream;
 static struct wl_callback *frame_callback;
 static struct cow_module_theme cow_theme;
 static struct cow_module_theme titlebar_theme;
@@ -605,7 +604,7 @@ refresh_effective_config(void)
 }
 
 static void
-parse_status(const char *json)
+parse_status(const char *json, __unused void *data)
 {
 	cJSON *root = cJSON_Parse(json);
 	
@@ -624,46 +623,6 @@ parse_status(const char *json)
 	
 	if (refresh_effective_config())
 		render();
-}
-
-static void
-status_read_cb(struct bufferevent *bev, __unused void *data)
-{
-	struct evbuffer *input = bufferevent_get_input(bev);
-	char *line;
-	size_t length;
-	while ((line = evbuffer_readln(input, &length,
-	    EVBUFFER_EOL_LF)) != NULL) {
-		parse_status(line);
-		free(line);
-	}
-}
-
-static void
-status_event_cb(__unused struct bufferevent *bev, short events,
-	    __unused void *data)
-{
-	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-		bufferevent_free(status_bev);
-		status_bev = NULL;
-	}
-}
-
-static void
-connect_status(void)
-{
-	int fd = cow_module_status_connect(PROG, 1, 0);
-	if (fd < 0)
-		return;
-	status_bev = bufferevent_socket_new(event_base, fd,
-	    BEV_OPT_CLOSE_ON_FREE);
-	if (status_bev == NULL) {
-		close(fd);
-		return;
-	}
-	bufferevent_setcb(status_bev, status_read_cb, NULL, status_event_cb,
-	    NULL);
-	bufferevent_enable(status_bev, EV_READ);
 }
 
 static double
@@ -1103,7 +1062,11 @@ main(int argc, char **argv)
 		fprintf(stderr, "%s: cannot initialise event loop\n", PROG);
 		return 1;
 	}
-	connect_status();
+	if (!cow_module_status_stream_init(&status_stream, event_base, PROG,
+		parse_status, NULL)) {
+		fprintf(stderr, "%s: cannot initialise status stream\n", PROG);
+		return 1;
+	}
 	struct event *wayland_event = event_new(event_base,
 	    wl_display_get_fd(display), EV_READ | EV_PERSIST, wayland_cb, NULL);
 	timer_event = evtimer_new(event_base, timer_cb, NULL);
@@ -1126,8 +1089,7 @@ main(int argc, char **argv)
 	event_free(reload_event);
 	event_free(timer_event);
 	event_free(wayland_event);
-	if (status_bev != NULL)
-		bufferevent_free(status_bev);
+	cow_module_status_stream_fini(&status_stream);
 	if (frame_callback != NULL)
 		wl_callback_destroy(frame_callback);
 	event_base_free(event_base);

@@ -31,6 +31,7 @@
 
 #include "cow/compat.h"
 #include "cow/module.h"
+#include "cow/module_status.h"
 #include "cow/util.h"
 
 #include "proc.h"
@@ -87,8 +88,9 @@ struct rates {
 
 struct app {
 	int status_fd;
-	char status_buf[COW_MODULE_STATUS_LINE_MAX];
+	char *status_buf;
 	size_t status_len;
+	size_t status_capacity;
 	cJSON *status;
 	cJSON *diag;
 	struct process_sample cow;
@@ -251,13 +253,26 @@ status_pump(struct app *app)
 	if (app->status_fd < 0)
 		return;
 	for (;;) {
-		if (app->status_len == sizeof(app->status_buf)) {
+		if (app->status_len >= COW_MODULE_STATUS_MAX_LINE) {
 			status_disconnect(app);
 			return;
 		}
+		if (app->status_capacity - app->status_len < 4096) {
+			size_t capacity = app->status_capacity == 0 ? 65536 :
+			    app->status_capacity * 2;
+			if (capacity > COW_MODULE_STATUS_MAX_LINE)
+				capacity = COW_MODULE_STATUS_MAX_LINE;
+			char *buf = realloc(app->status_buf, capacity);
+			if (buf == NULL) {
+				status_disconnect(app);
+				return;
+			}
+			app->status_buf = buf;
+			app->status_capacity = capacity;
+		}
 		ssize_t n = read(app->status_fd,
 		    app->status_buf + app->status_len,
-		    sizeof(app->status_buf) - app->status_len);
+		    app->status_capacity - app->status_len);
 		if (n > 0) {
 			app->status_len += (size_t)n;
 			status_parse_lines(app);
@@ -1185,5 +1200,6 @@ main(int argc, char **argv)
 	status_disconnect(&app);
 	cJSON_Delete(app.status);
 	cJSON_Delete(app.diag);
+	free(app.status_buf);
 	return result;
 }

@@ -17,9 +17,7 @@
 #include <cairo.h>
 #include <cJSON.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <getopt.h>
-#include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,6 +38,7 @@
 #include "cow/module_theme.h"
 #include "cow/output_selector.h"
 #include "cow/module_shm.h"
+#include "cow/module_status.h"
 #include "cow/text.h"
 #include "cow/util.h"
 #include "xdg-shell-client-protocol.h"
@@ -229,11 +228,9 @@ static int    win_w, win_h;
 static double ptr_x, ptr_y;
 static int    layout_cols = 1;
 static int    layout_rows = 1;
-static int    wake_pipe[2];
 
-static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static struct state    global_state;
-static int	       dirty;
+static struct cow_module_status_stream status_stream;
 
 static struct row rows[MAX_ROWS];
 static struct win group_wins[MAX_WINS];
@@ -1821,13 +1818,10 @@ parse_status(const char *json)
 		(void)cow_module_theme_parse(titlebar, &st.titlebar_theme);
 	}
 
-	pthread_mutex_lock(&lock);
 	st.n_wins = global_state.n_wins;
 	memcpy(st.wins, global_state.wins,
 	    sizeof(st.wins[0]) * (size_t)st.n_wins);
 	global_state = st;
-	dirty	     = 1;
-	pthread_mutex_unlock(&lock);
 
 	cJSON_Delete(root);
 }
@@ -1880,69 +1874,26 @@ fetch_windows(void)
 	}
 	cJSON_Delete(root);
 
-	pthread_mutex_lock(&lock);
 	strlcpy(self_id, new_self_id, sizeof(self_id));
 	global_state.n_wins = n;
 	memcpy(global_state.wins, wins, sizeof(wins[0]) * (size_t)n);
-	dirty = 1;
-	pthread_mutex_unlock(&lock);
-}
-
-static void *
-status_thread(__unused void *arg)
-{
-	int fd = cow_module_status_connect(PROG, COW_MODULE_STATUS_RETRIES,
-	    COW_MODULE_STATUS_RETRY_DELAY);
-	FILE *f;
-	static char line[COW_MODULE_STATUS_LINE_MAX];
-
-	if (fd < 0)
-		return NULL;
-	f = fdopen(fd, "r");
-	if (f == NULL) {
-		close(fd);
-		return NULL;
-	}
-	setlinebuf(f);
-	while (running && fgets(line, sizeof(line), f) != NULL) {
-		size_t len = strlen(line);
-		if (len > 0 && line[len - 1] == '\n')
-			line[len - 1] = '\0';
-		parse_status(line);
-		fetch_windows();
-		(void)write(wake_pipe[1], "x", 1);
-	}
-	fclose(f);
-	return NULL;
-}
-
-static void
-handle_wake(void)
-{
-	char buf[64];
-	while (read(wake_pipe[0], buf, sizeof(buf)) > 0)
-		;
-
-	pthread_mutex_lock(&lock);
-	struct state st = global_state;
-	dirty		= 0;
-	pthread_mutex_unlock(&lock);
-
-	if (configured)
-		do_render(&st);
 }
 
 static void
 render_current_state(void)
 {
-	struct state st;
-
-	pthread_mutex_lock(&lock);
-	st = global_state;
-	pthread_mutex_unlock(&lock);
+	struct state st = global_state;
 
 	if (configured)
 		do_render(&st);
+}
+
+static void
+handle_status_line(const char *line, __unused void *data)
+{
+	parse_status(line);
+	fetch_windows();
+	render_current_state();
 }
 
 static void
@@ -1954,18 +1905,12 @@ wayland_cb(__unused evutil_socket_t fd, __unused short events,
 }
 
 static void
-wake_cb(__unused evutil_socket_t fd, __unused short events, __unused void *data)
-{
-	handle_wake();
-}
-
-static void
 xdg_surface_configure(__unused void *data, struct xdg_surface *xs,
     uint32_t serial)
 {
 	xdg_surface_ack_configure(xs, serial);
 	configured = 1;
-	handle_wake();
+	render_current_state();
 }
 
 static const struct xdg_surface_listener xdg_surface_listener = {
@@ -2284,9 +2229,8 @@ main(int argc, char **argv)
 	bool		    explicit_config;
 	bool		    config_loaded = false;
 	struct wl_registry *reg;
-	pthread_t	    tid;
 	struct event_base  *base;
-	struct event	   *wl_ev = NULL, *wake_ev = NULL;
+	struct event	   *wl_ev = NULL;
 
 	if (!cow_module_config_instances_init(&config_instances, PROG,
 		SHOW_INDEX_ENV))
@@ -2310,12 +2254,6 @@ main(int argc, char **argv)
 		cow_module_config_instances_spawn(&config_instances, argv);
 	free(config_path);
 	build_instance_title();
-
-	if (pipe(wake_pipe) < 0) {
-		perror("pipe");
-		return 1;
-	}
-	fcntl(wake_pipe[0], F_SETFL, O_NONBLOCK);
 
 	display = wl_display_connect(NULL);
 	if (display == NULL) {
@@ -2343,9 +2281,6 @@ main(int argc, char **argv)
 	xdg_toplevel_set_app_id(xdg_toplevel, PROG);
 	wl_surface_commit(surface);
 
-	pthread_create(&tid, NULL, status_thread, NULL);
-	pthread_detach(tid);
-
 	base = event_base_new();
 	if (base == NULL) {
 		fprintf(stderr, "%s: failed to initialise event loop\n", PROG);
@@ -2353,10 +2288,9 @@ main(int argc, char **argv)
 	}
 	wl_ev = event_new(base, wl_display_get_fd(display), EV_READ | EV_PERSIST,
 	    wayland_cb, NULL);
-	wake_ev = event_new(base, wake_pipe[0], EV_READ | EV_PERSIST, wake_cb,
-	    NULL);
-	if (wl_ev == NULL || wake_ev == NULL || event_add(wl_ev, NULL) < 0 ||
-	    event_add(wake_ev, NULL) < 0) {
+	if (wl_ev == NULL || event_add(wl_ev, NULL) < 0 ||
+	    !cow_module_status_stream_init(&status_stream, base, PROG,
+	    handle_status_line, NULL)) {
 		fprintf(stderr, "%s: failed to add events\n", PROG);
 		running = 0;
 	}
@@ -2370,8 +2304,7 @@ main(int argc, char **argv)
 
 	if (wl_ev != NULL)
 		event_free(wl_ev);
-	if (wake_ev != NULL)
-		event_free(wake_ev);
+	cow_module_status_stream_fini(&status_stream);
 	event_base_free(base);
 
 	if (xdg_toplevel != NULL)
