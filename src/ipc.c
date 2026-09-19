@@ -45,8 +45,7 @@ static void ipc_accept_cb(evutil_socket_t, short, void *);
 static void ipc_client_read_cb(struct bufferevent *, void *);
 static void ipc_client_write_cb(struct bufferevent *, void *);
 static void ipc_client_event_cb(struct bufferevent *, short, void *);
-static void ipc_clear_causes(void);
-static bool cow_ipc_load_file(const char *, int);
+static bool cow_ipc_load_file(const char *, int, struct cmd_q *);
 static struct cow_ipc_client *ipc_find_client_fd(int);
 
 bool
@@ -111,17 +110,6 @@ cow_ipc_fini(void)
 		xfree(cow_ipc.socket_path);
 		cow_ipc.socket_path = NULL;
 	}
-}
-
-static void
-ipc_clear_causes(void)
-{
-	if (ARRAY_EMPTY(&cfg_causes))
-		return;
-
-	for (u_int i = 0; i < ARRAY_LENGTH(&cfg_causes); i++)
-		xfree(ARRAY_ITEM(&cfg_causes, i));
-	ARRAY_FREE(&cfg_causes);
 }
 
 void
@@ -190,8 +178,6 @@ cow_ipc_respond_formatted(int fd, const char *format, const char *data)
 bool
 cow_ipc_dispatch(const char *line, int client_fd)
 {
-	ipc_clear_causes();
-
 	/* Skip leading whitespace */
 	while (*line == ' ' || *line == '\t')
 		line++;
@@ -237,14 +223,12 @@ cow_ipc_dispatch(const char *line, int client_fd)
 
 	/* Check for errors from cmdq execution */
 	bool ok = true;
-	if (!ARRAY_EMPTY(&cfg_causes)) {
-		for (u_int i = 0; i < ARRAY_LENGTH(&cfg_causes); i++) {
-			char *c = ARRAY_ITEM(&cfg_causes, i);
+	if (!ARRAY_EMPTY(&cmdq->causes)) {
+		for (u_int i = 0; i < ARRAY_LENGTH(&cmdq->causes); i++) {
+			char *c = ARRAY_ITEM(&cmdq->causes, i);
 			cow_ipc_respond_error(client_fd, c);
-			xfree(c);
 			ok = false;
 		}
-		ARRAY_FREE(&cfg_causes);
 	}
 	struct cow_ipc_client *client = ipc_find_client_fd(client_fd);
 	if (ok && client != NULL && !client->responded)
@@ -260,7 +244,7 @@ cow_ipc_load_config(const char *path)
 {
 	cow_ipc.startup_mode = true;
 
-	bool ok = cow_ipc_load_file(path, -1);
+	bool ok = cow_ipc_load_file(path, -1, NULL);
 
 	cow_ipc.startup_mode = false;
 
@@ -274,27 +258,17 @@ cow_ipc_load_config(const char *path)
 		cow_ipc.config_path = new_path;
 	}
 
-	/* Report any errors */
-	if (!ARRAY_EMPTY(&cfg_causes)) {
-		for (u_int i = 0; i < ARRAY_LENGTH(&cfg_causes); i++) {
-			char *c = ARRAY_ITEM(&cfg_causes, i);
-			cow_log_error("config: %s", c);
-			xfree(c);
-		}
-		ARRAY_FREE(&cfg_causes);
-	}
-
 	return ok;
 }
 
 bool
-cow_ipc_include_config(const char *path, int client_fd)
+cow_ipc_include_config(const char *path, struct cmd_q *parent)
 {
-	return cow_ipc_load_file(path, client_fd);
+	return cow_ipc_load_file(path, parent->client_fd, parent);
 }
 
 static bool
-cow_ipc_load_file(const char *path, int client_fd)
+cow_ipc_load_file(const char *path, int client_fd, struct cmd_q *parent)
 {
 	FILE *f = fopen(path, "r");
 	if (f == NULL)
@@ -354,7 +328,7 @@ cow_ipc_load_file(const char *path, int client_fd)
 				char *msg;
 				xasprintf(&msg, "%s:%zu: %s", path, cmd_lineno,
 				    cause);
-				ARRAY_ADD(&cfg_causes, msg);
+				cmdq_add_cause(cmdq, msg);
 				xfree(cause);
 			}
 			cmd_len = 0;
@@ -372,7 +346,7 @@ cow_ipc_load_file(const char *path, int client_fd)
 		char *msg;
 		xasprintf(&msg, "%s:%zu: unterminated command", path,
 		    cmd_lineno);
-		ARRAY_ADD(&cfg_causes, msg);
+		cmdq_add_cause(cmdq, msg);
 	}
 	xfree(cmd_buf);
 
@@ -380,6 +354,13 @@ cow_ipc_load_file(const char *path, int client_fd)
 
 	/* Execute all queued commands */
 	cmdq_continue(cmdq);
+	if (parent != NULL)
+		cmdq_move_causes(parent, cmdq);
+	else {
+		for (u_int i = 0; i < ARRAY_LENGTH(&cmdq->causes); i++)
+			cow_log_error("config: %s",
+			    ARRAY_ITEM(&cmdq->causes, i));
+	}
 	cmdq_free(cmdq);
 
 	cow_log_info("config loaded from %s (%zu lines)", path, lineno);

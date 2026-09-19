@@ -755,13 +755,11 @@ action_execute_cmd_string(void *arg)
 	cmd_list_free(cmdlist);
 
 	/* Log any errors */
-	if (!ARRAY_EMPTY(&cfg_causes)) {
-		for (u_int i = 0; i < ARRAY_LENGTH(&cfg_causes); i++) {
-			char *c = ARRAY_ITEM(&cfg_causes, i);
+	if (!ARRAY_EMPTY(&cmdq->causes)) {
+		for (u_int i = 0; i < ARRAY_LENGTH(&cmdq->causes); i++) {
+			char *c = ARRAY_ITEM(&cmdq->causes, i);
 			cow_log_error("keybinding command: %s", c);
-			xfree(c);
 		}
-		ARRAY_FREE(&cfg_causes);
 	}
 
 	cmdq_free(cmdq);

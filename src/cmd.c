@@ -27,8 +27,6 @@
 #include "cow/util.h"
 #include "cow/view.h"
 
-struct causelist cfg_causes;
-
 struct cmd_entry *cmd_table[] = {
 	&cmd_alias_entry,
 	&cmd_bind_entry,

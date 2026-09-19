@@ -21,6 +21,7 @@
 #include "cow/module_protocol.h"
 
 struct bufferevent;
+struct cmd_q;
 
 #define COW_IPC_MAX_CLIENTS 32
 #define COW_IPC_BUF_SIZE 4096
@@ -75,7 +76,7 @@ bool cow_ipc_dispatch(const char *, int);
  * Returns true on success.
  */
 bool cow_ipc_load_config(const char *);
-bool cow_ipc_include_config(const char *, int);
+bool cow_ipc_include_config(const char *, struct cmd_q *);
 
 /*
  * Look up a command by name.  Returns NULL if not found.

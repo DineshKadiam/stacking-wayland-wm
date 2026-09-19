@@ -135,6 +135,9 @@ struct cmd_q_item {
 };
 TAILQ_HEAD(cmd_q_items, cmd_q_item);
 
+/* Error cause list. */
+ARRAY_DECL(causelist, char *);
+
 /* Command queue. */
 struct cmd_q {
 	int references;
@@ -167,11 +170,13 @@ struct cmd_q {
 	int in_rule;
 	int in_style;
 	unsigned int alias_depth;
+
+	/* Errors belong to the command queue that produced them. */
+	struct causelist causes;
 };
 
-/* Error cause list. */
-ARRAY_DECL(causelist, char *);
-extern struct causelist cfg_causes;
+void cmdq_add_cause(struct cmd_q *, char *);
+void cmdq_move_causes(struct cmd_q *, struct cmd_q *);
 
 struct cow_view *cmd_ctx_target_window(struct cmd_q *);
 struct cow_output *cmd_ctx_target_output(struct cmd_q *);

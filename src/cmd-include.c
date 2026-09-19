@@ -43,7 +43,7 @@ cmd_include_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (path == NULL)
 		return (CMD_RETURN_ERROR);
 
-	bool ok = cow_ipc_include_config(path, cmdq->client_fd);
+	bool ok = cow_ipc_include_config(path, cmdq);
 	if (!ok)
 		cmdq_error(cmdq, "include: cannot open %s", path);
 	xfree(path);

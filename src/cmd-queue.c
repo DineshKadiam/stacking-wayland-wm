@@ -63,9 +63,32 @@ cmdq_free(struct cmd_q *cmdq)
 		return (cmdq->dead);
 
 	cmdq_flush(cmdq);
+	for (u_int i = 0; i < ARRAY_LENGTH(&cmdq->causes); i++)
+		xfree(ARRAY_ITEM(&cmdq->causes, i));
+	ARRAY_FREE(&cmdq->causes);
 	xfree(cmdq->event_json);
 	xfree(cmdq);
 	return (1);
+}
+
+void
+cmdq_add_cause(struct cmd_q *cmdq, char *cause)
+{
+	if (cmdq == NULL) {
+		xfree(cause);
+		return;
+	}
+	ARRAY_ADD(&cmdq->causes, cause);
+}
+
+void
+cmdq_move_causes(struct cmd_q *dst, struct cmd_q *src)
+{
+	if (dst == NULL || src == NULL)
+		return;
+	for (u_int i = 0; i < ARRAY_LENGTH(&src->causes); i++)
+		ARRAY_ADD(&dst->causes, ARRAY_ITEM(&src->causes, i));
+	ARRAY_FREE(&src->causes);
 }
 
 /*
@@ -95,7 +118,7 @@ cmdq_error(struct cmd_q *cmdq, const char *fmt, ...)
 
 	xasprintf(&cause, "%s:%u: %s",
 	    cmd->file != NULL ? cmd->file : "<command>", cmd->line, msg);
-	ARRAY_ADD(&cfg_causes, cause);
+	cmdq_add_cause(cmdq, cause);
 
 	xfree(msg);
 }
@@ -138,6 +161,7 @@ cmdq_run_immediate(struct cmd_q *parent, struct cmd_list *cmdlist)
 		cmdq_set_event_json(cmdq, xstrdup(parent->event_json));
 	cmdq_run(cmdq, cmdlist);
 	bool ok = !cmdq->failed;
+	cmdq_move_causes(parent, cmdq);
 	cmdq_free(cmdq);
 	return ok;
 }
