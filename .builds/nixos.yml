@@ -9,3 +9,6 @@ tasks:
   - build: |
       cd cow
       nix develop --command bash -c "meson setup build && meson compile -C build"
+  - test: |
+      cd cow
+      nix develop --command meson test -C build --print-errorlogs

@@ -27,3 +27,6 @@ tasks:
   - build: |
       cd cow
       meson setup build && meson compile -C build
+  - test: |
+      cd cow
+      meson test -C build --print-errorlogs

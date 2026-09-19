@@ -8,8 +8,10 @@ packages:
   - cairo-devel.x86_64
   - flex
   - gcc
+  - libasan.x86_64
   - libbsd-devel.x86_64
   - libevent-devel.x86_64
+  - libubsan.x86_64
   - libxkbcommon-devel.x86_64
   - meson
   - ncurses-devel.x86_64
@@ -23,3 +25,12 @@ tasks:
   - build: |
       cd cow
       meson setup build && meson compile -C build
+  - test: |
+      cd cow
+      meson test -C build --print-errorlogs
+  - sanitizers: |
+      cd cow
+      meson setup build-sanitized -Db_sanitize=address,undefined -Db_lundef=false
+      meson compile -C build-sanitized
+      ASAN_OPTIONS=detect_leaks=0:halt_on_error=1:abort_on_error=1 \
+        meson test -C build-sanitized --print-errorlogs
