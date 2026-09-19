@@ -506,20 +506,10 @@ draw_titlebar_button(uint32_t *pixels, int stride_px,
 		return;
 	}
 
-	uint32_t btn_buf[btn_s * btn_s];
-	for (int p = 0; p < btn_s * btn_s; p++)
-		btn_buf[p] = button_base;
-
 	bool icon_inverted = icon_inverted_button == btn_idx || sunken;
-	cow_vector_button_draw(&button->vector, btn_buf, btn_s, btn_s, btn_s,
-	    btn_s, colours, icon_inverted);
-	for (int py = 1; py < btn_s - 1; py++) {
-		for (int px = 1; px < btn_s - 1; px++) {
-			uint32_t colour = btn_buf[py * btn_s + px];
-			if (colour != button_base)
-				pixels[(by + py) * stride_px + bx + px] = colour;
-		}
-	}
+	cow_vector_button_draw_inset(&button->vector,
+	    pixels + by * stride_px + bx, stride_px, btn_s, btn_s, btn_s, 1,
+	    colours, icon_inverted);
 }
 
 static PangoAlignment

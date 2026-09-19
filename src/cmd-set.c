@@ -1108,7 +1108,7 @@ static enum cmd_retval
 set_titlebar_height(const char *val, struct cmd_q *cmdq)
 {
 	const char *errstr;
-	long long   v = strtonum(val, 0, INT_MAX, &errstr);
+	long long   v = strtonum(val, 0, 1024, &errstr);
 	if (errstr != NULL) {
 		cmdq_error(cmdq, "set: titlebar.height: bad value: %s", val);
 		return (CMD_RETURN_ERROR);

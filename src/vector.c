@@ -22,7 +22,7 @@
  */
 static void
 draw_line(uint32_t *pixels, int stride, int w, int h, int x0, int y0, int x1,
-    int y1, uint32_t colour)
+    int y1, uint32_t colour, int inset)
 {
 	int dx = x1 - x0;
 	int dy = y1 - y0;
@@ -32,7 +32,8 @@ draw_line(uint32_t *pixels, int stride, int w, int h, int x0, int y0, int x1,
 	dy     = (dy > 0) ? dy : -dy;
 
 	if (dx == 0 && dy == 0) {
-		if (x0 >= 0 && x0 < w && y0 >= 0 && y0 < h)
+		if (x0 >= inset && x0 < w - inset && y0 >= inset &&
+		    y0 < h - inset)
 			pixels[y0 * stride + x0] = colour;
 		return;
 	}
@@ -41,7 +42,8 @@ draw_line(uint32_t *pixels, int stride, int w, int h, int x0, int y0, int x1,
 	if (dx >= dy) {
 		err = 2 * dy - dx;
 		for (int i = 0; i <= dx; i++) {
-			if (x0 >= 0 && x0 < w && y0 >= 0 && y0 < h)
+			if (x0 >= inset && x0 < w - inset && y0 >= inset &&
+			    y0 < h - inset)
 				pixels[y0 * stride + x0] = colour;
 			if (err > 0) {
 				y0 += sy;
@@ -53,7 +55,8 @@ draw_line(uint32_t *pixels, int stride, int w, int h, int x0, int y0, int x1,
 	} else {
 		err = 2 * dx - dy;
 		for (int i = 0; i <= dy; i++) {
-			if (x0 >= 0 && x0 < w && y0 >= 0 && y0 < h)
+			if (x0 >= inset && x0 < w - inset && y0 >= inset &&
+			    y0 < h - inset)
 				pixels[y0 * stride + x0] = colour;
 			if (err > 0) {
 				x0 += sx;
@@ -65,10 +68,10 @@ draw_line(uint32_t *pixels, int stride, int w, int h, int x0, int y0, int x1,
 	}
 }
 
-void
-cow_vector_button_draw(const struct cow_vector_button *vector, uint32_t *pixels,
-    int stride, int w, int h, int btn_size, const uint32_t *colors,
-    bool pressed)
+static void
+vector_button_draw(const struct cow_vector_button *vector, uint32_t *pixels,
+    int stride, int w, int h, int btn_size, int inset,
+    const uint32_t *colors, bool pressed)
 {
 	for (int i = 1; i < vector->num_points; i++) {
 		int c = vector->points[i].colour;
@@ -96,6 +99,26 @@ cow_vector_button_draw(const struct cow_vector_button *vector, uint32_t *pixels,
 		    vector->points[i].yoff;
 
 		draw_line(pixels, stride, w, h, x0, y0, x1, y1,
-		    colors[effective_c]);
+		    colors[effective_c], inset);
 	}
+}
+
+void
+cow_vector_button_draw(const struct cow_vector_button *vector, uint32_t *pixels,
+    int stride, int w, int h, int btn_size, const uint32_t *colors,
+    bool pressed)
+{
+	vector_button_draw(vector, pixels, stride, w, h, btn_size, 0, colors,
+	    pressed);
+}
+
+void
+cow_vector_button_draw_inset(const struct cow_vector_button *vector,
+    uint32_t *pixels, int stride, int w, int h, int btn_size, int inset,
+    const uint32_t *colors, bool pressed)
+{
+	if (inset < 0)
+		inset = 0;
+	vector_button_draw(vector, pixels, stride, w, h, btn_size, inset,
+	    colors, pressed);
 }

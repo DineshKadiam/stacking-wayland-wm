@@ -73,4 +73,12 @@ struct cow_vector_button {
 void cow_vector_button_draw(const struct cow_vector_button *, uint32_t *, int,
     int, int, int, const uint32_t *, bool);
 
+/*
+ * As above, but restrict drawing to pixels at least `inset` pixels from the
+ * edge of the destination.  This is useful when the destination already has
+ * a relief border which the vector must not overwrite.
+ */
+void cow_vector_button_draw_inset(const struct cow_vector_button *, uint32_t *,
+    int, int, int, int, int, const uint32_t *, bool);
+
 #endif
