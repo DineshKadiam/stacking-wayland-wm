@@ -20,6 +20,8 @@
 
 #include "cow/module_protocol.h"
 
+struct bufferevent;
+
 #define COW_IPC_MAX_CLIENTS 32
 #define COW_IPC_BUF_SIZE 4096
 #define COW_IPC_MAX_ARGS 64
@@ -30,9 +32,10 @@ struct cow_ipc_client {
 	int	      buf_len;
 	bool	      active;
 	bool	      responded;
+	bool	      close_after_write;
 	bool	      identified;
 	char	      name[COW_MODULE_CLIENT_NAME_MAX + 1];
-	struct event *ev;
+	struct bufferevent *bev;
 };
 
 struct cow_ipc {

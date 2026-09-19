@@ -22,6 +22,8 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <event2/buffer.h>
+#include <event2/bufferevent.h>
 #include <event2/event.h>
 
 #include "cow/compat.h"
@@ -40,7 +42,9 @@
 struct cow_ipc cow_ipc;
 
 static void ipc_accept_cb(evutil_socket_t, short, void *);
-static void ipc_client_cb(evutil_socket_t, short, void *);
+static void ipc_client_read_cb(struct bufferevent *, void *);
+static void ipc_client_write_cb(struct bufferevent *, void *);
+static void ipc_client_event_cb(struct bufferevent *, short, void *);
 static void ipc_clear_causes(void);
 static bool cow_ipc_load_file(const char *, int);
 static struct cow_ipc_client *ipc_find_client_fd(int);
@@ -75,19 +79,19 @@ void
 cow_ipc_fini(void)
 {
 	for (int i = 0; i < COW_IPC_MAX_CLIENTS; i++) {
-		if (cow_ipc.clients[i].ev != NULL) {
-			event_free(cow_ipc.clients[i].ev);
-			cow_ipc.clients[i].ev = NULL;
-		}
 		if (cow_ipc.clients[i].fd >= 0) {
 			cow_log_debug("command client disconnected "
 			    "(name=%s fd=%d reason=shutdown)",
 			    cow_ipc.clients[i].identified ?
 				cow_ipc.clients[i].name : "unidentified",
 			    cow_ipc.clients[i].fd);
-			close(cow_ipc.clients[i].fd);
-			cow_ipc.clients[i].fd = -1;
 		}
+		if (cow_ipc.clients[i].bev != NULL) {
+			bufferevent_free(cow_ipc.clients[i].bev);
+			cow_ipc.clients[i].bev = NULL;
+		} else if (cow_ipc.clients[i].fd >= 0)
+			close(cow_ipc.clients[i].fd);
+		cow_ipc.clients[i].fd = -1;
 		cow_ipc.clients[i].active = false;
 	}
 	cow_ipc.num_clients = 0;
@@ -126,13 +130,14 @@ cow_ipc_respond(int fd, const char *json)
 	if (fd < 0)
 		return;
 	struct cow_ipc_client *client = ipc_find_client_fd(fd);
-	if (client != NULL)
-		client->responded = true;
-	size_t len = strlen(json);
-	if (cow_write_all(fd, json, len) < 0)
+	if (client == NULL)
 		return;
+	client->responded = true;
+	size_t len = strlen(json);
+	if (len > 0)
+		bufferevent_write(client->bev, json, len);
 	if (len == 0 || json[len - 1] != '\n')
-		(void)cow_write_all(fd, "\n", 1);
+		bufferevent_write(client->bev, "\n", 1);
 }
 
 void
@@ -409,16 +414,15 @@ ipc_remove_client(struct cow_ipc_client *client)
 	if (client == NULL || !client->active)
 		return;
 	int fd = client->fd;
-	if (client->ev != NULL) {
-		event_free(client->ev);
-		client->ev = NULL;
-	}
-	if (client->fd >= 0) {
+	if (client->bev != NULL) {
+		bufferevent_free(client->bev);
+		client->bev = NULL;
+	} else if (client->fd >= 0)
 		close(client->fd);
-		client->fd = -1;
-	}
+	client->fd = -1;
 	client->buf_len = 0;
 	client->active  = false;
+	client->close_after_write = false;
 	if (cow_ipc.num_clients > 0)
 		cow_ipc.num_clients--;
 	cow_log_debug("command client disconnected (name=%s fd=%d clients=%d)",
@@ -449,14 +453,18 @@ ipc_accept_client(void)
 	client->buf_len	 = 0;
 	client->active	 = true;
 	client->responded = false;
+	client->close_after_write = false;
 	client->identified = false;
 	client->name[0] = '\0';
-	client->ev	 = event_new(cow_event_base(), fd, EV_READ | EV_PERSIST,
-	     ipc_client_cb, client);
-	if (client->ev == NULL || event_add(client->ev, NULL) < 0) {
+	client->bev = bufferevent_socket_new(cow_event_base(), fd,
+	    BEV_OPT_CLOSE_ON_FREE);
+	if (client->bev == NULL) {
 		ipc_remove_client(client);
 		return;
 	}
+	bufferevent_setcb(client->bev, ipc_client_read_cb,
+	    ipc_client_write_cb, ipc_client_event_cb, client);
+	bufferevent_enable(client->bev, EV_READ | EV_WRITE);
 	cow_ipc.num_clients++;
 	cow_log_trace("command transport connected (fd=%d clients=%d)", fd,
 	    cow_ipc.num_clients);
@@ -471,9 +479,9 @@ ipc_handle_client_data(struct cow_ipc_client *client)
 		return;
 	}
 
-	int n = read(client->fd, client->buf + client->buf_len, avail);
+	int n = (int)bufferevent_read(client->bev,
+	    client->buf + client->buf_len, (size_t)avail);
 	if (n <= 0) {
-		ipc_remove_client(client);
 		return;
 	}
 	client->buf_len += n;
@@ -495,7 +503,8 @@ ipc_handle_client_data(struct cow_ipc_client *client)
 				    "(fd=%d)", client->fd);
 				cow_ipc_respond_error(client->fd,
 				    "client identification required");
-				ipc_remove_client(client);
+				client->close_after_write = true;
+				bufferevent_disable(client->bev, EV_READ);
 				return;
 			}
 			client->identified = true;
@@ -509,7 +518,10 @@ ipc_handle_client_data(struct cow_ipc_client *client)
 		start += end + 1;
 		/* Close after each command: moocow sends one command and
 		 * reads until EOF, so closing here unblocks it. */
-		ipc_remove_client(client);
+		client->close_after_write = true;
+		bufferevent_disable(client->bev, EV_READ);
+		if (evbuffer_get_length(bufferevent_get_output(client->bev)) == 0)
+			ipc_remove_client(client);
 		return;
 	}
 
@@ -533,10 +545,24 @@ ipc_accept_cb(__unused evutil_socket_t fd, __unused short events,
 }
 
 static void
-ipc_client_cb(__unused evutil_socket_t fd, short events, void *data)
+ipc_client_read_cb(__unused struct bufferevent *bev, void *data)
+{
+	ipc_handle_client_data(data);
+}
+
+static void
+ipc_client_write_cb(struct bufferevent *bev, void *data)
 {
 	struct cow_ipc_client *client = data;
-	if ((events & EV_READ) == 0)
-		return;
-	ipc_handle_client_data(client);
+
+	if (client->close_after_write &&
+	    evbuffer_get_length(bufferevent_get_output(bev)) == 0)
+		ipc_remove_client(client);
+}
+
+static void
+ipc_client_event_cb(__unused struct bufferevent *bev, short events, void *data)
+{
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT))
+		ipc_remove_client(data);
 }

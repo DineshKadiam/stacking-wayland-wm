@@ -26,6 +26,8 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <event2/buffer.h>
+#include <event2/bufferevent.h>
 #include <event2/event.h>
 
 #include "cow/compat.h"
@@ -53,7 +55,7 @@ struct status_client {
 	char name[COW_MODULE_CLIENT_NAME_MAX + 1];
 	char hello[sizeof(COW_MODULE_HELLO) + COW_MODULE_CLIENT_NAME_MAX + 1];
 	size_t hello_len;
-	struct event *ev;
+	struct bufferevent *bev;
 };
 
 static int    server_fd	  = -1;
@@ -65,7 +67,8 @@ static char  *last_snapshot	= NULL;
 static size_t last_snapshot_len = 0;
 
 static void status_accept_cb(evutil_socket_t, short, void *);
-static void status_client_cb(evutil_socket_t, short, void *);
+static void status_client_read_cb(struct bufferevent *, void *);
+static void status_client_event_cb(struct bufferevent *, short, void *);
 
 static void
 status_remove_client(struct status_client *client, const char *reason)
@@ -73,11 +76,11 @@ status_remove_client(struct status_client *client, const char *reason)
 	if (client == NULL || !client->active)
 		return;
 	int fd = client->fd;
-	if (client->ev != NULL) {
-		event_free(client->ev);
-		client->ev = NULL;
-	}
-	close(fd);
+	if (client->bev != NULL) {
+		bufferevent_free(client->bev);
+		client->bev = NULL;
+	} else if (client->fd >= 0)
+		close(client->fd);
 	client->fd = -1;
 	client->active = false;
 	if (nclients > 0)
@@ -166,33 +169,33 @@ status_accept(void)
 		client->identified = false;
 		client->name[0] = '\0';
 		client->hello_len = 0;
-		client->ev = event_new(cow_event_base(), fd,
-		    EV_READ | EV_PERSIST, status_client_cb, client);
+		client->bev = bufferevent_socket_new(cow_event_base(), fd,
+		    BEV_OPT_CLOSE_ON_FREE);
 		nclients++;
 		cow_diagnostics_status_clients(nclients);
-		if (client->ev == NULL || event_add(client->ev, NULL) < 0) {
+		if (client->bev == NULL) {
 			status_remove_client(client, "event-error");
 			continue;
 		}
+		bufferevent_setcb(client->bev, status_client_read_cb, NULL,
+		    status_client_event_cb, client);
+		bufferevent_enable(client->bev, EV_READ | EV_WRITE);
 		cow_log_trace("status transport connected (fd=%d clients=%d)",
 		    fd, nclients);
 	}
 }
 
 static void
-status_client_cb(__unused evutil_socket_t fd, short events, void *data)
+status_client_read_cb(struct bufferevent *bev, void *data)
 {
 	struct status_client *client = data;
-	if ((events & EV_READ) == 0 || client == NULL || !client->active)
+	if (client == NULL || !client->active)
 		return;
 
 	if (client->identified) {
 		char byte;
-		ssize_t n = read(client->fd, &byte, sizeof(byte));
-		if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK ||
-			errno == EINTR))
-			return;
-		status_remove_client(client, n == 0 ? "closed" : "protocol-error");
+		if (bufferevent_read(bev, &byte, sizeof(byte)) > 0)
+			status_remove_client(client, "protocol-error");
 		return;
 	}
 
@@ -201,16 +204,11 @@ status_client_cb(__unused evutil_socket_t fd, short events, void *data)
 		status_remove_client(client, "invalid-identification");
 		return;
 	}
-	ssize_t n = read(client->fd, client->hello + client->hello_len,
+	size_t n = bufferevent_read(bev, client->hello + client->hello_len,
 	    available);
-	if (n <= 0) {
-		if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK ||
-			errno == EINTR))
-			return;
-		status_remove_client(client, n == 0 ? "closed" : "read-error");
+	if (n == 0)
 		return;
-	}
-	client->hello_len += (size_t)n;
+	client->hello_len += n;
 	client->hello[client->hello_len] = '\0';
 
 	char *newline = strchr(client->hello, '\n');
@@ -231,9 +229,16 @@ status_client_cb(__unused evutil_socket_t fd, short events, void *data)
 	    client->name, client->fd, nclients);
 
 	/* Send the current state only after the mandatory handshake. */
-	if (last_snapshot != NULL && cow_write_all(client->fd, last_snapshot,
-		last_snapshot_len) < 0)
-		status_remove_client(client, "initial-write-error");
+	if (last_snapshot != NULL)
+		bufferevent_write(client->bev, last_snapshot, last_snapshot_len);
+}
+
+static void
+status_client_event_cb(__unused struct bufferevent *bev, short events,
+    void *data)
+{
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT))
+		status_remove_client(data, "connection-error");
 }
 
 static void
@@ -245,9 +250,9 @@ status_accept_cb(__unused evutil_socket_t fd, __unused short events,
 
 /*
  * Send a string to all connected status clients.
- * Remove clients that disconnect or that cannot accept a short write;
- * the status protocol is line-oriented and a partial write corrupts
- * the stream, so better to drop the client than desync.
+ * Keep at most one snapshot queued for a slow client.  bufferevent preserves
+ * line framing across short writes; a later state change will supply a fresh
+ * snapshot after the pending one drains.
  */
 static void
 status_broadcast(const char *msg, size_t len)
@@ -257,22 +262,9 @@ status_broadcast(const char *msg, size_t len)
 		struct status_client *client = &clients[i++];
 		if (!client->active || !client->identified)
 			continue;
-		ssize_t n = write(client->fd, msg, len);
-		if (n < 0) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK ||
-			    errno == EINTR) {
-				/* Socket full; skip this tick. */
-				continue;
-			}
-			/* Client disconnected */
-			status_remove_client(client, "write-error");
+		if (evbuffer_get_length(bufferevent_get_output(client->bev)) > 0)
 			continue;
-		}
-		if ((size_t)n < len) {
-			/* Partial write; stream is desynced -- drop. */
-			status_remove_client(client, "partial-write");
-			continue;
-		}
+		bufferevent_write(client->bev, msg, len);
 	}
 }
 
