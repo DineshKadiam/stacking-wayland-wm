@@ -3465,6 +3465,7 @@ parse_args(int argc, char **argv, char **config_path)
 	while ((ch = getopt(argc, argv, "c:h")) != -1) {
 		switch (ch) {
 		case 'c':
+			free(*config_path);
 			*config_path = strdup(optarg);
 			if (*config_path == NULL)
 				return 0;
