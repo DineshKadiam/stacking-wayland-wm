@@ -562,31 +562,22 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 	    frame_w <= 2 * border_width)
 		return;
 
-	/* Titlebar colors: use style override if provided, otherwise
-	 * fall back to the supplied per-view tb_cfg.  Callers always
-	 * supply tb_cfg from the view's snapshot, so the NULL branch
-	 * below only exists for defensive symmetry with the legacy
-	 * cow_config-may-be-NULL paths. */
+	/* Use style overrides when present, otherwise use the view snapshot. */
 	float base[4], fg[4];
 	if (style_colour != NULL) {
 		memcpy(base, style_colour, sizeof(float) * 4);
 		if (style_fg != NULL)
 			memcpy(fg, style_fg, sizeof(float) * 4);
-		else if (tb_cfg != NULL)
+		else
 			memcpy(fg,
 			    active ? tb_cfg->fg_active : tb_cfg->fg_inactive,
 			    sizeof(float) * 4);
-		else
-			cow_colour_convert(fg, 0x000000);
-	} else if (tb_cfg != NULL) {
+	} else {
 		memcpy(base,
 		    active ? tb_cfg->active_colour : tb_cfg->inactive_colour,
 		    sizeof(float) * 4);
 		memcpy(fg, active ? tb_cfg->fg_active : tb_cfg->fg_inactive,
 		    sizeof(float) * 4);
-	} else {
-		cow_colour_convert(base, active ? 0xC0C0C0 : 0xA0A0A0);
-		cow_colour_convert(fg, 0x000000);
 	}
 
 	float lt[4], dk[4];

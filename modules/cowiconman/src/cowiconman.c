@@ -1241,10 +1241,10 @@ collect_rows(const state_t *st, int *column_major)
 			continue;
 		group_wins[n_group_wins++] = st->wins[i];
 	}
-	if (group_mode != GROUP_NONE)
+	if (n_group_wins > 1 && group_mode != GROUP_NONE)
 		qsort(group_wins, (size_t)n_group_wins, sizeof(group_wins[0]),
 		    win_group_cmp);
-	else if (sort_mode != SORT_NONE)
+	else if (n_group_wins > 1 && sort_mode != SORT_NONE)
 		qsort(group_wins, (size_t)n_group_wins, sizeof(group_wins[0]),
 		    win_cmp);
 
