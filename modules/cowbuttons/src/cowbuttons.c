@@ -61,8 +61,6 @@
 #define DOUBLE_CLICK_MS 300
 #define WL_SEAT_VERSION 4
 #define DEFAULT_IMAGE_SIZE 16
-#define MAX_BLOCKS 32
-#define MAX_SELECTED_PANELS 32
 #define PANEL_HANDLE_SIZE 22
 #define DEFAULT_EXTERNAL_W 420
 #define DEFAULT_EXTERNAL_H 120
@@ -278,7 +276,7 @@ static int	   current_row = -1;
 static int	   current_col;
 static int	   current_panel = -1;
 static bool	   in_row;
-static struct block blocks[MAX_BLOCKS];
+static struct block *blocks;
 static int	   n_blocks;
 
 static struct cow_module_status_stream status_stream;
@@ -287,7 +285,7 @@ static int	       dirty = 1;
 static char	      *config_dir;
 static struct cow_module_config_instances config_instances;
 static char	       instance_title[256] = PROG;
-static struct panel_selection selected_panels[MAX_SELECTED_PANELS];
+static struct panel_selection *selected_panels;
 static int	       n_selected_panels;
 static struct event_base *script_event_base;
 static struct event      *script_sigchld_event;
@@ -560,8 +558,10 @@ panel_selection_add(const char *name)
 {
 	if (panel_selection_find(name) != -1)
 		return true;
-	if (n_selected_panels >= MAX_SELECTED_PANELS)
-		return false;
+	selected_panels = xrealloc(selected_panels,
+	    (size_t)n_selected_panels + 1, sizeof(*selected_panels));
+	memset(&selected_panels[n_selected_panels], 0,
+	    sizeof(*selected_panels));
 	selected_panels[n_selected_panels].name = strdup(name);
 	if (selected_panels[n_selected_panels].name == NULL)
 		return false;
@@ -585,12 +585,10 @@ inside_active_panel(void)
 }
 
 static bool
-block_push(enum block_type type, bool active, const char **why)
+block_push(enum block_type type, bool active, __unused const char **why)
 {
-	if (n_blocks >= MAX_BLOCKS) {
-		*why = "too many nested blocks";
-		return false;
-	}
+	blocks = xrealloc(blocks, (size_t)n_blocks + 1,
+	    sizeof(*blocks));
 	blocks[n_blocks++] = (struct block) {
 		.type = type,
 		.active = active,
@@ -3559,6 +3557,8 @@ main(int argc, char **argv)
 		free(selected_panels[i].handle_style.image);
 		free(selected_panels[i].handle_style.image_pressed);
 	}
+	xfree(selected_panels);
+	xfree(blocks);
 	free(style.image);
 	free(style.image_pressed);
 	free(config_dir);

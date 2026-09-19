@@ -49,9 +49,7 @@
 #define SHOW_INDEX_ENV "COWICONMAN_SHOW_INDEX"
 
 #define MAX_NAME 128
-#define MAX_MATCHES 16
 #define MAX_FIELDS 16
-#define MAX_SELECTED_ICONMANS 32
 #define MAX_ICON_PATH 1024
 #define DEFAULT_BUTTON_W 300
 #define DEFAULT_MIN_BUTTON_W 80
@@ -236,9 +234,9 @@ static bool		 palette_override_set[PALETTE_COUNT];
 static struct cow_image_cache icon_cache;
 static char		 self_title[MAX_NAME];
 static char		 self_id[MAX_NAME];
-static struct match_rule matches[MAX_MATCHES];
+static struct match_rule *matches;
 static int		 n_matches;
-static struct iconman_selection selected_iconmans[MAX_SELECTED_ICONMANS];
+static struct iconman_selection *selected_iconmans;
 static int n_selected_iconmans;
 static struct cow_module_config_instances config_instances;
 
@@ -399,14 +397,15 @@ parse_match(const char *s)
 	char  field[16];
 	size_t len;
 
-	if (n_matches >= MAX_MATCHES)
-		return 0;
 	eq = strchr(s, '=');
 	if (eq == NULL || eq == s || eq[1] == '\0')
 		return 0;
 	len = (size_t)(eq - s);
 	if (len >= sizeof field)
 		return 0;
+	matches = xrealloc(matches, (size_t)n_matches + 1,
+	    sizeof(*matches));
+	memset(&matches[n_matches], 0, sizeof(*matches));
 	memcpy(field, s, len);
 	field[len] = '\0';
 
@@ -499,8 +498,10 @@ iconman_selection_add(const char *name)
 {
 	if (iconman_selection_find(name) != -1)
 		return true;
-	if (n_selected_iconmans >= MAX_SELECTED_ICONMANS)
-		return false;
+	selected_iconmans = xrealloc(selected_iconmans,
+	    (size_t)n_selected_iconmans + 1, sizeof(*selected_iconmans));
+	memset(&selected_iconmans[n_selected_iconmans], 0,
+	    sizeof(*selected_iconmans));
 	selected_iconmans[n_selected_iconmans].name = strdup(name);
 	if (selected_iconmans[n_selected_iconmans].name == NULL)
 		return false;
@@ -517,6 +518,8 @@ iconman_selections_free(void)
 		selected_iconmans[i].name = NULL;
 		selected_iconmans[i].seen = false;
 	}
+	xfree(selected_iconmans);
+	selected_iconmans = NULL;
 	n_selected_iconmans = 0;
 }
 
@@ -2194,6 +2197,8 @@ main(int argc, char **argv)
 	free(tracked);
 	free(rows);
 	free(group_wins);
+	xfree(matches);
+	iconman_selections_free();
 	cow_module_snapshot_fini(&global_state);
 	wl_display_disconnect(display);
 	return 0;

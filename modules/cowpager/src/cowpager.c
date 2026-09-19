@@ -63,7 +63,6 @@
 #define SHOW_INDEX_ENV "COWPAGER_SHOW_INDEX"
 
 #define MAX_FIELDS 8
-#define MAX_SELECTED_PAGERS 16
 
 #define INIT_W 420
 #define INIT_H 120
@@ -234,7 +233,7 @@ static int    opt_verbose; /* -v: log click decisions to stderr */
 static char **opt_monitors;
 static size_t opt_n_monitors;
 static size_t opt_monitors_capacity;
-static struct pager_selection selected_pagers[MAX_SELECTED_PAGERS];
+static struct pager_selection *selected_pagers;
 static int n_selected_pagers;
 static struct cow_module_config_instances config_instances;
 static char instance_title[256] = PROG;
@@ -406,9 +405,10 @@ pager_selection_add(const char *name)
 {
 	if (pager_selection_find(name) != -1)
 		return true;
-	if (n_selected_pagers >= MAX_SELECTED_PAGERS)
-		return false;
-
+	selected_pagers = xrealloc(selected_pagers,
+	    (size_t)n_selected_pagers + 1, sizeof(*selected_pagers));
+	memset(&selected_pagers[n_selected_pagers], 0,
+	    sizeof(*selected_pagers));
 	selected_pagers[n_selected_pagers].name = strdup(name);
 	if (selected_pagers[n_selected_pagers].name == NULL)
 		return false;
@@ -425,6 +425,8 @@ pager_selections_free(void)
 		selected_pagers[i].name = NULL;
 		selected_pagers[i].seen = 0;
 	}
+	xfree(selected_pagers);
+	selected_pagers = NULL;
 	n_selected_pagers = 0;
 }
 
