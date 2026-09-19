@@ -39,8 +39,6 @@
 #include "xdg-output-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
-#define MAX_OUTPUTS 20
-#define MAX_VIEWS 256
 #define ID_LEN 64
 #define MAX_VALUE_WIDTH 480
 
@@ -111,10 +109,11 @@ static struct wl_cursor	      *cursor_crosshair;
 static struct wl_surface      *cursor_surface;
 static int		       cursor_size = 24;
 
-static struct out outs[MAX_OUTPUTS];
+static struct out **outs;
 static int	  n_outs;
+static int	  outs_capacity;
 
-static struct view_info views[MAX_VIEWS];
+static struct view_info *views;
 static int		n_views;
 
 /* xkb */
@@ -172,7 +171,8 @@ free_views(void)
 		xfree(views[i].title);
 		xfree(views[i].output);
 	}
-	memset(views, 0, sizeof(views));
+	free(views);
+	views = NULL;
 	n_views = 0;
 }
 
@@ -240,8 +240,8 @@ fetch_views(void)
 	}
 
 	int n = cJSON_GetArraySize(data);
-	if (n > MAX_VIEWS)
-		n = MAX_VIEWS;
+	if (n > 0)
+		views = xcalloc((size_t)n, sizeof(*views));
 
 	for (int i = 0; i < n; i++) {
 		cJSON *w = cJSON_GetArrayItem(data, i);
@@ -334,7 +334,7 @@ static void
 draw_overlay_all(void)
 {
 	for (int i = 0; i < n_outs; i++)
-		draw_overlay(&outs[i]);
+		draw_overlay(outs[i]);
 }
 
 static int
@@ -607,8 +607,8 @@ static struct out *
 output_for_surface(struct wl_surface *s)
 {
 	for (int i = 0; i < n_outs; i++) {
-		if (outs[i].surface == s)
-			return &outs[i];
+		if (outs[i]->surface == s)
+			return outs[i];
 	}
 	return NULL;
 }
@@ -946,10 +946,13 @@ reg_global(void *data, struct wl_registry *reg, uint32_t name,
 		    version < 5 ? version : 5);
 		wl_seat_add_listener(seat, &seat_listener, NULL);
 	} else if (strcmp(iface, wl_output_interface.name) == 0) {
-		if (n_outs >= MAX_OUTPUTS)
-			return;
-		struct out *o = &outs[n_outs++];
-		memset(o, 0, sizeof(*o));
+		if (n_outs == outs_capacity) {
+			outs_capacity = outs_capacity == 0 ? 4 : outs_capacity * 2;
+			outs = xrealloc(outs, (size_t)outs_capacity,
+			    sizeof(*outs));
+		}
+		struct out *o = xcalloc(1, sizeof(*o));
+		outs[n_outs++] = o;
 		o->name	     = name;
 		o->scale     = 1;
 		o->wl_output = wl_registry_bind(reg, name, &wl_output_interface,
@@ -993,7 +996,7 @@ static void
 overlay_create(void)
 {
 	for (int i = 0; i < n_outs; i++) {
-		struct out *o	 = &outs[i];
+		struct out *o	 = outs[i];
 		o->surface	 = wl_compositor_create_surface(compositor);
 		o->layer_surface = zwlr_layer_shell_v1_get_layer_surface(
 		    layer_shell, o->surface, o->wl_output,
@@ -1024,7 +1027,7 @@ overlay_destroy(void)
 	 * fully unwinds before we move on.
 	 */
 	for (int i = 0; i < n_outs; i++) {
-		struct out *o = &outs[i];
+		struct out *o = outs[i];
 		if (o->surface) {
 			wl_surface_attach(o->surface, NULL, 0, 0);
 			wl_surface_commit(o->surface);
@@ -1032,7 +1035,7 @@ overlay_destroy(void)
 	}
 	wl_display_roundtrip(display);
 	for (int i = 0; i < n_outs; i++) {
-		struct out *o = &outs[i];
+		struct out *o = outs[i];
 		if (o->layer_surface) {
 			zwlr_layer_surface_v1_destroy(o->layer_surface);
 			o->layer_surface = NULL;
@@ -1402,7 +1405,7 @@ cowident_cleanup(void)
 	}
 
 	for (int i = 0; i < n_outs; i++) {
-		struct out *o = &outs[i];
+		struct out *o = outs[i];
 		if (o->xdg_output) {
 			zxdg_output_v1_destroy(o->xdg_output);
 			o->xdg_output = NULL;
@@ -1411,8 +1414,12 @@ cowident_cleanup(void)
 			wl_output_destroy(o->wl_output);
 			o->wl_output = NULL;
 		}
+		free(o);
 	}
+	free(outs);
+	outs = NULL;
 	n_outs = 0;
+	outs_capacity = 0;
 
 	if (xdg_output_manager) {
 		zxdg_output_manager_v1_destroy(xdg_output_manager);
@@ -1498,7 +1505,7 @@ main(void)
 	 */
 	if (xdg_output_manager) {
 		for (int i = 0; i < n_outs; i++) {
-			struct out *o = &outs[i];
+			struct out *o = outs[i];
 			o->xdg_output = zxdg_output_manager_v1_get_xdg_output(
 			    xdg_output_manager, o->wl_output);
 			zxdg_output_v1_add_listener(o->xdg_output,

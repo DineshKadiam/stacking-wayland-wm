@@ -529,6 +529,19 @@ module_theme_test = executable('test-module-theme',
 )
 test('module-theme', module_theme_test)
 
+module_snapshot_test = executable('test-module-snapshot',
+    'tests/module-snapshot.c',
+    'src/module_snapshot.c',
+    'src/module_theme.c',
+    'src/json_util.c',
+    'src/colour.c',
+    'src/memory.c',
+    'vendor/cJSON.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('module-snapshot', module_snapshot_test)
+
 module_draw_test = executable('test-module-draw',
     'tests/module-draw.c',
     'src/module_draw.c',

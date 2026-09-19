@@ -31,6 +31,7 @@
 #include "cow/colour.h"
 #include "cow/image_cache.h"
 #include "cow/json_util.h"
+#include "cow/memory.h"
 #include "cow/module.h"
 #include "cow/module_config.h"
 #include "cow/module_cursor.h"
@@ -38,6 +39,7 @@
 #include "cow/module_theme.h"
 #include "cow/output_selector.h"
 #include "cow/module_shm.h"
+#include "cow/module_snapshot.h"
 #include "cow/module_status.h"
 #include "cow/text.h"
 #include "cow/util.h"
@@ -46,9 +48,6 @@
 #define PROG "cowiconman"
 #define SHOW_INDEX_ENV "COWICONMAN_SHOW_INDEX"
 
-#define MAX_WINS 512
-#define MAX_OUTS 32
-#define MAX_ROWS 512
 #define MAX_NAME 128
 #define MAX_MATCHES 16
 #define MAX_FIELDS 16
@@ -133,40 +132,9 @@ struct iconman_load_ctx {
 	bool in_selected_iconman;
 };
 
-struct output {
-	char  name[MAX_NAME];
-	int   number;
-	int   x, y, w, h;
-	int   usable_x, usable_y, usable_w, usable_h;
-	int   current;
-	int   current_desk;
-	int   page_vx, page_vy;
-	int   output_w, output_h;
-	bool  has_background;
-	float background[4];
-};
-
-struct win {
-	char id[MAX_NAME];
-	char app_id[MAX_NAME];
-	char title[256];
-	char output[MAX_NAME];
-	char icon[MAX_ICON_PATH];
-	int  desk;
-	int  x, y;
-	int  vx, vy, w, h;
-	int  focused;
-	int  iconified;
-};
-
-struct state {
-	struct output outs[MAX_OUTS];
-	int	      n_outs;
-	struct win    wins[MAX_WINS];
-	int	      n_wins;
-	struct cow_module_theme theme;
-	struct cow_module_theme titlebar_theme;
-};
+typedef struct cow_module_output_state output_t;
+typedef struct cow_module_window_state win_t;
+typedef struct cow_module_snapshot state_t;
 
 struct palette {
 	float background[4];
@@ -187,7 +155,7 @@ static const float default_active_fg[4] = { 0.94, 0.94, 0.96, 1.0 };
 static const float default_inactive_fg[4] = { 0.94, 0.94, 0.96, 1.0 };
 
 struct row {
-	struct win win;
+	win_t win;
 	char	   label[384];
 	int	   first;
 	int	   count;
@@ -219,8 +187,9 @@ static struct xdg_surface   *xdg_surface;
 static struct xdg_toplevel  *xdg_toplevel;
 static struct cow_module_shm_buffer buffers[2];
 
-static struct tracked_output tracked[MAX_OUTS];
+static struct tracked_output **tracked;
 static int		     n_tracked;
+static int		     tracked_capacity;
 
 static int    running = 1;
 static int    configured;
@@ -229,11 +198,11 @@ static double ptr_x, ptr_y;
 static int    layout_cols = 1;
 static int    layout_rows = 1;
 
-static struct state    global_state;
+static state_t    global_state;
 static struct cow_module_status_stream status_stream;
 
-static struct row rows[MAX_ROWS];
-static struct win group_wins[MAX_WINS];
+static struct row *rows;
+static win_t *group_wins;
 static int	  n_rows;
 static int	  n_group_wins;
 static int	  scroll_first;
@@ -273,33 +242,15 @@ static struct iconman_selection selected_iconmans[MAX_SELECTED_ICONMANS];
 static int n_selected_iconmans;
 static struct cow_module_config_instances config_instances;
 
-static void do_render(const struct state *);
+static void do_render(const state_t *);
 static void ipc_send(const char *);
-static void format_label(char *, size_t, const struct win *);
-static const char *group_key(const struct win *, char *, size_t);
+static void format_label(char *, size_t, const win_t *);
+static const char *group_key(const win_t *, char *, size_t);
 
 static void
 usage(void)
 {
 	fprintf(stderr, "usage: cowiconman [-c path] [-h]\n");
-}
-
-static int
-get_jnum(cJSON *obj, const char *key)
-{
-	long long value = 0;
-
-	(void)cow_json_get_int(obj, key, &value);
-	return (int)value;
-}
-
-static int
-get_jbool(cJSON *obj, const char *key)
-{
-	bool value = false;
-
-	(void)cow_json_get_bool(obj, key, &value);
-	return value;
 }
 
 static int
@@ -862,8 +813,8 @@ static struct tracked_output *
 tracked_for_wl(const struct wl_output *wo)
 {
 	for (int i = 0; i < n_tracked; i++)
-		if (tracked[i].wl_output == wo)
-			return &tracked[i];
+		if (tracked[i]->wl_output == wo)
+			return tracked[i];
 	return NULL;
 }
 
@@ -871,48 +822,53 @@ static const char *
 self_output_name(void)
 {
 	for (int i = 0; i < n_tracked; i++)
-		if (tracked[i].on_surface && tracked[i].name[0] != '\0')
-			return tracked[i].name;
+		if (tracked[i]->on_surface && tracked[i]->name[0] != '\0')
+			return tracked[i]->name;
 	return NULL;
 }
 
-static const struct output *
-state_output_by_name(const struct state *st, const char *name)
+static const output_t *
+state_output_by_name(const state_t *st, const char *name)
 {
 	if (name == NULL || name[0] == '\0')
 		return NULL;
-	for (int i = 0; i < st->n_outs; i++)
+	for (size_t i = 0; i < st->n_outs; i++)
 		if (strcmp(st->outs[i].name, name) == 0)
 			return &st->outs[i];
 	return NULL;
 }
 
-static const struct output *
-state_current_output(const struct state *st)
+static const output_t *
+state_current_output(const state_t *st)
 {
-	for (int i = 0; i < st->n_outs; i++)
+	for (size_t i = 0; i < st->n_outs; i++)
 		if (st->outs[i].current)
 			return &st->outs[i];
 	return st->n_outs > 0 ? &st->outs[0] : NULL;
 }
 
-static const struct output *
-state_output_by_selector(const struct state *st, const char *selector)
+static const output_t *
+state_output_by_selector(const state_t *st, const char *selector)
 {
-	struct cow_output_selector_entry entries[MAX_OUTS];
+	struct cow_output_selector_entry *entries = st->n_outs > 0 ?
+	    calloc(st->n_outs, sizeof(*entries)) : NULL;
+	if (st->n_outs > 0 && entries == NULL)
+		return NULL;
 
-	for (int i = 0; i < st->n_outs; i++) {
+	for (size_t i = 0; i < st->n_outs; i++) {
 		entries[i].name = st->outs[i].name;
 		entries[i].number = (uint32_t)st->outs[i].number;
 		entries[i].current = st->outs[i].current != 0;
 	}
 	int selected = cow_output_selector_resolve(selector, entries,
 	    (size_t)st->n_outs);
-	return selected >= 0 ? &st->outs[selected] : NULL;
+	const output_t *output = selected >= 0 ? &st->outs[selected] : NULL;
+	free(entries);
+	return output;
 }
 
-static const struct output *
-selected_output(const struct state *st)
+static const output_t *
+selected_output(const state_t *st)
 {
 	if (output_filter == FILTER_CURRENT)
 		return state_current_output(st);
@@ -923,10 +879,10 @@ selected_output(const struct state *st)
 	return state_output_by_selector(st, output_arg);
 }
 
-static const struct output *
-sizing_output(const struct state *st)
+static const output_t *
+sizing_output(const state_t *st)
 {
-	const struct output *out = selected_output(st);
+	const output_t *out = selected_output(st);
 
 	if (out != NULL)
 		return out;
@@ -937,7 +893,7 @@ sizing_output(const struct state *st)
 }
 
 static int
-window_on_page(const struct win *w, const struct output *o, int px, int py)
+window_on_page(const win_t *w, const output_t *o, int px, int py)
 {
 	int ow = o->output_w > 0 ? o->output_w : 1;
 	int oh = o->output_h > 0 ? o->output_h : 1;
@@ -952,9 +908,9 @@ window_on_page(const struct win *w, const struct output *o, int px, int py)
 }
 
 static int
-window_matches(const struct state *st, const struct win *w)
+window_matches(const state_t *st, const win_t *w)
 {
-	const struct output *out = selected_output(st);
+	const output_t *out = selected_output(st);
 
 	if (!show_self && strcmp(w->app_id, PROG) == 0)
 		return 0;
@@ -965,7 +921,7 @@ window_matches(const struct state *st, const struct win *w)
 	}
 
 	if (desk_filter == FILTER_CURRENT) {
-		const struct output *ref = out != NULL ? out :
+		const output_t *ref = out != NULL ? out :
 		    state_current_output(st);
 		if (ref == NULL || w->desk != ref->current_desk)
 			return 0;
@@ -973,7 +929,7 @@ window_matches(const struct state *st, const struct win *w)
 		return 0;
 
 	if (page_filter != FILTER_ANY) {
-		const struct output *ref = out != NULL ? out :
+		const output_t *ref = out != NULL ? out :
 		    state_output_by_name(st, w->output);
 		int px = page_x_arg, py = page_y_arg;
 		if (ref == NULL)
@@ -1017,7 +973,7 @@ window_matches(const struct state *st, const struct win *w)
 }
 
 static const char *
-sort_key(const struct win *w)
+sort_key(const win_t *w)
 {
 	if (sort_mode == SORT_APP)
 		return w->app_id;
@@ -1029,8 +985,8 @@ sort_key(const struct win *w)
 static int
 win_cmp(const void *a, const void *b)
 {
-	const struct win *wa = a;
-	const struct win *wb = b;
+	const win_t *wa = a;
+	const win_t *wb = b;
 	int		  c;
 
 	if (sort_mode == SORT_NONE)
@@ -1044,8 +1000,8 @@ win_cmp(const void *a, const void *b)
 static int
 win_group_cmp(const void *a, const void *b)
 {
-	const struct win *wa = a;
-	const struct win *wb = b;
+	const win_t *wa = a;
+	const win_t *wb = b;
 	char		  abuf[32], bbuf[32];
 	int		  c;
 
@@ -1057,7 +1013,7 @@ win_group_cmp(const void *a, const void *b)
 }
 
 static const char *
-group_key(const struct win *w, char *buf, size_t bufsz)
+group_key(const win_t *w, char *buf, size_t bufsz)
 {
 	switch (group_mode) {
 	case GROUP_APP:
@@ -1076,7 +1032,7 @@ group_key(const struct win *w, char *buf, size_t bufsz)
 }
 
 static int
-same_group(const struct win *a, const struct win *b)
+same_group(const win_t *a, const win_t *b)
 {
 	char abuf[32], bbuf[32];
 
@@ -1108,7 +1064,7 @@ finish_row(struct row *r)
 	r->any_iconified = 0;
 	r->all_iconified = 1;
 	for (int i = 0; i < r->count; i++) {
-		const struct win *w = &group_wins[r->first + i];
+		const win_t *w = &group_wins[r->first + i];
 
 		if (w->focused)
 			r->focused = 1;
@@ -1184,7 +1140,7 @@ theme_colour(bool primary_set, const float primary[4], bool fallback_set,
 }
 
 static void
-resolve_palette(const struct state *st, const struct output *output,
+resolve_palette(const state_t *st, const output_t *output,
     struct palette *palette)
 {
 	const struct cow_module_theme *generic = &st->theme;
@@ -1256,7 +1212,7 @@ clamp_scroll(void)
 }
 
 static void
-collect_rows(const struct state *st, int *column_major)
+collect_rows(const state_t *st, int *column_major)
 {
 	int cols, grid_rows, cm;
 
@@ -1265,7 +1221,19 @@ collect_rows(const struct state *st, int *column_major)
 	layout_rows = 1;
 	n_rows = 0;
 	n_group_wins = 0;
-	for (int i = 0; i < st->n_wins && n_group_wins < MAX_WINS; i++) {
+	free(group_wins);
+	free(rows);
+	group_wins = st->n_wins > 0 ?
+	    calloc(st->n_wins, sizeof(*group_wins)) : NULL;
+	rows = st->n_wins > 0 ? calloc(st->n_wins, sizeof(*rows)) : NULL;
+	if (st->n_wins > 0 && (group_wins == NULL || rows == NULL)) {
+		free(group_wins);
+		free(rows);
+		group_wins = NULL;
+		rows = NULL;
+		return;
+	}
+	for (size_t i = 0; i < st->n_wins; i++) {
 		if (!window_matches(st, &st->wins[i]))
 			continue;
 		group_wins[n_group_wins++] = st->wins[i];
@@ -1277,7 +1245,7 @@ collect_rows(const struct state *st, int *column_major)
 		qsort(group_wins, (size_t)n_group_wins, sizeof(group_wins[0]),
 		    win_cmp);
 
-	for (int i = 0; i < n_group_wins && n_rows < MAX_ROWS;) {
+	for (int i = 0; i < n_group_wins;) {
 		rows[n_rows].first = i;
 		rows[n_rows].count = 1;
 		if (group_mode != GROUP_NONE) {
@@ -1363,10 +1331,10 @@ layout_rows_for_width(int width, int column_major, int row_height)
 	}
 }
 
-static const struct win *
-self_window(const struct state *st)
+static const win_t *
+self_window(const state_t *st)
 {
-	for (int i = 0; i < st->n_wins; i++) {
+	for (size_t i = 0; i < st->n_wins; i++) {
 		if (strcmp(st->wins[i].app_id, PROG) != 0)
 			continue;
 		if (strcmp(st->wins[i].title, self_title) == 0)
@@ -1376,9 +1344,9 @@ self_window(const struct state *st)
 }
 
 static void
-apply_anchor(const struct state *st, const struct output *out)
+apply_anchor(const state_t *st, const output_t *out)
 {
-	const struct win *self;
+	const win_t *self;
 	char		  cmd[512];
 	int		  x, y;
 
@@ -1401,7 +1369,7 @@ apply_anchor(const struct state *st, const struct output *out)
 }
 
 static void
-format_label(char *dst, size_t dstsz, const struct win *w)
+format_label(char *dst, size_t dstsz, const win_t *w)
 {
 	size_t len = 0;
 
@@ -1453,7 +1421,7 @@ format_label(char *dst, size_t dstsz, const struct win *w)
 }
 
 static void
-draw_iconified_marker(cairo_t *cr, const struct win *win, double x,
+draw_iconified_marker(cairo_t *cr, const win_t *win, double x,
     double y, double h, const float base[4])
 {
 	double marker_y = y + (h - MARKER_SIZE) / 2.0;
@@ -1513,14 +1481,14 @@ draw_icon(cairo_t *cr, const char *path, int x, int y, int size)
 }
 
 static void
-do_render(const struct state *st)
+do_render(const state_t *st)
 {
 	struct cow_module_shm_buffer *buf;
 	cairo_surface_t *cs;
 	cairo_t		*cr;
 	int		 column_major;
 	int		 desired_w;
-	const struct output *out;
+	const output_t *out;
 	struct palette	 palette;
 	int		 max_w = 0, max_h = 0;
 
@@ -1617,14 +1585,8 @@ ipc_send(const char *cmd)
 	(void)cow_module_cmd_execute(PROG, cmd, true);
 }
 
-static char *
-ipc_query(const char *cmd)
-{
-	return cow_module_cmd_request(PROG, cmd, true);
-}
-
 static void
-activate_win(const struct win *w, uint32_t button)
+activate_win(const win_t *w, uint32_t button)
 {
 	char cmd[256];
 
@@ -1643,7 +1605,6 @@ activate_win(const struct win *w, uint32_t button)
 		    w->id);
 		ipc_send(cmd);
 	}
-	fprintf(stderr, "SENT: %s\n", cmd);
 }
 
 static void
@@ -1764,135 +1725,26 @@ activate_row(int idx, uint32_t button)
 }
 
 static void
-parse_status(const char *json)
-{
-	cJSON	     *root = cJSON_Parse(json);
-	static struct state st;
-	cJSON	     *outs, *out;
-	int	      n = 0;
-
-	if (root == NULL)
-		return;
-	memset(&st, 0, sizeof(st));
-
-	outs = cJSON_GetObjectItem(root, "outputs");
-	cJSON_ArrayForEach(out, outs)
-	{
-		if (n >= MAX_OUTS)
-			break;
-		cow_json_copy_string(out, "name", st.outs[n].name,
-		    sizeof(st.outs[n].name));
-		st.outs[n].number	= get_jnum(out, "number");
-		st.outs[n].x		= get_jnum(out, "x");
-		st.outs[n].y		= get_jnum(out, "y");
-		st.outs[n].w		= get_jnum(out, "width");
-		st.outs[n].h		= get_jnum(out, "height");
-		st.outs[n].current	= get_jbool(out, "current");
-		st.outs[n].current_desk = get_jnum(out, "current_desk");
-		st.outs[n].page_vx	= get_jnum(out, "page_vx");
-		st.outs[n].page_vy	= get_jnum(out, "page_vy");
-		st.outs[n].output_w	= get_jnum(out, "output_w");
-		st.outs[n].output_h	= get_jnum(out, "output_h");
-		cJSON *usable = cJSON_GetObjectItem(out, "usable");
-		if (cJSON_IsObject(usable)) {
-			st.outs[n].usable_x = get_jnum(usable, "x");
-			st.outs[n].usable_y = get_jnum(usable, "y");
-			st.outs[n].usable_w = get_jnum(usable, "width");
-			st.outs[n].usable_h = get_jnum(usable, "height");
-		}
-		struct cow_module_theme output_theme;
-		(void)cow_module_theme_parse(out, &output_theme);
-		st.outs[n].has_background = output_theme.has_background;
-		if (output_theme.has_background) {
-			copy_colour(st.outs[n].background,
-			    output_theme.background);
-		}
-		n++;
-	}
-	st.n_outs = n;
-
-	cJSON *theme = cJSON_GetObjectItem(root, "theme");
-	(void)cow_module_theme_parse(theme, &st.theme);
-	if (cJSON_IsObject(theme)) {
-		cJSON *titlebar = cJSON_GetObjectItem(theme, "titlebar");
-		(void)cow_module_theme_parse(titlebar, &st.titlebar_theme);
-	}
-
-	st.n_wins = global_state.n_wins;
-	memcpy(st.wins, global_state.wins,
-	    sizeof(st.wins[0]) * (size_t)st.n_wins);
-	global_state = st;
-
-	cJSON_Delete(root);
-}
-
-static void
-fetch_windows(void)
-{
-	char	     *resp = ipc_query("show -a window");
-	cJSON	     *root, *data, *w;
-	static struct win wins[MAX_WINS];
-	char	     new_self_id[MAX_NAME] = "";
-	int	      n = 0;
-
-	if (resp == NULL)
-		return;
-	root = cJSON_Parse(resp);
-	free(resp);
-	if (root == NULL)
-		return;
-
-	data = cJSON_GetObjectItem(root, "data");
-	cJSON_ArrayForEach(w, data)
-	{
-		if (n >= MAX_WINS)
-			break;
-		memset(&wins[n], 0, sizeof(wins[n]));
-		cow_json_copy_string(w, "id", wins[n].id,
-		    sizeof(wins[n].id));
-		cow_json_copy_string(w, "app_id", wins[n].app_id,
-		    sizeof(wins[n].app_id));
-		cow_json_copy_string(w, "title", wins[n].title,
-		    sizeof(wins[n].title));
-		cow_json_copy_string(w, "output", wins[n].output,
-		    sizeof(wins[n].output));
-		cow_json_copy_string(w, "icon", wins[n].icon,
-		    sizeof(wins[n].icon));
-		if (strcmp(wins[n].app_id, PROG) == 0 &&
-		    strcmp(wins[n].title, self_title) == 0)
-			strlcpy(new_self_id, wins[n].id, sizeof(new_self_id));
-		wins[n].desk	   = get_jnum(w, "desk");
-		wins[n].x	   = get_jnum(w, "x");
-		wins[n].y	   = get_jnum(w, "y");
-		wins[n].vx	   = get_jnum(w, "vx");
-		wins[n].vy	   = get_jnum(w, "vy");
-		wins[n].w	   = get_jnum(w, "width");
-		wins[n].h	   = get_jnum(w, "height");
-		wins[n].focused   = get_jbool(w, "focused");
-		wins[n].iconified = get_jbool(w, "iconified");
-		n++;
-	}
-	cJSON_Delete(root);
-
-	strlcpy(self_id, new_self_id, sizeof(self_id));
-	global_state.n_wins = n;
-	memcpy(global_state.wins, wins, sizeof(wins[0]) * (size_t)n);
-}
-
-static void
 render_current_state(void)
 {
-	struct state st = global_state;
-
 	if (configured)
-		do_render(&st);
+		do_render(&global_state);
 }
 
 static void
 handle_status_line(const char *line, __unused void *data)
 {
-	parse_status(line);
-	fetch_windows();
+	if (!cow_module_snapshot_parse(&global_state, line))
+		return;
+	self_id[0] = '\0';
+	for (size_t i = 0; i < global_state.n_wins; i++) {
+		win_t *window = &global_state.wins[i];
+		if (strcmp(window->app_id, PROG) == 0 &&
+		    strcmp(window->title, self_title) == 0) {
+			strlcpy(self_id, window->id, sizeof(self_id));
+			break;
+		}
+	}
 	render_current_state();
 }
 
@@ -2161,17 +2013,27 @@ reg_global(__unused void *d, struct wl_registry *reg, uint32_t name,
 		seat = wl_registry_bind(reg, name, &wl_seat_interface, 5);
 		wl_seat_add_listener(seat, &seat_listener, NULL);
 	} else if (strcmp(iface, wl_output_interface.name) == 0) {
-		if (n_tracked >= MAX_OUTS)
-			return;
-		uint32_t bind_ver = ver >= 4 ? 4 : ver;
-		tracked[n_tracked].wl_output = wl_registry_bind(reg, name,
-		    &wl_output_interface, bind_ver);
-		tracked[n_tracked].global_name = name;
-		if (tracked[n_tracked].wl_output != NULL) {
-			wl_output_add_listener(tracked[n_tracked].wl_output,
-			    &out_listener, NULL);
-			n_tracked++;
+		if (n_tracked == tracked_capacity) {
+			tracked_capacity = tracked_capacity == 0 ? 4 :
+			    tracked_capacity * 2;
+			tracked = reallocarray(tracked,
+			    (size_t)tracked_capacity, sizeof(*tracked));
+			if (tracked == NULL)
+				log_fatal("cowiconman: cannot track outputs");
 		}
+		uint32_t bind_ver = ver >= 4 ? 4 : ver;
+		struct tracked_output *output = calloc(1, sizeof(*output));
+		if (output == NULL)
+			log_fatal("cowiconman: cannot track output");
+		output->wl_output = wl_registry_bind(reg, name,
+		    &wl_output_interface, bind_ver);
+		output->global_name = name;
+		if (output->wl_output != NULL) {
+			wl_output_add_listener(output->wl_output,
+			    &out_listener, NULL);
+			tracked[n_tracked++] = output;
+		} else
+			free(output);
 	} else
 		cow_module_cursor_handle_global(&cursor, reg, name, iface,
 		    ver);
@@ -2181,14 +2043,15 @@ static void
 reg_remove(__unused void *d, __unused struct wl_registry *r, uint32_t name)
 {
 	for (int i = 0; i < n_tracked; i++) {
-		if (tracked[i].global_name != name)
+		if (tracked[i]->global_name != name)
 			continue;
-		if (tracked[i].wl_output != NULL)
-			wl_output_destroy(tracked[i].wl_output);
+		if (tracked[i]->wl_output != NULL)
+			wl_output_destroy(tracked[i]->wl_output);
+		free(tracked[i]);
 		int last = n_tracked - 1;
 		if (i != last)
 			tracked[i] = tracked[last];
-		memset(&tracked[last], 0, sizeof(tracked[last]));
+		tracked[last] = NULL;
 		n_tracked--;
 		break;
 	}
@@ -2323,6 +2186,15 @@ main(int argc, char **argv)
 		wl_seat_destroy(seat);
 	cow_module_shm_buffers_destroy(buffers,
 	    sizeof(buffers) / sizeof(buffers[0]));
+	for (int i = 0; i < n_tracked; i++) {
+		if (tracked[i]->wl_output != NULL)
+			wl_output_destroy(tracked[i]->wl_output);
+		free(tracked[i]);
+	}
+	free(tracked);
+	free(rows);
+	free(group_wins);
+	cow_module_snapshot_fini(&global_state);
 	wl_display_disconnect(display);
 	return 0;
 }

@@ -45,6 +45,8 @@
 #include "cow/util.h"
 #include "cow/view.h"
 #include "cow/wm.h"
+#include "state-snapshot.h"
+#include "state-value.h"
 
 #define MAX_STATUS_CLIENTS 64
 
@@ -471,6 +473,19 @@ cow_status_emit(void)
 		cJSON_AddItemToObject(root, "focused", fw);
 	} else {
 		cJSON_AddNullToObject(root, "focused");
+	}
+
+	cJSON *windows = cJSON_AddArrayToObject(root, "windows");
+	struct cow_view *window;
+	wl_list_for_each(window, &cow_wm.views, wm_link)
+	{
+		if (window->closed)
+			continue;
+		struct state_value *snapshot = state_snapshot_view(window);
+		cJSON *json = state_value_to_json(snapshot);
+		state_value_unref(snapshot);
+		if (json != NULL)
+			cJSON_AddItemToArray(windows, json);
 	}
 
 	int		 total = 0;

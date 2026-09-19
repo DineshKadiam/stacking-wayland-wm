@@ -31,7 +31,6 @@
  */
 
 #include <cairo.h>
-#include <cJSON.h>
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>
@@ -47,6 +46,7 @@
 #include "cow/attrs.h"
 #include "cow/colour.h"
 #include "cow/image_cache.h"
+#include "cow/memory.h"
 #include "cow/module.h"
 #include "cow/module_config.h"
 #include "cow/module_cursor.h"
@@ -55,60 +55,22 @@
 #include "cow/output_selector.h"
 #include "cow/text.h"
 #include "cow/module_shm.h"
+#include "cow/module_snapshot.h"
 #include "cow/module_status.h"
 #include "xdg-shell-client-protocol.h"
 
 #define PROG "cowpager"
 #define SHOW_INDEX_ENV "COWPAGER_SHOW_INDEX"
 
-#define MAX_DESKS 32
-#define MAX_WINS 512
-#define MAX_OUTS 8
 #define MAX_FIELDS 8
 #define MAX_SELECTED_PAGERS 16
 
 #define INIT_W 420
 #define INIT_H 120
 
-typedef struct {
-	int  desk;
-	int  vx, vy, w, h;
-	int  icon_vx, icon_vy, icon_w, icon_h;
-	int  focused;
-	int  iconified;
-	char id[128];
-	char output[64];
-	char app_id[64];
-	char icon[1024];
-} pwin_t;
-
-typedef struct {
-	int nr;
-	int window_count;
-	int active;
-	char name[64];
-} pdesk_t;
-
-typedef struct {
-	char name[64];
-	int  number;  /* 1-based ordinal from cow (raster-scan order). */
-	int  current; /* 1 if this is cow's "current_output". */
-	int  current_desk;
-	int  output_x, output_y;
-	int  page_cols, page_rows;
-	int  page_col, page_row;
-	/*
-	 * Raw sub-page viewport offsets in desk pixel space.  page_col
-	 * and page_row are truncated indexes; page_vx / page_vy give
-	 * the viewport's exact top-left.
-	 */
-	int	page_vx, page_vy;
-	int	output_w, output_h;
-	int	has_background;
-	float	background[4];
-	pdesk_t desks[MAX_DESKS];
-	int	n_desks;
-} pout_t;
+typedef struct cow_module_window_state pwin_t;
+typedef struct cow_module_desk pdesk_t;
+typedef struct cow_module_output_state pout_t;
 
 typedef struct {
 	int x, y, w, h;
@@ -117,15 +79,7 @@ typedef struct {
 	const pout_t *tracked_output;
 } canvas_t;
 
-typedef struct {
-	pout_t outs[MAX_OUTS];
-	int    n_outs;
-	pwin_t wins[MAX_WINS];
-	int    n_wins;
-	char   desktop_config[32]; /* "global" | "per-output" | "Shared" */
-	char   user_output[64];
-	struct cow_module_theme theme;
-} state_t;
+typedef struct cow_module_snapshot state_t;
 
 struct pager_config {
 	int rows;
@@ -199,9 +153,8 @@ struct cp_output {
 	int		  on_surface; /* 1 if cowpager's surface entered it */
 };
 
-#define CP_MAX_TRACKED_OUTPUTS 16
-static struct cp_output cp_outputs[CP_MAX_TRACKED_OUTPUTS];
-static int		cp_n_outputs;
+static struct cp_output **cp_outputs;
+static size_t		 cp_n_outputs;
 
 /*
  * Sticky cache of the last "user-relevant" current output observed.
@@ -237,9 +190,22 @@ struct overlay_handle {
 	double px, py, pw, ph; /* plate rectangle in cowpager pixels */
 };
 
-#define MAX_OVERLAY_HANDLES (MAX_OUTS * MAX_DESKS)
-static struct overlay_handle overlay_handles[MAX_OVERLAY_HANDLES];
-static int		     n_overlay_handles;
+static struct overlay_handle *overlay_handles;
+static size_t		      n_overlay_handles;
+static size_t		      overlay_handles_capacity;
+
+static struct overlay_handle *
+overlay_handle_add(void)
+{
+	if (n_overlay_handles == overlay_handles_capacity) {
+		size_t capacity = overlay_handles_capacity == 0 ? 16 :
+		    overlay_handles_capacity * 2;
+		overlay_handles = xrealloc(overlay_handles, capacity,
+		    sizeof(*overlay_handles));
+		overlay_handles_capacity = capacity;
+	}
+	return &overlay_handles[n_overlay_handles++];
+}
 
 /* Drag state.  When dragging != 0 the press initially hit a plate; on
  * release we resolve the destination and dispatch.  The `start_*`
@@ -265,9 +231,9 @@ static int    opt_verbose; /* -v: log click decisions to stderr */
  *     labels are restricted to the listed set, in the order given on
  *     the CLI.
  */
-#define MAX_OPT_MONITORS 16
-static char opt_monitors[MAX_OPT_MONITORS][64];
-static int  opt_n_monitors;
+static char **opt_monitors;
+static size_t opt_n_monitors;
+static size_t opt_monitors_capacity;
 static struct pager_selection selected_pagers[MAX_SELECTED_PAGERS];
 static int n_selected_pagers;
 static struct cow_module_config_instances config_instances;
@@ -360,22 +326,39 @@ apply_theme_defaults(const state_t *st)
 static int
 parse_monitor_list(const char *list, int replace)
 {
-	if (replace)
+	if (replace) {
+		for (size_t i = 0; i < opt_n_monitors; i++)
+			free(opt_monitors[i]);
 		opt_n_monitors = 0;
+	}
 	char *dup = strdup(list);
 	if (dup == NULL)
 		return 0;
 	char *save = NULL;
 	char *tok = strtok_r(dup, ",", &save);
-	while (tok != NULL && opt_n_monitors < MAX_OPT_MONITORS) {
+	while (tok != NULL) {
 		while (*tok == ' ' || *tok == '\t')
 			tok++;
 		size_t L = strlen(tok);
 		while (L > 0 && (tok[L - 1] == ' ' || tok[L - 1] == '\t'))
 			tok[--L] = '\0';
 		if (*tok != '\0') {
-			strlcpy(opt_monitors[opt_n_monitors], tok,
-			    sizeof(opt_monitors[0]));
+			if (opt_n_monitors == opt_monitors_capacity) {
+				opt_monitors_capacity = opt_monitors_capacity == 0 ? 4 :
+				    opt_monitors_capacity * 2;
+				char **items = reallocarray(opt_monitors,
+				    opt_monitors_capacity, sizeof(*opt_monitors));
+				if (items == NULL) {
+					free(dup);
+					return 0;
+				}
+				opt_monitors = items;
+			}
+			opt_monitors[opt_n_monitors] = strdup(tok);
+			if (opt_monitors[opt_n_monitors] == NULL) {
+				free(dup);
+				return 0;
+			}
 			opt_n_monitors++;
 		}
 		tok = strtok_r(NULL, ",", &save);
@@ -487,12 +470,6 @@ ipc_send(const char *cmd)
 	if (opt_verbose)
 		fprintf(stderr, "cowpager: ipc_send: %s\n", cmd);
 	(void)cow_module_cmd_execute("cowpager", cmd, true);
-}
-
-static char *
-ipc_query(const char *cmd)
-{
-	return cow_module_cmd_request("cowpager", cmd, true);
 }
 
 static void
@@ -663,29 +640,34 @@ tab_outputs_cmp(const void *a, const void *b)
  * display order.  This drives monitor labels, canvas bounds, and the
  * window-placement filter.
  */
-static int
-tab_outputs(const state_t *st, const pout_t **out_arr, int max)
+static const pout_t **
+tab_outputs(const state_t *st, size_t *count)
 {
-	int n = 0;
+	*count = 0;
+	if (st->n_outs == 0)
+		return NULL;
+	const pout_t **out_arr = xcalloc(st->n_outs, sizeof(*out_arr));
 	if (opt_n_monitors > 0) {
-		struct cow_output_selector_entry entries[MAX_OUTS];
-		for (int i = 0; i < st->n_outs; i++) {
+		struct cow_output_selector_entry *entries =
+		    xcalloc(st->n_outs, sizeof(*entries));
+		for (size_t i = 0; i < st->n_outs; i++) {
 			entries[i].name = st->outs[i].name;
 			entries[i].number = (uint32_t)st->outs[i].number;
 			entries[i].current = st->outs[i].current != 0;
 		}
-		for (int j = 0; j < opt_n_monitors && n < max; j++) {
+		for (size_t j = 0; j < opt_n_monitors; j++) {
 			int selected = cow_output_selector_resolve(opt_monitors[j],
-			    entries, (size_t)st->n_outs);
+			    entries, st->n_outs);
 			if (selected >= 0)
-				out_arr[n++] = &st->outs[selected];
+				out_arr[(*count)++] = &st->outs[selected];
 		}
+		xfree(entries);
 	} else {
-		for (int i = 0; i < st->n_outs && n < max; i++)
-			out_arr[n++] = &st->outs[i];
-		qsort(out_arr, (size_t)n, sizeof(*out_arr), tab_outputs_cmp);
+		for (size_t i = 0; i < st->n_outs; i++)
+			out_arr[(*count)++] = &st->outs[i];
+		qsort(out_arr, *count, sizeof(*out_arr), tab_outputs_cmp);
 	}
-	return n;
+	return out_arr;
 }
 
 static int
@@ -695,21 +677,27 @@ monitor_visible(const state_t *st, const char *name)
 		return 1;
 	if (name == NULL || name[0] == '\0')
 		return 1; /* IPC didn't tell us; don't drop the window. */
-	const pout_t *outputs[MAX_OUTS];
-	int count = tab_outputs(st, outputs, MAX_OUTS);
-	for (int i = 0; i < count; i++)
-		if (strcmp(outputs[i]->name, name) == 0)
-			return 1;
-	return 0;
+	size_t count;
+	const pout_t **outputs = tab_outputs(st, &count);
+	int visible = 0;
+	for (size_t i = 0; i < count; i++)
+		if (strcmp(outputs[i]->name, name) == 0) {
+			visible = 1;
+			break;
+		}
+	xfree(outputs);
+	return visible;
 }
 
 static const char *
 single_pinned_output(const state_t *st)
 {
 	if (opt_n_monitors == 1) {
-		const pout_t *output[MAX_OUTS];
-		if (tab_outputs(st, output, MAX_OUTS) == 1)
-			return output[0]->name;
+		size_t count;
+		const pout_t **output = tab_outputs(st, &count);
+		const char *name = count == 1 ? output[0]->name : NULL;
+		xfree(output);
+		return name;
 	}
 	return NULL;
 }
@@ -718,19 +706,22 @@ single_pinned_output(const state_t *st)
 static int
 mon_tab_count(const state_t *st)
 {
-	const pout_t *tmp[MAX_OUTS];
-	return tab_outputs(st, tmp, MAX_OUTS);
+	size_t count;
+	const pout_t **tmp = tab_outputs(st, &count);
+	xfree(tmp);
+	return (int)count;
 }
 
 /* Return the "reference" output used for desk count, page grid, etc. */
 static const pout_t *
 reference_output(const state_t *st)
 {
-	const pout_t *tmp[MAX_OUTS];
-	int	      n = tab_outputs(st, tmp, MAX_OUTS);
-	if (n > 0)
-		return tmp[0];
-	return st->n_outs ? &st->outs[0] : NULL;
+	size_t count;
+	const pout_t **tmp = tab_outputs(st, &count);
+	const pout_t *output = count > 0 ? tmp[0] :
+	    (st->n_outs ? &st->outs[0] : NULL);
+	xfree(tmp);
+	return output;
 }
 
 static const pout_t *
@@ -738,7 +729,7 @@ output_by_name(const state_t *st, const char *name)
 {
 	if (name == NULL || name[0] == '\0')
 		return NULL;
-	for (int i = 0; i < st->n_outs; i++)
+	for (size_t i = 0; i < st->n_outs; i++)
 		if (strcmp(st->outs[i].name, name) == 0)
 			return &st->outs[i];
 	return NULL;
@@ -756,7 +747,7 @@ current_only_output(const state_t *st)
 	if (o != NULL && monitor_visible(st, o->name))
 		return o;
 
-	for (int i = 0; i < st->n_outs; i++) {
+	for (size_t i = 0; i < st->n_outs; i++) {
 		if (st->outs[i].current &&
 		    monitor_visible(st, st->outs[i].name))
 			return &st->outs[i];
@@ -783,7 +774,7 @@ output_for_window(const state_t *st, const pwin_t *w)
 {
 	if (w == NULL || w->output[0] == '\0')
 		return NULL;
-	for (int i = 0; i < st->n_outs; i++)
+	for (size_t i = 0; i < st->n_outs; i++)
 		if (strcmp(st->outs[i].name, w->output) == 0)
 			return &st->outs[i];
 	return NULL;
@@ -794,10 +785,12 @@ canvas_from_outputs(const state_t *st, canvas_t *cv)
 {
 	memset(cv, 0, sizeof(*cv));
 
-	const pout_t *outs[MAX_OUTS];
-	int n = tab_outputs(st, outs, MAX_OUTS);
-	if (n <= 0)
+	size_t n;
+	const pout_t **outs = tab_outputs(st, &n);
+	if (n == 0) {
+		xfree(outs);
 		return 0;
+	}
 
 	const pout_t *ref = outs[0];
 	cv->page_cols = ref->page_cols > 0 ? ref->page_cols : 1;
@@ -806,31 +799,32 @@ canvas_from_outputs(const state_t *st, canvas_t *cv)
 	if (n == 1) {
 		cv->tracked = 1;
 		cv->tracked_output = outs[0];
-		cv->x = outs[0]->output_x;
-		cv->y = outs[0]->output_y;
+		cv->x = outs[0]->x;
+		cv->y = outs[0]->y;
 		cv->w = outs[0]->output_w > 0 ? outs[0]->output_w : 1;
 		cv->h = outs[0]->output_h > 0 ? outs[0]->output_h : 1;
+		xfree(outs);
 		return 1;
 	}
 
-	int min_x = outs[0]->output_x;
-	int min_y = outs[0]->output_y;
-	int max_x = outs[0]->output_x +
+	int min_x = outs[0]->x;
+	int min_y = outs[0]->y;
+	int max_x = outs[0]->x +
 	    (outs[0]->output_w > 0 ? outs[0]->output_w : 1);
-	int max_y = outs[0]->output_y +
+	int max_y = outs[0]->y +
 	    (outs[0]->output_h > 0 ? outs[0]->output_h : 1);
 
-	for (int i = 1; i < n; i++) {
+	for (size_t i = 1; i < n; i++) {
 		int ow = outs[i]->output_w > 0 ? outs[i]->output_w : 1;
 		int oh = outs[i]->output_h > 0 ? outs[i]->output_h : 1;
-		if (outs[i]->output_x < min_x)
-			min_x = outs[i]->output_x;
-		if (outs[i]->output_y < min_y)
-			min_y = outs[i]->output_y;
-		if (outs[i]->output_x + ow > max_x)
-			max_x = outs[i]->output_x + ow;
-		if (outs[i]->output_y + oh > max_y)
-			max_y = outs[i]->output_y + oh;
+		if (outs[i]->x < min_x)
+			min_x = outs[i]->x;
+		if (outs[i]->y < min_y)
+			min_y = outs[i]->y;
+		if (outs[i]->x + ow > max_x)
+			max_x = outs[i]->x + ow;
+		if (outs[i]->y + oh > max_y)
+			max_y = outs[i]->y + oh;
 	}
 
 	cv->x = min_x;
@@ -841,6 +835,7 @@ canvas_from_outputs(const state_t *st, canvas_t *cv)
 		cv->w = 1;
 	if (cv->h < 1)
 		cv->h = 1;
+	xfree(outs);
 	return 1;
 }
 
@@ -872,14 +867,14 @@ static double
 canvas_page_x(const canvas_t *cv, const pout_t *out, int vx)
 {
 	return canvas_page_axis(vx, out->output_w, cv->w,
-	    out->output_x - cv->x);
+	    out->x - cv->x);
 }
 
 static double
 canvas_page_y(const canvas_t *cv, const pout_t *out, int vy)
 {
 	return canvas_page_axis(vy, out->output_h, cv->h,
-	    out->output_y - cv->y);
+	    out->y - cv->y);
 }
 
 static const pout_t *
@@ -889,14 +884,14 @@ output_at_canvas_point(const state_t *st, const canvas_t *cv, double x,
 	if (cv->tracked_output != NULL)
 		return cv->tracked_output;
 
-	for (int i = 0; i < st->n_outs; i++) {
+	for (size_t i = 0; i < st->n_outs; i++) {
 		const pout_t *o = &st->outs[i];
 		if (!monitor_visible(st, o->name))
 			continue;
 		if (!output_in_canvas(cv, o))
 			continue;
-		int ox = o->output_x - cv->x;
-		int oy = o->output_y - cv->y;
+		int ox = o->x - cv->x;
+		int oy = o->y - cv->y;
 		int ow = o->output_w > 0 ? o->output_w : 1;
 		int oh = o->output_h > 0 ? o->output_h : 1;
 		if (x >= ox && x < ox + ow && y >= oy && y < oy + oh)
@@ -1189,7 +1184,7 @@ fill_output_backgrounds(cairo_t *cr, const state_t *st, const canvas_t *cv,
 	if (cfg.background_set || cfg.page_bg_set)
 		return;
 
-	for (int oi = 0; oi < st->n_outs; oi++) {
+	for (size_t oi = 0; oi < st->n_outs; oi++) {
 		const pout_t *o = &st->outs[oi];
 		if (!o->has_background)
 			continue;
@@ -1200,9 +1195,9 @@ fill_output_backgrounds(cairo_t *cr, const state_t *st, const canvas_t *cv,
 
 		int oow = o->output_w > 0 ? o->output_w : 1;
 		int ooh = o->output_h > 0 ? o->output_h : 1;
-		double ax = cell_x + ((double)(o->output_x - cv->x) / cv->w) *
+		double ax = cell_x + ((double)(o->x - cv->x) / cv->w) *
 		    cw;
-		double ay = cell_y + ((double)(o->output_y - cv->y) / cv->h) *
+		double ay = cell_y + ((double)(o->y - cv->y) / cv->h) *
 		    ch;
 		double aw = ((double)oow / cv->w) * cw;
 		double ah = ((double)ooh / cv->h) * ch;
@@ -1241,8 +1236,8 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		const char *path;
 		double x, y, w, h;
 		int iconified;
-	} icons[MAX_WINS];
-	int n_icons = 0;
+	} *icons = xcalloc(st->n_wins, sizeof(*icons));
+	size_t n_icons = 0;
 
 	PangoFontDescription *font = get_font(st->theme.font, 10.0, 1);
 	/*
@@ -1256,7 +1251,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 			double cy = sy + pr * ch;
 
 			int is_cur = 0;
-			for (int oi = 0; oi < st->n_outs; oi++) {
+			for (size_t oi = 0; oi < st->n_outs; oi++) {
 				const pout_t *o = &st->outs[oi];
 				if (!monitor_visible(st, o->name))
 					continue;
@@ -1289,7 +1284,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 				double cell_x = sx + pc * cw;
 				double cell_y = sy + pr * ch;
 
-				for (int oi = 0; oi < st->n_outs; oi++) {
+				for (size_t oi = 0; oi < st->n_outs; oi++) {
 					const pout_t *o = &st->outs[oi];
 					if (!monitor_visible(st, o->name))
 						continue;
@@ -1304,10 +1299,10 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 					int ooh = o->output_h > 0 ?
 					    o->output_h : 1;
 					double ax = cell_x +
-					    ((double)(o->output_x - cv->x) /
+					    ((double)(o->x - cv->x) /
 					    cv->w) * cw;
 					double ay = cell_y +
-					    ((double)(o->output_y - cv->y) /
+					    ((double)(o->y - cv->y) /
 					    cv->h) * ch;
 					double aw = ((double)oow / cv->w) * cw;
 					double ah = ((double)ooh / cv->h) * ch;
@@ -1342,16 +1337,16 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 	 */
 	/* Paint the focused window last so overlapping thumbnails cannot
 	 * obscure its highlight. */
-	const pwin_t *draw_wins[MAX_WINS];
-	int n_draw_wins = 0;
+	const pwin_t **draw_wins = xcalloc(st->n_wins, sizeof(*draw_wins));
+	size_t n_draw_wins = 0;
 	for (int focus_pass = 0; focus_pass < 2; focus_pass++) {
-		for (int wi = 0; wi < st->n_wins; wi++) {
+		for (size_t wi = 0; wi < st->n_wins; wi++) {
 			const pwin_t *w = &st->wins[wi];
 			if ((w->focused != 0) == focus_pass)
 				draw_wins[n_draw_wins++] = w;
 		}
 	}
-	for (int wi = 0; wi < n_draw_wins; wi++) {
+	for (size_t wi = 0; wi < n_draw_wins; wi++) {
 		const pwin_t *w = draw_wins[wi];
 		int foc = w->focused != 0;
 		if (w->desk != d->nr)
@@ -1410,8 +1405,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 			window_colour(w->id, &r, &g, &b);
 		}
 		if (w->iconified) {
-			if (cfg.window_icons && w->icon[0] != '\0' &&
-			    n_icons < MAX_WINS) {
+			if (cfg.window_icons && w->icon[0] != '\0') {
 				icons[n_icons].path = w->icon;
 				icons[n_icons].x = wx;
 				icons[n_icons].y = wy;
@@ -1456,8 +1450,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		cairo_set_dash(cr, NULL, 0, 0);
 		cairo_rectangle(cr, wx + 0.5, wy + 0.5, ww - 1, wh - 1);
 		cairo_stroke(cr);
-		if (cfg.window_icons && w->icon[0] != '\0' &&
-		    n_icons < MAX_WINS) {
+		if (cfg.window_icons && w->icon[0] != '\0') {
 			icons[n_icons].path = w->icon;
 			icons[n_icons].x = wx;
 			icons[n_icons].y = wy;
@@ -1477,10 +1470,10 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		const pout_t *o;
 		double	      ax, ay, aw, ah;
 	};
-	struct overlay_rec ov[MAX_OUTS];
-	int		   n_ov = 0;
+	struct overlay_rec *ov = xcalloc(st->n_outs, sizeof(*ov));
+	size_t		   n_ov = 0;
 
-	for (int oi = 0; oi < st->n_outs; oi++) {
+	for (size_t oi = 0; oi < st->n_outs; oi++) {
 		const pout_t *o = &st->outs[oi];
 		if (o->current_desk != d->nr)
 			continue;
@@ -1515,14 +1508,12 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		cairo_rectangle(cr, ax + 0.75, ay + 0.75, aw - 1.5, ah - 1.5);
 		cairo_stroke(cr);
 
-		if (n_ov < (int)(sizeof(ov) / sizeof(ov[0]))) {
-			ov[n_ov].o  = o;
-			ov[n_ov].ax = ax;
-			ov[n_ov].ay = ay;
-			ov[n_ov].aw = aw;
-			ov[n_ov].ah = ah;
-			n_ov++;
-		}
+		ov[n_ov].o  = o;
+		ov[n_ov].ax = ax;
+		ov[n_ov].ay = ay;
+		ov[n_ov].aw = aw;
+		ov[n_ov].ah = ah;
+		n_ov++;
 	}
 
 	/*
@@ -1532,7 +1523,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		const double label_pad_y = 3.0;
 		const double inter_gap	 = 2.0;
 
-		for (int i = 0; i < n_ov; i++) {
+		for (size_t i = 0; i < n_ov; i++) {
 			struct overlay_rec *ovi = &ov[i];
 			if (ovi->o->name[0] == '\0')
 				continue;
@@ -1551,7 +1542,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 			/* Count earlier captions sharing this overlay
 			 * position so this one slides below them. */
 			int stack = 0;
-			for (int j = 0; j < i; j++) {
+			for (size_t j = 0; j < i; j++) {
 				if (fabs(ov[j].ax - ovi->ax) < 0.5 &&
 				    fabs(ov[j].ay - ovi->ay) < 0.5)
 					stack++;
@@ -1581,17 +1572,13 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 			/*
 			 * Publish a draggable handle for this plate.
 			 */
-			if (n_overlay_handles < MAX_OVERLAY_HANDLES) {
-				struct overlay_handle *h =
-				    &overlay_handles[n_overlay_handles++];
-				strlcpy(h->name, ovi->o->name,
-				    sizeof(h->name));
-				const double slack	     = 2.0;
-				h->px			     = plate_x - slack;
-				h->py			     = plate_y - slack;
-				h->pw = plate_w + 2 * slack;
-				h->ph = plate_h + 2 * slack;
-			}
+			struct overlay_handle *h = overlay_handle_add();
+			strlcpy(h->name, ovi->o->name, sizeof(h->name));
+			const double slack = 2.0;
+			h->px = plate_x - slack;
+			h->py = plate_y - slack;
+			h->pw = plate_w + 2 * slack;
+			h->ph = plate_h + 2 * slack;
 		}
 	}
 
@@ -1625,7 +1612,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 	/* Icons are the final pager overlay so viewport tinting and page
 	 * gridlines cannot obscure their pixels.
 	 */
-	for (int i = 0; i < n_icons; i++) {
+	for (size_t i = 0; i < n_icons; i++) {
 		if (icons[i].iconified) {
 			draw_icon_at(cr, icons[i].path,
 			    icons[i].x + icons[i].w / 2.0,
@@ -1636,6 +1623,9 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 			    icons[i].y, icons[i].w, icons[i].h);
 		}
 	}
+	xfree(ov);
+	xfree(draw_wins);
+	xfree(icons);
 }
 
 /*
@@ -1679,17 +1669,19 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 	if (L->mon_tab_h <= 0)
 		return;
 
-	const pout_t *tab[MAX_OUTS];
-	int	      n_tab = tab_outputs(st, tab, MAX_OUTS);
-	if (n_tab <= 0)
+	size_t n_tab;
+	const pout_t **tab = tab_outputs(st, &n_tab);
+	if (n_tab == 0) {
+		xfree(tab);
 		return;
+	}
 
 	int    tab_y = dy + L->desk_label_h;
 	double tw    = (double)L->cell_w / n_tab;
 	PangoFontDescription * font = get_font(st->theme.font,
 		L->tab_font_px, 1);
 
-	for (int i = 0; i < n_tab; i++) {
+	for (size_t i = 0; i < n_tab; i++) {
 		double tx = dx + i * tw;
 		int active = cfg.label_highlight && tab[i]->current_desk == d->nr;
 		cow_module_cairo_fill(cr,
@@ -1714,7 +1706,7 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 		int twidth, theight;
 		cow_text_measure(cr, font, d->name, &twidth, &theight);
 		if (twidth > tw - 4) {
-			int n = tab[i]->number > 0 ? tab[i]->number : i + 1;
+			int n = tab[i]->number > 0 ? tab[i]->number : (int)i + 1;
 			snprintf(short_name, sizeof(short_name), "%d", n);
 			name = short_name;
 		}
@@ -1725,58 +1717,64 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 			cow_module_cairo_set_source(cr, cfg.label_inactive_fg);
 		draw_text_centered_clipped(cr, font, tx, tab_y, tw, L->mon_tab_h, name);
 	}
+	xfree(tab);
 }
 
-static void
-build_visible_desks(const pout_t *ref, int desk_indices[MAX_DESKS],
-    int max_visible, int *n_visible)
+static int *
+build_visible_desks(const pout_t *ref, int max_visible, size_t *n_visible)
 {
 	*n_visible = 0;
 	if (ref == NULL || max_visible <= 0)
-		return;
+		return NULL;
+	int *desk_indices = xcalloc(ref->n_desks, sizeof(*desk_indices));
 
 	if (opt_current_only) {
-		for (int i = 0; i < ref->n_desks; i++) {
+		for (size_t i = 0; i < ref->n_desks; i++) {
 			if (ref->desks[i].nr == ref->current_desk) {
 				desk_indices[(*n_visible)++] = i;
-				return;
+				return desk_indices;
 			}
 		}
-		return;
+		return desk_indices;
 	}
 
-	for (int i = 0; i < ref->n_desks && *n_visible < max_visible; i++) {
+	for (size_t i = 0; i < ref->n_desks &&
+	    *n_visible < (size_t)max_visible; i++) {
 		if (opt_desk_range_set &&
 		    (ref->desks[i].nr < opt_desk_first ||
 			ref->desks[i].nr > opt_desk_last))
 			continue;
 		desk_indices[(*n_visible)++] = i;
 	}
+	return desk_indices;
 }
 
 static const pdesk_t *
 visible_desk_at(const pout_t *ref, int vis_idx, int max_visible)
 {
-	int desk_indices[MAX_DESKS];
-	int n_visible;
-
-	build_visible_desks(ref, desk_indices, max_visible, &n_visible);
-	if (vis_idx < 0 || vis_idx >= n_visible)
+	size_t n_visible;
+	int *desk_indices = build_visible_desks(ref, max_visible, &n_visible);
+	if (vis_idx < 0 || (size_t)vis_idx >= n_visible) {
+		xfree(desk_indices);
 		return NULL;
-	return &ref->desks[desk_indices[vis_idx]];
+	}
+	const pdesk_t *desk = &ref->desks[desk_indices[vis_idx]];
+	xfree(desk_indices);
+	return desk;
 }
 
 static int
 visible_index_for_desk(const pout_t *ref, int desk_nr, int max_visible)
 {
-	int desk_indices[MAX_DESKS];
-	int n_visible;
-
-	build_visible_desks(ref, desk_indices, max_visible, &n_visible);
-	for (int i = 0; i < n_visible; i++) {
-		if (ref->desks[desk_indices[i]].nr == desk_nr)
+	size_t n_visible;
+	int *desk_indices = build_visible_desks(ref, max_visible, &n_visible);
+	for (size_t i = 0; i < n_visible; i++) {
+		if (ref->desks[desk_indices[i]].nr == desk_nr) {
+			xfree(desk_indices);
 			return i;
+		}
 	}
+	xfree(desk_indices);
 	return -1;
 }
 
@@ -1827,18 +1825,18 @@ do_render(const state_t *st)
 		goto commit;
 
 	/* Build the list of desk indices we will draw, in grid order. */
-	int desk_indices[MAX_DESKS];
-	int n_visible = 0;
+	size_t n_visible = 0;
 	if (opt_current_only) {
 		const pout_t *cur = current_only_output(st);
 		if (cur != NULL)
 			ref = cur;
 	}
-	build_visible_desks(ref, desk_indices, L.rows * L.cols, &n_visible);
+	int *desk_indices = build_visible_desks(ref, L.rows * L.cols,
+	    &n_visible);
 	int active_dx = -1;
 	int active_dy = -1;
 
-	for (int v = 0; v < n_visible; v++) {
+	for (size_t v = 0; v < n_visible; v++) {
 		int row, col;
 		desk_index_to_rc(&L, v, &row, &col);
 		int dx, dy;
@@ -1896,6 +1894,7 @@ do_render(const state_t *st)
 			cairo_stroke(cr);
 		}
 	}
+	xfree(desk_indices);
 
 	if (active_dx >= 0) {
 		cow_module_cairo_set_source(cr, cfg.desk_active_border);
@@ -2081,7 +2080,7 @@ hit_test_window(const state_t *st, double x, double y,
 	 */
 	const pwin_t *hits[64];
 	int	      n_hits = 0;
-	for (int wi = 0; wi < st->n_wins; wi++) {
+	for (size_t wi = 0; wi < st->n_wins; wi++) {
 		const pwin_t *w = &st->wins[wi];
 		if (w->desk != d->nr)
 			continue;
@@ -2244,12 +2243,13 @@ hit_test_page(const state_t *st, double x, double y, int *desk_nr, int *pc_out,
 	if (tab_idx >= 0) {
 		/* Click in a monitor label.  Look up which monitor that
 		 * label corresponds to and return its name. */
-		const pout_t *tab[MAX_OUTS];
-		int	      n_tab = tab_outputs(st, tab, MAX_OUTS);
-		if (tab_idx < n_tab) {
+		size_t n_tab;
+		const pout_t **tab = tab_outputs(st, &n_tab);
+		if ((size_t)tab_idx < n_tab) {
 			*tab_out     = tab_idx;
 			*out_for_cmd = tab[tab_idx]->name;
 		}
+		xfree(tab);
 		return 1;
 	}
 
@@ -2385,7 +2385,7 @@ ptr_motion(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t t,
 static const char *
 hit_overlay_plate(double x, double y)
 {
-	for (int i = 0; i < n_overlay_handles; i++) {
+	for (size_t i = 0; i < n_overlay_handles; i++) {
 		const struct overlay_handle *h = &overlay_handles[i];
 		if (x >= h->px && x < h->px + h->pw && y >= h->py &&
 		    y < h->py + h->ph)
@@ -2511,14 +2511,14 @@ ptr_button(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t s,
 		 */
 		const pout_t *target = NULL;
 		if (hw->output[0]) {
-			for (int i = 0; i < st.n_outs; i++)
+			for (size_t i = 0; i < st.n_outs; i++)
 				if (strcmp(st.outs[i].name, hw->output) == 0) {
 					target = &st.outs[i];
 					break;
 				}
 		}
 		if (!target && default_out != NULL) {
-			for (int i = 0; i < st.n_outs; i++)
+			for (size_t i = 0; i < st.n_outs; i++)
 				if (strcmp(st.outs[i].name, default_out) == 0) {
 					target = &st.outs[i];
 					break;
@@ -2538,14 +2538,15 @@ ptr_button(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t s,
 
 		/* Switch desk if the window isn't on the current one. */
 		if (target && hw->desk != target->current_desk) {
-			char cmd[128];
+			char *cmd;
 			if (tname)
-				snprintf(cmd, sizeof(cmd), "desk -t %s -d %d",
+				xasprintf(&cmd, "desk -t %s -d %d",
 				    tname, hw->desk);
 			else
-				snprintf(cmd, sizeof(cmd), "desk -d %d",
+				xasprintf(&cmd, "desk -d %d",
 				    hw->desk);
 			ipc_send(cmd);
+			xfree(cmd);
 		}
 
 		/* Scroll to the window's page within that desk. */
@@ -2563,15 +2564,16 @@ ptr_button(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t s,
 			    (wpc != target->page_col) ||
 			    (wpr != target->page_row);
 			if (need_scroll) {
-				char cmd[128];
+				char *cmd;
 				if (tname)
-					snprintf(cmd, sizeof(cmd),
+					xasprintf(&cmd,
 					    "scroll -t %s -a %d,%d", tname, wpc,
 					    wpr);
 				else
-					snprintf(cmd, sizeof(cmd),
+					xasprintf(&cmd,
 					    "scroll -a %d,%d", wpc, wpr);
 				ipc_send(cmd);
+				xfree(cmd);
 			}
 		}
 
@@ -2601,20 +2603,21 @@ ptr_button(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t s,
 	 */
 	if (tab_idx >= 0 && out_name && desk_nr >= 0) {
 		const pout_t *target = NULL;
-		for (int i = 0; i < st.n_outs; i++)
+		for (size_t i = 0; i < st.n_outs; i++)
 			if (strcmp(st.outs[i].name, out_name) == 0) {
 				target = &st.outs[i];
 				break;
 			}
 		if (target && desk_nr != target->current_desk) {
-			char cmd[128];
+			char *cmd;
 			if (is_per_output_mode(&st))
-				snprintf(cmd, sizeof(cmd), "desk -t %s -d %d",
+				xasprintf(&cmd, "desk -t %s -d %d",
 				    out_name, desk_nr);
 			else
-				snprintf(cmd, sizeof(cmd), "desk -d %d",
+				xasprintf(&cmd, "desk -d %d",
 				    desk_nr);
 			ipc_send(cmd);
+			xfree(cmd);
 		}
 		return;
 	}
@@ -2628,7 +2631,7 @@ ptr_button(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t s,
 
 	const pout_t *target = NULL;
 	if (target_name != NULL) {
-		for (int i = 0; i < st.n_outs; i++)
+		for (size_t i = 0; i < st.n_outs; i++)
 			if (strcmp(st.outs[i].name, target_name) == 0) {
 				target = &st.outs[i];
 				break;
@@ -2641,25 +2644,27 @@ ptr_button(__unused void *d, __unused struct wl_pointer *p, __unused uint32_t s,
 
 	if (desk_nr >= 0) {
 		if (target && desk_nr != target->current_desk) {
-			char cmd[128];
+			char *cmd;
 			if (target_name != NULL)
-				snprintf(cmd, sizeof(cmd), "desk -t %s -d %d",
+				xasprintf(&cmd, "desk -t %s -d %d",
 				    target_name, desk_nr);
 			else
-				snprintf(cmd, sizeof(cmd), "desk -d %d",
+				xasprintf(&cmd, "desk -d %d",
 				    desk_nr);
 			ipc_send(cmd);
+			xfree(cmd);
 		}
 	}
 
 	if (pc >= 0 && pr >= 0) {
-		char cmd[128];
+		char *cmd;
 		if (target_name != NULL)
-			snprintf(cmd, sizeof(cmd), "scroll -t %s -a %d,%d",
+			xasprintf(&cmd, "scroll -t %s -a %d,%d",
 			    target_name, pc, pr);
 		else
-			snprintf(cmd, sizeof(cmd), "scroll -a %d,%d", pc, pr);
+			xasprintf(&cmd, "scroll -a %d,%d", pc, pr);
 		ipc_send(cmd);
+		xfree(cmd);
 	}
 }
 
@@ -2740,9 +2745,9 @@ static const struct wl_seat_listener seat_listener = {
 static struct cp_output *
 cp_output_for_wl(const struct wl_output *wo)
 {
-	for (int i = 0; i < cp_n_outputs; i++)
-		if (cp_outputs[i].wl_output == wo)
-			return &cp_outputs[i];
+	for (size_t i = 0; i < cp_n_outputs; i++)
+		if (cp_outputs[i]->wl_output == wo)
+			return cp_outputs[i];
 	return NULL;
 }
 
@@ -2751,9 +2756,9 @@ cp_output_by_name(const char *n)
 {
 	if (n == NULL || n[0] == '\0')
 		return NULL;
-	for (int i = 0; i < cp_n_outputs; i++)
-		if (strcmp(cp_outputs[i].name, n) == 0)
-			return &cp_outputs[i];
+	for (size_t i = 0; i < cp_n_outputs; i++)
+		if (strcmp(cp_outputs[i]->name, n) == 0)
+			return cp_outputs[i];
 	return NULL;
 }
 
@@ -2825,13 +2830,11 @@ reg_global(__unused void *d, struct wl_registry *reg, uint32_t name,
 		seat = wl_registry_bind(reg, name, &wl_seat_interface, 5);
 		wl_seat_add_listener(seat, &seat_listener, NULL);
 	} else if (!strcmp(iface, wl_output_interface.name)) {
-		if (cp_n_outputs >= CP_MAX_TRACKED_OUTPUTS)
-			return;
 		/* Bind v4 (so we get wl_output.name); fall back to
 		 * lower if the compositor doesn't support it.  cow
 		 * advertises wl_output via river so v4 is expected. */
-		uint32_t	  bind_ver = ver >= 4 ? 4 : ver;
-		struct cp_output *po	   = &cp_outputs[cp_n_outputs];
+		uint32_t bind_ver = ver >= 4 ? 4 : ver;
+		struct cp_output *po = xcalloc(1, sizeof(*po));
 		po->wl_output		   = wl_registry_bind(reg, name,
 				 &wl_output_interface, bind_ver);
 		po->global_name		   = name;
@@ -2840,8 +2843,11 @@ reg_global(__unused void *d, struct wl_registry *reg, uint32_t name,
 		if (po->wl_output != NULL) {
 			wl_output_add_listener(po->wl_output, &out_listener,
 			    NULL);
-			cp_n_outputs++;
-		}
+			cp_outputs = xrealloc(cp_outputs, cp_n_outputs + 1,
+			    sizeof(*cp_outputs));
+			cp_outputs[cp_n_outputs++] = po;
+		} else
+			xfree(po);
 	} else
 		cow_module_cursor_handle_global(&cursor, reg, name, iface, ver);
 }
@@ -2849,16 +2855,16 @@ reg_global(__unused void *d, struct wl_registry *reg, uint32_t name,
 static void
 reg_remove(__unused void *d, __unused struct wl_registry *r, uint32_t n)
 {
-	for (int i = 0; i < cp_n_outputs; i++) {
-		if (cp_outputs[i].global_name != n)
+	for (size_t i = 0; i < cp_n_outputs; i++) {
+		if (cp_outputs[i]->global_name != n)
 			continue;
-		if (cp_outputs[i].wl_output != NULL)
-			wl_output_destroy(cp_outputs[i].wl_output);
+		if (cp_outputs[i]->wl_output != NULL)
+			wl_output_destroy(cp_outputs[i]->wl_output);
+		xfree(cp_outputs[i]);
 		/* Compact the array so the index slots stay dense. */
-		int last = cp_n_outputs - 1;
+		size_t last = cp_n_outputs - 1;
 		if (i != last)
 			cp_outputs[i] = cp_outputs[last];
-		memset(&cp_outputs[last], 0, sizeof(cp_outputs[last]));
 		cp_n_outputs--;
 		break;
 	}
@@ -2910,203 +2916,35 @@ cp_surface_on_output(const char *name)
 static const char *
 cp_host_output(void)
 {
-	for (int i = 0; i < cp_n_outputs; i++) {
-		if (cp_outputs[i].on_surface && cp_outputs[i].name[0] != '\0')
-			return cp_outputs[i].name;
+	for (size_t i = 0; i < cp_n_outputs; i++) {
+		if (cp_outputs[i]->on_surface && cp_outputs[i]->name[0] != '\0')
+			return cp_outputs[i]->name;
 	}
 	return NULL;
 }
 
 static void
-parse_status(const char *json)
+handle_status_line(const char *line, __unused void *data)
 {
-	cJSON *root = cJSON_Parse(json);
-	if (!root)
+	state_t next = { 0 };
+	if (!cow_module_snapshot_parse(&next, line))
 		return;
 
-	static state_t st;
-	memset(&st, 0, sizeof(st));
-
-	cJSON *dcfg = cJSON_GetObjectItem(root, "desktop_configuration");
-	if (cJSON_IsString(dcfg))
-		strlcpy(st.desktop_config, dcfg->valuestring,
-		    sizeof(st.desktop_config));
-	else
-		strlcpy(st.desktop_config, "global",
-		    sizeof(st.desktop_config));
-
-	cJSON *theme = cJSON_GetObjectItem(root, "theme");
-	(void)cow_module_theme_parse(theme, &st.theme);
-		
-	cJSON *titlebar = cJSON_GetObjectItem(theme, "titlebar");
-	cJSON  *v = cJSON_GetObjectItem(titlebar, "font");
-	if (cJSON_IsString(v))
-		strlcpy(st.theme.font, v->valuestring,
-			sizeof(st.theme.font));
-	else
-		strlcpy(st.theme.font, "Sans 8",
-			sizeof(st.theme.font));
-
-	cJSON *outs = cJSON_GetObjectItem(root, "outputs");
-	cJSON *out;
-	int    oi = 0;
-	cJSON_ArrayForEach(out, outs)
-	{
-		if (oi >= MAX_OUTS)
-			break;
-		pout_t *po = &st.outs[oi++];
-		cJSON  *v;
-#define GN(k, f)                         \
-	v = cJSON_GetObjectItem(out, k); \
-	if (cJSON_IsNumber(v))           \
-		po->f = (int)v->valuedouble;
-#define GS(k, f, z)                      \
-	v = cJSON_GetObjectItem(out, k); \
-	if (cJSON_IsString(v))           \
-		strlcpy(po->f, v->valuestring, z);
-		GS("name", name, 64)
-		GN("number", number)
-		GN("x", output_x)
-		GN("y", output_y)
-		GN("current_desk", current_desk)
-		v = cJSON_GetObjectItem(out, "current");
-		if (cJSON_IsBool(v))
-			po->current = cJSON_IsTrue(v) ? 1 : 0;
-		GN("page_cols", page_cols)
-		GN("page_rows", page_rows)
-		GN("page_col", page_col)
-		GN("page_row", page_row)
-		GN("page_vx", page_vx)
-		GN("page_vy", page_vy)
-		GN("output_w", output_w)
-		GN("output_h", output_h)
-#undef GN
-#undef GS
-		cJSON *background = cJSON_GetObjectItem(out, "background");
-		po->has_background = cJSON_IsString(background) &&
-		    background->valuestring != NULL &&
-		    cow_colour_parse(background->valuestring, po->background);
-		cJSON *desks = cJSON_GetObjectItem(out, "desks");
-		cJSON *dk;
-		int    di = 0;
-		cJSON_ArrayForEach(dk, desks)
-		{
-			if (di >= MAX_DESKS)
-				break;
-			pdesk_t *pd = &po->desks[di++];
-			v	    = cJSON_GetObjectItem(dk, "nr");
-			if (cJSON_IsNumber(v))
-				pd->nr = (int)v->valuedouble;
-			v = cJSON_GetObjectItem(dk, "name");
-			if (cJSON_IsString(v))
-				strlcpy(pd->name, v->valuestring,
-				    sizeof(pd->name));
-			v = cJSON_GetObjectItem(dk, "windows");
-			if (cJSON_IsNumber(v))
-				pd->window_count = (int)v->valuedouble;
-			pd->active = cJSON_IsTrue(
-			    cJSON_GetObjectItem(dk, "active"));
-		}
-		po->n_desks = di;
-	}
-	st.n_outs = oi;
-
-	cJSON_Delete(root);
-
-	/*
-	 * Maintain the "user current output" sticky.  Pick the output
-	 * cow has flagged as current=true UNLESS that output is the
-	 * one cowpager's own surface is currently sitting on -- in
-	 * which case the user just clicked the pager and we want to
-	 * preserve the previous value so subsequent desk/scroll
-	 * commands target the user's actual workspace, not cowpager's.
-	 *
-	 * If no output is current (rare, transient), or every current
-	 * output is cowpager's own, leave the sticky alone -- the
-	 * previously cached value is the best guess.
-	 */
-	for (int i = 0; i < st.n_outs; i++) {
-		if (!st.outs[i].current)
+	/* Keep the last user-focused output when cowpager itself receives
+	 * focus, so pager actions still target the user's workspace. */
+	for (size_t i = 0; i < next.n_outs; i++) {
+		if (!next.outs[i].current ||
+		    cp_surface_on_output(next.outs[i].name))
 			continue;
-		if (cp_surface_on_output(st.outs[i].name))
-			continue;
-		strlcpy(cp_user_output, st.outs[i].name,
+		strlcpy(cp_user_output, next.outs[i].name,
 		    sizeof(cp_user_output));
 		break;
 	}
-	strlcpy(st.user_output, cp_user_output, sizeof(st.user_output));
-	st.n_wins = g_state.n_wins;
-	memcpy(st.wins, g_state.wins, sizeof(st.wins));
-	g_state = st;
+	strlcpy(next.user_output, cp_user_output,
+	    sizeof(next.user_output));
+	cow_module_snapshot_fini(&g_state);
+	g_state = next;
 	g_dirty = 1;
-}
-
-static void
-fetch_windows(void)
-{
-	char *resp = ipc_query("show -a window");
-	if (!resp)
-		return;
-
-	cJSON *root = cJSON_Parse(resp);
-	free(resp);
-	if (!root)
-		return;
-
-	cJSON *data = cJSON_GetObjectItem(root, "data");
-	if (!cJSON_IsArray(data)) {
-		cJSON_Delete(root);
-		return;
-	}
-
-	static pwin_t wins[MAX_WINS];
-	int    nw = 0;
-	cJSON *w;
-	cJSON_ArrayForEach(w, data)
-	{
-		if (nw >= MAX_WINS)
-			break;
-		pwin_t *pw = &wins[nw++];
-		memset(pw, 0, sizeof(*pw));
-		cJSON *v;
-#define GN(k, f)                       \
-	v = cJSON_GetObjectItem(w, k); \
-	if (cJSON_IsNumber(v))         \
-		pw->f = (int)v->valuedouble;
-#define GS(k, f, z)                    \
-	v = cJSON_GetObjectItem(w, k); \
-	if (cJSON_IsString(v))         \
-		strlcpy(pw->f, v->valuestring, z);
-		GS("id", id, 128)
-		GS("output", output, 64)
-		GS("app_id", app_id, 64)
-		GS("icon", icon, sizeof(pw->icon))
-		GN("desk", desk)
-		GN("vx", vx)
-		GN("vy", vy)
-		GN("width", w)
-		GN("height", h)
-		GN("icon_vx", icon_vx)
-		GN("icon_vy", icon_vy)
-		GN("icon_width", icon_w)
-		GN("icon_height", icon_h)
-		pw->focused = cJSON_IsTrue(cJSON_GetObjectItem(w, "focused"));
-		pw->iconified = cJSON_IsTrue(cJSON_GetObjectItem(w, "iconified"));
-#undef GN
-#undef GS
-	}
-	cJSON_Delete(root);
-
-	g_state.n_wins = nw;
-	memcpy(g_state.wins, wins, sizeof(pwin_t) * (size_t)nw);
-	g_dirty = 1;
-}
-
-static void
-handle_status_line(const char *line, __unused void *data)
-{
-	parse_status(line);
-	fetch_windows();
 	schedule_render();
 }
 
@@ -3626,11 +3464,22 @@ main(int argc, char *argv[])
 		wl_pointer_destroy(pointer);
 	if (seat != NULL)
 		wl_seat_destroy(seat);
+	for (size_t i = 0; i < cp_n_outputs; i++) {
+		if (cp_outputs[i]->wl_output != NULL)
+			wl_output_destroy(cp_outputs[i]->wl_output);
+		xfree(cp_outputs[i]);
+	}
 	cow_module_shm_buffers_destroy(buffers,
 	    sizeof(buffers) / sizeof(buffers[0]));
 	wl_display_disconnect(display);
 	cow_image_cache_clear(&icon_cache);
 	pager_selections_free();
+	xfree(cp_outputs);
+	xfree(overlay_handles);
+	for (size_t i = 0; i < opt_n_monitors; i++)
+		xfree(opt_monitors[i]);
+	xfree(opt_monitors);
+	cow_module_snapshot_fini(&g_state);
 
 	return 0;
 }
