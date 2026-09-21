@@ -196,6 +196,7 @@ const struct cow_option_entry cow_options_table[] = {
 		.scope = COW_OPTION_MIXED,
 		.action = COW_OPTION_COLOUR,
 		.id = COW_VIEW_CFG_BORDER_RESIZE,
+		.view_offset = COW_OPTION_NO_OFFSET,
 	},
 	{
 		.name = "border.",
@@ -638,8 +639,11 @@ cow_option_for_view_cfg(enum cow_view_cfg_option option)
 {
 	for (const struct cow_option_entry *entry = cow_options_table;
 	    entry->name != NULL; entry++) {
+		/* An omitted offset defaults to zero, which points into the
+		 * per-view override bits rather than a visual setting. */
 		if (entry->match != COW_OPTION_EXACT || entry->id != option ||
-		    entry->view_offset == COW_OPTION_NO_OFFSET)
+		    entry->view_offset == COW_OPTION_NO_OFFSET ||
+		    entry->view_offset < offsetof(struct cow_view_cfg, border))
 			continue;
 		switch (entry->action) {
 		case COW_OPTION_SCALAR_BOOL:

@@ -470,6 +470,14 @@ config_types_test = executable('test-config-types',
 )
 test('config-types', config_types_test)
 
+options_table_test = executable('test-options-table',
+    'tests/options-table.c',
+    'src/options-table.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('options-table', options_table_test)
+
 cow_box_test = executable('test-cow-box',
     'tests/cow-box.c',
     'src/cow_box.c',
