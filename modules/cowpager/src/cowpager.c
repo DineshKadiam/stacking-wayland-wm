@@ -1089,8 +1089,10 @@ desk_index_to_rc(const layout_t *L, int idx, int *row, int *col)
 }
 
 static PangoFontDescription *
-get_font(const char * base_font, double size, int bold)
+get_font(const state_t *st, double size, int bold)
 {
+	const char *base_font = st->titlebar_theme.has_font ?
+	    st->titlebar_theme.font : "Sans 8";
 	PangoFontDescription *desc = pango_font_description_from_string(
 		base_font);	
 	/* The old "Cairo Toy Font" rendering was slightly smaller than
@@ -1241,7 +1243,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 	} *icons = xcalloc(st->n_wins, sizeof(*icons));
 	size_t n_icons = 0;
 
-	PangoFontDescription *font = get_font(st->theme.font, 10.0, 1);
+	PangoFontDescription *font = get_font(st, 10.0, 1);
 	/*
 	 * Fill page-cell backgrounds.  A cell is "current" if any
 	 * monitor whose current_desk == this desk has its page_col /
@@ -1653,7 +1655,7 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 		    dy, L->cell_w, L->desk_label_h);
 
 		cow_module_cairo_set_source(cr, cfg.label_fg);
-		PangoFontDescription *font = get_font(st->theme.font, L->desk_font_px, 1);
+		PangoFontDescription *font = get_font(st, L->desk_font_px, 1);
 
 		char nr_label[16];
 		snprintf(nr_label, sizeof(nr_label), "%d", d->nr);
@@ -1680,7 +1682,7 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 
 	int    tab_y = dy + L->desk_label_h;
 	double tw    = (double)L->cell_w / n_tab;
-	PangoFontDescription * font = get_font(st->theme.font,
+	PangoFontDescription * font = get_font(st,
 		L->tab_font_px, 1);
 
 	for (size_t i = 0; i < n_tab; i++) {

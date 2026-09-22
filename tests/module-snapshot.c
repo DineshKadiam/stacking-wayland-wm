@@ -28,7 +28,8 @@ make_snapshot(void)
 	cJSON_AddStringToObject(root, "desktop_configuration", "per-output");
 	cJSON *theme = cJSON_AddObjectToObject(root, "theme");
 	cJSON_AddStringToObject(theme, "background", "0x102030");
-	cJSON_AddStringToObject(theme, "font", "Sans 12");
+	cJSON *titlebar = cJSON_AddObjectToObject(theme, "titlebar");
+	cJSON_AddStringToObject(titlebar, "font", "Adwaita Sans Bold 14");
 	cJSON *outputs = cJSON_AddArrayToObject(root, "outputs");
 	for (int i = 0; i < 24; i++) {
 		cJSON *output = cJSON_CreateObject();
@@ -80,6 +81,12 @@ main(void)
 	    snapshot.n_wins != 600 ||
 	    strcmp(snapshot.wins[599].id, "window-599") != 0) {
 		fprintf(stderr, "snapshot collections were truncated\n");
+		failed = 1;
+	}
+	if (!snapshot.titlebar_theme.has_font ||
+	    strcmp(snapshot.titlebar_theme.font, "Adwaita Sans Bold 14") != 0 ||
+	    snapshot.theme.has_font) {
+		fprintf(stderr, "snapshot titlebar font was not preserved\n");
 		failed = 1;
 	}
 	if (cow_module_snapshot_parse(&snapshot, "not json") ||
