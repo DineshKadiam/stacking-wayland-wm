@@ -356,11 +356,15 @@ include_dirs = [
     include_directories('vendor'),
 ]
 
-executable('cow',
+cow = executable('cow',
     srcs + generated + [dsl_parser_gen, dsl_lexer_gen],
     include_directories: include_dirs,
     dependencies: all_deps,
     install: true,
+)
+
+test('command-print', find_program('sh'),
+    args: [files('tests/command-print.sh'), cow],
 )
 
 xpm_test = executable('test-xpm',

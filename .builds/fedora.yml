@@ -7,6 +7,7 @@ packages:
   - bison
   - cairo-devel.x86_64
   - flex
+  - gawk
   - gcc
   - libasan.x86_64
   - libbsd-devel.x86_64

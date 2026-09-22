@@ -209,17 +209,19 @@ cmd_print(struct cmd *cmd, char *buf, size_t len)
 {
 	size_t off, used;
 
+	if (len == 0)
+		return (0);
 	const char *name = cmd->invoked_name != NULL ? cmd->invoked_name :
 	    cmd->entry->name;
 	off = snprintf(buf, len, "%s ", name);
-	if (off + 1 < len) {
-		used = args_print(cmd->args, buf + off, len - off - 1);
-		if (used == 0)
-			off--;
-		else
-			off += used;
-		buf[off] = '\0';
-	}
+	if (off >= len)
+		return (len - 1);
+	used = args_print(cmd->args, buf + off, len - off);
+	if (used == 0)
+		off--;
+	else
+		off += used;
+	buf[off] = '\0';
 	return (off);
 }
 

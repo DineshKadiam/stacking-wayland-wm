@@ -107,6 +107,9 @@ cmd_list_print(struct cmd_list *cmdlist, char *buf, size_t len)
 	struct cmd *cmd;
 	size_t	    off;
 
+	if (len == 0)
+		return (0);
+	buf[0] = '\0';
 	off = 0;
 	TAILQ_FOREACH (cmd, &cmdlist->list, qentry) {
 		if (off >= len)
@@ -117,7 +120,7 @@ cmd_list_print(struct cmd_list *cmdlist, char *buf, size_t len)
 		if (TAILQ_NEXT(cmd, qentry) != NULL)
 			off += snprintf(buf + off, len - off, " ; ");
 	}
-	return (off);
+	return (off < len ? off : len - 1);
 }
 
 static void

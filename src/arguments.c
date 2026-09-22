@@ -159,8 +159,11 @@ args_print(struct args *args, char *buf, size_t len)
 	const char	  *quotes;
 	struct args_entry *entry;
 
-	/* There must be at least one byte at the start. */
+	/* Return the number of bytes stored, excluding the terminator. */
 	if (len == 0)
+		return (0);
+	buf[0] = '\0';
+	if (len == 1)
 		return (0);
 	off = 0;
 
@@ -172,7 +175,7 @@ args_print(struct args *args, char *buf, size_t len)
 
 		if (off == len - 1) {
 			buf[off] = '\0';
-			return (len);
+			return (len - 1);
 		}
 		buf[off++] = entry->flag;
 		buf[off]   = '\0';
@@ -187,7 +190,7 @@ args_print(struct args *args, char *buf, size_t len)
 
 		if (off >= len) {
 			/* snprintf will have zero terminated. */
-			return (len);
+			return (len - 1);
 		}
 
 		if (strchr(entry->value, ' ') != NULL)
@@ -203,7 +206,7 @@ args_print(struct args *args, char *buf, size_t len)
 	for (i = 0; i < args->argc; i++) {
 		if (off >= len) {
 			/* snprintf will have zero terminated. */
-			return (len);
+			return (len - 1);
 		}
 
 		if (strchr(args->argv[i], ' ') != NULL)
@@ -214,7 +217,7 @@ args_print(struct args *args, char *buf, size_t len)
 		    off != 0 ? " " : "", quotes, args->argv[i], quotes);
 	}
 
-	return (off);
+	return (off < len ? off : len - 1);
 }
 
 /* Return if an argument is present. */
