@@ -660,7 +660,13 @@ tab_outputs(const state_t *st, size_t *count)
 		for (size_t j = 0; j < opt_n_monitors; j++) {
 			int selected = cow_output_selector_resolve(opt_monitors[j],
 			    entries, st->n_outs);
-			if (selected >= 0)
+			if (selected < 0)
+				continue;
+			size_t i;
+			for (i = 0; i < *count; i++)
+				if (out_arr[i] == &st->outs[selected])
+					break;
+			if (i == *count)
 				out_arr[(*count)++] = &st->outs[selected];
 		}
 		xfree(entries);
@@ -1240,7 +1246,8 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		const char *path;
 		double x, y, w, h;
 		int iconified;
-	} *icons = xcalloc(st->n_wins, sizeof(*icons));
+	} *icons = st->n_wins > 0 ?
+	    xcalloc(st->n_wins, sizeof(*icons)) : NULL;
 	size_t n_icons = 0;
 
 	PangoFontDescription *font = get_font(st, 10.0, 1);
@@ -1341,7 +1348,8 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 	 */
 	/* Paint the focused window last so overlapping thumbnails cannot
 	 * obscure its highlight. */
-	const pwin_t **draw_wins = xcalloc(st->n_wins, sizeof(*draw_wins));
+	const pwin_t **draw_wins = st->n_wins > 0 ?
+	    xcalloc(st->n_wins, sizeof(*draw_wins)) : NULL;
 	size_t n_draw_wins = 0;
 	for (int focus_pass = 0; focus_pass < 2; focus_pass++) {
 		for (size_t wi = 0; wi < st->n_wins; wi++) {
@@ -1630,6 +1638,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 	xfree(ov);
 	xfree(draw_wins);
 	xfree(icons);
+	pango_font_description_free(font);
 }
 
 /*
@@ -1668,6 +1677,7 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 		}
 		draw_text_centered_clipped(cr, font, dx, dy, L->cell_w,
 		    L->desk_label_h, text);
+		pango_font_description_free(font);
 	}
 
 	if (L->mon_tab_h <= 0)
@@ -1721,6 +1731,7 @@ draw_desk_chrome(cairo_t *cr, const state_t *st, const layout_t *L,
 			cow_module_cairo_set_source(cr, cfg.label_inactive_fg);
 		draw_text_centered_clipped(cr, font, tx, tab_y, tw, L->mon_tab_h, name);
 	}
+	pango_font_description_free(font);
 	xfree(tab);
 }
 
@@ -1728,7 +1739,7 @@ static int *
 build_visible_desks(const pout_t *ref, int max_visible, size_t *n_visible)
 {
 	*n_visible = 0;
-	if (ref == NULL || max_visible <= 0)
+	if (ref == NULL || ref->n_desks == 0 || max_visible <= 0)
 		return NULL;
 	int *desk_indices = xcalloc(ref->n_desks, sizeof(*desk_indices));
 

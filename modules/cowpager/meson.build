@@ -15,8 +15,7 @@ pager_deps = [
     m_dep,
 ]
 
-executable('cowpager',
-    ['src/cowpager.c'] + pager_generated,
+pager_support_sources = files(
     '../../src/colour.c',
     '../../src/image.c',
     '../../src/image_cache.c',
@@ -36,11 +35,23 @@ executable('cowpager',
     '../../src/text.c',
     '../../src/util.c',
     '../../vendor/cJSON.c',
-    include_directories: [
+)
+pager_include_dirs = [
         include_directories('../..'),
         include_directories('../../vendor'),
         include_directories('../../include'),
-    ],
+]
+
+executable('cowpager',
+    ['src/cowpager.c'] + pager_generated + pager_support_sources,
+    include_directories: pager_include_dirs,
     dependencies: pager_deps,
     install: true,
 )
+
+pager_test = executable('test-cowpager',
+    ['../../tests/cowpager.c'] + pager_generated + pager_support_sources,
+    include_directories: pager_include_dirs,
+    dependencies: pager_deps,
+)
+test('cowpager', pager_test)
