@@ -54,6 +54,7 @@ struct status_client {
 	int fd;
 	bool active;
 	bool identified;
+	bool snapshot_pending;
 	char name[COW_MODULE_CLIENT_NAME_MAX + 1];
 	char hello[sizeof(COW_MODULE_HELLO) + COW_MODULE_CLIENT_NAME_MAX + 1];
 	size_t hello_len;
@@ -70,6 +71,7 @@ static size_t last_snapshot_len = 0;
 
 static void status_accept_cb(evutil_socket_t, short, void *);
 static void status_client_read_cb(struct bufferevent *, void *);
+static void status_client_write_cb(struct bufferevent *, void *);
 static void status_client_event_cb(struct bufferevent *, short, void *);
 
 static void
@@ -169,6 +171,7 @@ status_accept(void)
 		client->fd = fd;
 		client->active = true;
 		client->identified = false;
+		client->snapshot_pending = false;
 		client->name[0] = '\0';
 		client->hello_len = 0;
 		client->bev = bufferevent_socket_new(cow_event_base(), fd,
@@ -179,7 +182,8 @@ status_accept(void)
 			status_remove_client(client, "event-error");
 			continue;
 		}
-		bufferevent_setcb(client->bev, status_client_read_cb, NULL,
+		bufferevent_setcb(client->bev, status_client_read_cb,
+		    status_client_write_cb,
 		    status_client_event_cb, client);
 		bufferevent_enable(client->bev, EV_READ | EV_WRITE);
 		cow_log_trace("status transport connected (fd=%d clients=%d)",
@@ -236,6 +240,19 @@ status_client_read_cb(struct bufferevent *bev, void *data)
 }
 
 static void
+status_client_write_cb(struct bufferevent *bev, void *data)
+{
+	struct status_client *client = data;
+	if (!client->active || !client->identified ||
+	    !client->snapshot_pending ||
+	    evbuffer_get_length(bufferevent_get_output(bev)) != 0)
+		return;
+	client->snapshot_pending = false;
+	if (last_snapshot != NULL)
+		bufferevent_write(bev, last_snapshot, last_snapshot_len);
+}
+
+static void
 status_client_event_cb(__unused struct bufferevent *bev, short events,
     void *data)
 {
@@ -253,8 +270,8 @@ status_accept_cb(__unused evutil_socket_t fd, __unused short events,
 /*
  * Send a string to all connected status clients.
  * Keep at most one snapshot queued for a slow client.  bufferevent preserves
- * line framing across short writes; a later state change will supply a fresh
- * snapshot after the pending one drains.
+ * line framing across short writes. Remember skipped updates so the write
+ * callback sends the latest snapshot after the queued one drains.
  */
 static void
 status_broadcast(const char *msg, size_t len)
@@ -264,8 +281,11 @@ status_broadcast(const char *msg, size_t len)
 		struct status_client *client = &clients[i++];
 		if (!client->active || !client->identified)
 			continue;
-		if (evbuffer_get_length(bufferevent_get_output(client->bev)) > 0)
+		if (evbuffer_get_length(bufferevent_get_output(client->bev)) > 0) {
+			client->snapshot_pending = true;
 			continue;
+		}
+		client->snapshot_pending = false;
 		bufferevent_write(client->bev, msg, len);
 	}
 }
