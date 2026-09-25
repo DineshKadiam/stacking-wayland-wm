@@ -367,6 +367,22 @@ test('command-print', find_program('sh'),
     args: [files('tests/command-print.sh'), cow],
 )
 
+# Exercise real WM state without connecting to a compositor. Reuse CoW's
+# objects, replacing only its entry point with the test harness.
+wm_test_sources = []
+foreach source : srcs
+    if source != 'src/main.c'
+        wm_test_sources += source
+    endif
+endforeach
+pan_test = executable('test-pan-frames',
+    ['tests/pan-frames.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
+    objects: cow.extract_objects(wm_test_sources),
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('pan-frames', pan_test)
+
 xpm_test = executable('test-xpm',
     'tests/test_xpm.c',
     'src/xpm.c',

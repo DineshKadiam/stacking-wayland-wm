@@ -254,8 +254,12 @@ cow_pan_cancel(void)
 	cow_wm.pan_lock_output = NULL;
 	cow_wm.pan_lock_edge   = -1;
 	struct cow_seat *seat;
-	wl_list_for_each(seat, &cow_wm.seats, wm_link)
+	wl_list_for_each(seat, &cow_wm.seats, wm_link) {
+		/* Drag arming synthesises enter state without surface events. */
+		if (seat->op_in_progress && out != NULL && edge >= 0)
+			out->pan_entered[edge] = false;
 		seat->op.drop_output = NULL;
+	}
 }
 
 static bool
@@ -1013,6 +1017,8 @@ void
 cow_pan_finish_drop(struct cow_view *view, struct cow_output *target, int edge)
 {
 	pan_frames_update_all();
+	if (edge < COW_PAN_TOP || edge > COW_PAN_RIGHT)
+		return;
 	/* Output removal may have invalidated the saved pointer. */
 	struct cow_output *output = NULL, *candidate;
 	wl_list_for_each(candidate, &cow_wm.outputs, wm_link) {
@@ -1029,8 +1035,8 @@ cow_pan_finish_drop(struct cow_view *view, struct cow_output *target, int edge)
 	pan_update_cooldowns(output);
 	cJSON *event = cJSON_CreateObject();
 	cJSON_AddStringToObject(event, "output", output->name ? output->name : "");
-	cJSON_AddStringToObject(event, "edge",
-	    cow_rule_type_name(match_edge_to_rule(edge)) + sizeof("on-edgedrop-") - 1);
+	static const char *const names[] = { "n", "s", "w", "e" };
+	cJSON_AddStringToObject(event, "edge", names[edge]);
 	char *json = cJSON_PrintUnformatted(event);
 	cow_rule_fire_json(match_edge_to_rule(edge), view, output->current_desk,
 	    output, json);

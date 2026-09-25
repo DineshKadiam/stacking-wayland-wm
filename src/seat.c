@@ -301,6 +301,8 @@ cow_seat_create(struct river_seat_v1 *river_seat)
 void
 cow_seat_destroy(struct cow_seat *seat)
 {
+	if (seat->op_in_progress)
+		cow_pan_cancel();
 	wl_list_remove(&seat->wm_link);
 
 	cow_pointer_op_disarm_attached(seat);
@@ -443,8 +445,11 @@ cow_seat_forget_view(struct cow_seat *seat, struct cow_view *view)
 	}
 	if (seat->pressed_view == view)
 		seat->pressed_view = NULL;
-	if (seat->op.view == view)
+	if (seat->op.view == view) {
+		if (seat->op_in_progress)
+			cow_pan_cancel();
 		seat->op.view = NULL;
+	}
 	for (size_t i = 0; i < seat->op.group_count;) {
 		if (seat->op.group[i].view != view) {
 			i++;
