@@ -91,8 +91,8 @@ void cow_rule_fire(enum cow_rule_type, struct cow_view *, struct cow_desk *,
     struct cow_output *);
 void cow_rule_fire_json(enum cow_rule_type, struct cow_view *,
     struct cow_desk *, struct cow_output *, const char *event_json);
-    
-/* Determine if a rule exists for a given binding type */
-bool cow_rule_set_for_type(enum cow_rule_type);
+
+bool cow_rule_matches_event(enum cow_rule_type, const struct cow_view *,
+    const struct cow_desk *, const struct cow_output *);
 
 #endif

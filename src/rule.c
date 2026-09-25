@@ -68,8 +68,6 @@ static const struct {
 static struct wl_list rules;
 static bool	      rules_initialised;
 
-bool rule_exists_for_event[COW_RULE_TYPE_COUNT];
-
 static void
 rules_lazy_init(void)
 {
@@ -90,17 +88,6 @@ cow_rule_free(struct cow_rule *rule)
 {
 	if (rule == NULL)
 		return;
-	/* Only delete the 'rules exist' cache flag if it's the last one
-	 * for the event type */
-	bool others_exist_for_event = false;
-	struct cow_rule *r;
-	wl_list_for_each(r, &rules, link)
-	{
-		if (r->type == rule->type && r != rule)
-			others_exist_for_event = true;
-	}
-	if (!others_exist_for_event)
-		rule_exists_for_event[rule->type] = false;
 	cow_policy_fini(&rule->policy);
 	if (rule->cmdlist != NULL)
 		cmd_list_free(rule->cmdlist);
@@ -163,17 +150,6 @@ cow_rule_find_by_name(const char *name)
 	return NULL;
 }
 
-/* Convenience function.  Cache when rules are created or deleted for
- * a given event type so we don't have to walk the entire list just to
- * say "did we have any rules for COW_RULE_ON_EDGEDROP_S?" */
-bool
-cow_rule_set_for_type(enum cow_rule_type type)
-{
-	if (type >= 0 && type < COW_RULE_TYPE_COUNT)
-		return rule_exists_for_event[type];
-	return false;
-}
-
 const struct wl_list *
 cow_rules_head(void)
 {
@@ -188,7 +164,6 @@ cow_rule_add(struct cow_rule *rule)
 		return;
 	rules_lazy_init();
 	wl_list_insert(rules.prev, &rule->link);
-	rule_exists_for_event[rule->type] = true;
 }
 
 bool
@@ -222,6 +197,23 @@ rule_scope_matches(const struct cow_rule *rule, const struct cow_desk *desk,
     const struct cow_output *output)
 {
 	return cow_policy_scope_matches(&rule->policy, desk, output);
+}
+
+/* Test eligibility without executing a rule's body. */
+bool
+cow_rule_matches_event(enum cow_rule_type type, const struct cow_view *view,
+    const struct cow_desk *desk, const struct cow_output *output)
+{
+	if (!rules_initialised)
+		return false;
+	struct cow_rule *rule;
+	wl_list_for_each(rule, &rules, link) {
+		if (rule->type == type && rule_view_matches(rule, view) &&
+		    (rule->policy.is_global ||
+		    rule_scope_matches(rule, desk, output)))
+			return true;
+	}
+	return false;
 }
 
 /* Run a single rule's command body against the supplied context.

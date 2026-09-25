@@ -36,7 +36,7 @@ void pan_frames_destroy_output(struct cow_output *);
 void pan_frames_destroy_all(void);
 void cow_pan_suppress_for(long);
 
-void pan_disarm(void);
+void cow_pan_cancel(void);
 /* Paint a specific edge orange (true) or transparent (false). */
 void pan_frame_set_orange(struct cow_output *, int, bool);
 
@@ -72,6 +72,6 @@ struct cow_seat;
 void cow_output_pan_op_arm(struct cow_seat *);
 void cow_pan_frames_modifiers_changed(struct cow_seat *);
 
-void pan_update_cooldowns(struct cow_output *);
-void pan_lock_edges_hide(void);
+struct cow_view;
+void cow_pan_finish_drop(struct cow_view *, struct cow_output *, int);
 #endif /* COW_PAN_FRAMES_H */

@@ -65,6 +65,10 @@ struct cow_pointer_op {
 	enum cow_pointer_op_type type;
 	struct cow_view		*view;
 
+	/* Armed edge drop; cleared whenever the pan-frame lock changes. */
+	struct cow_output *drop_output;
+	int drop_edge;
+
 	/* Initial position of the view when the op started */
 	int start_x, start_y;
 

@@ -352,6 +352,7 @@ cow_pointer_op_start_move(struct cow_seat *seat, struct cow_view *view)
 	pointer_op_group_clear(&seat->op);
 
 	seat->op.type	 = COW_POINTER_OP_MOVE;
+	seat->op.drop_output = NULL;
 	seat->op.view	 = view;
 	seat->op.start_x = view->x;
 	seat->op.start_y = view->y;
@@ -794,6 +795,9 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 {
 	enum cow_pointer_op_type finished_type = seat->op.type;
 	bool icon_moved     = seat->op.icon_moved;
+	struct cow_output *drop_output = seat->op.drop_output;
+	int drop_edge = seat->op.drop_edge;
+	cow_pan_cancel();
 
 	if (seat->op.type == COW_POINTER_OP_RESIZE)
 		river_window_v1_inform_resize_end(view->river_window);
@@ -868,16 +872,6 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 		    seat->has_pointer_position);
 	}
 	if (finished_type == COW_POINTER_OP_MOVE) {
-		if (view->edgedrop_event_queued) {
-			cow_rule_fire(view->edgedrop_event_queued, view, view->desk,
-			    view->output);
-			view->edgedrop_event_queued = COW_RULE_NONE;
-			pan_update_cooldowns(view->output);
-		}
-		pan_disarm();
-		/* Ensure this cleans up any lit-up trim leftover */
-		pan_lock_edges_hide();
-
 		for (size_t i = 0; i < seat->op.group_count; i++) {
 			struct cow_view *member = seat->op.group[i].view;
 			if (member == NULL || member->closed)
@@ -947,6 +941,8 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 	pointer_op_group_clear(&seat->op);
 	if (finished_type == COW_POINTER_OP_MOVE)
 		cow_update_request(COW_UPDATE_STATUS);
+	if (finished_type == COW_POINTER_OP_MOVE)
+		cow_pan_finish_drop(view, drop_output, drop_edge);
 }
 
 void
@@ -1038,6 +1034,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 
 	struct cow_view *view = seat->op.view;
 	if (view == NULL || view->closed) {
+		cow_pan_cancel();
 		cow_log_debug("pointer operation cancelled (type=%s "
 		    "window-unavailable=yes)",
 		    pointer_op_type_name(seat->op.type));
