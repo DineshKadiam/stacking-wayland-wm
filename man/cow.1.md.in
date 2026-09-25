@@ -858,8 +858,26 @@ The following table shows which events are available:
 | **on-outputs-changed** | Fired when the set of available outputs changes -- a monitor is plugged in or unplugged, or every output is destroyed and recreated. Fires once per change. Useful to re-apply a monitor layouts. |
 | **on-desks-changed** | Fired after **set desks.count** successfully resizes the live desk sets. Fires once per command. Use with **-g** to rebuild menus, bindings, or other configuration derived from the available desks. |
 | **on-desk** | Used to change window styles on a particular desk. |
-| **on-edgedrop-DIR** | Triggered when a window is dragged to the DIR edge of the screen (n, s, e, or w), held,
-  and dropped. |
+| **on-edgedrop-DIR** | Fired when a window is held at an output edge, then dropped. DIR is n, s, e, or w. |
+
+While dragging a window, hold the pointer at an output edge until it
+highlights, then release to run the rule. Move away to cancel.
+
+A matching drop rule replaces drag-to-page scrolling on that edge.
+
+The rule acts on the dragged window. Its output and desk scope follow the
+pointer, which may be on a different output. To move the window onto DP-1
+before maximising it:
+
+```text
+rule -t DP-1 -T on-edgedrop-n -n maximise-on-dp1 script {
+    window-move -o DP-1
+    window-maximize
+}
+```
+
+External commands receive the output and edge in `COW_EVENT`, for example
+`{"output":"DP-1","edge":"n"}`.
 
 Specificity of rules are such that global rules (via `-g`) run before any
 specific defined rules. For example:

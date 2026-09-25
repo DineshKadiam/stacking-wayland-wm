@@ -36,13 +36,14 @@ void pan_frames_destroy_output(struct cow_output *);
 void pan_frames_destroy_all(void);
 void cow_pan_suppress_for(long);
 
+/* Clear dwell feedback and any pending drop on the active pointer op. */
 void cow_pan_cancel(void);
 /* Paint a specific edge orange (true) or transparent (false). */
 void pan_frame_set_orange(struct cow_output *, int, bool);
 
 /*
- * Called from the manage cycle when edge_scroll is enabled.  Fires a
- * page switch if the pointer has dwelt at an edge long enough.
+ * Called from the manage cycle for non-drag edge scrolling. Pointer
+ * operations use cow_output_pan_op_arm() to validate tracked coordinates.
  */
 void cow_output_pan_frame_tick(struct cow_output *);
 
@@ -73,5 +74,6 @@ void cow_output_pan_op_arm(struct cow_seat *);
 void cow_pan_frames_modifiers_changed(struct cow_seat *);
 
 struct cow_view;
+/* Dispatch a saved drop after ending the pointer operation. */
 void cow_pan_finish_drop(struct cow_view *, struct cow_output *, int);
 #endif /* COW_PAN_FRAMES_H */
