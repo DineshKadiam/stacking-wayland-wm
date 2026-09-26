@@ -42,6 +42,7 @@
 #include "cow/memory.h"
 #include "cow/menu.h"
 #include "cow/keyboard_layout.h"
+#include "cow/virtual_keyboard.h"
 #include "cow/desk_ops.h"
 #include "cow/output.h"
 #include "cow/pan_frames.h"
@@ -305,6 +306,8 @@ static void
 registry_global(__unused void *data, struct wl_registry *registry,
     uint32_t name, const char *interface, uint32_t version)
 {
+	if (cow_virtual_keyboard_bind(registry, name, interface))
+		return;
 	if (strcmp(interface, river_window_manager_v1_interface.name) == 0) {
 		cow_wm.manager = wl_registry_bind(registry, name,
 		    &river_window_manager_v1_interface, 4);
@@ -382,8 +385,9 @@ registry_global(__unused void *data, struct wl_registry *registry,
 
 static void
 registry_global_remove(__unused void *data,
-    __unused struct wl_registry *registry, __unused uint32_t name)
+    __unused struct wl_registry *registry, uint32_t name)
 {
+	cow_virtual_keyboard_remove(name);
 }
 
 static const struct wl_registry_listener registry_listener = {
@@ -431,6 +435,7 @@ handle_wm_manage_start(__unused void *data,
 	cow_wm.sequence = COW_WM_SEQUENCE_MANAGE;
 
 	manage_destroy_removed();
+	cow_virtual_keyboard_prepare();
 	manage_tick_outputs();
 	cow_container_manage_windows();
 	manage_configure_views();
@@ -456,6 +461,7 @@ handle_wm_manage_start(__unused void *data,
 	cow_keyboard_layout_reconcile_focus();
 	manage_apply_warp();
 
+	cow_virtual_keyboard_manage_finish();
 	river_window_manager_v1_manage_finish(manager);
 	cow_wm.sequence = COW_WM_SEQUENCE_NONE;
 	cow_diagnostics_manage_end();
@@ -1719,6 +1725,7 @@ cow_wm_fini(void)
 
 	cow_status_fini();
 	cow_keyboard_layout_fini();
+	cow_virtual_keyboard_fini();
 	cow_ipc_fini();
 	xfree(cow_ipc.config_path);
 	cow_ipc.config_path = NULL;

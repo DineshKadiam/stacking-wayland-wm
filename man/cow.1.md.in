@@ -1414,6 +1414,23 @@ Layouts are remembered per window, not per physical keyboard. The command
 currently sends *NAME* to every keyboard exposed by River; independently
 selecting a different layout for each keyboard is not supported.
 
+## send-key \[MODIFIERS+\]KEY
+
+Send a key press and release to the focused application.  The options are the
+same as the **bind** command.
+
+For example, to clear the terminal:
+
+```text
+focus -t %foot
+send-key C+l
+```
+
+For XWayland applications, synthetic events are often disabled due to security
+concerns.  So this might not work unless the application can be told to accept
+them.  XTerm, for example, does allow this via its **allowSendEvents**
+resource setting.
+
 ## nop
 
 Do nothing.

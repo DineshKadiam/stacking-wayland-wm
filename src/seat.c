@@ -16,6 +16,7 @@
 #include "cow/output.h"
 #include "cow/log.h"
 #include "cow/pan_frames.h"
+#include "cow/virtual_keyboard.h"
 #include "cow/pointer_input.h"
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
@@ -306,6 +307,7 @@ cow_seat_destroy(struct cow_seat *seat)
 {
 	if (seat->op_in_progress)
 		cow_pan_cancel();
+	cow_virtual_keyboard_destroy_seat(seat);
 	wl_list_remove(&seat->wm_link);
 
 	cow_pointer_op_disarm_attached(seat);

@@ -101,6 +101,9 @@ struct cow_seat {
 
 	/* Pointer operation state */
 	struct cow_pointer_op op;
+	struct zwp_virtual_keyboard_v1 *virtual_keyboard;
+	struct wl_seat *virtual_keyboard_seat;
+	struct cow_send_keymap *virtual_keymap;
 	bool		      op_in_progress;
 	bool		      cursor_hide_op_active;
 	int		      op_dx, op_dy;
