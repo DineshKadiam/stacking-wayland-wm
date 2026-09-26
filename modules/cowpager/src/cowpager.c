@@ -466,6 +466,8 @@ wayland_cb(__unused evutil_socket_t fd, __unused short events,
 {
 	if (wl_display_dispatch(display) < 0)
 		opt_running = 0;
+	else if (g_dirty)
+		schedule_render();
 }
 
 static void
@@ -1830,8 +1832,11 @@ do_render(const state_t *st)
 
 	struct cow_module_shm_buffer *buf = cow_module_shm_buffer_next(buffers,
 	    sizeof(buffers) / sizeof(buffers[0]), wl_shm, PROG, win_w, win_h);
-	if (!buf)
+	if (!buf) {
+		g_dirty = 1;
 		return;
+	}
+	g_dirty = 0;
 
 	cairo_surface_t *cs = cairo_image_surface_create_for_data(buf->data,
 	    CAIRO_FORMAT_ARGB32, win_w, win_h, win_w * 4);
