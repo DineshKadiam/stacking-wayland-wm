@@ -1780,8 +1780,23 @@ main(void)
 			    &windows[i].output_views);
 		}
 		struct cow_box slot = { 120, 0, 200, 150 };
-		CHECK(cow_container_attach(&windows[0], &windows[1], "first",
-		    slot, true, true));
+		windows[1].app_id = "foot";
+		windows[1].title = "drawer";
+		CHECK(cow_container_attach_wait(&windows[0], "first", "foot",
+		    "other*", slot, true, true));
+		cow_container_attach_mapped(&windows[1]);
+		CHECK(!windows[1].container_member);
+		/* Replacing a reservation updates the matcher and geometry. */
+		CHECK(cow_container_attach_wait(&windows[0], "first", "foot",
+		    "draw*", slot, true, true));
+		CHECK(cow_container_attach_wait(&windows[0], "ambiguous", "foot",
+		    NULL, slot, true, true));
+		cow_container_attach_mapped(&windows[1]);
+		CHECK(!windows[1].container_member);
+		cow_container_attach_cancel(&windows[0], "ambiguous");
+		cow_container_attach_mapped(&windows[1]);
+		CHECK(windows[1].placed && windows[1].x == 220 &&
+		    windows[1].y == 200);
 		c = cow_container_window_owner(&windows[0]);
 		CHECK(c && c->attached && !c->frame_window);
 		CHECK(
@@ -1844,6 +1859,16 @@ main(void)
 		CHECK(windows[1].use_ssd && windows[1].clip_w == 0);
 		CHECK(!windows[1].closed && !windows[2].closed);
 		CHECK(wl_list_empty(&cow_wm.containers));
+		CHECK(cow_container_attach_wait(&windows[0], "cancel", "foot",
+		    NULL, slot, true, false));
+		cow_container_attach_cancel(&windows[0], "cancel");
+		cow_container_attach_mapped(&windows[1]);
+		CHECK(!windows[1].container_member);
+		CHECK(cow_container_attach_wait(&windows[0], "destroy", "foot",
+		    NULL, slot, true, false));
+		cow_container_forget_view(&windows[0]);
+		cow_container_attach_mapped(&windows[1]);
+		CHECK(!windows[1].container_member);
 		wl_list_init(&cow_wm.views);
 		cow_wm.pending_focus = cow_wm.focused_view = NULL;
 	}

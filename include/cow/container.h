@@ -199,6 +199,10 @@ bool cow_container_pane_visible(struct cow_container *,
 bool cow_container_attach(struct cow_view *, struct cow_view *, const char *,
     struct cow_box, bool, bool);
 void cow_container_attachment_sync(struct cow_container *);
+bool cow_container_attach_wait(struct cow_view *, const char *, const char *,
+    const char *, struct cow_box, bool, bool);
+void cow_container_attach_cancel(struct cow_view *, const char *);
+void cow_container_attach_mapped(struct cow_view *);
 bool cow_container_shade(struct cow_view *, bool);
 bool cow_container_shaded_size(const struct cow_view *, int *, int *);
 bool cow_container_equalize(struct cow_view *);

@@ -77,10 +77,15 @@ cmd_attach_exec(struct cmd *self, struct cmd_q *cmdq)
 		return CMD_RETURN_ERROR;
 	}
 	if (args_has(args, 'D')) {
+		cow_container_attach_cancel(host, NULL);
 		struct cow_container *c = cow_container_window_owner(host);
 		if (c && c->attached)
 			cow_container_destroy(c);
 		cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
+		return CMD_RETURN_NORMAL;
+	}
+	if (args_has(args, 'X')) {
+		cow_container_attach_cancel(host, args_get(args, 'n'));
 		return CMD_RETURN_NORMAL;
 	}
 	struct cow_box slot;
@@ -116,11 +121,20 @@ cmd_attach_exec(struct cmd *self, struct cmd_q *cmdq)
 		    "window-attach: expected visibility on or off");
 		return CMD_RETURN_ERROR;
 	}
-	if (!cow_container_attach(host,
-		args_has(args, 's') ? cmdq->source.window : NULL,
-		args_get(args, 'n'), slot,
-		!visibility || !strcmp(visibility, "on"),
-		close_policy && !strcmp(close_policy, "on"))) {
+	bool ok;
+	if (args_has(args, 'a'))
+		ok = !args_has(args, 's') &&
+		    cow_container_attach_wait(host, args_get(args, 'n'),
+			args_get(args, 'a'), args_get(args, 'T'), slot,
+			!visibility || !strcmp(visibility, "on"),
+			close_policy && !strcmp(close_policy, "on"));
+	else
+		ok = cow_container_attach(host,
+		    args_has(args, 's') ? cmdq->source.window : NULL,
+		    args_get(args, 'n'), slot,
+		    !visibility || !strcmp(visibility, "on"),
+		    close_policy && !strcmp(close_policy, "on"));
+	if (!ok) {
 		cmdq_error(cmdq,
 		    "window-attach: cannot attach this window or slot");
 		return CMD_RETURN_ERROR;
@@ -130,10 +144,10 @@ cmd_attach_exec(struct cmd *self, struct cmd_q *cmdq)
 
 struct cmd_entry cmd_attach_entry = {
 	"window-attach",
-	"t:s:n:x:y:w:h:v:c:D",
+	"t:s:n:x:y:w:h:v:c:Da:T:X",
 	0,
 	0,
-	"-t host [-D | [-s client] -n slot -x X -y Y -w width -h height [-v on|off] [-c on|off]]",
+	"-t host [-D | -X [-n slot] | [-s client | -a app-id [-T title]] -n slot -x X -y Y -w width -h height [-v on|off] [-c on|off]]",
 	cmd_attach_exec,
 	CMD_MODULE,
 };

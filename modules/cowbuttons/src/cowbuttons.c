@@ -18,6 +18,7 @@
 #include <cJSON.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <fnmatch.h>
 #include <getopt.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -25,6 +26,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <time.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <event2/event.h>
@@ -42,6 +44,7 @@
 #include "cow/module_shm.h"
 #include "cow/module_status.h"
 #include "cow/text.h"
+#include "cow/util.h"
 #include "cow/vector.h"
 #include "xdg-shell-client-protocol.h"
 
@@ -49,6 +52,7 @@
 
 #define MAX_CELLS 256
 #define MAX_FIELDS 32
+#define EXTERNAL_RESPAWN_DELAY_SEC 1
 #define MAX_GRID 256
 #define DEFAULT_CELL_W 96
 #define DEFAULT_CELL_H 32
@@ -64,8 +68,6 @@
 #define PANEL_HANDLE_SIZE 22
 #define DEFAULT_EXTERNAL_W 420
 #define DEFAULT_EXTERNAL_H 120
-#define EXTERNAL_PLACE_TRIES 20
-#define EXTERNAL_PLACE_DELAY_US 50000
 #define EXTERNAL_MOVE_TRIES 6
 #define EXTERNAL_SYNC_MS 500
 #define SHOW_INDEX_ENV "COWBUTTONS_SHOW_INDEX"
@@ -141,10 +143,12 @@ struct config {
 	int  col_w[MAX_GRID];
 	int  row_h[MAX_GRID];
 	bool resizable;
+	bool close_on_exit;
 	char font[128];
 };
 
 struct style {
+	int		    frame;
 	float bg[4];
 	float bg_pressed[4];
 	float fg[4];
@@ -157,6 +161,8 @@ struct style {
 };
 
 struct cell_style {
+	bool		    frame_set;
+	int		    frame;
 	bool  bg_set;
 	bool  bg_pressed_set;
 	bool  fg_set;
@@ -180,20 +186,50 @@ struct cell_style {
 };
 
 struct panel_selection {
+	int		      parent;
 	char		     *name;
 	bool		      seen;
 	bool		      open;
+	bool		      open_set;
 	bool		      mapped;
 	bool		      directed;
 	enum panel_direction  direction;
 	struct cell_style     handle_style;
+	int		      handle_size;
+	bool		      handle_both;
+	bool		      collapsed_opposite;
+	bool		      opposite_bg_set;
+	float		      opposite_bg[4];
+	bool		      external_drawer;
+};
+
+struct external_client {
+	int			     handle_size;
+	bool			     collapsed;
+	bool			     collapse_shrink;
+	struct wl_surface	    *frame_surface;
+	struct wl_subsurface	    *frame_subsurface;
+	struct cow_module_shm_buffer frame_buffers[2];
+	int		      frame_width, frame_height, frame_x, frame_y;
+	int		      panel;
+	bool		      enabled;
+	bool		      mapped;
+	bool		      drawer;
+	bool		      use_old;
+	bool		      close_on_exit;
+	bool		      respawn;
+	bool		      respawning;
+	struct timespec	      respawn_at;
+	char		     *match_title;
 	char		     *external_command;
 	char		     *external_app_id;
 	int		      external_w;
 	int		      external_h;
 	char		      external_id[128];
-	char		      external_rule[128];
-	unsigned int	      external_rule_serial;
+	cJSON		     *external_before;
+	bool		      external_starting;
+	struct timespec	      external_started;
+	char		     *external_request;
 	pid_t		      external_pid;
 };
 
@@ -202,6 +238,10 @@ struct win_info {
 	char app_id[128];
 	char title[256];
 	char display_title[256];
+	char   attachment_host[128];
+	char   attachment_slot[64];
+	char   container_id[128];
+	bool   attachment_visible;
 	int  x;
 	int  y;
 	int  width;
@@ -213,6 +253,7 @@ struct win_info {
 };
 
 struct cell {
+	bool		       fill_width;
 	enum cell_type	  type;
 	enum status_type  status;
 	int		  row;
@@ -232,6 +273,7 @@ struct cell {
 	int		  panel;
 	int		  target_panel;
 	struct cell_style style;
+	struct external_client external;
 };
 
 struct state {
@@ -267,11 +309,13 @@ static int	   configured;
 static int	   running = 1;
 static int	   win_w;
 static int	   win_h;
+static int			    expanded_w, expanded_h;
 static int	   pressed_cell = -1;
 static int	   pressed_button = -1;
 static double	   ptr_x;
 static double	   ptr_y;
 static struct cow_module_shm_buffer buffers[2];
+static struct wl_subcompositor	   *subcompositor;
 static int	   current_row = -1;
 static int	   current_col;
 static int	   current_panel = -1;
@@ -281,6 +325,7 @@ static int	   n_blocks;
 
 static struct cow_module_status_stream status_stream;
 static struct state    current_state;
+static cJSON				 *external_windows;
 static int	       dirty = 1;
 static char	      *config_dir;
 static struct cow_module_config_instances config_instances;
@@ -301,8 +346,9 @@ static int  col_width(int);
 static int  row_height(int);
 static int  natural_width(void);
 static int  natural_height(void);
-static bool panel_any_closed(void);
+static bool panel_axis_closed(bool);
 static bool panel_finish(int, const char **);
+static enum panel_direction panel_direction_opposite(enum panel_direction);
 static bool cell_hidden(const struct cell *);
 static bool load_cell_props(struct cell *, char **, int, int, const char **);
 static bool parse_cell_style_prop(struct cell_style *, const char *,
@@ -329,6 +375,7 @@ style_init(void)
 	style.image_size = DEFAULT_IMAGE_SIZE;
 	style.image_pos = IMAGE_LEFT;
 	style.justify = JUSTIFY_LEFT;
+	style.frame	 = 2;
 }
 
 static int
@@ -570,7 +617,8 @@ panel_selection_add(const char *name)
 	selected_panels[n_selected_panels].mapped = true;
 	selected_panels[n_selected_panels].directed = false;
 	selected_panels[n_selected_panels].direction = PANEL_RIGHT;
-	selected_panels[n_selected_panels].external_pid = -1;
+	selected_panels[n_selected_panels].handle_size = PANEL_HANDLE_SIZE;
+	selected_panels[n_selected_panels].parent      = -1;
 	n_selected_panels++;
 	return true;
 }
@@ -662,6 +710,92 @@ load_if(char **fields, int n, const char **why)
 }
 
 static bool
+load_panel_properties(int idx, char **fields, int start, int end,
+    const char **why)
+{
+	if ((end - start) % 2 != 0) {
+		*why = "panel properties require a value";
+		return false;
+	}
+	for (int i = 0; i < n_cells; i++) {
+		if (cells[i].panel == idx) {
+			*why = "panel properties must precede its contents";
+			return false;
+		}
+	}
+	for (int i = start; i < end; i += 2) {
+		if (strcmp(fields[i], "direction") == 0) {
+			if (!panel_direction_parse(fields[i + 1],
+			    &selected_panels[idx].direction)) {
+				*why = "bad panel direction";
+				return false;
+			}
+			selected_panels[idx].directed = true;
+			continue;
+		}
+		if (strcmp(fields[i], "handle.both") == 0) {
+			if (!parse_bool(fields[i + 1],
+				&selected_panels[idx].handle_both)) {
+				*why = "bad handle.both";
+				return false;
+			}
+			continue;
+		}
+		if (strcmp(fields[i], "handle.opposite.bg") == 0) {
+			if (!cow_colour_parse(fields[i + 1],
+				selected_panels[idx].opposite_bg)) {
+				*why = "bad handle.opposite.bg";
+				return false;
+			}
+			selected_panels[idx].opposite_bg_set = true;
+			continue;
+		}
+		if (strcmp(fields[i], "open") == 0) {
+			if (!parse_bool(fields[i + 1],
+				&selected_panels[idx].open)) {
+				*why = "bad panel open";
+				return false;
+			}
+			selected_panels[idx].open_set = true;
+			selected_panels[idx].mapped =
+			    selected_panels[idx].open;
+			continue;
+		}
+		if (strcmp(fields[i], "parent") == 0) {
+			int parent = panel_selection_find(
+			    fields[i + 1]);
+			if (parent < 0) {
+				*why = "parent panel is not selected";
+				return false;
+			}
+			for (int ancestor = parent; ancestor >= 0;
+			    ancestor =
+				selected_panels[ancestor].parent) {
+				if (ancestor == idx) {
+					*why = "panel parent cycle";
+					return false;
+				}
+			}
+			selected_panels[idx].parent = parent;
+			continue;
+		}
+		if (strcmp(fields[i], "handle.size") == 0) {
+			if (!parse_int(fields[i + 1],
+				&selected_panels[idx].handle_size) ||
+			    selected_panels[idx].handle_size < 1) {
+				*why = "bad handle.size";
+				return false;
+			}
+			continue;
+		}
+		if (!parse_cell_style_prop(&selected_panels[idx].
+		    handle_style, fields[i], fields[i + 1], why))
+			return false;
+	}
+	return true;
+}
+
+static bool
 load_panel(char **fields, int n, const char **why)
 {
 	if (n < 3 || strcmp(fields[n - 1], "{") != 0) {
@@ -673,29 +807,14 @@ load_panel(char **fields, int n, const char **why)
 		return false;
 	}
 	int idx = panel_selection_find(fields[1]);
-	bool directed = false;
-	enum panel_direction direction = PANEL_RIGHT;
-
-	if (n > 3) {
-		if (!panel_direction_parse(fields[2], &direction)) {
-			*why = "bad panel direction";
-			return false;
-		}
-		if (((n - 4) % 2) != 0) {
-			*why = "bad panel property";
-			return false;
-		}
-		directed = true;
-	}
 	bool active = idx != -1 && blocks_active();
 	current_panel = active ? idx : -1;
 	if (idx != -1) {
 		selected_panels[idx].seen = true;
-		selected_panels[idx].directed = directed;
-		selected_panels[idx].direction = direction;
-		for (int i = 3; directed && i < n - 1; i += 2) {
-			if (!parse_cell_style_prop(&selected_panels[idx].
-			    handle_style, fields[i], fields[i + 1], why))
+		if (n > 3) {
+			char *direction[] = { "direction", fields[2] };
+			if (!load_panel_properties(idx, direction, 0, 2, why) ||
+			    !load_panel_properties(idx, fields, 3, n - 1, why))
 				return false;
 		}
 	}
@@ -759,7 +878,13 @@ parse_cell_style_prop(struct cell_style *st, const char *prop, const char *val,
 {
 	int v;
 
-	if (strcmp(prop, "bg") == 0) {
+	if (strcmp(prop, "frame") == 0) {
+		if (!parse_int(val, &st->frame)) {
+			*why = "bad frame";
+			return false;
+		}
+		st->frame_set = true;
+	} else if (strcmp(prop, "bg") == 0) {
 		if (!cow_colour_parse(val, st->bg)) {
 			*why = "bad bg";
 			return false;
@@ -842,7 +967,12 @@ load_style(char **fields, int n, const char **why)
 		*why = "bad style";
 		return false;
 	}
-	if (strcmp(fields[1], "button.bg") == 0) {
+	if (strcmp(fields[1], "button.frame") == 0) {
+		if (n != 3 || !parse_int(fields[2], &style.frame)) {
+			*why = "bad button.frame";
+			return false;
+		}
+	} else if (strcmp(fields[1], "button.bg") == 0) {
 		if (n != 3 || !cow_colour_parse(fields[2], style.bg)) {
 			*why = "bad button.bg";
 			return false;
@@ -991,16 +1121,29 @@ load_external(char **fields, int n, const char **why)
 		*why = "bad external";
 		return false;
 	}
-	if (selected_panels[current_panel].external_command != NULL) {
-		*why = "duplicate external";
-		return false;
-	}
-	c = cell_append_block();
+	c = in_row ? cell_append() : cell_append_block();
 	if (c == NULL) {
 		*why = "too many cells";
 		return false;
 	}
 	c->type = CELL_EXTERNAL;
+	struct external_client *external = &c->external;
+	external->panel			 = current_panel;
+	external->drawer  = !in_row && selected_panels[current_panel].directed;
+	external->enabled = true;
+	external->close_on_exit = cfg.close_on_exit;
+	external->external_pid	= -1;
+	if (external->drawer) {
+		if (selected_panels[current_panel].external_drawer) {
+			*why = "duplicate external drawer";
+			return false;
+		}
+		selected_panels[current_panel].external_drawer = true;
+		if (!selected_panels[current_panel].open_set)
+			selected_panels[current_panel].open = false;
+		selected_panels[current_panel].mapped =
+		    selected_panels[current_panel].open;
+	}
 	strlcpy(c->label, fields[1], sizeof(c->label));
 	c->style.colspan = 1;
 	c->style.colspan_set = true;
@@ -1008,16 +1151,66 @@ load_external(char **fields, int n, const char **why)
 	c->style.rowspan_set = true;
 	cfg.col_w[c->col] = DEFAULT_EXTERNAL_W;
 	cfg.row_h[c->row] = DEFAULT_EXTERNAL_H;
-	if (!load_cell_props(c, fields, 2, n, why))
+	for (int i = 2; i < n; i += 2) {
+		if (i + 1 == n) {
+			*why = "missing external property value";
+			return false;
+		}
+		if (!strcmp(fields[i], "handle.size")) {
+			if (!in_row ||
+			    !parse_int(fields[i + 1], &external->handle_size) ||
+			    external->handle_size < 1) {
+				*why =
+				    "external handle.size requires a positive width in a row";
+				return false;
+			}
+		} else if (!strcmp(fields[i], "collapse")) {
+			if (!in_row ||
+			    (strcmp(fields[i + 1], "retain") &&
+				strcmp(fields[i + 1], "shrink"))) {
+				*why =
+				    "external collapse expects retain or shrink in a row";
+				return false;
+			}
+			external->collapse_shrink = !strcmp(fields[i + 1],
+			    "shrink");
+		} else if (!strcmp(fields[i], "app_id"))
+			xstrset(&external->external_app_id, fields[i + 1]);
+		else if (!strcmp(fields[i], "title"))
+			xstrset(&external->match_title, fields[i + 1]);
+		else if (!strcmp(fields[i], "respawn")) {
+			if (!parse_bool(fields[i + 1], &external->respawn)) {
+				*why = "respawn expects true or false";
+				return false;
+			}
+		} else if (!strcmp(fields[i], "close_on_exit")) {
+			if (!parse_bool(fields[i + 1],
+				&external->close_on_exit)) {
+				*why = "close_on_exit expects true or false";
+				return false;
+			}
+		} else if (!strcmp(fields[i], "use_old")) {
+			if (!parse_bool(fields[i + 1], &external->use_old)) {
+				*why = "use_old expects true or false";
+				return false;
+			}
+		} else if (!load_cell_props(c, fields, i, i + 2, why))
+			return false;
+	}
+	external->external_command = xstrdup(fields[1]);
+	if (external->handle_size && cell_colspan(c) != 1) {
+		*why = "external handle requires a single column";
 		return false;
-	selected_panels[current_panel].external_command = xstrdup(fields[1]);
-	selected_panels[current_panel].external_app_id = command_app_id(fields[1]);
-	if (selected_panels[current_panel].external_app_id == NULL)
-		selected_panels[current_panel].external_app_id = xstrdup(fields[1]);
-	selected_panels[current_panel].external_w = cfg.col_w[c->col];
-	selected_panels[current_panel].external_h = cfg.row_h[c->row];
-	selected_panels[current_panel].open = false;
-	selected_panels[current_panel].mapped = false;
+	}
+	if (external->handle_size)
+		c->panel_dir = PANEL_LEFT;
+	if (external->external_app_id == NULL)
+		external->external_app_id = command_app_id(fields[1]);
+	if (external->external_app_id == NULL)
+		external->external_app_id = xstrdup(fields[1]);
+	external->external_w = cfg.col_w[c->col];
+	external->external_h = cfg.row_h[c->row];
+	current_col	     = c->col + cell_colspan(c);
 	return true;
 }
 
@@ -1074,6 +1267,11 @@ load_cell_props(struct cell *c, char **fields, int start, int n,
 			}
 			strlcpy(c->command[button][count], val,
 			    sizeof(c->command[button][count]));
+		} else if (strcmp(prop, "fill.width") == 0) {
+			if (!parse_bool(val, &c->fill_width)) {
+				*why = "fill.width expects true or false";
+				return false;
+			}
 		} else if (strcmp(prop, "width") == 0) {
 			if (!parse_int(val, &v) || v < MIN_CELL_W) {
 				*why = "bad width";
@@ -1169,21 +1367,49 @@ panel_bounds(int panel, int *min_row, int *max_row, int *min_col,
 	return found;
 }
 
-static void
+static bool
 panel_shift(int panel, int row_delta, int col_delta)
 {
+	int first_row, end_row, first_col, end_col;
+	if (!panel_bounds(panel, &first_row, &end_row, &first_col, &end_col))
+		return false;
+	if (cfg.rows + row_delta > MAX_GRID || cfg.cols + col_delta > MAX_GRID)
+		return false;
+	/* Insert the handle track in the shared grid, preserving all widths
+	 * and heights rather than moving cells onto unrelated tracks.
+	 */
+	if (col_delta) {
+		memmove(&cfg.col_w[first_col + 1], &cfg.col_w[first_col],
+		    (cfg.cols - first_col) * sizeof(cfg.col_w[0]));
+		cfg.col_w[first_col] = selected_panels[panel].handle_size;
+		cfg.cols++;
+	}
+	if (row_delta) {
+		memmove(&cfg.row_h[first_row + 1], &cfg.row_h[first_row],
+		    (cfg.rows - first_row) * sizeof(cfg.row_h[0]));
+		cfg.row_h[first_row] = selected_panels[panel].handle_size;
+		cfg.rows++;
+	}
 	for (int i = 0; i < n_cells; i++) {
 		struct cell *c = &cells[i];
-
-		if (c->panel != panel || c->type == CELL_PANEL_HANDLE)
-			continue;
-		c->row += row_delta;
-		c->col += col_delta;
-		if (c->row + cell_rowspan(c) > cfg.rows)
-			cfg.rows = c->row + cell_rowspan(c);
-		if (c->col + cell_colspan(c) > cfg.cols)
-			cfg.cols = c->col + cell_colspan(c);
+		if (c->row >= first_row)
+			c->row += row_delta;
+		if (col_delta && c->panel != panel && c->col <= first_col &&
+		    (c->panel < 0 ||
+			selected_panels[c->panel].parent != panel) &&
+		    c->col + cell_colspan(c) > first_col) {
+			c->style.colspan     = cell_colspan(c) + col_delta;
+			c->style.colspan_set = true;
+		} else if (c->col >= first_col)
+			c->col += col_delta;
+		if (row_delta && c->row < first_row &&
+		    c->row + cell_rowspan(c) > first_row) {
+			c->style.rowspan     = cell_rowspan(c) + row_delta;
+			c->style.rowspan_set = true;
+		}
 	}
+	current_row += row_delta;
+	return true;
 }
 
 static struct cell *
@@ -1191,7 +1417,8 @@ panel_handle_add(int row, int col, int rowspan, int colspan, int panel)
 {
 	struct cell *c;
 
-	if (n_cells >= MAX_CELLS)
+	if (n_cells >= MAX_CELLS || row < 0 || col < 0 ||
+	    row + rowspan > MAX_GRID || col + colspan > MAX_GRID)
 		return NULL;
 	c = &cells[n_cells++];
 	memset(c, 0, sizeof(*c));
@@ -1233,38 +1460,78 @@ panel_finish(int panel, const char **why)
 		handle = panel_handle_add(min_row, max_col,
 		    max_row - min_row, 1, panel);
 		if (handle != NULL)
-			cfg.col_w[handle->col] = PANEL_HANDLE_SIZE;
+			cfg.col_w[handle->col] = p->handle_size;
 		break;
 	case PANEL_RIGHT:
-		panel_shift(panel, 0, 1);
+		if (!panel_shift(panel, 0, 1)) {
+			*why = "no room for panel handle";
+			return false;
+		}
 		if (!panel_bounds(panel, &min_row, &max_row, &min_col,
 		    &max_col))
 			return true;
 		handle = panel_handle_add(min_row, min_col - 1,
 		    max_row - min_row, 1, panel);
 		if (handle != NULL)
-			cfg.col_w[handle->col] = PANEL_HANDLE_SIZE;
+			cfg.col_w[handle->col] = p->handle_size;
 		break;
 	case PANEL_UP:
 		handle = panel_handle_add(max_row, min_col, 1,
 		    max_col - min_col, panel);
-		if (handle != NULL)
-			cfg.row_h[handle->row] = PANEL_HANDLE_SIZE;
+		if (handle != NULL) {
+			cfg.row_h[handle->row] = p->handle_size;
+			current_row	       = handle->row;
+		}
 		break;
 	case PANEL_DOWN:
-		panel_shift(panel, 1, 0);
+		if (!panel_shift(panel, 1, 0)) {
+			*why = "no room for panel handle";
+			return false;
+		}
 		if (!panel_bounds(panel, &min_row, &max_row, &min_col,
 		    &max_col))
 			return true;
 		handle = panel_handle_add(min_row - 1, min_col, 1,
 		    max_col - min_col, panel);
 		if (handle != NULL)
-			cfg.row_h[handle->row] = PANEL_HANDLE_SIZE;
+			cfg.row_h[handle->row] = p->handle_size;
 		break;
 	}
 	if (handle == NULL) {
 		*why = "too many cells";
 		return false;
+	}
+	if (p->handle_both) {
+		bool vertical = p->direction == PANEL_UP ||
+		    p->direction == PANEL_DOWN;
+		bool insert = p->direction == PANEL_LEFT ||
+		    p->direction == PANEL_UP;
+		if (insert && !panel_shift(panel, vertical, !vertical)) {
+			*why = "no room for opposite handle";
+			return false;
+		}
+		panel_bounds(panel, &min_row, &max_row, &min_col, &max_col);
+		int row = vertical ? (insert ? min_row - 1 : max_row) : min_row;
+		int col = vertical ? min_col : (insert ? min_col - 1 : max_col);
+		handle	= panel_handle_add(row, col,
+		     vertical ? 1 : max_row - min_row,
+		     vertical ? max_col - min_col : 1, panel);
+		if (handle == NULL) {
+			*why = "no room for opposite handle";
+			return false;
+		}
+		if (vertical) {
+			cfg.row_h[row] = p->handle_size;
+			if (row > current_row)
+				current_row = row;
+		} else
+			cfg.col_w[col] = p->handle_size;
+		handle->panel_dir = panel_direction_opposite(p->direction);
+		if (p->opposite_bg_set) {
+			memcpy(handle->style.bg, p->opposite_bg,
+			    sizeof(handle->style.bg));
+			handle->style.bg_set = true;
+		}
 	}
 	return true;
 }
@@ -1474,6 +1741,12 @@ load_config(const char *path)
 				goto line_error;
 			}
 			strlcpy(cfg.font, fields[1], sizeof(cfg.font));
+		} else if (strcmp(fields[0], "close_on_exit") == 0) {
+			if (n != 2 ||
+			    !parse_bool(fields[1], &cfg.close_on_exit)) {
+				why = "close_on_exit expects true or false";
+				goto line_error;
+			}
 		} else if (strcmp(fields[0], "resizable") == 0) {
 			if (n != 2 || !parse_bool(fields[1], &cfg.resizable)) {
 				why = "bad resizable";
@@ -1535,6 +1808,10 @@ load_config(const char *path)
 			if (!load_cell_props(c, fields, 1, n, &why))
 				goto line_error;
 			current_col = c->col + cell_colspan(c);
+		} else if (current_panel >= 0 && !in_row) {
+			if (!load_panel_properties(current_panel, fields, 0,
+			    n, &why))
+				goto line_error;
 		} else {
 			why = "unknown command";
 			goto line_error;
@@ -1565,6 +1842,47 @@ line_error:
 		cfg.cols = 1;
 	if (cfg.rows < 1)
 		cfg.rows = 1;
+	/* Parent handles include their children's handle tracks, even when
+	 * those children are hidden. Resolve after all panels are parsed.
+	 */
+	for (int pass = 0; pass < n_selected_panels; pass++) {
+		for (int i = 0; i < n_cells; i++) {
+			struct cell *handle = &cells[i];
+			if (handle->type != CELL_PANEL_HANDLE)
+				continue;
+			for (int j = 0; j < n_cells; j++) {
+				const struct cell *child = &cells[j];
+				if (child->type != CELL_PANEL_HANDLE ||
+				    selected_panels[child->panel].parent !=
+					handle->panel)
+					continue;
+				bool vertical = handle->panel_dir ==
+					PANEL_LEFT ||
+				    handle->panel_dir == PANEL_RIGHT;
+				int start = vertical ? handle->row :
+						       handle->col;
+				int end	  = start +
+				    (vertical ? cell_rowspan(handle) :
+						cell_colspan(handle));
+				int child_start = vertical ? child->row :
+							     child->col;
+				int child_end	= child_start +
+				    (vertical ? cell_rowspan(child) :
+						cell_colspan(child));
+				if (child_start < start)
+					start = child_start;
+				if (child_end > end)
+					end = child_end;
+				if (vertical) {
+					handle->row	      = start;
+					handle->style.rowspan = end - start;
+				} else {
+					handle->col	      = start;
+					handle->style.colspan = end - start;
+				}
+			}
+		}
+	}
 	build_instance_title();
 	return 1;
 }
@@ -1619,9 +1937,34 @@ cell_rowspan(const struct cell *c)
 }
 
 static bool
+panel_available(int panel)
+{
+	for (int parent = selected_panels[panel].parent; parent >= 0;
+	    parent	= selected_panels[parent].parent) {
+		if (!selected_panels[parent].open)
+			return false;
+	}
+	return true;
+}
+
+static bool
+panel_open(int panel)
+{
+	return selected_panels[panel].open && panel_available(panel);
+}
+
+static bool
 cell_hidden(const struct cell *c)
 {
-	if (c->type == CELL_EXTERNAL)
+	if (c->panel >= 0 && !panel_available(c->panel))
+		return true;
+	if (c->type == CELL_PANEL_HANDLE) {
+		const struct panel_selection *p = &selected_panels[c->panel];
+		if (p->handle_both && !p->open)
+			return (c->panel_dir != p->direction) !=
+			    p->collapsed_opposite;
+	}
+	if (c->type == CELL_EXTERNAL && c->external.drawer)
 		return true;
 	return c->panel >= 0 && c->type != CELL_PANEL_HANDLE &&
 	    !selected_panels[c->panel].open;
@@ -1636,6 +1979,12 @@ col_hidden(int col)
 		const struct cell *c = &cells[i];
 
 		if (col < c->col || col >= c->col + cell_colspan(c))
+			continue;
+		/* A cross-panel handle follows the columns beneath it; it
+		 * must not keep collapsed application columns visible.
+		 */
+		if ((c->type == CELL_PANEL_HANDLE && cell_colspan(c) > 1) ||
+		    (c->type == CELL_EXTERNAL && c->external.drawer))
 			continue;
 		found = true;
 		if (!cell_hidden(c))
@@ -1666,6 +2015,13 @@ base_col_width(int col)
 {
 	if (col_hidden(col))
 		return 0;
+	for (int i = 0; i < n_cells; i++) {
+		const struct cell *c = &cells[i];
+		if (c->col == col && c->type == CELL_EXTERNAL &&
+		    c->external.handle_size && c->external.collapsed &&
+		    c->external.collapse_shrink && !cell_hidden(c))
+			return c->external.handle_size;
+	}
 	if (col >= 0 && col < MAX_GRID && cfg.col_w[col] > 0)
 		return cfg.col_w[col];
 	return cfg.cell_w;
@@ -1714,12 +2070,34 @@ natural_height(void)
 }
 
 static bool
-panel_any_closed(void)
+panel_axis_closed(bool horizontal)
 {
-	for (int i = 0; i < n_selected_panels; i++)
-		if (selected_panels[i].directed && !selected_panels[i].open)
+	for (int i = 0; i < n_selected_panels; i++) {
+		const struct panel_selection *panel = &selected_panels[i];
+		bool sideways = panel->direction == PANEL_LEFT ||
+		    panel->direction == PANEL_RIGHT;
+		if (panel->directed && !panel->external_drawer &&
+		    !panel->open && panel_available(i) && sideways == horizontal)
 			return true;
+	}
 	return false;
+}
+
+static bool col_fixed(int);
+static bool row_fixed(int);
+
+static int
+minimum_extent(bool horizontal)
+{
+	int total = 0;
+	int count = horizontal ? cfg.cols : cfg.rows;
+
+	for (int i = 0; i < count; i++) {
+		int size = horizontal ? base_col_width(i) : base_row_height(i);
+		bool fixed = horizontal ? col_fixed(i) : row_fixed(i);
+		total += cfg.resizable && !fixed && size > 0 ? 1 : size;
+	}
+	return total > 0 ? total : 1;
 }
 
 static int
@@ -1727,10 +2105,12 @@ target_width(void)
 {
 	int w = natural_width();
 
-	if (panel_any_closed())
+	if (panel_axis_closed(true))
 		return w;
-	if (cfg.resizable && win_w > w)
-		return win_w;
+	if (cfg.resizable && expanded_w > 0) {
+		int minimum = minimum_extent(true);
+		return expanded_w > minimum ? expanded_w : minimum;
+	}
 	return w;
 }
 
@@ -1739,17 +2119,19 @@ target_height(void)
 {
 	int h = natural_height();
 
-	if (panel_any_closed())
+	if (panel_axis_closed(false))
 		return h;
-	if (cfg.resizable && win_h > h)
-		return win_h;
+	if (cfg.resizable && expanded_h > 0) {
+		int minimum = minimum_extent(false);
+		return expanded_h > minimum ? expanded_h : minimum;
+	}
 	return h;
 }
 
 static int
 scale_offset(int pos, int base_total, int target_total)
 {
-	if (base_total <= 0 || target_total <= base_total)
+	if (base_total <= 0)
 		return pos;
 	return (int)((long long)pos * target_total / base_total);
 }
@@ -1759,6 +2141,10 @@ col_fixed(int col)
 {
 	for (int i = 0; i < n_cells; i++) {
 		const struct cell *c = &cells[i];
+		if (c->col == col && c->type == CELL_EXTERNAL &&
+		    c->external.handle_size && c->external.collapsed &&
+		    c->external.collapse_shrink && !cell_hidden(c))
+			return true;
 
 		if (cell_hidden(c) || c->type != CELL_PANEL_HANDLE)
 			continue;
@@ -1790,15 +2176,45 @@ target_col_width(int col)
 	int base = base_col_width(col);
 	int extra = target_width() - natural_width();
 	int flex = 0;
+	int  before	    = 0;
+	int floor = extra < 0 ? 1 : 0;
+	bool fill[MAX_GRID] = { false };
+	bool any_fill	    = false;
 
-	if (extra <= 0 || col_fixed(col))
+	for (int i = 0; i < n_cells; i++) {
+		const struct cell *c = &cells[i];
+
+		if (!c->fill_width || cell_hidden(c))
+			continue;
+		for (int j = c->col; j < c->col + cell_colspan(c); j++) {
+			if (!col_fixed(j) && base_col_width(j) > 0) {
+				fill[j]	 = true;
+				any_fill = true;
+			}
+		}
+	}
+
+	/* Fill preferences allocate surplus space; all content tracks shrink.
+	 */
+	if (extra < 0)
+		any_fill = false;
+	if (base == 0 || extra == 0 || col_fixed(col))
 		return base;
-	for (int i = 0; i < cfg.cols; i++)
-		if (!col_fixed(i))
-			flex += base_col_width(i);
+	if (any_fill && !fill[col])
+		return base;
+	for (int i = 0; i < cfg.cols; i++) {
+		if (!col_fixed(i) && (!any_fill || fill[i]) &&
+		    base_col_width(i) > 0) {
+			flex += base_col_width(i) - floor;
+			if (i < col)
+				before += base_col_width(i) - floor;
+		}
+	}
 	if (flex <= 0)
 		return base;
-	return scale_offset(base, flex, flex + extra);
+	/* Round cumulative boundaries so the tracks fill the entire width. */
+	return floor + scale_offset(before + base - floor, flex, flex + extra) -
+	    scale_offset(before, flex, flex + extra);
 }
 
 static int
@@ -1807,15 +2223,22 @@ target_row_height(int row)
 	int base = base_row_height(row);
 	int extra = target_height() - natural_height();
 	int flex = 0;
+	int before = 0;
+	int floor = extra < 0 ? 1 : 0;
 
-	if (extra <= 0 || row_fixed(row))
+	if (base == 0 || extra == 0 || row_fixed(row))
 		return base;
-	for (int i = 0; i < cfg.rows; i++)
-		if (!row_fixed(i))
-			flex += base_row_height(i);
+	for (int i = 0; i < cfg.rows; i++) {
+		if (!row_fixed(i) && base_row_height(i) > 0) {
+			flex += base_row_height(i) - floor;
+			if (i < row)
+				before += base_row_height(i) - floor;
+		}
+	}
 	if (flex <= 0)
 		return base;
-	return scale_offset(base, flex, flex + extra);
+	return floor + scale_offset(before + base - floor, flex, flex + extra) -
+	    scale_offset(before, flex, flex + extra);
 }
 
 static int
@@ -2044,6 +2467,12 @@ cell_image_size(const struct cell *c)
 	return c->style.image_size_set ? c->style.image_size : style.image_size;
 }
 
+static int
+cell_frame(const struct cell *c)
+{
+	return c != NULL && c->style.frame_set ? c->style.frame : style.frame;
+}
+
 static enum image_position
 cell_image_position(const struct cell *c)
 {
@@ -2124,18 +2553,18 @@ panel_visible(int panel)
 {
 	if (panel < 0 || panel >= n_selected_panels)
 		return false;
-	return selected_panels[panel].mapped;
+	return selected_panels[panel].mapped && panel_available(panel);
 }
 
 static void
 draw_panel_indicator(struct cow_pixbuf *pixbuf, const struct cell *c, int x,
-    int y, int w, int h, bool sunken)
+    int y, int w, int h, bool sunken, bool expanded)
 {
 	enum panel_direction direction = c->panel_dir;
 	struct cow_vector_button vector;
 	int btn_s = (w < h ? w : h) - TEXT_PAD * 2;
 
-	if (panel_visible(c->target_panel))
+	if (expanded)
 		direction = panel_direction_opposite(direction);
 	vector = panel_indicator_vector(direction);
 
@@ -2194,8 +2623,10 @@ render(void)
 	win_h = target_height();
 	buf = cow_module_shm_buffer_next(buffers,
 	    sizeof(buffers) / sizeof(buffers[0]), wl_shm, PROG, win_w, win_h);
-	if (buf == NULL)
+	if (buf == NULL) {
+		dirty = 1;
 		return;
+	}
 
 	st = current_state;
 	dirty = 0;
@@ -2249,7 +2680,10 @@ render(void)
 				    &cells[pressed_cell] == c;
 				image = cell_image_path(c, sunken);
 			} else if (c != NULL && c->type == CELL_EXTERNAL) {
-				label = c->label;
+				label = c->external.mapped ||
+					c->external.collapsed ?
+				    "" :
+				    c->label;
 			} else if (c != NULL && c->type == CELL_STATUS)
 				label = status_text(c, &st);
 
@@ -2259,8 +2693,8 @@ render(void)
 			if (c != NULL)
 				draw_button_image(c, image, &pixbuf, x, y, cell_w,
 				    cell_h);
-			cow_module_cairo_relief(cr, x, y, cell_w, cell_h, sunken,
-			    cell_bg);
+			cow_module_cairo_frame(cr, x, y, cell_w, cell_h,
+			    cell_frame(c), sunken, cell_bg);
 
 			if (c != NULL && image != NULL &&
 			    cell_image_position(c) == IMAGE_LEFT) {
@@ -2284,16 +2718,34 @@ render(void)
 		const struct cell *c = &cells[i];
 		bool sunken = pressed_cell >= 0 && &cells[pressed_cell] == c;
 
-		if (cell_hidden(c) || c->type != CELL_PANEL_HANDLE ||
+		bool external_handle = c->type == CELL_EXTERNAL &&
+		    c->external.handle_size;
+		if (cell_hidden(c) ||
+		    (c->type != CELL_PANEL_HANDLE && !external_handle) ||
 		    cell_image_path(c, sunken) != NULL)
 			continue;
 		int x = col_offset(c->col);
 		int y = row_offset(c->row);
 		int w = cols_width(c->col, cell_colspan(c));
 		int h = rows_height(c->row, cell_rowspan(c));
+		if (external_handle) {
+			cairo_surface_mark_dirty(cs);
+			int handle_w = c->external.handle_size < w ?
+			    c->external.handle_size :
+			    w;
+			x += w - handle_w;
+			w = handle_w;
+			cow_module_cairo_fill(cr, cell_bg_colour(c, sunken), x,
+			    y, w, h);
+			cow_module_cairo_frame(cr, x, y, w, h, cell_frame(c),
+			    sunken, cell_bg_colour(c, sunken));
+			cairo_surface_flush(cs);
+		}
 
 		if (w > 0 && h > 0)
-			draw_panel_indicator(&pixbuf, c, x, y, w, h, sunken);
+			draw_panel_indicator(&pixbuf, c, x, y, w, h, sunken,
+			    external_handle ? !c->external.collapsed :
+					      panel_visible(c->target_panel));
 	}
 	cairo_surface_mark_dirty(cs);
 	pango_font_description_free(font);
@@ -2302,6 +2754,8 @@ render(void)
 
 	buf->busy = true;
 	wl_surface_attach(surface, buf->buffer, 0, 0);
+	/* Drawer subsurfaces lie outside the bar, not inside its geometry. */
+	xdg_surface_set_window_geometry(xdg_surface, 0, 0, win_w, win_h);
 	wl_surface_damage_buffer(surface, 0, 0, win_w, win_h);
 	wl_surface_commit(surface);
 }
@@ -2542,6 +2996,11 @@ win_from_json(struct win_info *wi, cJSON *w)
 	GS("app_id", app_id, sizeof(wi->app_id));
 	GS("title", title, sizeof(wi->title));
 	GS("display_title", display_title, sizeof(wi->display_title));
+	GS("attachment_host", attachment_host, sizeof(wi->attachment_host));
+	GS("attachment_slot", attachment_slot, sizeof(wi->attachment_slot));
+	GS("container_id", container_id, sizeof(wi->container_id));
+	wi->attachment_visible = cJSON_IsTrue(
+	    cJSON_GetObjectItem(w, "attachment_visible"));
 	GS("titlebar_position", titlebar_position, sizeof(wi->titlebar_position));
 	GN("x", x);
 	GN("y", y);
@@ -2577,233 +3036,81 @@ win_frame_edges(const struct win_info *w, int *left, int *top, int *right,
 	*bottom = w->y + w->height + w->border_width + title_b;
 }
 
-static void
-win_content_inset(const struct win_info *w, int *x, int *y)
+static cJSON *
+windows_snapshot(void)
 {
-	*x = w->border_width;
-	*y = w->border_width;
-	if (strcmp(w->titlebar_position, "left") == 0)
-		*x += w->title_thickness;
-	else if (strcmp(w->titlebar_position, "top") == 0 ||
-	    w->titlebar_position[0] == '\0')
-		*y += w->title_thickness;
-}
-
-static bool
-windows_find_for_panel(struct panel_selection *p, struct win_info *panel,
-    struct win_info *external)
-{
-	char *resp, *panel_app;
-	bool found_panel = false, found_external = false;
-	double best_raise = -1.0;
-
-	xasprintf(&panel_app, "%s:%s", PROG, p->name);
-	resp = ipc_query("show -a window");
-	if (resp == NULL) {
-		free(panel_app);
-		return false;
-	}
-	cJSON *root = cJSON_Parse(resp);
-	free(resp);
-	if (root == NULL) {
-		free(panel_app);
-		return false;
-	}
-	cJSON *data = cJSON_GetObjectItem(root, "data");
-	if (!cJSON_IsArray(data)) {
-		cJSON_Delete(root);
-		free(panel_app);
-		return false;
-	}
-	cJSON *w;
-	cJSON_ArrayForEach(w, data) {
-		struct win_info wi;
-
-		if (!cJSON_IsObject(w))
-			continue;
-		win_from_json(&wi, w);
-		if (strcmp(wi.app_id, panel_app) == 0 ||
-		    strcmp(wi.title, panel_app) == 0 ||
-		    strcmp(wi.display_title, panel_app) == 0 ||
-		    strcmp(wi.title, instance_title) == 0 ||
-		    strcmp(wi.display_title, instance_title) == 0) {
-			*panel = wi;
-			found_panel = true;
-			continue;
-		}
-		if (external != NULL && p->external_app_id != NULL &&
-		    strcmp(wi.app_id, p->external_app_id) == 0 &&
-		    wi.raise_seq >= best_raise) {
-			*external = wi;
-			best_raise = wi.raise_seq;
-			found_external = true;
-		}
-	}
+	char *response = ipc_query("show -a window");
+	if (!response)
+		return NULL;
+	cJSON *root = cJSON_Parse(response);
+	free(response);
+	cJSON *windows = cJSON_DetachItemFromObject(root, "data");
 	cJSON_Delete(root);
-	free(panel_app);
-	return found_panel && (external == NULL || found_external);
+	if (!cJSON_IsArray(windows)) {
+		cJSON_Delete(windows);
+		return NULL;
+	}
+	return windows;
 }
 
 static bool
-windows_find_panel(struct panel_selection *p, struct win_info *panel)
+panel_find(const cJSON *windows, struct win_info *panel)
 {
-	return windows_find_for_panel(p, panel, NULL);
-}
-
-static void
-external_rule_remove(struct panel_selection *p)
-{
-	char *cmd;
-
-	if (p->external_rule[0] == '\0')
-		return;
-	xasprintf(&cmd, "rule -d -n %s", p->external_rule);
-	ipc_send(cmd);
-	free(cmd);
-	p->external_rule[0] = '\0';
-}
-
-static bool
-external_preplace(int panel)
-{
-	struct panel_selection *p;
-	struct win_info pw;
-	int pl, pt, pr, pb, ix, iy, x, y;
-	int ew, eh, etitle_l = 0, etitle_t = 0, etitle_r = 0, etitle_b = 0;
-	char *cmd;
-
-	if (panel < 0 || panel >= n_selected_panels)
-		return false;
-	p = &selected_panels[panel];
-	if (p->external_app_id == NULL || p->external_w <= 0 ||
-	    p->external_h <= 0)
-		return false;
-	if (!windows_find_panel(p, &pw))
-		return false;
-
-	win_frame_edges(&pw, &pl, &pt, &pr, &pb);
-	ix = pw.border_width;
-	iy = pw.border_width;
-	if (strcmp(pw.titlebar_position, "left") == 0) {
-		ix += pw.title_thickness;
-		etitle_l = pw.title_thickness;
-	} else if (strcmp(pw.titlebar_position, "right") == 0)
-		etitle_r = pw.title_thickness;
-	else if (strcmp(pw.titlebar_position, "bottom") == 0)
-		etitle_b = pw.title_thickness;
-	else {
-		iy += pw.title_thickness;
-		etitle_t = pw.title_thickness;
-	}
-	ew = p->external_w + pw.border_width * 2 + etitle_l + etitle_r;
-	eh = p->external_h + pw.border_width * 2 + etitle_t + etitle_b;
-	x = pw.x;
-	y = pw.y;
-	switch (p->direction) {
-	case PANEL_LEFT:
-		x = pl - ew + ix;
-		y = pt + iy;
-		break;
-	case PANEL_RIGHT:
-		x = pr + ix;
-		y = pt + iy;
-		break;
-	case PANEL_UP:
-		x = pl + ix;
-		y = pt - eh + iy;
-		break;
-	case PANEL_DOWN:
-		x = pl + ix;
-		y = pb + iy;
-		break;
-	}
-
-	external_rule_remove(p);
-	snprintf(p->external_rule, sizeof(p->external_rule),
-	    "cowbuttons-panel-%ld-%u", (long)getpid(),
-	    ++p->external_rule_serial);
-	xasprintf(&cmd, "rule -g -n %s -T on-map -s %%%s "
-	    "window-move -x %d -y %d",
-	    p->external_rule, p->external_app_id, x, y);
-	ipc_send(cmd);
-	free(cmd);
-	return true;
-}
-
-static void
-external_place(int panel)
-{
-	struct panel_selection *p;
-	struct win_info pw, ew;
-	int pl, pt, pr, pb, el, et, er, eb, ix, iy, x, y;
-	char *cmd;
-	bool found = false;
-
-	if (panel < 0 || panel >= n_selected_panels)
-		return;
-	p = &selected_panels[panel];
-	for (int i = 0; i < EXTERNAL_PLACE_TRIES; i++) {
-		if (windows_find_for_panel(p, &pw, &ew)) {
-			found = true;
-			break;
+	int	     matches = 0;
+	const cJSON *item;
+	cJSON_ArrayForEach(item, windows)
+	{
+		struct win_info w;
+		win_from_json(&w, (cJSON *)item);
+		if (!strcmp(w.app_id, PROG) &&
+		    !strcmp(w.title, instance_title)) {
+			*panel = w;
+			matches++;
 		}
-		usleep(EXTERNAL_PLACE_DELAY_US);
 	}
-	if (!found)
-		return;
+	/* Identical instances must not attach clients to one another. */
+	return matches == 1;
+}
 
-	win_frame_edges(&pw, &pl, &pt, &pr, &pb);
-	win_frame_edges(&ew, &el, &et, &er, &eb);
-	win_content_inset(&ew, &ix, &iy);
-	x = ew.x;
-	y = ew.y;
-	switch (p->direction) {
-	case PANEL_LEFT:
-		x = pl - (er - el) + ix;
-		y = pt + iy;
-		break;
-	case PANEL_RIGHT:
-		x = pr + ix;
-		y = pt + iy;
-		break;
-	case PANEL_UP:
-		x = pl + ix;
-		y = pt - (eb - et) + iy;
-		break;
-	case PANEL_DOWN:
-		x = pl + ix;
-		y = pb + iy;
-		break;
+static bool
+windows_find_panel(__unused struct panel_selection *p, struct win_info *panel)
+{
+	cJSON *windows = windows_snapshot();
+	bool   found   = panel_find(windows, panel);
+	cJSON_Delete(windows);
+	return found;
+}
+
+static bool
+external_seen(const struct external_client *p, const char *id)
+{
+	const cJSON *item;
+	cJSON_ArrayForEach(item, p->external_before)
+	{
+		const cJSON *before = cJSON_GetObjectItemCaseSensitive(item,
+		    "id");
+		if (cJSON_IsString(before) && !strcmp(before->valuestring, id))
+			return true;
 	}
-	strlcpy(p->external_id, ew.id, sizeof(p->external_id));
-	p->mapped = true;
-	external_rule_remove(p);
-	xasprintf(&cmd, "window-move -t '#%s' -x %d -y %d", ew.id, x, y);
-	for (int i = 0; i < EXTERNAL_MOVE_TRIES; i++) {
-		ipc_send(cmd);
-		usleep(EXTERNAL_PLACE_DELAY_US);
-	}
-	free(cmd);
+	return false;
 }
 
 static void
-external_reap(struct panel_selection *p)
+external_reap(struct external_client *p)
 {
-	int status;
-
 	if (p->external_pid <= 0)
 		return;
-	if (waitpid(p->external_pid, &status, WNOHANG) == p->external_pid)
-		p->external_pid = -1;
-	else if (errno == ECHILD)
+	int   status;
+	pid_t result = waitpid(p->external_pid, &status, WNOHANG);
+	if (result == p->external_pid || (result < 0 && errno == ECHILD))
 		p->external_pid = -1;
 }
 
 static bool
 external_panels_exist(void)
 {
-	for (int i = 0; i < n_selected_panels; i++)
-		if (selected_panels[i].external_command != NULL)
+	for (int i = 0; i < n_cells; i++)
+		if (cells[i].type == CELL_EXTERNAL)
 			return true;
 	return false;
 }
@@ -2824,93 +3131,339 @@ panel_direction_name(enum panel_direction direction)
 	return "right";
 }
 
-static void
-external_start(int panel)
+static bool
+external_draw_frame(struct cell *cell, int x, int y, int width, int height,
+    bool visible)
 {
-	struct panel_selection *p;
-	pid_t pid;
-	struct win_info panel_win, external_win;
+	struct external_client *p = &cell->external;
+	if (!visible || cell_frame(cell) == 0) {
+		if (p->frame_surface != NULL && p->frame_width != 0) {
+			wl_surface_attach(p->frame_surface, NULL, 0, 0);
+			wl_surface_commit(p->frame_surface);
+			p->frame_width = 0;
+		}
+		return true;
+	}
+	if (subcompositor == NULL)
+		return false;
+	if (p->frame_surface == NULL) {
+		p->frame_surface    = wl_compositor_create_surface(compositor);
+		p->frame_subsurface = wl_subcompositor_get_subsurface(
+		    subcompositor, p->frame_surface, surface);
+		wl_subsurface_set_desync(p->frame_subsurface);
+		struct wl_region *empty = wl_compositor_create_region(
+		    compositor);
+		wl_surface_set_input_region(p->frame_surface, empty);
+		wl_region_destroy(empty);
+	}
+	if (p->frame_width != width || p->frame_height != height) {
+		struct cow_module_shm_buffer *buf = cow_module_shm_buffer_next(
+		    p->frame_buffers, 2, wl_shm, PROG, width, height);
+		if (buf == NULL)
+			return false;
+		cairo_surface_t *cs = cairo_image_surface_create_for_data(
+		    buf->data, CAIRO_FORMAT_ARGB32, width, height, buf->stride);
+		cairo_t	    *cr = cairo_create(cs);
+		const float *bg = cell_bg_colour(cell, false);
+		cow_module_cairo_fill(cr, bg, 0, 0, width, height);
+		cow_module_cairo_frame(cr, 0, 0, width, height,
+		    cell_frame(cell), false, bg);
+		cairo_destroy(cr);
+		cairo_surface_destroy(cs);
+		buf->busy = true;
+		wl_surface_attach(p->frame_surface, buf->buffer, 0, 0);
+		wl_surface_damage_buffer(p->frame_surface, 0, 0, width, height);
+		wl_surface_commit(p->frame_surface);
+	}
+	if (p->frame_width == 0 || p->frame_x != x || p->frame_y != y) {
+		wl_subsurface_set_position(p->frame_subsurface, x, y);
+		wl_surface_commit(surface);
+	}
+	p->frame_x	= x;
+	p->frame_y	= y;
+	p->frame_width	= width;
+	p->frame_height = height;
+	return true;
+}
 
-	if (panel < 0 || panel >= n_selected_panels)
-		return;
-	p = &selected_panels[panel];
-	if (p->external_command == NULL || !p->open)
-		return;
-	external_reap(p);
-	if (windows_find_for_panel(p, &panel_win, &external_win)) {
-		p->mapped = true;
-		strlcpy(p->external_id, external_win.id, sizeof(p->external_id));
-		external_place(panel);
-		return;
+static bool
+external_attach(int index, const struct win_info *host)
+{
+	struct external_client *p	= &cells[index].external;
+	struct panel_selection *panel	= &selected_panels[p->panel];
+	bool			visible = panel_open(p->panel) && !p->collapsed;
+	int x = 0, y = 0, width = p->external_w, height = p->external_h;
+	if (p->drawer) {
+		int l, t, r, b;
+		win_frame_edges(host, &l, &t, &r, &b);
+		x = l - host->x;
+		y = t - host->y;
+		switch (panel->direction) {
+		case PANEL_LEFT:
+			x -= width;
+			break;
+		case PANEL_RIGHT:
+			x = r - host->x;
+			break;
+		case PANEL_UP:
+			x += col_offset(cells[index].col);
+			width = cols_width(cells[index].col,
+			    cell_colspan(&cells[index]));
+			y -= height;
+			break;
+		case PANEL_DOWN:
+			x += col_offset(cells[index].col);
+			width = cols_width(cells[index].col,
+			    cell_colspan(&cells[index]));
+			y = b - host->y;
+			break;
+		}
+	} else {
+		const struct cell *cell = &cells[index];
+		x			= col_offset(cell->col);
+		y			= row_offset(cell->row);
+		width  = cols_width(cell->col, cell_colspan(cell));
+		height = rows_height(cell->row, cell_rowspan(cell));
 	}
-	if (p->external_pid > 0) {
-		external_place(panel);
-		return;
+	/* Collapsed grid cells have zero size. Keep a valid hidden slot. */
+	if (!visible) {
+		width  = p->external_w;
+		height = p->external_h;
 	}
-	external_preplace(panel);
-	pid = fork();
-	if (pid < 0)
-		return;
-	if (pid == 0) {
-		setenv("COWBUTTONS_PANEL", p->name, 1);
-		setenv("COWBUTTONS_PANEL_DIRECTION",
-		    panel_direction_name(p->direction), 1);
-		setenv("COWBUTTONS_PANEL_MODE", "toplevel", 1);
-		execl("/bin/sh", "sh", "-c", p->external_command,
-		    (char *)NULL);
-		_exit(127);
+	if (width < 1 || height < 1)
+		return false;
+	if (p->drawer &&
+	    !external_draw_frame(&cells[index], x, y, width, height,
+		panel_open(p->panel)))
+		return false;
+	if (p->handle_size && visible)
+		width -= p->handle_size;
+	if (width < 1)
+		return false;
+	/* Leave the relief visible instead of covering it with the client.
+	 * Clamp before converting to int, including for an INT_MIN frame.
+	 */
+	double inset = cell_frame(&cells[index]);
+	if (inset < 0)
+		inset = -inset;
+	if (inset > (width - 1) / 2)
+		inset = (width - 1) / 2;
+	if (inset > (height - 1) / 2)
+		inset = (height - 1) / 2;
+	x += (int)inset;
+	y += (int)inset;
+	width -= 2 * (int)inset;
+	height -= 2 * (int)inset;
+	char *command;
+	char *target;
+	if (p->external_id[0])
+		xasprintf(&target, "-s '#%s'", p->external_id);
+	else {
+		const char *argv[] = { "-a", p->external_app_id, "-T",
+			p->match_title };
+		target = cow_command_from_argv(p->match_title ? 4 : 2, argv);
 	}
-	p->external_pid = pid;
-	external_place(panel);
+	xasprintf(&command,
+	    "window-attach -t '#%s' %s -n slot-%d "
+	    "-x %d -y %d -w %d -h %d -v %s -c %s",
+	    host->id, target, index, x, y, width, height,
+	    visible ? "on" : "off", p->close_on_exit ? "on" : "off");
+	free(target);
+	if (p->external_request && !strcmp(p->external_request, command)) {
+		free(command);
+		return true;
+	}
+	char  *response = ipc_query(command);
+	cJSON *root	= response ? cJSON_Parse(response) : NULL;
+	free(response);
+	bool ok = cJSON_IsTrue(cJSON_GetObjectItem(root, "ok"));
+	if (!ok) {
+		const cJSON *error = cJSON_GetObjectItem(root, "error");
+		fprintf(stderr, "%s: panel %s: %s\n", PROG, panel->name,
+		    cJSON_IsString(error) ? error->valuestring :
+					    "attachment failed");
+	}
+	if (ok)
+		xstrset(&p->external_request, command);
+	free(command);
+	cJSON_Delete(root);
+	return ok;
 }
 
 static void
-external_stop(int panel)
+external_cancel(int index, const struct win_info *host)
 {
-	struct panel_selection *p;
-	char *cmd;
+	char *command;
+	xasprintf(&command, "window-attach -t '#%s' -n slot-%d -X", host->id,
+	    index);
+	free(ipc_query(command));
+	free(command);
+	xstrset(&cells[index].external.external_request, NULL);
+}
 
-	if (panel < 0 || panel >= n_selected_panels)
+static void
+external_start(int index, const struct win_info *host, const cJSON *windows)
+{
+	struct external_client *p = &cells[index].external;
+	/* Register the slot before the child can map, not on a later snapshot.
+	 */
+	if (!external_attach(index, host)) {
+		p->enabled = false;
 		return;
-	p = &selected_panels[panel];
-	external_rule_remove(p);
-	external_reap(p);
-	if (p->external_id[0] != '\0') {
-		xasprintf(&cmd, "winops -t '#%s' -c", p->external_id);
-		ipc_send(cmd);
-		free(cmd);
-		p->external_id[0] = '\0';
 	}
-	p->mapped = false;
-	if (p->external_pid <= 0)
+	p->respawning		      = false;
+	struct panel_selection *panel = &selected_panels[p->panel];
+	cJSON_Delete(p->external_before);
+	p->external_before = cJSON_Duplicate(windows, true);
+	pid_t pid	   = fork();
+	if (pid < 0) {
+		external_cancel(index, host);
+		perror(PROG ": fork");
+		cJSON_Delete(p->external_before);
+		p->external_before = NULL;
+		p->enabled	   = false;
 		return;
-	kill(p->external_pid, SIGTERM);
-	external_reap(p);
+	}
+	if (pid == 0) {
+		setenv("COWBUTTONS_PANEL", panel->name, 1);
+		setenv("COWBUTTONS_PANEL_DIRECTION",
+		    panel_direction_name(panel->direction), 1);
+		setenv("COWBUTTONS_PANEL_MODE", "attached", 1);
+		execl("/bin/sh", "sh", "-c", p->external_command, (char *)NULL);
+		_exit(127);
+	}
+	p->external_pid	     = pid;
+	p->external_starting = true;
+	clock_gettime(CLOCK_MONOTONIC, &p->external_started);
 }
 
 static void
 external_refresh(void)
 {
-	bool changed = false;
-
-	for (int i = 0; i < n_selected_panels; i++) {
-		struct panel_selection *p = &selected_panels[i];
-		struct win_info pw, ew;
-		bool mapped;
-
-		if (p->external_command == NULL)
+	if (!running)
+		return;
+	const cJSON    *windows = external_windows;
+	struct win_info host	= { 0 };
+	if (!windows || !panel_find(windows, &host)) {
+		return;
+	}
+	bool changed   = false;
+	bool launching = false;
+	for (int i = 0; i < n_cells; i++)
+		launching |= cells[i].external.external_starting;
+	for (int i = 0; i < n_cells; i++) {
+		struct external_client *p = &cells[i].external;
+		if (!p->external_command)
 			continue;
 		external_reap(p);
-		mapped = windows_find_for_panel(p, &pw, &ew);
-		if (mapped)
-			strlcpy(p->external_id, ew.id, sizeof(p->external_id));
-		else if (p->external_id[0] != '\0') {
-			p->external_id[0] = '\0';
-			p->open = false;
+		struct win_info found = { 0 };
+		char		slot[64];
+		snprintf(slot, sizeof(slot), "slot-%d", i);
+		const cJSON *item;
+		int	     matches = 0;
+		bool reuse = p->use_old && !p->respawning && p->enabled &&
+		    !p->external_starting && !p->external_id[0];
+		cJSON_ArrayForEach(item, windows)
+		{
+			struct win_info w;
+			win_from_json(&w, (cJSON *)item);
+			bool ours = !strcmp(w.attachment_host, host.id) &&
+			    !strcmp(w.attachment_slot, slot);
+			if (ours ||
+			    (p->external_id[0] &&
+				!strcmp(w.id, p->external_id))) {
+				found	= w;
+				matches = 1;
+				break;
+			}
+			bool claimed = false;
+			for (int j = 0; j < n_cells; j++) {
+				if (j != i && cells[j].type == CELL_EXTERNAL &&
+				    !strcmp(cells[j].external.external_id,
+					w.id))
+					claimed = true;
+			}
+			if ((p->external_starting || reuse) && !claimed &&
+			    strcmp(w.id, host.id) && !w.attachment_host[0] &&
+			    !w.container_id[0] &&
+			    !strcasecmp(w.app_id, p->external_app_id) &&
+			    (!p->match_title ||
+				!fnmatch(p->match_title, w.title, 0)) &&
+			    (reuse || !external_seen(p, w.id))) {
+				found = w;
+				matches++;
+			}
 		}
-		if (p->mapped != mapped) {
+		if (reuse && matches > 1) {
+			fprintf(stderr,
+			    "%s: panel %s: multiple existing windows "
+			    "match %s; narrow app_id or title\n",
+			    PROG, selected_panels[p->panel].name,
+			    p->external_app_id);
+			p->enabled = false;
+		} else if (matches == 1) {
+			if (p->mapped &&
+			    (strcmp(found.attachment_host, host.id) ||
+				strcmp(found.attachment_slot, slot)))
+				xstrset(&p->external_request, NULL);
+			strlcpy(p->external_id, found.id,
+			    sizeof(p->external_id));
+			p->external_starting = false;
+			cJSON_Delete(p->external_before);
+			p->external_before = NULL;
+			/* Reapply geometry after host resizing as well as
+			 * toggling. The core treats an unchanged attachment as
+			 * a no-op.
+			 */
+			bool mapped = external_attach(i, &host);
+			changed |= mapped != p->mapped;
 			p->mapped = mapped;
+		} else if (p->external_id[0]) {
+			p->respawning = p->respawn && p->mapped;
+			p->enabled    = p->respawning;
+			if (p->respawning) {
+				clock_gettime(CLOCK_MONOTONIC, &p->respawn_at);
+				p->respawn_at.tv_sec +=
+				    EXTERNAL_RESPAWN_DELAY_SEC;
+			}
+			p->external_id[0] = '\0';
+			p->mapped	  = false;
+			xstrset(&p->external_request, NULL);
 			changed = true;
+		} else if (p->external_starting) {
+			/* Keep a pending slot in step with host size and visibility.
+			 */
+			external_attach(i, &host);
+			/* Bound discovery, including commands which fork and
+			 * exit. Never launch another copy merely because the
+			 * shell exits.
+			 */
+			struct timespec now;
+			clock_gettime(CLOCK_MONOTONIC, &now);
+			if (now.tv_sec - p->external_started.tv_sec >= 10) {
+				external_cancel(i, &host);
+				fprintf(stderr,
+				    "%s: panel %s: no unique new window "
+				    "with app_id %s; check external app_id\n",
+				    PROG, selected_panels[p->panel].name,
+				    p->external_app_id);
+				p->external_starting = false;
+				p->enabled	     = false;
+				cJSON_Delete(p->external_before);
+				p->external_before = NULL;
+				changed		   = true;
+			}
+		} else if (panel_open(p->panel) && !p->collapsed &&
+		    p->enabled && !launching) {
+			struct timespec now;
+			clock_gettime(CLOCK_MONOTONIC, &now);
+			if (p->respawning &&
+			    (now.tv_sec < p->respawn_at.tv_sec ||
+				(now.tv_sec == p->respawn_at.tv_sec &&
+				    now.tv_nsec < p->respawn_at.tv_nsec)))
+				continue;
+			external_start(i, &host, windows);
+			launching = true;
 		}
 	}
 	if (changed) {
@@ -2922,19 +3475,8 @@ external_refresh(void)
 static void
 externals_sync(void)
 {
-	for (int i = 0; i < n_selected_panels; i++) {
-		if (selected_panels[i].open)
-			external_start(i);
-		else
-			external_stop(i);
-	}
-}
-
-static void
-externals_stop_all(void)
-{
-	for (int i = 0; i < n_selected_panels; i++)
-		external_stop(i);
+	if (external_panels_exist())
+		external_refresh();
 }
 
 static void
@@ -2944,7 +3486,8 @@ update_toplevel_size(void)
 	win_h = natural_height();
 	if (xdg_toplevel == NULL)
 		return;
-	xdg_toplevel_set_min_size(xdg_toplevel, win_w, win_h);
+	xdg_toplevel_set_min_size(xdg_toplevel, minimum_extent(true),
+	    minimum_extent(false));
 	if (cfg.resizable)
 		xdg_toplevel_set_max_size(xdg_toplevel, 0, 0);
 	else
@@ -2952,34 +3495,25 @@ update_toplevel_size(void)
 }
 
 static void
-panel_reposition_toplevel(int panel, const struct win_info *before, int old_w,
-    int old_h)
+panel_reposition_toplevel(int handle, const struct win_info *before, int old_x,
+    int old_y)
 {
 	struct panel_selection *p;
 	char *cmd;
-	int new_w, new_h, x, y;
+	int			x, y;
 
-	if (panel < 0 || panel >= n_selected_panels || before->id[0] == '\0')
+	int panel = cells[handle].target_panel;
+	if (before->id[0] == '\0')
 		return;
 	p = &selected_panels[panel];
-	if (p->external_command != NULL)
+	if (p->external_drawer)
 		return;
 
-	new_w = target_width();
-	new_h = target_height();
 	x = before->x;
 	y = before->y;
-	switch (p->direction) {
-	case PANEL_LEFT:
-		x -= new_w - old_w;
-		break;
-	case PANEL_UP:
-		y -= new_h - old_h;
-		break;
-	case PANEL_RIGHT:
-	case PANEL_DOWN:
-		break;
-	}
+	/* Keep the clicked handle stationary when dependent tracks vanish. */
+	x += old_x - col_offset(cells[handle].col);
+	y += old_y - row_offset(cells[handle].row);
 	if (x == before->x && y == before->y)
 		return;
 	xasprintf(&cmd, "window-move -t '#%s' -x %d -y %d", before->id, x,
@@ -2989,23 +3523,34 @@ panel_reposition_toplevel(int panel, const struct win_info *before, int old_w,
 }
 
 static void
-panel_toggle(int panel)
+panel_toggle(int handle)
 {
 	struct win_info before = { 0 };
-	int old_w, old_h;
+	int		panel  = cells[handle].target_panel;
+	int		old_x  = col_offset(cells[handle].col);
+	int		old_y  = row_offset(cells[handle].row);
 
 	if (panel < 0 || panel >= n_selected_panels)
 		return;
-	old_w = target_width();
-	old_h = target_height();
 	windows_find_panel(&selected_panels[panel], &before);
 
+	if (selected_panels[panel].open)
+		selected_panels[panel].collapsed_opposite =
+		    cells[handle].panel_dir != selected_panels[panel].direction;
 	selected_panels[panel].open = !selected_panels[panel].open;
-	if (selected_panels[panel].external_command == NULL)
-		selected_panels[panel].mapped = selected_panels[panel].open;
+	selected_panels[panel].mapped = selected_panels[panel].open;
+	for (int i = 0; i < n_cells; i++) {
+		if (cells[i].type == CELL_EXTERNAL &&
+		    cells[i].external.drawer && !panel_open(cells[i].panel))
+			external_draw_frame(&cells[i], 0, 0, 0, 0, false);
+		if (cells[i].type != CELL_EXTERNAL || cells[i].panel != panel)
+			continue;
+		cells[i].external.enabled = true;
+		xstrset(&cells[i].external.external_request, NULL);
+	}
 	externals_sync();
 	update_toplevel_size();
-	panel_reposition_toplevel(panel, &before, old_w, old_h);
+	panel_reposition_toplevel(handle, &before, old_x, old_y);
 	render();
 }
 
@@ -3096,7 +3641,11 @@ handle_status_line(const char *line, __unused void *data)
 
 	struct state st;
 	state_from_json(&st, root);
+	cJSON_Delete(external_windows);
+	external_windows = cJSON_DetachItemFromObject(root, "windows");
 	cJSON_Delete(root);
+	if (external_panels_exist())
+		external_refresh();
 
 	current_state = st;
 	dirty = 1;
@@ -3110,6 +3659,8 @@ wayland_cb(__unused evutil_socket_t fd, __unused short events,
 {
 	if (wl_display_dispatch(display) < 0)
 		running = 0;
+	else if (dirty && configured)
+		render();
 }
 
 static void
@@ -3149,14 +3700,20 @@ xdg_toplevel_configure(__unused void *data,
     int32_t h, __unused struct wl_array *states)
 {
 	if (cfg.resizable && w > 0 && h > 0) {
-		if (w < natural_width())
+		bool closed_width = panel_axis_closed(true);
+		bool closed_height = panel_axis_closed(false);
+		if (w < minimum_extent(true))
+			w = minimum_extent(true);
+		if (h < minimum_extent(false))
+			h = minimum_extent(false);
+		if (!closed_width)
+			expanded_w = w;
+		if (!closed_height)
+			expanded_h = h;
+		if (closed_width)
 			w = natural_width();
-		if (h < natural_height())
+		if (closed_height)
 			h = natural_height();
-		if (panel_any_closed()) {
-			w = natural_width();
-			h = natural_height();
-		}
 		if (w != win_w || h != win_h) {
 			win_w = w;
 			win_h = h;
@@ -3285,6 +3842,28 @@ cell_click(int cell, int button, uint32_t time)
 }
 
 static void
+external_toggle(int index)
+{
+	struct external_client *p = &cells[index].external;
+	p->collapsed		  = !p->collapsed;
+	p->enabled		  = true;
+	xstrset(&p->external_request, NULL);
+	externals_sync();
+	update_toplevel_size();
+	render();
+}
+
+static bool
+external_handle_at(int index)
+{
+	const struct cell *c = &cells[index];
+	if (c->type != CELL_EXTERNAL || !c->external.handle_size)
+		return false;
+	return ptr_x >= col_offset(c->col) +
+	    cols_width(c->col, cell_colspan(c)) - c->external.handle_size;
+}
+
+static void
 pointer_button(__unused void *data, __unused struct wl_pointer *p,
     __unused uint32_t serial, uint32_t time, uint32_t button,
     uint32_t state)
@@ -3302,7 +3881,10 @@ pointer_button(__unused void *data, __unused struct wl_pointer *p,
 			pressed_button = click_button;
 			render();
 		} else if (idx >= 0 && click_button == CLICK_LEFT &&
-		    cells[idx].type == CELL_PANEL_HANDLE) {
+		    (cells[idx].type == CELL_PANEL_HANDLE ||
+			(cells[idx].type == CELL_EXTERNAL &&
+			    (!cells[idx].external.mapped ||
+				external_handle_at(idx))))) {
 			pressed_cell = idx;
 			pressed_button = click_button;
 			render();
@@ -3322,7 +3904,17 @@ pointer_button(__unused void *data, __unused struct wl_pointer *p,
 	    cells[pressed].type == CELL_SCRIPT))
 		cell_click(pressed, click_button, time);
 	else if (pressed >= 0 && cells[pressed].type == CELL_PANEL_HANDLE)
-		panel_toggle(cells[pressed].target_panel);
+		panel_toggle(pressed);
+	else if (pressed >= 0 && idx == pressed &&
+	    cells[pressed].type == CELL_EXTERNAL) {
+		if (external_handle_at(pressed)) {
+			external_toggle(pressed);
+			return;
+		}
+		cells[pressed].external.enabled = true;
+		xstrset(&cells[pressed].external.external_request, NULL);
+		externals_sync();
+	}
 }
 
 static void
@@ -3371,6 +3963,9 @@ reg_global(__unused void *data, struct wl_registry *reg, uint32_t name,
 	if (strcmp(interface, wl_compositor_interface.name) == 0)
 		compositor = wl_registry_bind(reg, name, &wl_compositor_interface,
 		    version < 4 ? version : 4);
+	else if (strcmp(interface, wl_subcompositor_interface.name) == 0)
+		subcompositor = wl_registry_bind(reg, name,
+		    &wl_subcompositor_interface, 1);
 	else if (strcmp(interface, wl_shm_interface.name) == 0)
 		wl_shm = wl_registry_bind(reg, name, &wl_shm_interface, 1);
 	else if (strcmp(interface, xdg_wm_base_interface.name) == 0) {
@@ -3478,8 +4073,8 @@ main(int argc, char **argv)
 	xdg_toplevel_add_listener(xdg_toplevel, &xdg_toplevel_listener, NULL);
 	xdg_toplevel_set_title(xdg_toplevel, instance_title);
 	xdg_toplevel_set_app_id(xdg_toplevel, PROG);
-	xdg_toplevel_set_min_size(xdg_toplevel, natural_width(),
-	    natural_height());
+	xdg_toplevel_set_min_size(xdg_toplevel, minimum_extent(true),
+	    minimum_extent(false));
 	if (cfg.resizable)
 		xdg_toplevel_set_max_size(xdg_toplevel, 0, 0);
 	else
@@ -3529,7 +4124,6 @@ main(int argc, char **argv)
 	script_cells_stop();
 	cow_module_status_stream_fini(&status_stream);
 	event_base_free(base);
-	externals_stop_all();
 
 	if (pointer != NULL) {
 		cow_module_cursor_clear_pointer(&cursor, pointer);
@@ -3542,8 +4136,18 @@ main(int argc, char **argv)
 		xdg_toplevel_destroy(xdg_toplevel);
 	if (xdg_surface != NULL)
 		xdg_surface_destroy(xdg_surface);
+	for (int i = 0; i < n_cells; i++) {
+		struct external_client *p = &cells[i].external;
+		if (p->frame_subsurface != NULL)
+			wl_subsurface_destroy(p->frame_subsurface);
+		if (p->frame_surface != NULL)
+			wl_surface_destroy(p->frame_surface);
+		cow_module_shm_buffers_destroy(p->frame_buffers, 2);
+	}
 	if (surface != NULL)
 		wl_surface_destroy(surface);
+	if (subcompositor != NULL)
+		wl_subcompositor_destroy(subcompositor);
 	cow_module_shm_buffers_destroy(buffers,
 	    sizeof(buffers) / sizeof(buffers[0]));
 	for (int i = 0; i < n_cells; i++) {
@@ -3552,12 +4156,18 @@ main(int argc, char **argv)
 	}
 	for (int i = 0; i < n_selected_panels; i++) {
 		free(selected_panels[i].name);
-		free(selected_panels[i].external_command);
-		free(selected_panels[i].external_app_id);
 		free(selected_panels[i].handle_style.image);
 		free(selected_panels[i].handle_style.image_pressed);
 	}
 	xfree(selected_panels);
+	for (int i = 0; i < n_cells; i++) {
+		free(cells[i].external.external_command);
+		free(cells[i].external.external_app_id);
+		free(cells[i].external.match_title);
+		cJSON_Delete(cells[i].external.external_before);
+		free(cells[i].external.external_request);
+	}
+	cJSON_Delete(external_windows);
 	xfree(blocks);
 	free(style.image);
 	free(style.image_pressed);

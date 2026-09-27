@@ -950,6 +950,7 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 		cow_rule_fire(COW_RULE_ON_DESK, view, view->desk,
 		    view->output);
 		cow_style_apply_pending_initial(view);
+		cow_container_attach_mapped(view);
 	}
 
 	view_refit_maximized(view);
@@ -1340,7 +1341,13 @@ cow_view_configure(struct cow_view *view)
 	 * - XWayland apps (xterm): River substitutes the X11 surface's own
 	 *   geometry for 0, so xterm -g 80x24 is honoured.
 	 */
-	river_window_v1_propose_dimensions(view->river_window, 0, 0);
+	/* Module slots must choose the initial configure too: discovering the
+	 * client after its first buffer would briefly expose its natural size.
+	 */
+	cow_container_attach_mapped(view);
+	river_window_v1_propose_dimensions(view->river_window,
+	    view->pending_resize ? view->pending_width : 0,
+	    view->pending_resize ? view->pending_height : 0);
 
 	view->configured = true;
 

@@ -18,9 +18,9 @@ cowbuttons - Button panel for the cow window manager
 **cow**(1) commands, periodically display the output of scripts, show selected
 state from cow's status socket, or act as empty spacers.
 
-Wayland does not provide X11 window reparenting, so **cowbuttons** does not
-swallow clients. Use command buttons to launch or focus applications, and use
-cow rules to style or place companion windows.
+External applications can occupy cells or open beside a panel handle. CoW
+attaches their windows to cowbuttons, keeping them together when moved, raised,
+or iconified. This uses CoW's container machinery.
 
 # OPTIONS
 
@@ -54,6 +54,14 @@ opaque dark grey.
 
 : Set one column's width in pixels.
 
+**fill.width** *true|false*
+
+: A cell property which gives its columns the panel's remaining width.
+  For example, add **fill.width true** to an **external** cowiconman cell
+  to let it grow while neighbouring buttons retain their configured widths.
+  If several cells request it, they share the extra space proportionally.
+  Without any fill cells, all non-handle columns grow as before.
+
 **show panel** *name* \[...\]
 
 : Show one or more named panel definitions from the configuration file.
@@ -69,6 +77,39 @@ opaque dark grey.
   **down**, cowbuttons adds an attached handle and opens the panel in
   that direction. Pressing the handle collapses or expands the panel.
   Handle properties use the same styling keys as **button**.
+  **handle.size** sets the handle thickness in pixels: its width for
+  left/right panels, or its height for up/down panels. The default is 22.
+  **handle.both true** adds a second handle at the opposite end. Either
+  handle toggles the same panel, keeping the clicked handle in place.
+  When collapsed, only the clicked handle remains visible. Reopening
+  restores both handles; a panel configured to start closed shows its
+  primary handle.
+  **handle.opposite.bg** *colour* overrides the second handle's background;
+  other styling is shared.
+  **parent** *name* hides the panel's handle and applications while the
+  named panel is collapsed. Reopening the parent restores the child's
+  previous open/closed state. Both panels must be selected in the same
+  **show panel** line; parent relationships must not form a cycle.
+  **open** *true*\|*false* chooses the initial expanded state. External
+  drawers default to closed; other panels default to open.
+
+  Write panel properties on separate lines inside the panel block, before
+  its contents. **direction** selects the opening direction. These
+  properties affect the panel handle; **style** still sets button defaults.
+  The inline header form remains supported.
+
+      panel applications {
+          direction right
+          handle.size 11
+          handle.both true
+          handle.opposite.bg 0xcd2626
+          frame 2
+          bg 0xffd700
+          fg 0x202020
+          row {
+              button "Terminal" "exec foot"
+          }
+      }
 
 **row** \[**height** *N*\] **{** ... **}**
 
@@ -96,9 +137,20 @@ opaque dark grey.
 
 **resizable** *true*\|*false*
 
-: Allow the window to be resized. The configured grid remains the
-  minimum size; extra width and height are distributed across columns
-  and rows. The default is *false*.
+: Allow the window to be resized. Content columns and rows grow or shrink
+  with the window, while panel handles retain their configured thickness.
+  Closing a panel preserves the resized dimensions for reopening.
+  The default is *false*.
+
+**close_on_exit** *true*\|*false*
+
+: Set the default for subsequent **external** cells. The default is
+  **false**, which releases applications as ordinary windows when
+  cowbuttons exits. With **true**, CoW requests that they close instead.
+  Each **external** can override this with its own **close_on_exit** value.
+  This also applies to reused applications and when cowbuttons is killed.
+  It does not forcibly terminate clients: applications may prompt to save
+  work or refuse to close. Collapsing a panel never closes its applications.
 
 **style button.bg** *colour*
 
@@ -115,6 +167,16 @@ opaque dark grey.
 **style button.fg\_pressed** *colour*
 
 : Set the pressed button text colour.
+
+**style button.frame** *width*
+
+: Set the relief thickness in pixels (default: 2). Positive values give
+  a raised frame which becomes sunken when pressed. Negative values reverse
+  this; zero draws no frame. Frames are limited to half the cell's smaller
+  dimension. Override individual buttons or panel handles with **frame**:
+
+      style button.frame 2
+      button "Terminal" "exec foot" frame -2
 
 **style button.image** *path*
 
@@ -141,7 +203,7 @@ opaque dark grey.
 
 : Create a clickable button. *command* is sent to cow as its left-click
   action. Supported properties are **width**, **height**, **span**,
-  **bg**, **bg\_pressed**, **fg**, **fg\_pressed**, **image**,
+  **frame**, **bg**, **bg\_pressed**, **fg**, **fg\_pressed**, **image**,
   **image\_pressed**, **image\_size**, **image\_position**, **justify**,
   and the click-action properties described below.
 
@@ -173,13 +235,100 @@ opaque dark grey.
 
 **external** *command* \[*property* *value* ...\]
 
-: Create a panel slot managed by an external command. The command is
-  started when the panel is opened and terminated when it is collapsed.
-  External panels start collapsed. This is a lifecycle hook for cow
-  modules; generic Wayland clients are still separate toplevels.
+: Create an application slot. In a directional panel, the application
+  starts on first opening and appears beside the handle. Collapsing the
+  panel hides its window without terminating it; reopening shows the
+  same window. Directional external panels start collapsed.
+
+  Inside a **row**, each **external** occupies its own cell alongside
+  buttons, spacers or other applications. Applications start when the
+  panel is open. Collapsing its handle hides every attached application;
+  reopening restores the same windows. Without a direction the row stays
+  open. A standalone **external** outside a row retains the directional
+  drawer behaviour described above; only one such drawer is allowed per
+  panel.
+  Upward and downward drawers follow the width of their grid span while
+  retaining their configured height. Use **span** to extend the handle
+  and application across neighbouring columns.
+  Applications are inset inside their slot's **frame**, including external
+  drawers. The frame is drawn by cowbuttons, not by a window decoration
+  rule. Set **frame 0** on an external cell to use the whole slot.
+  An external cell inside a row may specify **handle.size** *pixels* to
+  add a right-edge toggle. This hides only that application; reopening
+  reuses the same window. **collapse retain** (the default) keeps the cell's
+  size, background and relief visible without moving neighbouring buttons.
+  **collapse shrink** reduces its column to the handle width instead.
+  Such cells must occupy one column, but may span several rows.
+  If an embedded application closes or fails to start, click its vacant
+  cell to launch it again. Applications which enforce a minimum size or
+  aspect ratio may leave unused space or be clipped to the cell.
+
+  CoW manages the attachment automatically. No container definitions or
+  placement rules are required. Closing cowbuttons releases attached
+  applications as ordinary windows unless **close_on_exit true** is set.
+  Attachments survive a CoW restart while cowbuttons remains running.
+
+  Attached applications cannot be moved, resized or dragged out independently.
+  Move the cowbuttons host to move the complete panel.
+
+  The application ID defaults to the command's executable name, matched
+  case-insensitively. Use **app_id** *name* when a wrapper or application
+  uses a different ID. **title** *pattern* optionally narrows matching using
+  a case-sensitive shell wildcard pattern. By default only newly opened
+  windows are candidates. With **use_old true**, cowbuttons first looks for
+  an existing matching window and launches the command only if none exists.
+  Existing windows are captured even when the panel starts closed, and
+  remain hidden until it opens. Missing applications are launched only
+  when the panel opens.
+  Windows already in another attachment or container are never captured.
+  If several existing windows match, the cell remains vacant and logs a
+  warning; narrow the match before retrying. With **close_on_exit false**,
+  closing the host releases clients for another instance to reuse.
+
+  Newly launched commands must open a unique matching window within ten
+  seconds. Use distinct panel names for separate cowbuttons instances so
+  their host windows can be identified.
+
   Supported properties are **width**, **height**, **span**, **bg**,
   **bg\_pressed**, **fg**, **fg\_pressed**, **image**, **image\_pressed**,
-  **image\_size**, **image\_position**, and **justify**.
+  **image\_size**, **image\_position**, **justify**, **app_id**, **title**,
+  **use_old** (default **false**), and **close_on_exit**.
+
+  **respawn true** reruns the command when its attached window closes,
+  including a manual close. The default is **false**. Cowbuttons waits at
+  least one second before relaunching and defers this while the panel is
+  collapsed. The launcher process exiting does not trigger respawn if its
+  window remains open. Exiting cowbuttons never respawns clients.
+
+  If a launch fails to produce a matching window, automatic retries stop;
+  click the vacant cell or reopen the panel to try again. This also prevents
+  a broken command from repeatedly launching processes.
+
+  For example, a horizontal panel with its handle on the left:
+
+      show panel bar
+      panel bar {
+          direction right
+          row {
+              external "cowpager -1" width 160 height 96
+              button "Windows" "window-list" width 80 height 96
+              external "foot" width 480 height 96
+              external "cowiconman" width 300 height 96
+          }
+      }
+
+  To close the pager and icon manager on exit while keeping the terminal:
+
+      close_on_exit true
+      show panel bar
+      panel bar {
+          direction right
+          row {
+              external "cowpager -1" width 160 height 96
+              external "foot" close_on_exit false width 480 height 96
+              external "cowiconman" width 300 height 96
+          }
+      }
 
 **status** *type* \[*property* *value* ...\]
 
@@ -223,7 +372,9 @@ opaque dark grey.
         }
     }
 
-    panel telephone left bg 0xf2d6a6 {
+    panel telephone {
+        direction left
+        bg 0xf2d6a6
         cell 42 28
         grid 5 3
 
@@ -232,7 +383,9 @@ opaque dark grey.
         }
     }
 
-    panel pager right bg 0x3f5b51 {
+    panel pager {
+        direction right
+        bg 0x3f5b51
         external "cowpager" width 420 height 120 bg 0x242a30
     }
 

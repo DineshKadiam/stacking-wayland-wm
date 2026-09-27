@@ -28,6 +28,13 @@ off** hides the client without closing it. Clients follow their host's
 position, desk, layer and iconified state. Repeating an unchanged request does
 not schedule another layout.
 
+Before launching a client, **-a app-id** reserves the slot for the next new
+matching window instead of attaching **-s client**. An optional **-T pattern**
+also matches the window title. The reservation lasts ten seconds and is
+consumed before the client's first display; ambiguous matches are not used.
+Repeat the request to update a pending slot. **-X -n slot** cancels it.
+Reservations are discarded when the host closes or **-D** is used.
+
 **window-attach -t host -D** releases all attachments. Closing the host also
 releases its clients, except those attached with **-c on**, which receive a
 normal close request. The default is **-c off**. This policy survives CoW

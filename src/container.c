@@ -24,12 +24,119 @@
 #include "cow/titlebar.h"
 
 #include <limits.h>
+#include <fnmatch.h>
 #include <string.h>
+#include <strings.h>
+#include <time.h>
 
 #include "river-window-management-v1-client-protocol.h"
 
 static int next_container_id;
 static int next_pane_id;
+struct pending_attachment {
+	struct pending_attachment *next;
+	struct cow_view		  *host;
+	char			  *name, *app_id, *title;
+	struct cow_box		   slot;
+	struct timespec		   expires;
+	bool			   visible, close;
+};
+static struct pending_attachment *pending_attachments;
+
+void
+cow_container_attach_cancel(struct cow_view *host, const char *name)
+{
+	struct pending_attachment **link = &pending_attachments;
+	while (*link) {
+		struct pending_attachment *p = *link;
+		if (p->host != host || (name && strcmp(name, p->name))) {
+			link = &p->next;
+			continue;
+		}
+		*link = p->next;
+		xfree(p->name);
+		xfree(p->app_id);
+		xfree(p->title);
+		xfree(p);
+		if (name)
+			return;
+	}
+}
+
+bool
+cow_container_attach_wait(struct cow_view *host, const char *name,
+    const char *app_id, const char *title, struct cow_box slot, bool visible,
+    bool close)
+{
+	struct cow_container *c = cow_container_window_owner(host);
+	if (!host || host->closed || !host->output || !host->desk ||
+	    host->container_member || host->parent || (c && !c->attached) ||
+	    !name || !*name || !app_id || !*app_id || slot.width < 1 ||
+	    slot.width > 32768 || slot.height < 1 || slot.height > 32768)
+		return false;
+	cow_container_attach_cancel(host, name);
+	struct pending_attachment *p = xcalloc(1, sizeof(*p));
+	p->host			     = host;
+	p->name			     = xstrdup(name);
+	p->app_id		     = xstrdup(app_id);
+	p->title		     = xstrdup0(title);
+	p->slot			     = slot;
+	p->visible		     = visible;
+	p->close		     = close;
+	clock_gettime(CLOCK_MONOTONIC, &p->expires);
+	p->expires.tv_sec += 10;
+	p->next		    = pending_attachments;
+	pending_attachments = p;
+	return true;
+}
+
+/* Consume only a new client, before its initial configure where possible.
+ * Ambiguous matches are left to the module's ordinary discovery path.
+ */
+void
+cow_container_attach_mapped(struct cow_view *view)
+{
+	/* On-map rules may have changed geometry or decorations since the
+	 * initial configure. The attachment still owns both.
+	 */
+	if (cow_container_is_attached_client(view)) {
+		container_apply_layout(cow_view_container(view));
+		if (view->pending_resize) {
+			view->x = view->pending_x;
+			view->y = view->pending_y;
+			cow_view_sync_vxy_from_global(view);
+		}
+		return;
+	}
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	struct pending_attachment *match = NULL, *p;
+	for (p = pending_attachments; p; p = p->next) {
+		if (now.tv_sec > p->expires.tv_sec ||
+		    (now.tv_sec == p->expires.tv_sec &&
+			now.tv_nsec >= p->expires.tv_nsec) ||
+		    !view->app_id || strcasecmp(view->app_id, p->app_id) ||
+		    (p->title &&
+			fnmatch(p->title, view->title ? view->title : "", 0)))
+			continue;
+		if (match)
+			return;
+		match = p;
+	}
+	if (match &&
+	    cow_container_attach(match->host, view, match->name, match->slot,
+		match->visible, match->close)) {
+		/* Ordinary placement must not move a newly attached client. */
+		view->placed = true;
+		if (view->pending_resize) {
+			view->x = view->pending_x;
+			view->y = view->pending_y;
+			cow_view_sync_vxy_from_global(view);
+		}
+		cow_container_attach_cancel(match->host, match->name);
+	}
+}
+
 static int  pane_index(const struct cow_container_layout *,
      const struct cow_container_layout *, int *);
 static bool pane_can_expand(const struct cow_container_layout *,
@@ -2392,6 +2499,7 @@ cow_container_destroy(struct cow_container *c)
 void
 cow_container_forget_view(struct cow_view *view)
 {
+	cow_container_attach_cancel(view, NULL);
 	if (view->container_member == NULL)
 		return;
 	struct cow_container_member *m		= view->container_member;
