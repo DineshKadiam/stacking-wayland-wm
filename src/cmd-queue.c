@@ -157,6 +157,7 @@ cmdq_run_immediate(struct cmd_q *parent, struct cmd_list *cmdlist)
 	cmdq->default_target = parent->default_target;
 	cmdq->in_rule = parent->in_rule;
 	cmdq->in_style = parent->in_style;
+	cmdq->alias_depth = parent->alias_depth;
 	if (parent->event_json != NULL)
 		cmdq_set_event_json(cmdq, xstrdup(parent->event_json));
 	cmdq_run(cmdq, cmdlist);
