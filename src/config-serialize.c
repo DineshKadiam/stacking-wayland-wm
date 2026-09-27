@@ -567,6 +567,13 @@ serialize_bindings(struct config_buf *buf, const struct state_value *value)
 static void
 serialize_alias(struct config_buf *buf, const struct state_value *record)
 {
+	const char *parameters = string_field(record, "parameters");
+	if (parameters != NULL && parameters[0] != '\0') {
+		const char *argv[] = { "alias", "-p", parameters,
+		    string_field(record, "name"), string_field(record, "command") };
+		buf_command(buf, 5, argv);
+		return;
+	}
 	const char *argv[] = {
 		"alias",
 		string_field(record, "name"),

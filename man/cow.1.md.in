@@ -556,12 +556,12 @@ The following details those commands which operate globally within **cow**.
 Note that the same command might also contain window/output settings, which
 will be also be added under the relevant section in this man page.
 
-## alias name command ... \| alias -d name
+## alias \[-p PARAM,...\] name command ... \| alias -d name
 
 Define *name* as an alias for a CoW command. An alias can be used anywhere a
 built-in command is accepted, including directly through **moocow**(1), in a
-binding, menu, rule, or **script** block. It takes no arguments and inherits
-the window, desk, and output context of its caller.
+binding, menu, rule, or **script** block. It inherits the window, desk, and
+output context of its caller. Without **-p**, it takes no arguments.
 
 Defining an existing alias replaces its command. Existing bindings and menus
 resolve aliases when invoked, so they use the replacement without being
@@ -573,9 +573,30 @@ script body. Recursive aliases are stopped with an error.
 
 : Delete *name*.
 
+**-p** *PARAM,...*
+
+: Define named parameters for a **script { ... }** body. Supply a
+  comma-separated list of distinct variable names, without spaces. Names
+  cannot be commands, aliases, DSL keywords, or the alias's own name.
+  Calls must supply exactly one argument per parameter. Values are strings use
+  **#{PARAM}** to pass them to commands.
+  Quoted spaces, semicolons and braces remain argument data, not DSL code.
+  Ordinary shell commands invoked with **exec** retain their shell semantics.
+
+Parameterized aliases serve as reusable script functions. They do not capture
+variables from their caller or return expression values. **show alias NAME**
+includes the parameter list, and configuration export preserves it. Redefining
+an alias without **-p** removes its parameters.
+
 Examples:
 
     alias terminal exec foot
+    alias -p output move-to script {
+        window-move -o #{output}
+    }
+    bind L+F2 move-to HDMI-A-1
+    # Or: moocow move-to HDMI-A-1
+
     alias tidy-desktop script {
         winops -F 'self.current_desk and self.iconified' -i
         focus -n -w

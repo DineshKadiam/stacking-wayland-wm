@@ -693,6 +693,13 @@ exec_block(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *blk)
 bool
 dsl_eval(struct dsl_ast *ast, struct cmd_q *cmdq, struct dsl_error *err)
 {
+	return dsl_eval_args(ast, cmdq, NULL, 0, NULL, err);
+}
+
+bool
+dsl_eval_args(struct dsl_ast *ast, struct cmd_q *cmdq,
+    const char *parameters, int argc, char **argv, struct dsl_error *err)
+{
 	if (ast == NULL || ast->root == NULL)
 		return (true);
 	if (ast->root->kind != DSL_N_BLOCK) {
@@ -710,6 +717,21 @@ dsl_eval(struct dsl_ast *ast, struct cmd_q *cmdq, struct dsl_error *err)
 	ctx.err			= err;
 
 	struct dsl_env *env = env_new(NULL);
+	if (parameters != NULL) {
+		char *names = xstrdup(parameters), *cursor = names;
+		for (int i = 0; i < argc; i++) {
+			char *comma = strchr(cursor, ',');
+			if (comma != NULL)
+				*comma = '\0';
+			struct state_value *value = state_value_string(argv[i]);
+			env_set(env, cursor, value);
+			state_value_unref(value);
+			if (comma == NULL)
+				break;
+			cursor = comma + 1;
+		}
+		xfree(names);
+	}
 	if (cmdq != NULL && cmdq->default_target.window != NULL) {
 		struct state_value *self =
 		    state_snapshot_view(cmdq->default_target.window);

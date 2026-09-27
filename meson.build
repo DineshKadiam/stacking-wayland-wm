@@ -383,6 +383,14 @@ pan_test = executable('test-pan-frames',
 )
 test('pan-frames', pan_test)
 
+alias_args_test = executable('test-alias-args',
+    ['tests/alias-args.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
+    objects: cow.extract_objects(wm_test_sources),
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('alias-args', alias_args_test)
+
 xpm_test = executable('test-xpm',
     'tests/test_xpm.c',
     'src/xpm.c',

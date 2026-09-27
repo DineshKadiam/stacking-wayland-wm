@@ -339,6 +339,12 @@ cmd_show_exec(struct cmd *self, struct cmd_q *cmdq)
 			struct state_value *is_alias = state_value_bool(true);
 			state_record_set(record, "alias", is_alias);
 			state_value_unref(is_alias);
+			if (alias->parameters != NULL) {
+				struct state_value *parameters =
+				    state_value_string(alias->parameters);
+				state_record_set(record, "parameters", parameters);
+				state_value_unref(parameters);
+			}
 		}
 		state_value_unref(name);
 		state_value_unref(usage);

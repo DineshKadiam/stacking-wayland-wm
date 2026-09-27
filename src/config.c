@@ -451,9 +451,7 @@ cow_config_destroy(struct cow_config *config)
 	wl_list_for_each_safe(alias, alias_tmp, &config->aliases, link)
 	{
 		wl_list_remove(&alias->link);
-		xfree(alias->name);
-		xfree(alias->command);
-		xfree(alias);
+		cow_alias_free(alias);
 	}
 
 	struct cow_output_background_config *ob, *ob_tmp;

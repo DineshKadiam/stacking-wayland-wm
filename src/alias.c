@@ -58,10 +58,17 @@ cow_alias_remove(const char *name)
 	if (alias == NULL)
 		return (false);
 	wl_list_remove(&alias->link);
+	cow_alias_free(alias);
+	return (true);
+}
+
+void
+cow_alias_free(struct cow_alias *alias)
+{
 	xfree(alias->name);
 	xfree(alias->command);
+	xfree(alias->parameters);
 	xfree(alias);
-	return (true);
 }
 
 const struct wl_list *

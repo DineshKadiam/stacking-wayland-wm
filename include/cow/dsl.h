@@ -62,6 +62,8 @@ void dsl_free(struct dsl_ast *);
  * evaluation failure (e.g. unknown property, type mismatch).
  */
 bool dsl_eval(struct dsl_ast *ast, struct cmd_q *cmdq, struct dsl_error *err);
+bool dsl_eval_args(struct dsl_ast *, struct cmd_q *, const char *,
+    int, char **, struct dsl_error *);
 
 /*
  * Evaluate an expression AST with "self" bound to a window snapshot.

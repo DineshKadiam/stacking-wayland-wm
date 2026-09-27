@@ -532,6 +532,8 @@ state_snapshot_alias(const struct cow_alias *alias)
 	struct state_value *record = state_value_record();
 	rec_set_string(record, "name", alias->name);
 	rec_set_string(record, "command", alias->command);
+	if (alias->parameters != NULL)
+		rec_set_string(record, "parameters", alias->parameters);
 	return (record);
 }
 

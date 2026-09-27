@@ -24,10 +24,12 @@ struct cow_alias {
 	struct wl_list link;
 	char	      *name;
 	char	      *command;
+	char	      *parameters;
 };
 
 struct cow_alias *cow_alias_find(const char *);
 bool cow_alias_set(const char *, const char *);
+void cow_alias_free(struct cow_alias *);
 bool cow_alias_remove(const char *);
 const struct wl_list *cow_aliases_head(void);
 

@@ -20,6 +20,7 @@
 #include "cow/alias.h"
 #include "cow/cmd.h"
 #include "cow/config.h"
+#include "cow/dsl.h"
 #include "cow/memory.h"
 
 #define COW_ALIAS_MAX_DEPTH 32
@@ -29,10 +30,10 @@ static enum cmd_retval cmd_alias_invoke(struct cmd *, struct cmd_q *);
 
 struct cmd_entry cmd_alias_entry = {
 	"alias",
-	"+d",
+	"+dp:",
 	1,
 	-1,
-	"alias NAME command ... | alias -d NAME",
+	"alias [-p PARAM,...] NAME command ... | alias -d NAME",
 	cmd_alias_exec,
 	CMD_CONFIG,
 };
@@ -83,6 +84,7 @@ cmd_alias_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	struct args *args = self->args;
 	const char *name = args->argv[0];
+	const char *parameters = args_get(args, 'p');
 
 	if (!alias_name_valid(name) || alias_name_reserved(name)) {
 		cmdq_error(cmdq, "alias: invalid name: %s", name);
@@ -98,7 +100,7 @@ cmd_alias_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	if (args_has(args, 'd')) {
-		if (args->argc != 1) {
+		if (args->argc != 1 || parameters != NULL) {
 			cmdq_error(cmdq, "usage: alias -d NAME");
 			return (CMD_RETURN_ERROR);
 		}
@@ -113,6 +115,30 @@ cmd_alias_exec(struct cmd *self, struct cmd_q *cmdq)
 		cmdq_error(cmdq, "usage: alias NAME command ...");
 		return (CMD_RETURN_ERROR);
 	}
+	if (parameters != NULL) {
+		char *names = xstrdup(parameters), *cursor = names;
+		bool valid = true;
+		while (cursor != NULL) {
+			char *next = strchr(cursor, ',');
+			if (next != NULL)
+				*next++ = '\0';
+			if (!alias_name_valid(cursor) || alias_name_reserved(cursor) ||
+			    strcmp(cursor, name) == 0 ||
+			    cmd_find_cmd(cursor) != NULL)
+				valid = false;
+			for (char *prior = names; prior < cursor;
+			    prior += strlen(prior) + 1) {
+				if (strcmp(prior, cursor) == 0)
+					valid = false;
+			}
+			cursor = next;
+		}
+		xfree(names);
+		if (!valid) {
+			cmdq_error(cmdq, "alias: invalid or duplicate parameters");
+			return CMD_RETURN_ERROR;
+		}
+	}
 
 	char *command = cmd_argv_to_action_string(args->argc, args->argv, 1);
 	struct cmd_list *cmdlist = NULL;
@@ -125,8 +151,32 @@ cmd_alias_exec(struct cmd *self, struct cmd_q *cmdq)
 		xfree(command);
 		return (CMD_RETURN_ERROR);
 	}
-	cmd_list_free(cmdlist);
 	xfree(cause);
+	if (parameters != NULL) {
+		struct cmd *script = TAILQ_FIRST(&cmdlist->list);
+		if (script == NULL || script->entry != &cmd_script_entry ||
+		    TAILQ_NEXT(script, qentry) != NULL) {
+			cmdq_error(cmdq, "alias: -p requires script { ... }");
+			cmd_list_free(cmdlist);
+			xfree(command);
+			return CMD_RETURN_ERROR;
+		}
+		struct dsl_error error = {0};
+		char *body = cmd_argv_to_string(script->args->argc,
+		    script->args->argv, 0);
+		struct dsl_ast *ast = dsl_parse(body, NULL, &error);
+		xfree(body);
+		if (ast == NULL) {
+			cmdq_error(cmdq, "alias: %s", error.message);
+			dsl_error_fini(&error);
+			xfree(command);
+			cmd_list_free(cmdlist);
+			return CMD_RETURN_ERROR;
+		}
+		dsl_free(ast);
+		dsl_error_fini(&error);
+	}
+	cmd_list_free(cmdlist);
 
 	bool ok = cow_alias_set(name, command);
 	xfree(command);
@@ -134,6 +184,7 @@ cmd_alias_exec(struct cmd *self, struct cmd_q *cmdq)
 		cmdq_error(cmdq, "alias: cannot define '%s'", name);
 		return (CMD_RETURN_ERROR);
 	}
+	xstrset(&cow_alias_find(name)->parameters, parameters);
 	return (CMD_RETURN_NORMAL);
 }
 
@@ -146,8 +197,13 @@ cmd_alias_invoke(struct cmd *self, struct cmd_q *cmdq)
 		cmdq_error(cmdq, "unknown command: %s", name);
 		return (CMD_RETURN_ERROR);
 	}
-	if (self->args->argc != 0) {
-		cmdq_error(cmdq, "alias '%s' does not accept arguments", name);
+	int expected = alias->parameters != NULL ? 1 : 0;
+	if (alias->parameters != NULL) {
+		for (const char *p = alias->parameters; *p != '\0'; p++)
+			expected += *p == ',';
+	}
+	if (self->args->argc != expected) {
+		cmdq_error(cmdq, "alias '%s' expects %d arguments", name, expected);
 		return (CMD_RETURN_ERROR);
 	}
 	if (cmdq->alias_depth >= COW_ALIAS_MAX_DEPTH) {
@@ -174,8 +230,28 @@ cmd_alias_invoke(struct cmd *self, struct cmd_q *cmdq)
 	nested->alias_depth = cmdq->alias_depth + 1;
 	if (cmdq->event_json != NULL)
 		cmdq_set_event_json(nested, xstrdup(cmdq->event_json));
-	cmdq_run(nested, cmdlist);
-	bool ok = !nested->failed;
+	bool ok;
+	if (alias->parameters != NULL) {
+		/* Copy before execution: a body may redefine or delete itself. */
+		char *parameters = xstrdup(alias->parameters);
+		struct cmd *script = TAILQ_FIRST(&cmdlist->list);
+		struct dsl_error error = {0};
+		char *body = cmd_argv_to_string(script->args->argc,
+		    script->args->argv, 0);
+		struct dsl_ast *ast = dsl_parse(body, NULL, &error);
+		xfree(body);
+		ok = ast != NULL && dsl_eval_args(ast, nested, parameters,
+		    self->args->argc, self->args->argv, &error);
+		if (!ok)
+			cmdq_error(cmdq, "alias '%s': %s", name,
+			    error.message != NULL ? error.message : "evaluation failed");
+		dsl_error_fini(&error);
+		dsl_free(ast);
+		xfree(parameters);
+	} else {
+		cmdq_run(nested, cmdlist);
+		ok = !nested->failed;
+	}
 	cmdq_free(nested);
 	cmd_list_free(cmdlist);
 	return (ok ? CMD_RETURN_NORMAL : CMD_RETURN_ERROR);
