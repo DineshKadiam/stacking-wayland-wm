@@ -252,7 +252,9 @@ opaque dark grey.
   and application across neighbouring columns.
   Applications are inset inside their slot's **frame**, including external
   drawers. The frame is drawn by cowbuttons, not by a window decoration
-  rule. Set **frame 0** on an external cell to use the whole slot.
+  rule. **padding** *pixels* adds space between the frame and application,
+  using the cell's background colour. It defaults to zero. Set **frame 0**
+  and **padding 0** on an external cell to use the whole slot.
   An external cell inside a row may specify **handle.size** *pixels* to
   add a right-edge toggle. This hides only that application; reopening
   reuses the same window. **collapse retain** (the default) keeps the cell's

@@ -58,3 +58,43 @@ cow_module_cairo_relief(cairo_t *cr, double x, double y, double width,
 	cairo_stroke(cr);
 	cairo_restore(cr);
 }
+
+/* Signed frame widths reverse the relief, not the pressed colours. */
+void
+cow_module_cairo_frame(cairo_t *cr, double x, double y, double width,
+    double height, int frame, bool pressed, const float base[4])
+{
+	if (frame == 0 || width <= 0 || height <= 0)
+		return;
+	/* Convert before negation so INT_MIN is safe. */
+	double thickness = frame < 0 ? -(double)frame : frame;
+	if (thickness > width / 2)
+		thickness = width / 2;
+	if (thickness > height / 2)
+		thickness = height / 2;
+	bool  sunken = pressed != (frame < 0);
+	float dark[4], light[4];
+	cow_colour_darken(dark, base);
+	cow_colour_lighten(light, base);
+	cairo_save(cr);
+	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+	cow_module_cairo_set_source(cr, sunken ? dark : light);
+	cairo_move_to(cr, x, y + height);
+	cairo_line_to(cr, x, y);
+	cairo_line_to(cr, x + width, y);
+	cairo_line_to(cr, x + width - thickness, y + thickness);
+	cairo_line_to(cr, x + thickness, y + thickness);
+	cairo_line_to(cr, x + thickness, y + height - thickness);
+	cairo_close_path(cr);
+	cairo_fill(cr);
+	cow_module_cairo_set_source(cr, sunken ? light : dark);
+	cairo_move_to(cr, x + width, y);
+	cairo_line_to(cr, x + width, y + height);
+	cairo_line_to(cr, x, y + height);
+	cairo_line_to(cr, x + thickness, y + height - thickness);
+	cairo_line_to(cr, x + width - thickness, y + height - thickness);
+	cairo_line_to(cr, x + width - thickness, y + thickness);
+	cairo_close_path(cr);
+	cairo_fill(cr);
+	cairo_restore(cr);
+}

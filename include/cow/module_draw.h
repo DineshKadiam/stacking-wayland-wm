@@ -25,5 +25,7 @@ void cow_module_cairo_fill(cairo_t *, const float [4], double, double,
     double, double);
 void cow_module_cairo_relief(cairo_t *, double, double, double, double,
     bool, const float [4]);
+void cow_module_cairo_frame(cairo_t *, double, double, double, double, int,
+    bool, const float[4]);
 
 #endif /* COW_MODULE_DRAW_H */

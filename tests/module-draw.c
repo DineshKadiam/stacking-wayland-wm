@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include <stdint.h>
+#include <limits.h>
 #include <stdio.h>
 
 #include <cairo.h>
@@ -43,6 +44,29 @@ main(void)
 		fprintf(stderr, "module drawing lost alpha: center=%u edge=%u\n",
 		    center_alpha, edge_alpha);
 	}
+	const int frames[] = { 0, 3, -3, INT_MIN, INT_MAX };
+	for (unsigned i = 0; i < sizeof(frames) / sizeof(frames[0]); i++) {
+		uint32_t edges[2];
+		for (int pressed = 0; pressed < 2; pressed++) {
+			cow_module_cairo_fill(cr, colour, 0, 0, 16, 16);
+			cow_module_cairo_frame(cr, 0, 0, 16, 16, frames[i],
+			    pressed, colour);
+			cairo_surface_flush(surface);
+			edges[pressed] = pixels[8];
+			failed |= (edges[pressed] >> 24) != 128;
+			if (frames[i] == 0 || frames[i] == 3 || frames[i] == -3)
+				failed |= pixels[8 * stride + 8] !=
+				    pixels[4 * stride + 8];
+		}
+		if (frames[i] == 0)
+			failed |= edges[0] != edges[1];
+		else if (frames[i] > 0)
+			failed |= edges[0] <= edges[1];
+		else
+			failed |= edges[0] >= edges[1];
+	}
+	if (failed)
+		fprintf(stderr, "module frame rendering failed\n");
 	cairo_destroy(cr);
 	cairo_surface_destroy(surface);
 	return (failed);

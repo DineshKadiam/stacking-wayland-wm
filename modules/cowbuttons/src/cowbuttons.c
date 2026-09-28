@@ -205,6 +205,7 @@ struct panel_selection {
 
 struct external_client {
 	int			     handle_size;
+	int			     padding;
 	bool			     collapsed;
 	bool			     collapse_shrink;
 	struct wl_surface	    *frame_surface;
@@ -1162,6 +1163,12 @@ load_external(char **fields, int n, const char **why)
 			    external->handle_size < 1) {
 				*why =
 				    "external handle.size requires a positive width in a row";
+				return false;
+			}
+		} else if (!strcmp(fields[i], "padding")) {
+			if (!parse_int(fields[i + 1], &external->padding) ||
+			    external->padding < 0) {
+				*why = "external padding expects a nonnegative width";
 				return false;
 			}
 		} else if (!strcmp(fields[i], "collapse")) {
@@ -3136,7 +3143,7 @@ external_draw_frame(struct cell *cell, int x, int y, int width, int height,
     bool visible)
 {
 	struct external_client *p = &cell->external;
-	if (!visible || cell_frame(cell) == 0) {
+	if (!visible || (cell_frame(cell) == 0 && p->padding == 0)) {
 		if (p->frame_surface != NULL && p->frame_width != 0) {
 			wl_surface_attach(p->frame_surface, NULL, 0, 0);
 			wl_surface_commit(p->frame_surface);
@@ -3240,12 +3247,13 @@ external_attach(int index, const struct win_info *host)
 		width -= p->handle_size;
 	if (width < 1)
 		return false;
-	/* Leave the relief visible instead of covering it with the client.
+	/* Leave the relief and padding visible around the client.
 	 * Clamp before converting to int, including for an INT_MIN frame.
 	 */
 	double inset = cell_frame(&cells[index]);
 	if (inset < 0)
 		inset = -inset;
+	inset += p->padding;
 	if (inset > (width - 1) / 2)
 		inset = (width - 1) / 2;
 	if (inset > (height - 1) / 2)
