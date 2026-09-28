@@ -50,6 +50,7 @@ pane_save(const struct cow_container_pane *pane)
 		cJSON_AddStringToObject(node, "name", pane->name);
 	cJSON_AddNumberToObject(node, "collapsed", pane->layout.collapsed);
 	cJSON_AddBoolToObject(node, "title_hidden", pane->title_hidden);
+	cJSON_AddBoolToObject(node, "hidden", pane->layout.hidden);
 	cJSON_AddNumberToObject(node, "zoom", pane->zoom);
 	struct cow_container_member *m;
 	wl_list_for_each(m, &pane->tabs, pane_link)
@@ -277,6 +278,10 @@ pane_restore(struct container_restore *state, const cJSON *node, unsigned depth)
 	if (hidden != NULL && !cJSON_IsBool(hidden))
 		goto invalid;
 	pane->title_hidden = cJSON_IsTrue(hidden);
+	const cJSON *pane_hidden = cJSON_GetObjectItemCaseSensitive(node, "hidden");
+	if (pane_hidden != NULL && !cJSON_IsBool(pane_hidden))
+		goto invalid;
+	pane->layout.hidden = cJSON_IsTrue(pane_hidden);
 	const cJSON *zoom  = cJSON_GetObjectItemCaseSensitive(node, "zoom");
 	if (zoom != NULL) {
 		int value;
@@ -515,6 +520,7 @@ cow_container_restore(const cJSON *record)
 	const cJSON *active = cJSON_GetObjectItemCaseSensitive(record,
 	    "active");
 	if (!state.valid || c->root == NULL ||
+	    cow_container_layout_hidden(&c->root->layout) ||
 	    (c->n_members < 2 && c->name == NULL && !c->persistent &&
 		!(c->framed && c->n_members == 1)) ||
 	    !pane_collapse_valid(&c->root->layout) ||

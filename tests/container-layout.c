@@ -122,6 +122,17 @@ main(void)
 			}
 		}
 	}
+	/* Hidden panes give up their allocation without changing split shares.
+	 */
+	a.hidden       = true;
+	unsigned share = root.share;
+	CHECK(cow_container_layout_arrange(&root, box, 4));
+	CHECK(a.box.width == 0 && a.box.height == 0);
+	CHECK(right.box.width == box.width && right.box.height == box.height);
+	CHECK(root.share == share);
+	a.hidden = false;
+	CHECK(cow_container_layout_arrange(&root, box, 4));
+	CHECK(a.box.width >= a.min_width && root.share == share);
 	root.share = 0;
 	CHECK(!cow_container_layout_arrange(&root, box, 0));
 	root.share = 5000;

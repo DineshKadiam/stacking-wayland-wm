@@ -1506,6 +1506,27 @@ main(void)
 		    COW_CONTAINER_VERTICAL;
 		CHECK(!cow_container_rotate(c, 1));
 		cow_view_pane(&panes[0])->layout.collapsed = COW_CONTAINER_LEAF;
+		cow_container_activate(c, panes[0].container_member);
+		cow_wm.pending_focus = &panes[0];
+		CHECK(cow_container_pane_visible(c, cow_view_pane(&panes[0]),
+		    false));
+		CHECK(cow_container_hides_view(&panes[0]));
+		CHECK(cow_wm.pending_focus != &panes[0]);
+		CHECK(!cow_container_hides_view(cow_wm.pending_focus));
+		CHECK(panes[1].pending_height > row_height);
+		CHECK(cow_container_pane_visible(c, cow_view_pane(&panes[0]),
+		    true));
+		CHECK(panes[0].pending_height == row_height);
+		CHECK(cow_container_pane_visible(c, cow_view_pane(&panes[1]),
+		    false));
+		CHECK(cow_container_pane_visible(c, cow_view_pane(&panes[2]),
+		    false));
+		CHECK(!cow_container_pane_visible(c, cow_view_pane(&panes[0]),
+		    false));
+		CHECK(cow_container_pane_visible(c, cow_view_pane(&panes[1]),
+		    true));
+		CHECK(cow_container_pane_visible(c, cow_view_pane(&panes[2]),
+		    true));
 		CHECK(cow_container_zoom(&panes[0], COW_CONTAINER_ZOOM_COLUMN));
 		CHECK(!cow_container_rotate(c, 1));
 		CHECK(panes[0].pending_height > row_height);

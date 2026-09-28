@@ -210,6 +210,8 @@ pane_outer_edges(const struct cow_container *c,
 		 (display ? pane_display_layout(c, pane) : &pane->layout);
 	    n->parent != NULL; n = n->parent) {
 		bool second = n == n->parent->child[1];
+		if (cow_container_layout_hidden(n->parent->child[!second]))
+			continue;
 		if (n->parent->axis == COW_CONTAINER_HORIZONTAL)
 			edges &= ~(second ? COW_EDGE_LEFT : COW_EDGE_RIGHT);
 		else
@@ -301,6 +303,8 @@ pane_frame_metrics(const struct cow_container_member *m, int *fw, int *fh,
 bool
 container_pane_minimum(struct cow_container_pane *pane, bool client_hints)
 {
+	if (pane->layout.hidden)
+		return true;
 	if (pane->layout.axis != COW_CONTAINER_LEAF)
 		return container_pane_minimum(container_pane_from_layout(pane->layout.child[0]),
 			   client_hints) &&
@@ -385,6 +389,8 @@ container_pane_content(const struct cow_container_member *m)
 static bool
 pane_has_title(const struct cow_container_pane *pane)
 {
+	if (pane->layout.hidden)
+		return false;
 	return pane->n_tabs > 1 ||
 	    pane->layout.collapsed != COW_CONTAINER_LEAF ||
 	    (!pane->title_hidden && pane->active != NULL &&
@@ -405,7 +411,7 @@ protected_title(const struct cow_container *c)
 	}
 	struct cow_container_pane *first = NULL;
 	while ((first = cow_container_pane_next(c, first)) != NULL) {
-		if (first->active != NULL)
+		if (!first->layout.hidden && first->active != NULL)
 			return first;
 	}
 	return NULL;
@@ -415,7 +421,8 @@ static bool
 pane_title_visible(const struct cow_container *c,
     const struct cow_container_pane	      *pane)
 {
-	return c->shaded || pane_has_title(pane) || protected_title(c) == pane;
+	return !pane->layout.hidden &&
+	    (c->shaded || pane_has_title(pane) || protected_title(c) == pane);
 }
 
 bool
@@ -595,6 +602,11 @@ container_apply_layout(struct cow_container *c)
 
 	wl_list_for_each(m, &c->members, link)
 	{
+		if (m->pane->layout.hidden) {
+			m->view->use_ssd   = false;
+			m->view->dec.dirty = true;
+			continue;
+		}
 		if (m->view->fullscreen)
 			continue;
 		struct cow_box box = container_pane_content(m);
@@ -646,6 +658,52 @@ cow_container_shaded_size(const struct cow_view *view, int *width, int *height)
 	struct cow_box box = container_pane_content(view->container_member);
 	*width		   = box.width;
 	*height		   = box.height;
+	return true;
+}
+
+bool
+cow_container_pane_visible(struct cow_container *c,
+    struct cow_container_pane *pane, bool visible)
+{
+	if (!c || !pane || pane->layout.axis != COW_CONTAINER_LEAF)
+		return false;
+	bool old = pane->layout.hidden;
+	if (old == !visible)
+		return true;
+	pane->layout.hidden = !visible;
+	if (cow_container_layout_hidden(&c->root->layout)) {
+		pane->layout.hidden = old;
+		return false;
+	}
+	struct cow_container_pane *zoom = zoomed_pane(c);
+	enum cow_container_zoom saved_zoom = zoom ? zoom->zoom :
+	    COW_CONTAINER_ZOOM_NONE;
+	clear_zoom(c);
+	struct cow_view *view = title_view(c);
+	if (c->frame.width > 0 && c->frame.height > 0 &&
+	    !(view ? cow_container_refresh(view) :
+		     cow_container_arrange(c, c->frame))) {
+		pane->layout.hidden = old;
+		if (zoom != NULL)
+			zoom->zoom = saved_zoom;
+		return false;
+	}
+	if (!visible && c->active && c->active->pane == pane) {
+		struct cow_container_pane *other = NULL;
+		while ((other = cow_container_pane_next(c, other)) != NULL) {
+			if (!other->layout.hidden && other->active) {
+				struct cow_view *pending = cow_wm.pending_focus;
+				struct cow_view *focus = cow_wm_effective_focus();
+				bool focused = focus && cow_view_pane(focus) == pane;
+				cow_container_activate(c, other->active);
+				if (!focused)
+					cow_wm.pending_focus = pending;
+				break;
+			}
+		}
+	}
+	cow_stack_mark_dirty();
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 	return true;
 }
 
@@ -1633,7 +1691,8 @@ cow_container_insert(struct cow_container *c, struct cow_container_pane *pane,
 		c->desk	  = view->desk;
 		c->flags  = view->flags;
 	}
-	cow_container_activate(c, view->container_member);
+	if (!pane->layout.hidden)
+		cow_container_activate(c, view->container_member);
 	cow_container_arrange(c, c->frame);
 	return true;
 }
@@ -1851,6 +1910,9 @@ cow_container_activate(struct cow_container *c,
 		if (other != member && other->view->fullscreen)
 			cow_view_exit_fullscreen(other->view);
 	}
+	if (member->pane->layout.hidden &&
+	    !cow_container_pane_visible(c, member->pane, true))
+		return;
 	if (zoom_hides_pane(c->shaded ? NULL : zoomed_pane(c), member->pane)) {
 		clear_zoom(c);
 		container_apply_layout(c);
@@ -2180,6 +2242,8 @@ cow_container_hides_view(const struct cow_view *view)
 			cow_container_hides_view(parent));
 	}
 	if (!cow_view_is_active_tab(view))
+		return true;
+	if (cow_view_pane(view)->layout.hidden)
 		return true;
 	if (zoom_hides_pane(c->shaded ? NULL : zoomed_pane(c),
 		cow_view_pane(view)))

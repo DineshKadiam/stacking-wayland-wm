@@ -100,6 +100,17 @@ main(void)
 	CHECK(cJSON_Compare(record, roundtrip, true));
 	cJSON_Delete(roundtrip);
 
+	/* Hidden panes retain their clients and visibility across restart. */
+	CHECK(cow_container_pane_visible(c, cow_view_pane(&d), false));
+	CHECK(cow_state_save());
+	cow_container_destroy(c);
+	CHECK(cow_state_restore());
+	c = cow_view_container(&a);
+	CHECK(c != NULL && cow_view_pane(&d)->layout.hidden);
+	CHECK(cow_container_hides_view(&d));
+	CHECK(cow_container_pane_visible(c, cow_view_pane(&d), true));
+	CHECK(!cow_container_hides_view(&d));
+
 	/* Restart retains group iconification and a single representative. */
 	a.cfg.icon_enabled = b.cfg.icon_enabled = d.cfg.icon_enabled = true;
 	cow_view_iconify(&d);

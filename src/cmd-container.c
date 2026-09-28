@@ -49,14 +49,14 @@ container_direction(const char *edge, enum cow_container_axis *axis,
 
 struct cmd_entry cmd_container_entry = {
 	"window-container",
-	"t:s:e:f:N:G:B:b:z:o:arcqnpRPHUEDTA",
+	"t:s:e:f:N:G:B:b:z:o:v:arcqnpRPHUEDTA",
 	0,
 	0,
 	"[-t target | -G name] [-b pane] [-s source] "
 	"[-E -N name [-B pane] | -E -e direction [-B pane] | -D | "
 	"-N name | -B pane-name | -a | -e direction | -f direction | "
 	"-z column|container|off | -o clockwise|anticlockwise|180 | "
-	"-T [-A] | -rcqnpRPHU]",
+	"-v on|off|toggle | -T [-A] | -rcqnpRPHU]",
 	cmd_container_exec,
 	0,
 };
@@ -66,7 +66,7 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	struct args *args = self->args;
 	unsigned     actions = 0;
-	for (const char *flag = "arcqnpRPHUTzofED"; *flag; flag++)
+	for (const char *flag = "arcqnpRPHUTzovfED"; *flag; flag++)
 		actions += args_has(args, *flag) != 0;
 	/* -e qualifies an add, and -N/-B name an empty layout or pane. */
 	if (args_has(args, 'e') && !args_has(args, 'a') && !args_has(args, 'E'))
@@ -134,6 +134,25 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		}
 		selected = pane;
 		target	 = pane->active ? pane->active->view : NULL;
+	}
+	if (args_has(args, 'v')) {
+		const char *value = args_get(args, 'v');
+		bool visible;
+		if (!strcmp(value, "on"))
+			visible = true;
+		else if (!strcmp(value, "off"))
+			visible = false;
+		else if (!strcmp(value, "toggle") && selected != NULL)
+			visible = selected->layout.hidden;
+		else {
+			cmdq_error(cmdq, "container: expected visibility on, off or toggle");
+			return CMD_RETURN_ERROR;
+		}
+		if (!cow_container_pane_visible(container, selected, visible)) {
+			cmdq_error(cmdq, "container: cannot hide the last visible pane or show this pane");
+			return CMD_RETURN_ERROR;
+		}
+		return CMD_RETURN_NORMAL;
 	}
 	if (args_has(args, 'o')) {
 		if (!named && cow_container_window_owner(target))

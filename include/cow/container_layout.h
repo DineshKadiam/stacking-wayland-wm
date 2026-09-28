@@ -36,6 +36,7 @@ struct cow_container_layout {
 	struct cow_container_layout *parent, *child[2];
 	unsigned		     share;
 	enum cow_container_axis	     collapsed;
+	bool			     hidden;
 	int			     min_width, min_height;
 	struct cow_box		     box, divider;
 };
@@ -43,6 +44,7 @@ struct cow_container_layout {
 bool cow_container_layout_minimum(struct cow_container_layout *, int, int *,
     int *);
 void cow_container_layout_rotate(struct cow_container_layout *, unsigned);
+bool cow_container_layout_hidden(const struct cow_container_layout *);
 bool cow_container_layout_arrange(struct cow_container_layout *, struct cow_box,
     int);
 

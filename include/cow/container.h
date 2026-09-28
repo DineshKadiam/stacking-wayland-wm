@@ -184,6 +184,8 @@ bool cow_container_title_hide(struct cow_view *);
 bool cow_container_titles_restore(struct cow_view *);
 bool cow_container_titles_toggle(struct cow_view *, bool);
 bool cow_container_zoom(struct cow_view *, enum cow_container_zoom);
+bool cow_container_pane_visible(struct cow_container *,
+    struct cow_container_pane *, bool);
 bool cow_container_shade(struct cow_view *, bool);
 bool cow_container_shaded_size(const struct cow_view *, int *, int *);
 bool cow_container_equalize(struct cow_view *);

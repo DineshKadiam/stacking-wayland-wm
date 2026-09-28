@@ -46,6 +46,14 @@ cow_container_layout_rotate(struct cow_container_layout *node, unsigned turns)
 }
 
 bool
+cow_container_layout_hidden(const struct cow_container_layout *node)
+{
+	return node->axis == COW_CONTAINER_LEAF ? node->hidden :
+	    cow_container_layout_hidden(node->child[0]) &&
+	    cow_container_layout_hidden(node->child[1]);
+}
+
+bool
 cow_container_layout_minimum(struct cow_container_layout *node, int gap,
     int *width, int *height)
 {
@@ -55,6 +63,10 @@ cow_container_layout_minimum(struct cow_container_layout *node, int gap,
 	if (node == NULL || gap < 0)
 		return false;
 	if (node->axis == COW_CONTAINER_LEAF) {
+		if (node->hidden) {
+			*width = *height = 0;
+			return true;
+		}
 		if (node->min_width < 1 || node->min_height < 1)
 			return false;
 		*width	= node->min_width;
@@ -67,6 +79,14 @@ cow_container_layout_minimum(struct cow_container_layout *node, int gap,
 	    !cow_container_layout_minimum(node->child[0], gap, &aw, &ah) ||
 	    !cow_container_layout_minimum(node->child[1], gap, &bw, &bh))
 		return false;
+	if (cow_container_layout_hidden(node->child[0]) ||
+	    cow_container_layout_hidden(node->child[1])) {
+		*width = node->min_width = maximum(aw, bw);
+		*height = node->min_height = maximum(ah, bh);
+		node->collapsed = cow_container_layout_hidden(node->child[0]) ?
+		    node->child[1]->collapsed : node->child[0]->collapsed;
+		return true;
+	}
 	if (node->axis == COW_CONTAINER_HORIZONTAL) {
 		w = (int64_t)aw + bw + gap;
 		h = maximum(ah, bh);
@@ -97,6 +117,15 @@ arrange(struct cow_container_layout *node, struct cow_box box, int gap)
 	node->divider = (struct cow_box) { 0 };
 	if (node->axis == COW_CONTAINER_LEAF)
 		return;
+	if (cow_container_layout_hidden(node->child[0]) ||
+	    cow_container_layout_hidden(node->child[1])) {
+		struct cow_box empty = { .x = box.x, .y = box.y };
+		for (int i = 0; i < 2; i++)
+			arrange(node->child[i],
+			    cow_container_layout_hidden(node->child[i]) ? empty : box,
+			    gap);
+		return;
+	}
 	if (node->axis == COW_CONTAINER_HORIZONTAL) {
 		available = box.width - gap;
 		low	  = node->child[0]->min_width;

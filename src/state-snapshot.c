@@ -167,6 +167,7 @@ state_snapshot_pane(const struct cow_container *c,
 	rec_set_number(r, "id", pane->id);
 	rec_set_string(r, "name", pane->name);
 	rec_set_container_id(r, "container_id", c);
+	rec_set_string(r, "container_name", c->name);
 	rec_set_string(r, "active_window_id",
 	    active ? active->identifier : NULL);
 	rec_set_number(r, "tab_count", cow_container_pane_window_count(pane));
@@ -174,6 +175,7 @@ state_snapshot_pane(const struct cow_container *c,
 	rec_set_bool(r, "collapsed",
 	    pane->layout.collapsed != COW_CONTAINER_LEAF);
 	rec_set_bool(r, "title_hidden", pane->title_hidden);
+	rec_set_bool(r, "hidden", pane->layout.hidden);
 	rec_set_string(r, "zoom",
 	    pane->zoom == COW_CONTAINER_ZOOM_COLUMN  ? "column" :
 		pane->zoom == COW_CONTAINER_ZOOM_ALL ? "container" :

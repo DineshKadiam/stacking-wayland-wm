@@ -2532,6 +2532,11 @@ when necessary. Lowering those minima does not automatically shrink it.
     bind-decoration -2 pane-titlebar window-container -c
     ```
 
+**window-container -v** *on|off|toggle* \[-G *container*\] \[-b *pane*\]
+
+: Show or hide a pane without closing its windows. Hidden panes reallocate
+  space to the remaining panes.  At least one pane must remain visible.
+
 **window-container -z** *column|container|off* \[-t *target*\]
 
 : Temporarily enlarge the target pane to fill its column or the whole
