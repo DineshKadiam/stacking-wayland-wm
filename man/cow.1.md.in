@@ -2310,14 +2310,16 @@ titles, separators, or links to sub-menus.
 
 ## Showing menus
 
-**menu-show** *NAME* \[*-x N*\] \[*-y N*\]
+**menu-show** *NAME* \[*-x N*\] \[*-y N*\] \[*-c* \[*-o* OUTPUT\]\]
 
 : Open the menu as a popup. Without explicit coordinates, the menu is
   centred horizontally on the current pointer location, with the pointer
   placed over the top/title row. With **-x** and **-y**, those
-  coordinates are used directly. The command queue's explicit target
-  window is captured as the menu's "context view" so window-operation
-  items target the right window even if focus drifts during navigation.
+  coordinates are used directly. With **-c**, centres the menu on the
+  current output, or the one specified by **-o**.  The command queue's
+  explicit target window is captured as the menu's "context view" so
+  window-operation items target the right window even if focus drifts 
+  during navigation.
 
 Menus take keyboard focus while open. Arrow keys navigate, Enter selects,
 Escape closes, and a menu item's alphanumeric hotkey activates it. Keys listed

@@ -29,6 +29,7 @@
 #include "cow/log.h"
 #include "cow/memory.h"
 #include "cow/menu.h"
+#include "cow/output.h"
 #include "cow/seat.h"
 #include "cow/util.h"
 #include "cow/update.h"
@@ -264,6 +265,8 @@ cmd_menu_show_exec(struct cmd *self, struct cmd_q *cmdq)
 	int	     x	  = INT32_MIN;
 	int	     y	  = INT32_MIN;
 	const char  *name = NULL;
+	bool centred = false;
+	const char * specific_output = NULL;
 
 	for (int i = 0; i < args->argc; i++) {
 		const char *a = args->argv[i];
@@ -271,12 +274,16 @@ cmd_menu_show_exec(struct cmd *self, struct cmd_q *cmdq)
 			x = atoi(args->argv[++i]);
 		} else if (strcmp(a, "-y") == 0 && i + 1 < args->argc) {
 			y = atoi(args->argv[++i]);
+		} else if (strcmp(a, "-c") == 0) {
+			centred = true;
+		} else if (strcmp(a, "-o") == 0 && i+1 < args->argc) {
+			specific_output = args->argv[++i];
 		} else if (name == NULL) {
 			name = a;
 		}
 	}
 	if (name == NULL) {
-		cmdq_error(cmdq, "menu-show: usage: NAME [-x N] [-y N]");
+		cmdq_error(cmdq, "menu-show: usage: NAME [-x N] [-y N] [-c [-o OUTPUT]]");
 		return (CMD_RETURN_ERROR);
 	}
 
@@ -287,7 +294,23 @@ cmd_menu_show_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	bool centre_title_on_pointer = (x == INT32_MIN && y == INT32_MIN);
+	
+	if (centred) {
+		struct cow_output *output = cmd_ctx_target_output(cmdq);
+		if (specific_output) 
+			output = cow_output_find_by_name(specific_output);
+		if (output == NULL)
+			output = cow_wm.current_output;
 
+		x = 0;
+		y = 0;
+		if (output != NULL) {
+			x = output->usable_area.x + output->usable_area.width / 2;
+			y = output->usable_area.y + output->usable_area.height / 2;
+		}
+		cow_menu_popup_open_centered(m, x, y, NULL);
+		goto out;
+	}
 	if (x == INT32_MIN || y == INT32_MIN) {
 		int px, py;
 		if (cow_seat_get_pointer(&px, &py)) {
@@ -307,9 +330,9 @@ cmd_menu_show_exec(struct cmd *self, struct cmd_q *cmdq)
 				y = 0;
 		}
 	}
-
 	cow_menu_popup_open(m, x, y, cmdq->target.window, NULL,
-	    centre_title_on_pointer);
+		centre_title_on_pointer);
+out:
 	cow_update_request(COW_UPDATE_MANAGE);
 	return (CMD_RETURN_NORMAL);
 }
@@ -319,7 +342,7 @@ struct cmd_entry cmd_menu_show_entry = {
 	"",
 	1,
 	-1,
-	"menu-show NAME [-x N] [-y N]",
+	"menu-show NAME [-x N] [-y N] [-c [-o OUTPUT]]",
 	cmd_menu_show_exec,
 	0,
 };
