@@ -162,9 +162,13 @@ cow_container_window_identify(struct cow_view *view)
 void
 cow_container_window_forget(struct cow_view *view)
 {
-	struct cow_container *c;
-	wl_list_for_each(c, &cow_wm.containers, wm_link)
+	struct cow_container *c, *next;
+	wl_list_for_each_safe(c, next, &cow_wm.containers, wm_link)
 	{
+		if (c->attached && c->frame_view == view) {
+			cow_container_destroy(c);
+			continue;
+		}
 		if (c->split_target == view)
 			c->split_target = NULL;
 		if (c->split_source == view)
@@ -475,6 +479,10 @@ cow_container_manage_windows(void)
 	struct cow_container *c, *next;
 	wl_list_for_each_safe(c, next, &cow_wm.containers, wm_link)
 	{
+		if (c->attached) {
+			cow_container_attachment_sync(c);
+			continue;
+		}
 		if (!c->persistent && !c->framed && !c->frame_window &&
 		    c->root->layout.axis == COW_CONTAINER_LEAF)
 			continue;

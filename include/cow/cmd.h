@@ -284,6 +284,7 @@ extern struct cmd_entry cmd_scroll_entry;
 extern struct cmd_entry cmd_script_entry;
 extern struct cmd_entry cmd_window_shade_entry;
 extern struct cmd_entry cmd_container_entry;
+extern struct cmd_entry cmd_attach_entry;
 extern struct cmd_entry cmd_pick_window_entry;
 extern struct cmd_entry cmd_window_select_entry;
 

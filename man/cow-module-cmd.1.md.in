@@ -16,6 +16,22 @@ general configuration commands.
 
 # COMMANDS
 
+## window-attach -t host [-s client] -n slot -x X -y Y -w width -h height [-v on|off]
+
+Attach a client to a named slot owned by a host window. Coordinates are
+relative to the host's content origin and may be negative for an external
+panel. The width and height describe the client's content area. CoW clips
+clients to their slots and suppresses their server-side decorations.
+
+Omit **-s** to update an occupied slot. Visibility defaults to **on**; **-v
+off** hides the client without closing it. Clients follow their host's
+position, desk, layer and iconified state. Repeating an unchanged request does
+not schedule another layout.
+
+**window-attach -t host -D** releases all attachments. Closing the host also
+releases its clients. Ordinary container editing commands do not modify
+module-owned layouts.
+
 ## show diagnostics
 
 Return read-only, process-lifetime diagnostic counters. The record contains CoW

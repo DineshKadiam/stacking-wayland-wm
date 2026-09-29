@@ -24,6 +24,71 @@
 
 static enum cmd_retval cmd_container_exec(struct cmd *, struct cmd_q *);
 
+static enum cmd_retval
+cmd_attach_exec(struct cmd *self, struct cmd_q *cmdq)
+{
+	struct args	*args = self->args;
+	struct cow_view *host = args_has(args, 't') ?
+	    cmd_ctx_target_window(cmdq) :
+	    NULL;
+	if (host == NULL) {
+		cmdq_error(cmdq, "window-attach: an explicit host is required");
+		return CMD_RETURN_ERROR;
+	}
+	if (args_has(args, 'D')) {
+		struct cow_container *c = cow_container_window_owner(host);
+		if (c && c->attached)
+			cow_container_destroy(c);
+		cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
+		return CMD_RETURN_NORMAL;
+	}
+	struct cow_box slot;
+	int	   *values[] = { &slot.x, &slot.y, &slot.width, &slot.height };
+	const char *keys     = "xywh";
+	for (size_t i = 0; i < 4; i++) {
+		char *cause = NULL;
+		if (!args_has(args, keys[i])) {
+			cmdq_error(cmdq,
+			    "window-attach: slot geometry is required");
+			return CMD_RETURN_ERROR;
+		}
+		*values[i] = args_strtonum(args, keys[i], i < 2 ? -32768 : 1,
+		    32768, &cause);
+		if (cause) {
+			cmdq_error(cmdq, "window-attach: invalid geometry: %s",
+			    cause);
+			xfree(cause);
+			return CMD_RETURN_ERROR;
+		}
+	}
+	const char *visibility = args_get(args, 'v');
+	if (visibility && strcmp(visibility, "on") &&
+	    strcmp(visibility, "off")) {
+		cmdq_error(cmdq,
+		    "window-attach: expected visibility on or off");
+		return CMD_RETURN_ERROR;
+	}
+	if (!cow_container_attach(host,
+		args_has(args, 's') ? cmdq->source.window : NULL,
+		args_get(args, 'n'), slot,
+		!visibility || !strcmp(visibility, "on"))) {
+		cmdq_error(cmdq,
+		    "window-attach: cannot attach this window or slot");
+		return CMD_RETURN_ERROR;
+	}
+	return CMD_RETURN_NORMAL;
+}
+
+struct cmd_entry cmd_attach_entry = {
+	"window-attach",
+	"t:s:n:x:y:w:h:v:D",
+	0,
+	0,
+	"-t host [-D | [-s client] -n slot -x X -y Y -w width -h height [-v on|off]]",
+	cmd_attach_exec,
+	CMD_MODULE,
+};
+
 static struct cow_view *
 container_frame_target(struct cow_view *view)
 {
@@ -119,6 +184,10 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 						       cow_view_container(target);
 	if (container == NULL)
 		container = cow_container_window_owner(target);
+	if (container && container->attached) {
+		cmdq_error(cmdq, "container: this layout is owned by a module");
+		return CMD_RETURN_ERROR;
+	}
 	struct cow_container_pane *selected  = target ?
 	     cow_view_pane(target) :
 	     cow_container_pane_next(container, NULL);

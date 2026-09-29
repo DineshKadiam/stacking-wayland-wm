@@ -1675,6 +1675,75 @@ main(void)
 		    windows[0].vy == 1200);
 		CHECK(wl_list_empty(&cow_wm.containers));
 	}
+	/* Fixed module slots share container lifetime and visibility without
+	 * replacing the host with a synthetic frame.
+	 */
+	{
+		cow_config		 = NULL;
+		struct cow_output output = { 0 };
+		struct cow_desk	  desk	 = { 0 };
+		wl_list_init(&output.visible_views);
+		wl_list_init(&desk.views);
+		wl_list_init(&cow_wm.views);
+		struct cow_view windows[3] = { 0 };
+		char	       *ids[]	   = { "host", "first", "second" };
+		for (int i = 0; i < 3; i++) {
+			windows[i].identifier	  = ids[i];
+			windows[i].output	  = &output;
+			windows[i].desk		  = &desk;
+			windows[i].x		  = 100;
+			windows[i].y		  = 200;
+			windows[i].content_width  = 120;
+			windows[i].content_height = 30;
+			windows[i].use_ssd	  = true;
+			wl_list_init(&windows[i].selections);
+			wl_list_insert(&cow_wm.views, &windows[i].wm_link);
+			wl_list_insert(&desk.views, &windows[i].desk_views);
+			wl_list_insert(&output.visible_views,
+			    &windows[i].output_views);
+		}
+		struct cow_box slot = { 120, 0, 200, 150 };
+		CHECK(cow_container_attach(&windows[0], &windows[1], "first",
+		    slot, true));
+		c = cow_container_window_owner(&windows[0]);
+		CHECK(c && c->attached && !c->frame_window);
+		CHECK(
+		    windows[1].pending_x == 220 && windows[1].pending_y == 200);
+		CHECK(windows[1].pending_width == 200 &&
+		    windows[1].pending_height == 150);
+		CHECK(!windows[1].use_ssd);
+		cow_wm.pending_focus = &windows[1];
+		CHECK(cow_container_attach(&windows[0], NULL, "first", slot,
+		    false));
+		CHECK(cow_container_hides_view(&windows[1]));
+		CHECK(cow_wm.pending_focus == &windows[0]);
+		slot = (struct cow_box) { 0, -100, 120, 100 };
+		CHECK(cow_container_attach(&windows[0], &windows[2], "second",
+		    slot, true));
+		CHECK(!cow_container_attach(&windows[0], &windows[1], "second",
+		    slot, true));
+		cow_container_activate(c, windows[2].container_member);
+		CHECK(!windows[2].use_ssd);
+		windows[0].x += 50;
+		cow_container_attachment_sync(c);
+		CHECK(
+		    windows[2].pending_x == 150 && windows[2].pending_y == 100);
+		cJSON *saved = cow_container_save(c);
+		cow_container_destroy(c);
+		c = cow_container_restore(saved);
+		CHECK(c && c->attached && c->frame_view == &windows[0]);
+		CHECK(cow_container_hides_view(&windows[1]));
+		CHECK(!windows[2].use_ssd);
+		cJSON_Delete(saved);
+		cow_container_window_forget(&windows[0]);
+		CHECK(!windows[0].container_owner &&
+		    !windows[1].container_member);
+		CHECK(windows[1].use_ssd && windows[1].clip_w == 0);
+		CHECK(!windows[1].closed && !windows[2].closed);
+		CHECK(wl_list_empty(&cow_wm.containers));
+		wl_list_init(&cow_wm.views);
+		cow_wm.pending_focus = cow_wm.focused_view = NULL;
+	}
 	cow_config = NULL;
 	wl_proxy_destroy((struct wl_proxy *)river_seat);
 	wl_display_disconnect(display);

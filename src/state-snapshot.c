@@ -264,6 +264,9 @@ state_snapshot_view(const struct cow_view *view)
 	    (view->flags & COW_VIEW_STICKY_PAGE_FLAG) != 0);
 
 	rec_set_string(r, "container_id", "");
+	rec_set_string(r, "attachment_host", "");
+	rec_set_string(r, "attachment_slot", "");
+	rec_set_bool(r, "attachment_visible", false);
 	struct cow_container *top = cow_container_top_group(view);
 	struct cow_view *outer = top ? top->frame_view : NULL;
 	if (top && outer == NULL && top->active)
@@ -282,6 +285,14 @@ state_snapshot_view(const struct cow_view *view)
 		    cow_view_is_iconified(view) && !cow_view_has_icon(view)));
 	if (view->container_member != NULL) {
 		struct cow_container *ctr = view->container_member->container;
+		if (ctr->attached && ctr->frame_view) {
+			rec_set_string(r, "attachment_host",
+			    ctr->frame_view->identifier);
+			rec_set_string(r, "attachment_slot",
+			    view->container_member->pane->name);
+			rec_set_bool(r, "attachment_visible",
+			    !view->container_member->pane->layout.hidden);
+		}
 		rec_set_container_id(r, "container_id", ctr);
 		rec_set_number(r, "pane_id", view->container_member->pane->id);
 		rec_set_bool(r, "pane_title_hidden",
