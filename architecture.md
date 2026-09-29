@@ -330,13 +330,31 @@ Container ownership, tab activation and member geometry synchronisation live
 in `src/container.c`, with declarations in `include/cow/container.h`.
 Individual decoration resources remain owned by the view.
 
+Command-created containers currently own one `cow_container_pane`. A pane owns
+tab order and selection; the container retains its full membership list for group
+operations and restart state. Visibility and titlebar rendering use the pane's
+selected tab, not the container's last activated member. This separates local
+tab selection from group focus before multiple panes are exposed.
+
+The internal split API can move a tab into a new leaf, nest splits and prune
+empty leaves. Pane rectangles are converted to content rectangles through the
+existing titlebar geometry helpers. Explicit operations arrange the group;
+client dimension events report only a pane's accepted dimensions and must not
+resize the group. Public split commands await the remaining group operations.
+
+Restart state stores each container's complete tree, split proportions, tab
+order, selected tabs and pre-container floating geometries. The decoder builds
+and validates an unpublished tree before attaching any live views. Missing
+clients remove tabs or empty panes; no particular anchor window must survive.
+Legacy flat membership records remain readable.
+
 `src/container_layout.c` provides the geometry calculation for the planned
 split-container extension. It operates on a binary tree of horizontal and
 vertical splits, with minimum frame sizes at the leaves. It allocates no
 Wayland objects and sends no requests. An invalid or undersized layout is
 rejected without changing the previous geometry; temporary minimum-size
 constraints do not overwrite the requested split proportions. This layout
-engine is tested independently but is not yet connected to live containers.
+engine is tested independently and used by the internal split API.
 
 The remaining integration is described in
 [`dev-docs/split-containers.md`](dev-docs/split-containers.md).

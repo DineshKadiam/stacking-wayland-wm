@@ -106,8 +106,7 @@ cow_view_visible(const struct cow_view *view, const struct cow_output *output)
 	if (view->output != output)
 		return false;
 	/* Non-active container members are always hidden */
-	if (view->container_member != NULL &&
-	    view->container_member->container->active != view->container_member)
+	if (!cow_view_is_active_tab(view))
 		return false;
 	if (view->desk == NULL)
 		return true;

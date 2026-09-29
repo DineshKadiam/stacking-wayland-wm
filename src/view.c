@@ -903,7 +903,12 @@ window_handle_dimensions(void *data, __unused struct river_window_v1 *rw,
 			    view->desk->page_vy;
 		}
 	}
-	if (changed || applied_deferred_position)
+	/*
+	 * A tiled pane reports its own accepted size, not the group's size.
+	 * Only explicit WM operations may change a split container's frame.
+	 */
+	if ((changed || applied_deferred_position) &&
+	    !cow_container_is_split(view))
 		cow_view_sync_container_geometry(view, view->x, view->y,
 		    width, height);
 

@@ -727,8 +727,9 @@ manage_container_tab_click(struct cow_seat *seat, struct cow_view *view, int lx,
 {
 	int		       btn_s = view->dec.title_thickness;
 	struct cow_container *ctr   = cow_view_container(view);
+	struct cow_container_pane *pane = cow_view_pane(view);
 
-	if (ctr == NULL || ctr->n_members <= 1)
+	if (pane == NULL || pane->n_tabs <= 1)
 		return (false);
 
 	int strip_x = btn_s;
@@ -736,23 +737,23 @@ manage_container_tab_click(struct cow_seat *seat, struct cow_view *view, int lx,
 	if (strip_w <= 0 || lx < strip_x || lx >= strip_x + strip_w)
 		return (false);
 
-	int tab_w = strip_w / ctr->n_members;
+	int tab_w = strip_w / pane->n_tabs;
 	if (tab_w < 1)
 		tab_w = 1;
 	int tidx = (lx - strip_x) / tab_w;
 	if (tidx < 0)
 		tidx = 0;
-	if (tidx >= ctr->n_members)
-		tidx = ctr->n_members - 1;
+	if (tidx >= pane->n_tabs)
+		tidx = pane->n_tabs - 1;
 
 	struct cow_container_member *tm = NULL;
 	int			     ti = 0;
-	wl_list_for_each(tm, &ctr->members, link)
+	wl_list_for_each(tm, &pane->tabs, pane_link)
 	{
 		if (ti++ == tidx)
 			break;
 	}
-	if (tm == NULL || tm == ctr->active)
+	if (tm == NULL || tm == pane->active)
 		return (false);
 
 	cow_container_activate(ctr, tm);

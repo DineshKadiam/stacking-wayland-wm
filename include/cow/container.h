@@ -19,16 +19,26 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <wayland-util.h>
+#include "cow/container_layout.h"
 
 struct cow_view;
 struct cow_desk;
 struct cow_output;
 
+struct cow_container_pane {
+	struct cow_container_layout  layout;
+	struct wl_list		     tabs;
+	struct cow_container_member *active;
+	int			     n_tabs;
+};
+
 /* Tabbed container membership. */
 struct cow_container_member {
-	struct wl_list	      link; /* cow_container.members */
-	struct cow_view	     *view;
-	struct cow_container *container;
+	struct wl_list		   link;      /* cow_container.members */
+	struct wl_list		   pane_link; /* cow_container_pane.tabs */
+	struct cow_container_pane *pane;
+	struct cow_view		  *view;
+	struct cow_container	  *container;
 	/* Geometry saved when the view joined, restored on detach */
 	int pre_x, pre_y;
 	int pre_width, pre_height;
@@ -40,10 +50,13 @@ struct cow_container {
 	int			     id;
 	int			     n_members;
 	struct cow_container_member *active;
+	struct cow_container_pane   *root;
 
 	/* Geometry (authoritative for all members) */
 	int x, y;
 	int content_width, content_height;
+	/* Outer frame used by split layouts. */
+	struct cow_box frame;
 
 	struct cow_desk	  *desk;
 	struct cow_output *output;
@@ -60,6 +73,15 @@ struct cow_container *cow_container_create(struct cow_view *,
 
 /* Add/remove a view from a container. */
 bool cow_container_add(struct cow_container *, struct cow_view *);
+bool cow_container_add_to(struct cow_view *, struct cow_view *);
+/*
+ * Split a tab away from another tab in the same pane. Both must already
+ * belong to the container. Failure leaves membership and geometry intact.
+ */
+bool cow_container_split(struct cow_view *, struct cow_view *,
+    enum cow_container_axis, bool);
+bool cow_container_arrange(struct cow_container *, struct cow_box);
+bool cow_container_is_split(const struct cow_view *);
 void cow_container_remove_view(struct cow_view *);
 void cow_container_forget_view(struct cow_view *);
 
@@ -74,11 +96,16 @@ void cow_container_activate_prev(struct cow_container *);
 void cow_container_swap_next(struct cow_container *);
 void cow_container_swap_prev(struct cow_container *);
 
-struct cow_container *cow_view_container(const struct cow_view *);
-bool cow_view_is_active_tab(const struct cow_view *);
+struct cow_container	  *cow_view_container(const struct cow_view *);
+struct cow_container_pane *cow_view_pane(const struct cow_view *);
+bool			   cow_view_is_active_tab(const struct cow_view *);
 
 /* Destroy a container and detach its members. */
 void cow_container_destroy(struct cow_container *);
+
+/* Restart state. Restoring an invalid record leaves live views unchanged. */
+cJSON *cow_container_save(const struct cow_container *);
+struct cow_container *cow_container_restore(const cJSON *);
 
 /* Sync container members from the active member. */
 void cow_view_sync_container_pos(struct cow_view *);

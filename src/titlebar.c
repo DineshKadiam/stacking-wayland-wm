@@ -127,8 +127,8 @@ cow_titlebar_effective_squeeze(const struct cow_view *view,
 	 * Containers with more than one member render a tab strip and
 	 * cannot compose cleanly with squeeze; force NONE there.
 	 */
-	struct cow_container *ctr = cow_view_container(view);
-	if (ctr != NULL && ctr->n_members > 1) {
+	struct cow_container_pane *pane = cow_view_pane(view);
+	if (pane != NULL && pane->n_tabs > 1) {
 		out->mode      = COW_SQUEEZE_NONE;
 		out->justify   = COW_JUST_LEFT;
 		out->width     = 0;

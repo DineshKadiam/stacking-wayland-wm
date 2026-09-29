@@ -190,24 +190,13 @@ cow_state_save(void)
 			    view->shade_saved_height);
 		}
 
-		/* Container membership */
-		if (view->container_member != NULL) {
-			struct cow_container *ctr =
-			    view->container_member->container;
-			/* Use the first member's identifier as the container
-			 * ID; stable across restarts as long as the first
-			 * member reconnects. */
-			struct cow_container_member *first =
-			    wl_container_of(ctr->members.next, first, link);
-			if (first->view->identifier != NULL)
-				cJSON_AddStringToObject(v, "container_id",
-				    first->view->identifier);
-			cJSON_AddBoolToObject(v, "container_active",
-			    ctr->active == view->container_member);
-		}
-
 		cJSON_AddItemToArray(views, v);
 	}
+
+	cJSON *containers = cJSON_AddArrayToObject(root, "containers");
+	struct cow_container *container;
+	wl_list_for_each(container, &cow_wm.containers, wm_link)
+	    cJSON_AddItemToArray(containers, cow_container_save(container));
 
 	char *json = cJSON_Print(root);
 	cJSON_Delete(root);
@@ -603,11 +592,27 @@ cow_state_restore(void)
 		}
 	}
 
-	/* Restore container membership.
+	const cJSON *containers = cJSON_GetObjectItem(root, "containers");
+	if (containers != NULL) {
+		const cJSON *record;
+		if (!cJSON_IsArray(containers)) {
+			cow_log_warn("state restore: invalid containers array");
+		} else {
+			cJSON_ArrayForEach(record, containers) {
+				if (cow_container_restore(record) != NULL)
+					restored = true;
+				else
+					cow_log_debug(
+					    "state restore: skipped container");
+			}
+		}
+	}
+
+	/* Restore legacy flat container membership.
 	 * Second pass: after all views are placed, group those that share a
 	 * container_id.  The view whose identifier equals the container_id
 	 * is used as the "target" (drop-point) when creating the container. */
-	{
+	if (containers == NULL) {
 		cJSON *va2 = cJSON_GetObjectItem(root, "views");
 		cJSON *vo2;
 		cJSON_ArrayForEach(vo2, va2)

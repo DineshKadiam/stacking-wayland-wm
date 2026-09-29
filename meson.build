@@ -126,6 +126,7 @@ srcs = [
     'src/vector.c',
     'src/view.c',
     'src/container.c',
+    'src/container_state.c',
     'src/container_layout.c',
     'src/wm.c',
     'src/xpm.c',
@@ -392,6 +393,22 @@ alias_args_test = executable('test-alias-args',
     dependencies: all_deps,
 )
 test('alias-args', alias_args_test)
+
+container_test = executable('test-container',
+    ['tests/container.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
+    objects: cow.extract_objects(wm_test_sources),
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('container', container_test)
+
+container_state_test = executable('test-container-state',
+    ['tests/container-state.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
+    objects: cow.extract_objects(wm_test_sources),
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('container-state', container_state_test)
 
 config_layers_test = executable('test-config-layers',
     ['tests/config-layers.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],

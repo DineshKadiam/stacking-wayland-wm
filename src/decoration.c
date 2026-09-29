@@ -864,17 +864,18 @@ cow_decoration_update(struct cow_view *view, bool active)
 			const char	    **tab_titles = NULL;
 			int		      n_tabs	 = 0;
 			int		      active_tab = 0;
-			struct cow_container *ctr = cow_view_container(view);
-			if (ctr != NULL && ctr->n_members > 1) {
-				n_tabs	   = ctr->n_members;
+			struct cow_container_pane *pane = cow_view_pane(view);
+			if (pane != NULL && pane->n_tabs > 1) {
+				n_tabs	   = pane->n_tabs;
 				tab_titles = xcalloc(n_tabs, sizeof(char *));
 				int			     idx = 0;
 				struct cow_container_member *mem;
-				wl_list_for_each(mem, &ctr->members, link)
+				wl_list_for_each(mem, &pane->tabs, pane_link)
 				{
 					tab_titles[idx] =
-					    cow_view_make_display_title(mem->view, mem->view->cfg.title_format);
-					if (mem == ctr->active)
+					    cow_view_make_display_title(mem->view,
+					        mem->view->cfg.title_format);
+					if (mem == pane->active)
 						active_tab = idx;
 					idx++;
 				}
