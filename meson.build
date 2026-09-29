@@ -125,6 +125,7 @@ srcs = [
     'src/util.c',
     'src/vector.c',
     'src/view.c',
+    'src/container.c',
     'src/wm.c',
     'src/xpm.c',
     'vendor/cow_log.c',

@@ -33,31 +33,7 @@ struct river_decoration_v1;
 struct cow_output;
 struct cow_desk;
 
-/* Tabbed container membership. */
-struct cow_container_member {
-	struct wl_list	      link; /* cow_container.members */
-	struct cow_view	     *view;
-	struct cow_container *container;
-	/* Geometry saved when the view joined, restored on detach */
-	int pre_x, pre_y;
-	int pre_width, pre_height;
-};
-
-struct cow_container {
-	struct wl_list		     wm_link; /* cow_wm.containers */
-	struct wl_list		     members; /* cow_container_member.link */
-	int			     id;
-	int			     n_members;
-	struct cow_container_member *active;
-
-	/* Geometry (authoritative for all members) */
-	int x, y;
-	int content_width, content_height;
-
-	struct cow_desk	  *desk;
-	struct cow_output *output;
-	uint32_t	   flags; /* sticky etc., shared across members */
-};
+#include "cow/container.h"
 
 /* View flags. */
 #define COW_VIEW_STICKY_DESK_FLAG (1 << 0)
@@ -632,43 +608,9 @@ void cow_view_layout_icons_on_output(struct cow_output *);
 void cow_view_invalidate_auto_icon_positions(struct cow_output *);
 
 bool cow_view_is_iconified(const struct cow_view *);
-
-/* -----------------------------------------------------------------------
- * Container API
- * ----------------------------------------------------------------------- */
-
-/* Create a container from two uncontained views. */
-struct cow_container *cow_container_create(struct cow_view *,
-    struct cow_view *);
-
-/* Add/remove a view from a container. */
-bool cow_container_add(struct cow_container *, struct cow_view *);
-void cow_container_remove_view(struct cow_view *);
-
-/* Activate a container tab. */
-void cow_container_activate(struct cow_container *,
-    struct cow_container_member *);
-
-void cow_container_activate_next(struct cow_container *);
-void cow_container_activate_prev(struct cow_container *);
-
-/* Move the active tab within the tab strip. */
-void cow_container_swap_next(struct cow_container *);
-void cow_container_swap_prev(struct cow_container *);
-
-struct cow_container *cow_view_container(const struct cow_view *);
-bool cow_view_is_active_tab(const struct cow_view *);
-
-/* Destroy a container and detach its members. */
-void cow_container_destroy(struct cow_container *);
+void cow_view_drop_decoration(struct cow_view *);
 
 bool cow_view_is_drop_target(const struct cow_view *);
-
-/* Sync container members from the active member. */
-void cow_view_sync_container_pos(struct cow_view *);
-
-/* Sync container geometry from explicit values. */
-void cow_view_sync_container_geometry(struct cow_view *, int, int, int, int);
 
 void cow_view_warp_to(const struct cow_view *);
 void cow_view_warp_to_focused(void);
