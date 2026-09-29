@@ -464,6 +464,8 @@ struct cow_config {
 	struct cow_optional_colour icon_active_background;
 	struct cow_optional_colour icon_active_foreground;
 	enum cow_relief icon_title_relief;
+	char *icon_format;
+
 	/* Titlebar */
 	struct cow_titlebar_config titlebar;
 

@@ -697,6 +697,7 @@ set_option_is_decor(const struct cow_option_entry *opt, const char *key)
 	    strcmp(key, "icon.active.background") == 0 ||
 	    strcmp(key, "icon.active.foreground") == 0 ||
 	    strcmp(key, "icon.title_relief") == 0 ||
+	    strcmp(key, "icon.format") == 0 ||
 	    strcmp(key, "border.style") == 0 ||
 	    strcmp(key, "title_format") == 0 ||
 	    strcmp(key, "titlebar.font") == 0 ||

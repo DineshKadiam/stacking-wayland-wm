@@ -116,6 +116,7 @@ config_decor_free(struct cow_config *config)
 	xfree(config->font_name);
 	xfree(config->title_format);
 	xfree(config->icon_image);
+	xfree(config->icon_format);
 	cow_titlebar_config_fini(&config->titlebar);
 	cow_container_config_fini(&config->container);
 	cow_border_colour_fini(&config->border_active);
@@ -136,6 +137,7 @@ config_decor_detach(struct cow_config *config)
 	config->font_name = NULL;
 	config->title_format = NULL;
 	config->icon_image = NULL;
+	config->icon_format = NULL;
 	config->titlebar.font_name = NULL;
 	config->titlebar.active_image = NULL;
 	config->titlebar.inactive_image = NULL;
@@ -291,6 +293,7 @@ cow_config_create(void)
 	config->icon_label_area     = COW_CFG_DEFAULT_ICON_LABEL_AREA;
 	config->icon_image	     = xstrdup("auto");
 	config->icon_title_relief = COW_RELIEF_RAISED;
+	config->icon_format = xstrdup("%c");
 	config->snap_distance	     = COW_CFG_DEFAULT_SNAP_DISTANCE;
 	cow_menu_style_default(&config->menu_style);
 	border_colour_set_uniform(&config->border_active, 0xFFFFFF);
@@ -399,6 +402,7 @@ cow_config_reset_decor(struct cow_config *config)
 	config->icon_image = defaults->icon_image;
 	config->icon_size = defaults->icon_size;
 	config->icon_label_area = defaults->icon_label_area;
+	config->icon_format = defaults->icon_format;
 	config->icon_background = defaults->icon_background;
 	config->icon_foreground = defaults->icon_foreground;
 	config->icon_active_background = defaults->icon_active_background;

@@ -116,6 +116,16 @@ const struct cow_option_entry cow_options_table[] = {
 		.post = COW_OPTION_POST_REFRESH_VISUALS,
 	},
 	{
+		.name = "icon.format",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_MIXED,
+		.action = COW_OPTION_SCALAR_STRING,
+		.id = COW_VIEW_CFG_ICON_FORMAT,
+		.config_offset = offsetof(struct cow_config, icon_format),
+		.view_offset = offsetof(struct cow_view_cfg, icon_format),
+		.post = COW_OPTION_POST_REFRESH_VISUALS,
+	},
+	{
 		.name = "icon.size",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_MIXED,

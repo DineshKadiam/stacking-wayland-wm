@@ -260,6 +260,7 @@ enum cow_view_cfg_option {
 	COW_VIEW_CFG_ICON_ACTIVE_BACKGROUND,
 	COW_VIEW_CFG_ICON_ACTIVE_FOREGROUND,
 	COW_VIEW_CFG_ICON_TITLE_RELIEF,
+	COW_VIEW_CFG_ICON_FORMAT,
 	COW_VIEW_CFG_OPTION_COUNT,
 };
 
@@ -299,6 +300,7 @@ struct cow_view_cfg {
 	struct cow_optional_colour icon_active_background;
 	struct cow_optional_colour icon_active_foreground;
 	enum cow_relief icon_title_relief;
+	char *icon_format;
 };
 
 /* Effective application/override image used by icons and module clients. */
@@ -617,6 +619,11 @@ void cow_view_deiconify(struct cow_view *);
 void cow_view_icon_render(struct cow_view *);
 void cow_view_icon_set_hovered(struct cow_view *, bool);
 void cow_view_icon_refresh(struct cow_view *);
+
+/* Build a title for the given view and format string. Result must be
+   free'd by caller. If fmt is null, %n is assumed.
+*/
+char* cow_view_make_display_title(const struct cow_view *, const char *);
 
 /*
  * Recompute icon positions for all iconified views on an output.

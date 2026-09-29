@@ -26,7 +26,6 @@
 #include "cow/colour.h"
 #include "cow/config.h"
 #include "cow/font.h"
-#include "cow/format.h"
 #include "cow/memory.h"
 #include "cow/pointer_op.h"
 #include "cow/shm.h"
@@ -35,8 +34,6 @@
 #include "cow/wm.h"
 
 #include "river-window-management-v1-client-protocol.h"
-
-#define COW_MIN_ID_PREFIX 8
 
 /* Global font for titlebar rendering.
  * Rebuilt whenever the font name changes (tracked via last_font_name). */
@@ -107,136 +104,6 @@ get_titlebar_font(void)
 }
 
 static void
-append_mem(char **buf, size_t *cap, size_t *len, const char *s, size_t slen)
-{
-	if (*cap < *len + slen + 1) {
-		size_t ncap = *cap == 0 ? 64 : *cap;
-
-		while (ncap < *len + slen + 1)
-			ncap *= 2;
-		*buf = xrealloc(*buf, ncap, 1);
-		*cap = ncap;
-	}
-	memcpy(*buf + *len, s, slen);
-	*len += slen;
-	(*buf)[*len] = '\0';
-}
-
-static void
-append_str(char **buf, size_t *cap, size_t *len, const char *s)
-{
-	append_mem(buf, cap, len, s, strlen(s));
-}
-
-static char *
-short_identifier(const struct cow_view *view)
-{
-	const char *id = view->identifier;
-
-	if (id == NULL || id[0] == '\0')
-		return xstrdup("");
-
-	size_t id_len	  = strlen(id);
-	size_t prefix_len = COW_MIN_ID_PREFIX;
-	if (prefix_len > id_len)
-		prefix_len = id_len;
-
-	/* Extend prefix until no other view shares it */
-	while (prefix_len < id_len) {
-		bool		 unique = true;
-		struct cow_view *other;
-		wl_list_for_each(other, &cow_wm.views, wm_link)
-		{
-			if (other == view || other->closed)
-				continue;
-			if (other->identifier == NULL)
-				continue;
-			if (strncmp(id, other->identifier, prefix_len) == 0) {
-				unique = false;
-				break;
-			}
-		}
-		if (unique)
-			break;
-		prefix_len++;
-	}
-
-	char *out;
-	xasprintf(&out, "%.*s", (int)prefix_len, id);
-	return (out);
-}
-
-struct title_format_ctx {
-	char		**buf;
-	size_t		 *cap;
-	size_t		 *len;
-	const char	 *title;
-	const char	 *short_id;
-	const char	 *id;
-	const char	 *app_id;
-};
-
-static void
-title_format_text(void *data, const char *text, size_t len)
-{
-	struct title_format_ctx *ctx = data;
-
-	append_mem(ctx->buf, ctx->cap, ctx->len, text, len);
-}
-
-static void
-title_format_conversion(void *data, char conversion)
-{
-	struct title_format_ctx *ctx = data;
-	const char		*value = "";
-
-	switch (conversion) {
-	case 'n':
-		value = ctx->title;
-		break;
-	case 't':
-		value = ctx->short_id;
-		break;
-	case 'I':
-		value = ctx->id;
-		break;
-	case 'c':
-		value = ctx->app_id;
-		break;
-	}
-	append_str(ctx->buf, ctx->cap, ctx->len, value);
-}
-
-static char *
-make_display_title(const struct cow_view *view)
-{
-	const char *fmt = view->cfg.title_format != NULL ?
-	    view->cfg.title_format : "%n";
-	const char *title = view->title != NULL ? view->title : "";
-	const char *id = view->identifier != NULL ? view->identifier : "";
-	const char *app_id = view->app_id != NULL ? view->app_id : "";
-	char	   *sid = short_identifier(view);
-	char	   *out = NULL;
-	size_t	    cap = 0, len = 0;
-	struct title_format_ctx ctx = {
-		.buf = &out,
-		.cap = &cap,
-		.len = &len,
-		.title = title,
-		.short_id = sid,
-		.id = id,
-		.app_id = app_id,
-	};
-
-	cow_format_parse(fmt, "ntIc", false, title_format_text,
-	    title_format_conversion, &ctx, NULL);
-	if (out == NULL)
-		out = xstrdup("");
-	xfree(sid);
-	return (out);
-}
-
-static void
 restore_shaded_side_borders(uint32_t *pixels, int stride_px, int frame_w,
     int frame_h, const struct cow_border_colour *bc, int bw, int style)
 {
@@ -271,7 +138,7 @@ cow_decoration_titlebar_font(void)
 char *
 cow_decoration_display_title(const struct cow_view *view)
 {
-	return make_display_title(view);
+	return cow_view_make_display_title(view, view->cfg.title_format);
 }
 
 struct squeeze_paint_ctx {
@@ -1006,14 +873,14 @@ cow_decoration_update(struct cow_view *view, bool active)
 				wl_list_for_each(mem, &ctr->members, link)
 				{
 					tab_titles[idx] =
-					    make_display_title(mem->view);
+					    cow_view_make_display_title(mem->view, mem->view->cfg.title_format);
 					if (mem == ctr->active)
 						active_tab = idx;
 					idx++;
 				}
 			}
 
-			char *display_title = make_display_title(view);
+			char *display_title = cow_view_make_display_title(view, view->cfg.title_format);
 			/*
 			 * For unsqueezed views this is the full-width strip;
 			 * for squeezed ones it is the cow_titlebar_squeezed

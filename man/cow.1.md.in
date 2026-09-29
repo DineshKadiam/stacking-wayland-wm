@@ -2232,6 +2232,7 @@ decor to change aspects of how icons are controlled:
 | **icon.active.background** | Icon box and label background while hovered. Defaults to **titlebar.active_colour**; use **default** to restore this. |
 | **icon.active.foreground** | Label colour while hovered. Defaults to **titlebar.fg_active**; use **default** to restore this. |
 | **icon.title\_relief** | *raised* \| *sunken* \| *flat* \| *none*. Set the panel behind the icon label. *flat* fills the panel without a bevel, while *none* leaves the label background transparent (default: *raised*). |
+| **icon.format** | Controls the title used for window icons. Supports the same format expressions as **title\_format**: **%n** for the window title, **%t** for the short window id, **%I** for the full window id, **%c** for the app\_id, and **%%** for a literal percent sign. Defaults to '%c'. |
 
 Hovering over the image or label uses the active icon colours. This only
 changes the icon's appearance: it does not focus or restore the application.

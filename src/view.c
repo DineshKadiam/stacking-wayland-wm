@@ -27,12 +27,12 @@
 #include "cow/app_icon.h"
 #include "cow/colour.h"
 #include "cow/cmd.h"
-#include "cow/compat.h"
 #include "cow/config.h"
 #include "cow/decoration.h"
 #include "cow/desk_ops.h"
 #include "cow/draw.h"
 #include "cow/draw_exec.h"
+#include "cow/format.h"
 #include "cow/gradient.h"
 #include "cow/image.h"
 #include "cow/icon_placement.h"
@@ -56,6 +56,8 @@
 #include "cow/wm.h"
 
 #include "river-window-management-v1-client-protocol.h"
+
+#define COW_MIN_ID_PREFIX 8
 
 static int next_container_id;
 
@@ -183,6 +185,7 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 	dst->icon_size		= cow_config->icon_size;
 	dst->icon_label_area = cow_config->icon_label_area;
 	dst->icon_image		= xstrdup0(cow_config->icon_image);
+	dst->icon_format	= xstrdup0(cow_config->icon_format);
 	dst->title_format	= xstrdup0(cow_config->title_format);
 	dst->icon_background = cow_config->icon_background;
 	dst->icon_foreground = cow_config->icon_foreground;
@@ -666,6 +669,7 @@ cow_view_cfg_fini(struct cow_view_cfg *cfg)
 	xfree(cfg->font_name);
 	xfree(cfg->title_format);
 	xfree(cfg->icon_image);
+	xfree(cfg->icon_format);
 	cow_titlebar_config_fini(&cfg->titlebar);
 	cow_container_config_fini(&cfg->container);
 	cow_border_colour_fini(&cfg->border_active);
@@ -673,6 +677,137 @@ cow_view_cfg_fini(struct cow_view_cfg *cfg)
 	cfg->font_name		= NULL;
 	cfg->title_format	= NULL;
 	cfg->icon_image		= NULL;
+	cfg->icon_format	= NULL;
+}
+
+static char *
+short_identifier(const struct cow_view *view)
+{
+	const char *id = view->identifier;
+
+	if (id == NULL || id[0] == '\0')
+		return xstrdup("");
+
+	size_t id_len	  = strlen(id);
+	size_t prefix_len = COW_MIN_ID_PREFIX;
+	if (prefix_len > id_len)
+		prefix_len = id_len;
+
+	/* Extend prefix until no other view shares it */
+	while (prefix_len < id_len) {
+		bool		 unique = true;
+		struct cow_view *other;
+		wl_list_for_each(other, &cow_wm.views, wm_link)
+		{
+			if (other == view || other->closed)
+				continue;
+			if (other->identifier == NULL)
+				continue;
+			if (strncmp(id, other->identifier, prefix_len) == 0) {
+				unique = false;
+				break;
+			}
+		}
+		if (unique)
+			break;
+		prefix_len++;
+	}
+
+	char *out;
+	xasprintf(&out, "%.*s", (int)prefix_len, id);
+	return (out);
+}
+
+struct title_format_ctx {
+	char		**buf;
+	size_t		 *cap;
+	size_t		 *len;
+	const char	 *title;
+	const char	 *short_id;
+	const char	 *id;
+	const char	 *app_id;
+};
+
+static void
+append_mem(char **buf, size_t *cap, size_t *len, const char *s, size_t slen)
+{
+	if (*cap < *len + slen + 1) {
+		size_t ncap = *cap == 0 ? 64 : *cap;
+
+		while (ncap < *len + slen + 1)
+			ncap *= 2;
+		*buf = xrealloc(*buf, ncap, 1);
+		*cap = ncap;
+	}
+	memcpy(*buf + *len, s, slen);
+	*len += slen;
+	(*buf)[*len] = '\0';
+}
+
+static void
+append_str(char **buf, size_t *cap, size_t *len, const char *s)
+{
+	append_mem(buf, cap, len, s, strlen(s));
+}
+
+static void
+title_format_text(void *data, const char *text, size_t len)
+{
+	struct title_format_ctx *ctx = data;
+
+	append_mem(ctx->buf, ctx->cap, ctx->len, text, len);
+}
+
+static void
+title_format_conversion(void *data, char conversion)
+{
+	struct title_format_ctx *ctx = data;
+	const char		*value = "";
+
+	switch (conversion) {
+	case 'n':
+		value = ctx->title;
+		break;
+	case 't':
+		value = ctx->short_id;
+		break;
+	case 'I':
+		value = ctx->id;
+		break;
+	case 'c':
+		value = ctx->app_id;
+		break;
+	}
+	append_str(ctx->buf, ctx->cap, ctx->len, value);
+}
+
+char *
+cow_view_make_display_title(const struct cow_view *view, const char *fmt)
+{
+	if (fmt == NULL)
+		fmt = "%n";
+	const char *title = view->title != NULL ? view->title : "";
+	const char *id = view->identifier != NULL ? view->identifier : "";
+	const char *app_id = view->app_id != NULL ? view->app_id : "";
+	char	   *sid = short_identifier(view);
+	char	   *out = NULL;
+	size_t	    cap = 0, len = 0;
+	struct title_format_ctx ctx = {
+		.buf = &out,
+		.cap = &cap,
+		.len = &len,
+		.title = title,
+		.short_id = sid,
+		.id = id,
+		.app_id = app_id,
+	};
+
+	cow_format_parse(fmt, "ntIc", false, title_format_text,
+	    title_format_conversion, &ctx, NULL);
+	if (out == NULL)
+		out = xstrdup("");
+	xfree(sid);
+	return (out);
 }
 
 /*
@@ -3013,9 +3148,15 @@ cow_view_icon_render(struct cow_view *view)
 	icon_draw_box(&p, icon_sz, bc_t.base, bc_t.lt, bc_t.dk,
 	    view->cfg.border_style);
 	icon_draw_image(&p, icon_sz, cow_view_icon_image(view));
-	icon_draw_label(&p, icon_sz, view->app_id ? view->app_id : "?",
+
+	char *title = cow_view_make_display_title(view, view->cfg.icon_format);
+
+	icon_draw_label(&p, icon_sz, title,
 	    foreground, &bc_t, view->cfg.border_style,
 	    view->cfg.icon_title_relief);
+
+	xfree(title);
+
 	if (view->flags & COW_VIEW_STICKY_FLAG)
 		icon_draw_sticky_stipple(&p, bc_t.base, bc_t.lt, bc_t.dk);
 	icon_commit(view, icon_w, icon_h);
