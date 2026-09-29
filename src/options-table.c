@@ -153,7 +153,7 @@ const struct cow_option_entry cow_options_table[] = {
 		.name = "icon.background",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_MIXED,
-		.action = COW_OPTION_COLOUR,
+		.action = COW_OPTION_OPTIONAL_COLOUR,
 		.id = COW_VIEW_CFG_ICON_BACKGROUND,
 		.config_offset = offsetof(struct cow_config, icon_background),
 		.view_offset = offsetof(struct cow_view_cfg, icon_background),
@@ -163,7 +163,7 @@ const struct cow_option_entry cow_options_table[] = {
 		.name = "icon.foreground",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_MIXED,
-		.action = COW_OPTION_COLOUR,
+		.action = COW_OPTION_OPTIONAL_COLOUR,
 		.id = COW_VIEW_CFG_ICON_FOREGROUND,
 		.config_offset = offsetof(struct cow_config, icon_foreground),
 		.view_offset = offsetof(struct cow_view_cfg, icon_foreground),
@@ -178,6 +178,24 @@ const struct cow_option_entry cow_options_table[] = {
 		.config_offset = offsetof(struct cow_config, icon_title_relief),
 		.view_offset = offsetof(struct cow_view_cfg, icon_title_relief),
 		.post = COW_OPTION_POST_REFRESH_VISUALS,
+	},
+	{
+		.name = "icon.active.background",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_MIXED,
+		.action = COW_OPTION_OPTIONAL_COLOUR,
+		.id = COW_VIEW_CFG_ICON_ACTIVE_BACKGROUND,
+		.config_offset = offsetof(struct cow_config, icon_active_background),
+		.view_offset = offsetof(struct cow_view_cfg, icon_active_background),
+	},
+	{
+		.name = "icon.active.foreground",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_MIXED,
+		.action = COW_OPTION_OPTIONAL_COLOUR,
+		.id = COW_VIEW_CFG_ICON_ACTIVE_FOREGROUND,
+		.config_offset = offsetof(struct cow_config, icon_active_foreground),
+		.view_offset = offsetof(struct cow_view_cfg, icon_active_foreground),
 	},
 	{
 		.name = "snap_distance",
@@ -650,6 +668,7 @@ cow_option_for_view_cfg(enum cow_view_cfg_option option)
 		case COW_OPTION_SCALAR_INT:
 		case COW_OPTION_SCALAR_STRING:
 		case COW_OPTION_COLOUR:
+		case COW_OPTION_OPTIONAL_COLOUR:
 		case COW_OPTION_IMAGE:
 			return entry;
 		default:

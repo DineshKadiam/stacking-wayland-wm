@@ -2227,9 +2227,17 @@ decor to change aspects of how icons are controlled:
 | **icon.size** | Iconified window icon size in pixels (default: 64). |
 | **icon.label\_area** | Height in pixels reserved below the icon image for the centred window title (default: 20). |
 | **icon.image** | *auto*, *none*, or a PNG, SVG, or XPM path drawn inside the iconified window icon box. The default, *auto*, resolves the application's desktop-entry icon from its app ID, searching the XDG data directories, the hicolor icon theme, and pixmaps. CoW's installed icon is used when no application icon can be found. An explicit path overrides the application icon; *none* draws no image. Decoration profiles and rules can therefore select icons for individual applications. |
-| **icon.background** | Iconified window icon box background colour (default: 0x828282). |
-| **icon.foreground** | Iconified window label colour. |
+| **icon.background** | Icon box and label background when not hovered. Defaults to **titlebar.inactive_colour**; use **default** to restore this. |
+| **icon.foreground** | Label colour when not hovered. Defaults to **titlebar.fg_inactive**; use **default** to restore this. |
+| **icon.active.background** | Icon box and label background while hovered. Defaults to **titlebar.active_colour**; use **default** to restore this. |
+| **icon.active.foreground** | Label colour while hovered. Defaults to **titlebar.fg_active**; use **default** to restore this. |
 | **icon.title\_relief** | *raised* \| *sunken* \| *flat* \| *none*. Set the panel behind the icon label. *flat* fills the panel without a bevel, while *none* leaves the label background transparent (default: *raised*). |
+
+Hovering over the image or label uses the active icon colours. This only
+changes the icon's appearance: it does not focus or restore the application.
+Moving away restores **icon.background** and **icon.foreground**. Application
+images themselves are not recoloured, and **icon.title_relief none** keeps the
+label background transparent in both states.
 
 # MENUS
 

@@ -391,6 +391,20 @@ alias_args_test = executable('test-alias-args',
 )
 test('alias-args', alias_args_test)
 
+icon_hover_sources = []
+foreach source : wm_test_sources
+    if source != 'src/view.c'
+        icon_hover_sources += source
+    endif
+endforeach
+icon_hover_test = executable('test-icon-hover',
+    ['tests/icon-hover.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
+    objects: cow.extract_objects(icon_hover_sources),
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('icon-hover', icon_hover_test)
+
 resize_test_sources = []
 foreach source : wm_test_sources
     if source != 'src/cmd-resize.c'

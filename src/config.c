@@ -295,8 +295,6 @@ cow_config_create(void)
 	cow_menu_style_default(&config->menu_style);
 	border_colour_set_uniform(&config->border_active, 0xFFFFFF);
 	border_colour_set_uniform(&config->border_inactive, 0x465457);
-	cow_colour_convert(config->icon_background, 0x828282);
-	cow_colour_convert(config->icon_foreground, 0xFFFFFF);
 
 	config->font_name	= xstrdup("monospace 10");
 	config->title_format	= xstrdup("[%t] %n");
@@ -401,10 +399,10 @@ cow_config_reset_decor(struct cow_config *config)
 	config->icon_image = defaults->icon_image;
 	config->icon_size = defaults->icon_size;
 	config->icon_label_area = defaults->icon_label_area;
-	memcpy(config->icon_background, defaults->icon_background,
-	    sizeof(config->icon_background));
-	memcpy(config->icon_foreground, defaults->icon_foreground,
-	    sizeof(config->icon_foreground));
+	config->icon_background = defaults->icon_background;
+	config->icon_foreground = defaults->icon_foreground;
+	config->icon_active_background = defaults->icon_active_background;
+	config->icon_active_foreground = defaults->icon_active_foreground;
 	config->icon_title_relief = defaults->icon_title_relief;
 	config->titlebar = defaults->titlebar;
 	config->container = defaults->container;

@@ -163,8 +163,6 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 		dst->icon_size	   = COW_CFG_DEFAULT_ICON_SIZE;
 		dst->icon_label_area = COW_CFG_DEFAULT_ICON_LABEL_AREA;
 		dst->border_style  = COW_BORDER_STYLE_FVWM;
-		cow_colour_convert(dst->icon_background, 0x828282);
-		cow_colour_convert(dst->icon_foreground, 0xFFFFFF);
 		dst->icon_title_relief = COW_RELIEF_RAISED;
 		return;
 	}
@@ -186,10 +184,10 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 	dst->icon_label_area = cow_config->icon_label_area;
 	dst->icon_image		= xstrdup0(cow_config->icon_image);
 	dst->title_format	= xstrdup0(cow_config->title_format);
-	memcpy(dst->icon_background, cow_config->icon_background,
-	    sizeof(float) * 4);
-	memcpy(dst->icon_foreground, cow_config->icon_foreground,
-	    sizeof(float) * 4);
+	dst->icon_background = cow_config->icon_background;
+	dst->icon_foreground = cow_config->icon_foreground;
+	dst->icon_active_background = cow_config->icon_active_background;
+	dst->icon_active_foreground = cow_config->icon_active_foreground;
 	dst->icon_title_relief = cow_config->icon_title_relief;
 }
 
@@ -333,6 +331,9 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 			return;
 		case COW_OPTION_COLOUR:
 			memcpy(dst, src, sizeof(float) * 4);
+			return;
+		case COW_OPTION_OPTIONAL_COLOUR:
+			memcpy(dst, src, sizeof(struct cow_optional_colour));
 			return;
 		default:
 			break;
@@ -2759,7 +2760,7 @@ static bool
 icon_ensure_buffer(struct cow_view *view, int icon_w, int icon_h)
 {
 	if (view->icon_buffer != NULL &&
-	    (view->icon_buffer->width != icon_w ||
+	    (view->icon_buffer->busy || view->icon_buffer->width != icon_w ||
 		view->icon_buffer->height != icon_h)) {
 		cow_shm_buffer_destroy(view->icon_buffer);
 		view->icon_buffer = NULL;
@@ -2924,12 +2925,39 @@ icon_draw_sticky_stipple(struct cow_pixbuf *p, uint32_t px_base, uint32_t px_lt,
 static void
 icon_commit(struct cow_view *view, int icon_w, int icon_h)
 {
+	view->icon_buffer->busy = true;
 	wl_surface_attach(view->icon_surface, view->icon_buffer->buffer, 0, 0);
 	wl_surface_damage_buffer(view->icon_surface, 0, 0, icon_w, icon_h);
 	river_shell_surface_v1_sync_next_commit(view->icon_shell);
 	wl_surface_commit(view->icon_surface);
 
 	river_node_v1_set_position(view->icon_node, view->icon_x, view->icon_y);
+}
+
+void
+cow_view_icon_set_hovered(struct cow_view *view, bool hovered)
+{
+	if (view == NULL || view->icon_hovered == hovered)
+		return;
+	view->icon_hovered = hovered;
+	cow_update_request(COW_UPDATE_MANAGE);
+}
+
+static void
+icon_colours(const struct cow_view *view, const float **background,
+    const float **foreground)
+{
+	const struct cow_view_cfg *cfg = &view->cfg;
+	*background = cfg->icon_background.set ?
+	    cfg->icon_background.rgba : cfg->titlebar.inactive_colour;
+	*foreground = cfg->icon_foreground.set ?
+	    cfg->icon_foreground.rgba : cfg->titlebar.fg_inactive;
+	if (view->icon_hovered) {
+		*background = cfg->icon_active_background.set ?
+		    cfg->icon_active_background.rgba : cfg->titlebar.active_colour;
+		*foreground = cfg->icon_active_foreground.set ?
+		    cfg->icon_active_foreground.rgba : cfg->titlebar.fg_active;
+	}
 }
 
 void
@@ -2949,6 +2977,7 @@ cow_view_icon_render(struct cow_view *view)
 	if (icon_w <= 0 || icon_h <= 0)
 		return;
 	bool needs_draw = view->icon_surface == NULL ||
+	    view->icon_hovered != view->icon_rendered_hovered ||
 	    view->icon_shell == NULL || view->icon_node == NULL ||
 	    view->icon_buffer == NULL ||
 	    view->icon_buffer->width != icon_w ||
@@ -2956,13 +2985,13 @@ cow_view_icon_render(struct cow_view *view)
 
 	if (!icon_ensure_surface(view))
 		return;
-	if (!icon_ensure_buffer(view, icon_w, icon_h))
-		return;
 	if (!needs_draw) {
 		river_node_v1_set_position(view->icon_node, view->icon_x,
 		    view->icon_y);
 		return;
 	}
+	if (!icon_ensure_buffer(view, icon_w, icon_h))
+		return;
 
 	struct cow_pixbuf p = {
 		.pixels	   = view->icon_buffer->data,
@@ -2975,7 +3004,9 @@ cow_view_icon_render(struct cow_view *view)
 	cow_draw_clear_rect(&p, 0, 0, icon_w, icon_h);
 
 	struct cow_colour_triple bc_t;
-	cow_colour_make_triple(&bc_t, view->cfg.icon_background);
+	const float *background, *foreground;
+	icon_colours(view, &background, &foreground);
+	cow_colour_make_triple(&bc_t, background);
 
 	int icon_sz = view->cfg.icon_size;
 
@@ -2983,11 +3014,12 @@ cow_view_icon_render(struct cow_view *view)
 	    view->cfg.border_style);
 	icon_draw_image(&p, icon_sz, cow_view_icon_image(view));
 	icon_draw_label(&p, icon_sz, view->app_id ? view->app_id : "?",
-	    view->cfg.icon_foreground, &bc_t, view->cfg.border_style,
+	    foreground, &bc_t, view->cfg.border_style,
 	    view->cfg.icon_title_relief);
 	if (view->flags & COW_VIEW_STICKY_FLAG)
 		icon_draw_sticky_stipple(&p, bc_t.base, bc_t.lt, bc_t.dk);
 	icon_commit(view, icon_w, icon_h);
+	view->icon_rendered_hovered = view->icon_hovered;
 }
 
 void
@@ -3003,6 +3035,7 @@ cow_view_icon_refresh(struct cow_view *view)
 static void
 cow_view_icon_destroy(struct cow_view *view)
 {
+	view->icon_hovered = false;
 	if (view->icon_buffer != NULL) {
 		cow_shm_buffer_destroy(view->icon_buffer);
 		view->icon_buffer = NULL;

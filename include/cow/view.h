@@ -257,6 +257,8 @@ enum cow_view_cfg_option {
 	COW_VIEW_CFG_ICON_IMAGE,
 	COW_VIEW_CFG_ICON_BACKGROUND,
 	COW_VIEW_CFG_ICON_FOREGROUND,
+	COW_VIEW_CFG_ICON_ACTIVE_BACKGROUND,
+	COW_VIEW_CFG_ICON_ACTIVE_FOREGROUND,
 	COW_VIEW_CFG_ICON_TITLE_RELIEF,
 	COW_VIEW_CFG_OPTION_COUNT,
 };
@@ -292,8 +294,10 @@ struct cow_view_cfg {
 	int icon_size;
 	int icon_label_area;
 	char *icon_image;
-	float icon_background[4];
-	float icon_foreground[4];
+	struct cow_optional_colour icon_background;
+	struct cow_optional_colour icon_foreground;
+	struct cow_optional_colour icon_active_background;
+	struct cow_optional_colour icon_active_foreground;
 	enum cow_relief icon_title_relief;
 };
 
@@ -466,6 +470,8 @@ struct cow_view {
 	int			       icon_width, icon_height;
 	bool			       icon_manual_position;
 	bool			       icon_auto_position_valid;
+	bool icon_hovered;
+	bool icon_rendered_hovered;
 
 	/* Container membership, if any. */
 	struct cow_container_member *container_member;
@@ -609,6 +615,7 @@ void cow_view_deiconify(struct cow_view *);
 
 /* Render an iconified view's icon surface. */
 void cow_view_icon_render(struct cow_view *);
+void cow_view_icon_set_hovered(struct cow_view *, bool);
 void cow_view_icon_refresh(struct cow_view *);
 
 /*

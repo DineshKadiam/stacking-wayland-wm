@@ -20,6 +20,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* An unset colour follows the caller's theme default. */
+struct cow_optional_colour {
+	float rgba[4];
+	bool set;
+};
+
 void cow_colour_convert(float *, uint32_t);
 
 /* Unpack a premultiplied ARGB8888 pixel into straight RGBA components. */

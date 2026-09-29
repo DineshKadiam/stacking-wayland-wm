@@ -459,8 +459,10 @@ struct cow_config {
 	int icon_size;
 	int icon_label_area;
 	char *icon_image;
-	float icon_background[4];
-	float icon_foreground[4];
+	struct cow_optional_colour icon_background;
+	struct cow_optional_colour icon_foreground;
+	struct cow_optional_colour icon_active_background;
+	struct cow_optional_colour icon_active_foreground;
 	enum cow_relief icon_title_relief;
 	/* Titlebar */
 	struct cow_titlebar_config titlebar;

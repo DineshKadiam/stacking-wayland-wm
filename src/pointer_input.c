@@ -386,6 +386,10 @@ pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 	(void)pointer;
 
 	cow_wm_note_cursor_focus(serial, true);
+	struct cow_view *hover_view;
+	wl_list_for_each(hover_view, &cow_wm.views, wm_link)
+		cow_view_icon_set_hovered(hover_view,
+		    !hover_view->closed && hover_view->icon_surface == surface);
 
 	struct cow_menu_popup *popup = surface_to_menu_popup(surface);
 	if (popup != NULL) {
@@ -450,6 +454,10 @@ pointer_leave(void *data, struct wl_pointer *pointer, uint32_t serial,
 	(void)serial;
 
 	cow_wm_note_cursor_focus(0, false);
+	struct cow_view *hover_view;
+	wl_list_for_each(hover_view, &cow_wm.views, wm_link)
+		if (hover_view->icon_surface == surface)
+			cow_view_icon_set_hovered(hover_view, false);
 	struct cow_seat *seat = cow_seat_primary();
 
 	if (cow_wm.pointer_focus_menu != NULL &&
