@@ -72,6 +72,22 @@ occur:
 
 Supported commands are described below.
 
+**resizable** *true|false*
+
+: Honour the window size requested by CoW, for example when embedded in
+  a cowbuttons panel. Buttons fill the available grid; use the mouse wheel
+  to reach entries which do not fit. **rows** and **columns** limit the grid,
+  while **button-height** and **min-button-width** determine how many buttons
+  fit. The default, **false**, sizes the window to its contents.
+
+**fit-all** *true|false*
+
+: Fit every entry into the configured window size without scrolling.
+  The grid adapts to the available width and height, overriding **rows**,
+  **columns** and **min-button-width**. Button dimensions are preferences;
+  text and icons shrink when necessary. This also enables resizing.
+  Very small windows may make entries unreadable. Default: **false**.
+
 **output** *VALUE*
 
 : Limit the list to an output. *VALUE* may be an output name, **@N**,

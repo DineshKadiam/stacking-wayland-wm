@@ -18,6 +18,7 @@
 #include <cJSON.h>
 #include <errno.h>
 #include <getopt.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -191,7 +192,13 @@ static int		     tracked_capacity;
 
 static int    running = 1;
 static int    configured;
+static bool   redraw_pending;
 static int    win_w, win_h;
+/* Configured dimensions are optional until the compositor supplies them.
+ */
+static int    configured_w, configured_h;
+static bool   resizable;
+static bool   fit_all;
 static double ptr_x, ptr_y;
 static int    layout_cols = 1;
 static int    layout_rows = 1;
@@ -622,6 +629,17 @@ load_iconman_option(char **fields, int n, const char **why)
 	} else if (strcmp(fields[0], "columns") == 0) {
 		if (n != 2 || !parse_positive(fields[1], &opt_cols)) {
 			*why = "bad columns";
+			return false;
+		}
+	} else if (strcmp(fields[0], "resizable") == 0) {
+		if (n != 2 ||
+		    !cow_module_config_parse_bool(fields[1], &resizable)) {
+			*why = "bad resizable";
+			return false;
+		}
+	} else if (strcmp(fields[0], "fit-all") == 0) {
+		if (n != 2 || !cow_module_config_parse_bool(fields[1], &fit_all)) {
+			*why = "bad fit-all";
 			return false;
 		}
 	} else if (strcmp(fields[0], "anchor") == 0) {
@@ -1312,9 +1330,9 @@ apply_width_limit(int max_w, int *desired_w)
 static void
 layout_rows_for_width(int width, int column_major, int row_height)
 {
-	int cell_w = (width - frame_padding * 2) / layout_cols;
-	if (cell_w < 1)
-		cell_w = 1;
+	int available = width - frame_padding * 2;
+	if (available < 1)
+		available = 1;
 
 	for (int i = 0; i < n_rows; i++) {
 		int col, row;
@@ -1325,13 +1343,40 @@ layout_rows_for_width(int width, int column_major, int row_height)
 			col = i % layout_cols;
 			row = i / layout_cols;
 		}
-		rows[i].x = frame_padding + col * cell_w;
+		rows[i].x = frame_padding + col * available / layout_cols;
 		rows[i].y = frame_padding + row * row_height;
-		rows[i].w = cell_w;
+		rows[i].w = (col + 1) * available / layout_cols -
+		    col * available / layout_cols;
 		rows[i].h = row_height;
 		if (row + 1 > layout_rows)
 			layout_rows = row + 1;
 	}
+}
+
+/* Choose the grid which preserves the largest fraction of the preferred
+ * button dimensions, without dropping entries or requiring scrolling.
+ */
+static void
+layout_fit_all(int width, int height, int row_height)
+{
+	int count = total_rows > 0 ? total_rows : 1;
+	if (width < 1)
+		width = 1;
+	if (height < 1)
+		height = 1;
+	double best = -1;
+	for (int cols = 1; cols <= count; cols++) {
+		int n = (count + cols - 1) / cols;
+		double scale = fmin((double)width / cols / button_w,
+		    (double)height / n / row_height);
+		if (scale > best) {
+			best = scale;
+			layout_cols = cols;
+			layout_rows = n;
+		}
+	}
+	visible_capacity = count;
+	scroll_first = 0;
 }
 
 static const win_t *
@@ -1504,24 +1549,78 @@ do_render(const state_t *st)
 		max_h = out->usable_h > 0 ? out->usable_h : out->h;
 	}
 
-	desired_w = frame_padding * 2 + layout_cols * button_w;
-	apply_width_limit(max_w, &desired_w);
-	win_w	  = desired_w;
-	layout_rows_for_width(win_w, column_major, palette.height);
-	win_h = frame_padding * 2 + layout_rows * palette.height;
-	if (max_h > 0 && win_h > max_h)
-		win_h = max_h;
+	if ((resizable || fit_all) && configured_w > 0 && configured_h > 0) {
+		/* Fit complete rows, scrolling entries which do not fit the
+		 * slot.
+		 */
+		win_w	     = configured_w;
+		win_h	     = configured_h;
+		int fit_rows = (win_h - 2 * frame_padding) / palette.height;
+		if (fit_rows < 1)
+			fit_rows = 1;
+		if (opt_rows > 0 && fit_rows > opt_rows)
+			fit_rows = opt_rows;
+		layout_rows  = fit_rows;
+		layout_cols  = opt_cols > 0 ?
+		     opt_cols :
+		     (total_rows + fit_rows - 1) / fit_rows;
+		int fit_cols = max_columns_for_width(win_w);
+		if (layout_cols > fit_cols)
+			layout_cols = fit_cols;
+		if (layout_cols < 1)
+			layout_cols = 1;
+		visible_capacity = layout_cols * layout_rows;
+		if (fit_all)
+			layout_fit_all(win_w - 2 * frame_padding,
+			    win_h - 2 * frame_padding, palette.height);
+		clamp_scroll();
+		n_rows = total_rows < visible_capacity ? total_rows :
+							 visible_capacity;
+		if (n_rows > 0)
+			memmove(rows, rows + scroll_first,
+			    sizeof(rows[0]) * (size_t)n_rows);
+		layout_rows_for_width(win_w, opt_cols == 0, palette.height);
+		for (int i = 0; i < n_rows; i++) {
+			int row	   = opt_cols == 0 ? i % layout_rows :
+						     i / layout_cols;
+			int height = win_h - 2 * frame_padding;
+			if (height < 1)
+				height = 1;
+			rows[i].y = frame_padding + row * height / layout_rows;
+			rows[i].h = (row + 1) * height / layout_rows -
+			    row * height / layout_rows;
+		}
+	} else {
+		desired_w = frame_padding * 2 + layout_cols * button_w;
+		apply_width_limit(max_w, &desired_w);
+		win_w = desired_w;
+		layout_rows_for_width(win_w, column_major, palette.height);
+		win_h = frame_padding * 2 + layout_rows * palette.height;
+		if (max_h > 0 && win_h > max_h)
+			win_h = max_h;
+	}
 
 	buf = cow_module_shm_buffer_next(buffers,
 	    sizeof(buffers) / sizeof(buffers[0]), wl_shm, PROG, win_w, win_h);
-	if (buf == NULL)
+	if (buf == NULL) {
+		redraw_pending = true;
 		return;
+	}
+	redraw_pending = false;
 
 	cs = cairo_image_surface_create_for_data(buf->data, CAIRO_FORMAT_ARGB32,
 	    win_w, win_h, win_w * 4);
 	cr = cairo_create(cs);
 	PangoFontDescription *font =
 	    pango_font_description_from_string(palette.font);
+	if (fit_all && n_rows > 0 && rows[0].h < palette.height) {
+		double size = pango_font_description_get_size(font) *
+		    fmax(1, rows[0].h) / palette.height;
+		if (pango_font_description_get_size_is_absolute(font))
+			pango_font_description_set_absolute_size(font, size);
+		else
+			pango_font_description_set_size(font, (int)size);
+	}
 	cow_module_cairo_fill(cr, palette.background, 0, 0, win_w, win_h);
 
 	if (n_rows == 0) {
@@ -1537,6 +1636,11 @@ do_render(const state_t *st)
 	} else {
 		for (int i = 0; i < n_rows; i++) {
 			struct row *r = &rows[i];
+			if (r->w < 1 || r->h < 1)
+				continue;
+			cairo_save(cr);
+			cairo_rectangle(cr, r->x, r->y, r->w, r->h);
+			cairo_clip(cr);
 			bool	    sunken = r->focused || r->any_iconified;
 			int	    label_x = r->x + TEXT_PAD;
 			int	    label_w = r->w - 2 * TEXT_PAD;
@@ -1552,10 +1656,17 @@ do_render(const state_t *st)
 			    r->h - 1, sunken, bg, &palette);
 
 			if (show_icons) {
-				draw_icon(cr, r->win.icon, label_x,
-				    r->y + (r->h - icon_size) / 2, icon_size);
-				label_x += icon_size + MARKER_GAP;
-				label_w -= icon_size + MARKER_GAP;
+				int size = icon_size;
+				if (size > r->h - 4)
+					size = r->h - 4;
+				if (size > label_w)
+					size = label_w;
+				if (size > 0) {
+					draw_icon(cr, r->win.icon, label_x,
+					    r->y + (r->h - size) / 2, size);
+					label_x += size + MARKER_GAP;
+					label_w -= size + MARKER_GAP;
+				}
 			}
 			if (iconified_marker) {
 				draw_iconified_marker(cr, &r->win, label_x, r->y,
@@ -1566,6 +1677,7 @@ do_render(const state_t *st)
 			cow_module_cairo_set_source(cr, fg);
 			cow_text_render(cr, font, label_x, r->y, label_w, r->h,
 			    r->label, PANGO_ALIGN_LEFT, NULL);
+			cairo_restore(cr);
 		}
 	}
 
@@ -1757,6 +1869,8 @@ wayland_cb(__unused evutil_socket_t fd, __unused short events,
 {
 	if (wl_display_dispatch(display) < 0)
 		running = 0;
+	else if (redraw_pending)
+		render_current_state();
 }
 
 static void
@@ -1774,8 +1888,10 @@ static const struct xdg_surface_listener xdg_surface_listener = {
 
 static void
 xdg_toplevel_configure(__unused void *data, __unused struct xdg_toplevel *tl,
-    __unused int32_t w, __unused int32_t h, __unused struct wl_array *states)
+    int32_t w, int32_t h, __unused struct wl_array *states)
 {
+	configured_w = w;
+	configured_h = h;
 }
 
 static void
