@@ -326,6 +326,21 @@ The global runtime state is `struct cow_wm`. It owns lists of:
 - `cow_seat`: one River seat.
 - `cow_container`: a tabbed group of views.
 
+Container ownership, tab activation and member geometry synchronisation live
+in `src/container.c`, with declarations in `include/cow/container.h`.
+Individual decoration resources remain owned by the view.
+
+`src/container_layout.c` provides the geometry calculation for the planned
+split-container extension. It operates on a binary tree of horizontal and
+vertical splits, with minimum frame sizes at the leaves. It allocates no
+Wayland objects and sends no requests. An invalid or undersized layout is
+rejected without changing the previous geometry; temporary minimum-size
+constraints do not overwrite the requested split proportions. This layout
+engine is tested independently but is not yet connected to live containers.
+
+The remaining integration is described in
+[`dev-docs/split-containers.md`](dev-docs/split-containers.md).
+
 The core relationships are:
 
 ```

@@ -126,6 +126,7 @@ srcs = [
     'src/vector.c',
     'src/view.c',
     'src/container.c',
+    'src/container_layout.c',
     'src/wm.c',
     'src/xpm.c',
     'vendor/cow_log.c',
@@ -560,6 +561,14 @@ cow_box_test = executable('test-cow-box',
     dependencies: all_deps,
 )
 test('cow-box', cow_box_test)
+
+container_layout_test = executable('test-container-layout',
+    'tests/container-layout.c',
+    'src/container_layout.c',
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('container-layout', container_layout_test)
 
 update_test = executable('test-update',
     'tests/update.c',
