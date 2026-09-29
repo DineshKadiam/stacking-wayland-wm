@@ -108,6 +108,7 @@ struct cow_seat {
 	bool		      attach_next_pointer_op;
 	struct river_pointer_binding_v1 *op_finish_bindings[3];
 	struct river_xkb_binding_v1     *op_escape_binding;
+	struct river_xkb_binding_v1	*op_escape_modified_binding;
 
 	/* Desk assign mode (ensure_next_key_eaten) */
 	bool awaiting_desk_assign;

@@ -57,6 +57,10 @@ cow_container_layout_minimum(struct cow_container_layout *node, int gap,
 		return false;
 	node->min_width	 = (int)w;
 	node->min_height = (int)h;
+	node->collapsed	 = node->child[0]->collapsed ==
+		 node->child[1]->collapsed ?
+	     node->child[0]->collapsed :
+	     COW_CONTAINER_LEAF;
 	*width		 = (int)w;
 	*height		 = (int)h;
 	return true;
@@ -82,6 +86,10 @@ arrange(struct cow_container_layout *node, struct cow_box box, int gap)
 		high	  = available - node->child[1]->min_height;
 	}
 	first = (int)((int64_t)available * node->share / 10000);
+	if (node->child[0]->collapsed == node->axis)
+		first = low;
+	else if (node->child[1]->collapsed == node->axis)
+		first = high;
 	if (first < low)
 		first = low;
 	if (first > high)

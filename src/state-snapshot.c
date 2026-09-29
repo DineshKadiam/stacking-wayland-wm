@@ -177,13 +177,21 @@ state_snapshot_view(const struct cow_view *view)
 
 	rec_set_string(r, "container_id", "");
 	rec_set_bool(r, "container_active", false);
+	rec_set_number(r, "pane_id", -1);
+	rec_set_bool(r, "pane_active", cow_view_is_active_tab(view));
+	rec_set_bool(r, "container_hidden",
+	    cow_container_hides_view(view) ||
+		(view->container_member != NULL &&
+		    cow_view_is_iconified(view) && !cow_view_has_icon(view)));
 	if (view->container_member != NULL) {
 		struct cow_container *ctr = view->container_member->container;
-		struct cow_container_member *first;
-		first = wl_container_of(ctr->members.next, first, link);
-		if (first->view != NULL && first->view->identifier != NULL)
-			rec_set_string(r, "container_id",
-			    first->view->identifier);
+		char		      id[32];
+		snprintf(id, sizeof(id), "container-%d", ctr->id);
+		rec_set_string(r, "container_id", id);
+		rec_set_number(r, "pane_id", view->container_member->pane->id);
+		rec_set_bool(r, "pane_collapsed",
+		    view->container_member->pane->layout.collapsed !=
+			COW_CONTAINER_LEAF);
 		rec_set_bool(r, "container_active",
 		    ctr->active == view->container_member);
 	}

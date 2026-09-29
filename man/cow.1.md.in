@@ -2047,10 +2047,13 @@ may include a signed pixel offset with a *p* suffix, such as
 
 # WINDOW CONTAINERS
 
-Group windows into a tabbed container. A container is a meta-window that holds
-multiple application windows as tabs. Only the active tab's content is visible;
-all tabs share the container's position, size, and frame. The titlebar shows a
-clickable label for each member. Each label uses that window's
+Group windows into a floating container of tabbed panes. Each pane shows its
+selected tab; panes can be split horizontally or vertically. Moving,
+maximizing, iconifying or changing the desk affects the whole group. Closing
+still affects the targeted application. Fullscreen temporarily shows one
+application, retaining the layout for restoration.
+
+Each pane's titlebar shows clickable tab labels. Each label uses that window's
 **title\_format**, so substitutions such as **%n** track application title
 changes and decor profiles can customise individual labels. Clicking a label
 activates that tab.
@@ -2066,7 +2069,45 @@ decoration profile:
     decor -d editor-tab title_format "Editor"
     decor -a editor-tab -t %foot
 
-## window-container \[-t target\] \[-s source\] \[-arnpNP\]
+## window-container \[-t target\] \[-s source\] action
+
+Choose one action below. Containers can contain tabbed panes separated by
+horizontal or vertical splits.
+
+Squeezed titlebars apply to panes with a single tab. Panes with multiple tabs
+use the full titlebar for their tab strip. Squeezing does not change the pane's
+allocated rectangle; transparent space beside the titlebar is not a drop
+target.
+
+Escape cancels a container move or resize, restoring its geometry and split
+proportions. If the layout or client minimum sizes change during the operation,
+CoW retains the valid layout rather than restoring an incompatible one.
+
+New client minimum sizes can enlarge the container, even beyond the work area
+when necessary. Lowering those minima does not automatically shrink it.
+
+**window-container -e** *left|right|up|down*
+
+: Place *source* in a new pane beside *target*. The target pane is split
+  equally, subject to the applications' minimum sizes. An existing tab in
+  the target pane can be split out; otherwise the source must be uncontained.
+  Detach a source in another pane or container with **-r** first. Dialogs
+  and fullscreen windows cannot be grouped.
+
+  Resize a shared border to change the split; resize an outer border to
+  resize the container. Tab cycling and reordering apply to the target pane.
+  Empty panes disappear when their last application closes or is detached.
+
+  For example, using three distinct application IDs:
+
+      window-container -t %editor -s %terminal -e right
+      window-container -t %terminal -s %monitor -e down
+
+      +-------------------+-------------------+
+      | editor            | terminal          |
+      |                   +-------------------+
+      |                   | monitor           |
+      +-------------------+-------------------+
 
 **window-container -a**
 
@@ -2078,24 +2119,39 @@ decoration profile:
 
   When neither **-t** nor **-s** is given, *source* is the focused
   window and *target* is the next focusable window in stacking order.
-  This means **container add** with no arguments is a self-contained
+  This means **window-container -a** without selectors is a self-contained
   keyboard-only action: it groups the focused window with the one below
   it in the stack. This is useful in environments where mouse modifier
   combinations are unavailable (e.g. VNC).
 
 **window-container -r** \[-t *target*\]
 
-: Remove *target* from its container. The detached window reappears
-  offset from the container position. If the container drops to one
+: Remove *target* from its container and restore its saved floating geometry.
+  If the container drops to one
   member, the container is dissolved.
+
+**window-container -f** *left|right|up|down*
+
+: Focus the nearest pane in that direction within the same container.
+
+**window-container -c** \[-t *target*\]
+
+: Collapse or restore the target pane to its titlebar. Space is given to
+  adjacent panes along the split axis. The original split proportion is
+  retained for restoration. A titlebar must be enabled.
+
+**window-container -q** \[-t *target*\]
+
+: Equalise the split immediately containing the target pane, subject to
+  application minimum sizes.
 
 **window-container -n** \[-t *target*\]
 
-: Activate the next tab in the container that holds *target*.
+: Activate the next tab in the pane that holds *target*.
 
 **window-container -p** \[-t *target*\]
 
-: Activate the previous tab in the container that holds *target*.
+: Activate the previous tab in the pane that holds *target*.
 
 **window-container -N** \[-t *target*\]
 
@@ -2108,9 +2164,11 @@ decoration profile:
   strip. The tab remains active. No-op if it is already the first tab.
 
 See also **window-move -C**, which allows containers to be formed interactively
-by dragging a window's titlebar onto another. In environments where mouse
-modifier combinations are unreliable (e.g. VNC), bind **container add** to a
-key instead:
+by dragging an uncontained window onto another. The titlebar or central area
+joins its tab set; the content edges create a split, indicated by an orange
+border on the destination side. A window already in a container is detached by
+this operation. In environments where mouse modifier combinations are
+unreliable (e.g. VNC), bind **container add** to a key instead:
 
     bind L+g   window-container -a
     bind LS+g  window-container -r

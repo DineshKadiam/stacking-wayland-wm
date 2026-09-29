@@ -66,6 +66,7 @@ attached_escape_pressed(void *data,
     __unused struct river_xkb_binding_v1 *binding)
 {
 	struct cow_seat *seat = data;
+	seat->op.cancelled    = true;
 	seat->op_released = true;
 	cow_update_request(COW_UPDATE_MANAGE);
 }
@@ -103,16 +104,23 @@ cow_pointer_op_disarm_attached(struct cow_seat *seat)
 		river_xkb_binding_v1_destroy(seat->op_escape_binding);
 		seat->op_escape_binding = NULL;
 	}
+	if (seat->op_escape_modified_binding != NULL) {
+		river_xkb_binding_v1_destroy(seat->op_escape_modified_binding);
+		seat->op_escape_modified_binding = NULL;
+	}
 }
 
 static void
 pointer_op_arm_attached(struct cow_seat *seat)
 {
-	if (!seat->attach_next_pointer_op)
+	if (!seat->attach_next_pointer_op && !seat->container_drag &&
+	    !cow_container_is_split(seat->op.view))
 		return;
 
 	static const uint32_t buttons[] = { BTN_LEFT, BTN_MIDDLE, BTN_RIGHT };
 	for (size_t i = 0; i < nitems(buttons); i++) {
+		if (!seat->attach_next_pointer_op)
+			break;
 		seat->op_finish_bindings[i] =
 		    river_seat_v1_get_pointer_binding(seat->river_seat,
 			buttons[i], RIVER_SEAT_V1_MODIFIERS_NONE);
@@ -128,6 +136,17 @@ pointer_op_arm_attached(struct cow_seat *seat)
 		river_xkb_binding_v1_add_listener(seat->op_escape_binding,
 		    &attached_escape_listener, seat);
 		river_xkb_binding_v1_enable(seat->op_escape_binding);
+		if (seat->active_modifiers != 0) {
+			seat->op_escape_modified_binding =
+			    river_xkb_bindings_v1_get_xkb_binding(
+				cow_wm.xkb_bindings, seat->river_seat,
+				XKB_KEY_Escape, seat->active_modifiers);
+			river_xkb_binding_v1_add_listener(
+			    seat->op_escape_modified_binding,
+			    &attached_escape_listener, seat);
+			river_xkb_binding_v1_enable(
+			    seat->op_escape_modified_binding);
+		}
 	}
 }
 
@@ -338,10 +357,34 @@ static void
 pointer_op_frame_geometry(const struct cow_view *view, int *frame_w,
     int *frame_h, int *content_x, int *content_y)
 {
+	if (cow_container_is_split(view)) {
+		struct cow_box frame = cow_container_frame_at(view, view->x,
+		    view->y);
+		*frame_w	     = frame.width;
+		*frame_h	     = frame.height;
+		*content_x	     = view->x - frame.x;
+		*content_y	     = view->y - frame.y;
+		return;
+	}
 	int cw, ch;
 	cow_view_effective_content_size(view, &cw, &ch);
 	cow_titlebar_frame_geometry(view, cw, ch, frame_w, frame_h,
 	    content_x, content_y);
+}
+
+static void
+pointer_op_save_container(struct cow_pointer_op *op, struct cow_view *view)
+{
+	struct cow_container *c	    = cow_view_container(view);
+	op->container_id	    = c->id;
+	op->container_frame	    = c->frame;
+	op->container_restore_frame = c->restore_frame;
+	op->container_maximized_h   = c->maximized_h;
+	op->container_maximized_v   = c->maximized_v;
+	op->container_keep_h	    = view->maximized_h_keep_geometry;
+	op->container_keep_v	    = view->maximized_v_keep_geometry;
+	op->container_ignore_h	    = view->maximized_h_ignore_reserved;
+	op->container_ignore_v	    = view->maximized_v_ignore_reserved;
 }
 
 void
@@ -350,6 +393,9 @@ cow_pointer_op_start_move(struct cow_seat *seat, struct cow_view *view)
 	if (view == NULL || view->closed || seat->op_in_progress)
 		return;
 	pointer_op_group_clear(&seat->op);
+	seat->op.cancelled = false;
+	if (cow_container_is_split(view))
+		pointer_op_save_container(&seat->op, view);
 
 	seat->op.type	 = COW_POINTER_OP_MOVE;
 	seat->op.drop_output = NULL;
@@ -593,7 +639,17 @@ pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
 		seat->pointer_y = warp_y;
 		seat->has_pointer_position = true;
 	}
-	resize_clear_maximized_axes(view, edges);
+	seat->op.container_resize = cow_container_is_split(view);
+	seat->op.cancelled	  = false;
+	if (seat->op.container_resize) {
+		pointer_op_save_container(&seat->op, view);
+		seat->op.pane_frame	 = cow_view_pane(view)->layout.box;
+		cow_container_resize_save(view, edges,
+		    seat->op.container_dividers, seat->op.container_shares);
+		cow_view_set_maximized(view, false);
+	} else {
+		resize_clear_maximized_axes(view, edges);
+	}
 
 	seat->op.type	      = COW_POINTER_OP_RESIZE;
 	seat->op.view	      = view;
@@ -744,6 +800,10 @@ pointer_op_reassign_output(struct cow_view *view, int x, int y, int width,
 		.height = height,
 	};
 	struct cow_output *owner = cow_output_for_box(&content, view->output);
+	if (cow_container_is_split(view)) {
+		content = cow_container_frame_at(view, x, y);
+		owner	= cow_output_for_box(&content, view->output);
+	}
 
 	if (owner != NULL && owner != view->output) {
 		cow_view_reassign_output(view, owner);
@@ -816,7 +876,50 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 	 * Source NOT in a container: group with whatever window is
 	 * under the pointer (if any).
 	 */
-	if (seat->container_drag && seat->op.type == COW_POINTER_OP_MOVE &&
+	if (seat->op.cancelled) {
+		bool restored = false;
+		if (seat->op.type == COW_POINTER_OP_RESIZE &&
+		    seat->op.container_resize) {
+			struct cow_container *c = cow_view_container(view);
+			if (c != NULL && c->id == seat->op.container_id)
+				restored = cow_container_resize_restore(view,
+				    seat->op.resize_edges,
+				    seat->op.container_frame,
+				    seat->op.container_dividers,
+				    seat->op.container_shares);
+		} else if (seat->op.type == COW_POINTER_OP_MOVE &&
+		    !seat->container_drag && cow_container_is_split(view)) {
+			struct cow_container *c = cow_view_container(view);
+			if (c->id == seat->op.container_id)
+				restored = cow_container_arrange(c,
+				    seat->op.container_frame);
+		}
+		if (restored) {
+			struct cow_container *c = cow_view_container(view);
+			if (seat->op.container_maximized_h)
+				cow_container_maximize(view, true, false, false,
+				    true, seat->op.container_ignore_h);
+			if (seat->op.container_maximized_v)
+				cow_container_maximize(view, false, true, false,
+				    true, seat->op.container_ignore_v);
+			c->restore_frame = seat->op.container_restore_frame;
+			struct cow_container_member *m;
+			wl_list_for_each(m, &c->members, link)
+			{
+				m->view->x = m->view->pending_x;
+				m->view->y = m->view->pending_y;
+				cow_view_sync_vxy_from_global(m->view);
+				m->view->maximized_h_keep_geometry =
+				    seat->op.container_keep_h;
+				m->view->maximized_v_keep_geometry =
+				    seat->op.container_keep_v;
+			}
+		}
+		if (cow_wm.drag_drop_target != NULL)
+			cow_wm.drag_drop_target->dec.dirty = true;
+		cow_wm.drag_drop_target = NULL;
+	} else if (seat->container_drag &&
+	    seat->op.type == COW_POINTER_OP_MOVE &&
 	    view->container_member != NULL) {
 		/* Uncontainerise: detach, restore pre-container size,
 		 * place at pointer */
@@ -848,11 +951,17 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 		struct cow_view *target = cow_wm.drag_drop_target;
 		cow_wm.drag_drop_target = NULL;
 		target->dec.dirty	= true;
-		if (target->container_member != NULL)
-			cow_container_add(target->container_member->container,
-			    view);
-		else
-			cow_container_create(target, view);
+		bool	 added		= target->container_member != NULL ?
+				 cow_container_add_to(target, view) :
+				 cow_container_create(target, view) != NULL;
+		uint32_t edge		= cow_wm.drag_drop_edge;
+		if (added && edge != 0 &&
+		    !cow_container_split(target, view,
+			(edge & (COW_EDGE_LEFT | COW_EDGE_RIGHT)) ?
+			    COW_CONTAINER_HORIZONTAL :
+			    COW_CONTAINER_VERTICAL,
+			(edge & (COW_EDGE_LEFT | COW_EDGE_TOP)) != 0))
+			cow_container_remove_view(view);
 	} else if (cow_wm.drag_drop_target != NULL) {
 		/* Normal drop: clear any lingering indicator */
 		cow_wm.drag_drop_target->dec.dirty = true;
@@ -922,7 +1031,7 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 	/* Fire lifecycle rules for the completed op.  Skipped if the
 	 * view was destroyed during the op (caller has already returned
 	 * before reaching here). */
-	if (view != NULL && !view->closed) {
+	if (!seat->op.cancelled && view != NULL && !view->closed) {
 		if (finished_type == COW_POINTER_OP_MOVE)
 			cow_rule_fire(COW_RULE_ON_MOVE, view, view->desk,
 			    view->output);
@@ -930,7 +1039,7 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 			cow_rule_fire(COW_RULE_ON_RESIZE, view, view->desk,
 			    view->output);
 	}
-	if (finished_type == COW_POINTER_OP_MOVE) {
+	if (!seat->op.cancelled && finished_type == COW_POINTER_OP_MOVE) {
 		for (size_t i = 0; i < seat->op.group_count; i++) {
 			struct cow_view *member = seat->op.group[i].view;
 			if (member != NULL && !member->closed)
@@ -941,7 +1050,7 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 	pointer_op_group_clear(&seat->op);
 	if (finished_type == COW_POINTER_OP_MOVE)
 		cow_update_request(COW_UPDATE_STATUS);
-	if (finished_type == COW_POINTER_OP_MOVE)
+	if (!seat->op.cancelled && finished_type == COW_POINTER_OP_MOVE)
 		cow_pan_finish_drop(view, drop_output, drop_edge);
 }
 
@@ -1209,6 +1318,15 @@ cow_pointer_op_process(struct cow_seat *seat)
 	}
 
 	case COW_POINTER_OP_RESIZE: {
+		if (seat->op.container_resize) {
+			struct cow_container *c = cow_view_container(view);
+			if (c != NULL && c->id == seat->op.container_id)
+				cow_container_resize(view,
+				    seat->op.resize_edges,
+				    seat->op.container_frame,
+				    seat->op.pane_frame, dx, dy);
+			break;
+		}
 		uint32_t edges = seat->op.resize_edges;
 		int	 new_w = seat->op.start_width;
 		int	 new_h = seat->op.start_height;

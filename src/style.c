@@ -555,6 +555,7 @@ apply_decor(struct cow_view *view)
 	}
 	(void)cmdq_free(cmdq);
 	cow_decoration_sync_metrics(view);
+	(void)cow_container_refresh(view);
 	view->dec.dirty = true;
 	cow_update_request(COW_UPDATE_MANAGE);
 }

@@ -95,6 +95,22 @@ main(void)
 	cJSON *roundtrip = cow_container_save(c);
 	CHECK(cJSON_Compare(record, roundtrip, true));
 	cJSON_Delete(roundtrip);
+
+	/* Restart retains group iconification and a single representative. */
+	a.cfg.icon_enabled = b.cfg.icon_enabled = d.cfg.icon_enabled = true;
+	cow_view_iconify(&d);
+	CHECK(cow_state_save());
+	cow_container_destroy(c);
+	a.flags &= ~COW_VIEW_ICONIFIED_FLAG;
+	b.flags &= ~COW_VIEW_ICONIFIED_FLAG;
+	d.flags &= ~COW_VIEW_ICONIFIED_FLAG;
+	CHECK(cow_state_restore());
+	c = cow_view_container(&a);
+	CHECK(c != NULL && cow_view_is_iconified(&a) &&
+	    cow_view_is_iconified(&b) && cow_view_is_iconified(&d));
+	CHECK(!cow_view_has_icon(&a) && cow_view_has_icon(&b) &&
+	    !cow_view_has_icon(&d));
+	cow_view_deiconify(&b);
 	cow_container_destroy(c);
 
 	/* The selected window, a whole pane, or every client may disappear. */
@@ -180,10 +196,12 @@ main(void)
 	CHECK(cow_container_add(c, &d));
 	CHECK(cow_container_split(&a, &d, COW_CONTAINER_HORIZONTAL, false));
 	CHECK(cow_container_split(&a, &b, COW_CONTAINER_VERTICAL, true));
+	CHECK(cow_container_collapse(&b));
 	record = cow_container_save(c);
 	cow_container_destroy(c);
 	c = cow_container_restore(record);
 	CHECK(c != NULL);
+	CHECK(cow_view_pane(&b)->layout.collapsed == COW_CONTAINER_VERTICAL);
 	roundtrip = cow_container_save(c);
 	CHECK(cJSON_Compare(record, roundtrip, true));
 	cJSON_Delete(roundtrip);

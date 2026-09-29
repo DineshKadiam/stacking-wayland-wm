@@ -64,6 +64,16 @@ view_visible_in_page(const struct cow_view *view,
 	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
 	int fx = view->vx - content_x;
 	int fy = view->vy - content_y;
+	if (cow_container_is_split(view) && !view->fullscreen) {
+		struct cow_box group = cow_container_frame_at(view, view->vx,
+		    view->vy);
+		fx		     = group.x;
+		fy		     = group.y;
+		frame_w		     = group.width;
+		frame_h		     = group.height;
+		origin_visible	     = fx >= vpx && fx < vpx + w && fy >= vpy &&
+		    fy < vpy + h;
+	}
 
 	bool page_sized = frame_w >= w && frame_h >= h &&
 	    fx % w == 0 && fy % h == 0;
@@ -105,8 +115,7 @@ cow_view_visible(const struct cow_view *view, const struct cow_output *output)
 		return false;
 	if (view->output != output)
 		return false;
-	/* Non-active container members are always hidden */
-	if (!cow_view_is_active_tab(view))
+	if (cow_container_hides_view(view))
 		return false;
 	if (view->desk == NULL)
 		return true;
@@ -234,8 +243,8 @@ cow_desk_switch(struct cow_output *output, uint8_t desk_nr)
 	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 }
 
-void
-cow_view_assign_desk(struct cow_view *view, uint8_t desk_nr)
+static void
+view_assign_desk(struct cow_view *view, uint8_t desk_nr)
 {
 	if (view == NULL || view->closed)
 		return;
@@ -263,6 +272,22 @@ cow_view_assign_desk(struct cow_view *view, uint8_t desk_nr)
 
 	/* Visibility recomputed in render callback */
 	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
+}
+
+void
+cow_view_assign_desk(struct cow_view *view, uint8_t desk_nr)
+{
+	struct cow_container *c = cow_view_container(view);
+	if (c == NULL) {
+		view_assign_desk(view, desk_nr);
+		return;
+	}
+	struct cow_container_member *m;
+	wl_list_for_each(m, &c->members, link)
+	{
+		view_assign_desk(m->view, desk_nr);
+	}
+	c->desk = view->desk;
 }
 
 int
@@ -484,6 +509,10 @@ cow_view_move_to_page(struct cow_view *view, int col, int row)
 
 	view->vx = col * w + within_x;
 	view->vy = row * h + within_y;
+	if (view->container_member != NULL) {
+		cow_view_sync_global_from_vxy(view);
+		cow_view_sync_container_pos(view);
+	}
 
 	view->dec.dirty = true;
 	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);

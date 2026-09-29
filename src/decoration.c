@@ -816,31 +816,22 @@ cow_decoration_update(struct cow_view *view, bool active)
 		bool is_drop_target = cow_view_is_drop_target(view);
 		struct cow_border_colour drop_bc;
 		if (is_drop_target) {
-			memset(&drop_bc, 0, sizeof(drop_bc));
-			memcpy(drop_bc.n, COW_COLOUR_DROP_ORANGE,
-			    sizeof(float) * 4);
-			memcpy(drop_bc.s, COW_COLOUR_DROP_ORANGE,
-			    sizeof(float) * 4);
-			memcpy(drop_bc.e, COW_COLOUR_DROP_ORANGE,
-			    sizeof(float) * 4);
-			memcpy(drop_bc.w, COW_COLOUR_DROP_ORANGE,
-			    sizeof(float) * 4);
-			memcpy(drop_bc.nw, COW_COLOUR_DROP_ORANGE,
-			    sizeof(float) * 4);
-			memcpy(drop_bc.ne, COW_COLOUR_DROP_ORANGE,
-			    sizeof(float) * 4);
-			memcpy(drop_bc.sw, COW_COLOUR_DROP_ORANGE,
-			    sizeof(float) * 4);
-			memcpy(drop_bc.se, COW_COLOUR_DROP_ORANGE,
-			    sizeof(float) * 4);
+			drop_bc		   = *bc;
+			uint32_t edge	   = cow_wm.drag_drop_edge;
+			float	*colours[] = { drop_bc.n, drop_bc.s, drop_bc.w,
+				  drop_bc.e, drop_bc.nw, drop_bc.ne, drop_bc.sw,
+				  drop_bc.se };
+			const uint32_t masks[] = { 1, 2, 4, 8, 5, 9, 6, 10 };
+			for (size_t i = 0; i < 8; i++)
+				if (edge == 0 || (edge & masks[i]) != 0)
+					memcpy(colours[i],
+					    COW_COLOUR_DROP_ORANGE,
+					    sizeof(float) * 4);
 			drop_bc.has_nw = drop_bc.has_ne = true;
 			drop_bc.has_sw = drop_bc.has_se = true;
 			drop_bc.has_corners		= true;
 			bc				= &drop_bc;
 		}
-
-		cow_border_style_render(dec->buffer->data, stride_px, frame_w,
-		    frame_h, bc, bw, cl, view->cfg.border_style);
 
 		/* Render titlebar if enabled */
 		if (tt > 0) {
@@ -855,7 +846,7 @@ cow_decoration_update(struct cow_view *view, bool active)
 
 			/* Override titlebar to orange when this is a drop
 			 * target */
-			if (is_drop_target) {
+			if (is_drop_target && cow_wm.drag_drop_edge == 0) {
 				tb_colour = (float *)COW_COLOUR_DROP_ORANGE;
 				tb_fg	  = (float *)COW_COLOUR_WHITE;
 			}
@@ -892,29 +883,30 @@ cow_decoration_update(struct cow_view *view, bool active)
 			struct cow_box tb_rect = cow_titlebar_squeezed_rect_for(
 			    view, cw, ch);
 			struct cow_titlebar_render_ctx tbctx = {
-				.pixels = dec->buffer->data,
-				.stride_px = stride_px,
-				.frame_w = frame_w,
-				.frame_h = frame_h,
-				.border_width = bw,
-				.border_style = view->cfg.border_style,
-				.tb_rect = tb_rect,
-				.title = display_title,
-				.active = active,
-				.font = font,
+				.pixels		= dec->buffer->data,
+				.stride_px	= stride_px,
+				.frame_w	= frame_w,
+				.frame_h	= frame_h,
+				.border_width	= bw,
+				.border_style	= view->cfg.border_style,
+				.tb_rect	= tb_rect,
+				.title		= display_title,
+				.active		= active,
+				.font		= font,
 				.pressed_button = view->pressed_button,
 				.icon_inverted_button =
 				    view->icon_inverted_button,
 				.title_pressed = view->title_pressed,
-				.tb_cfg = &view->cfg.titlebar,
+				.tb_cfg	       = &view->cfg.titlebar,
 				.container_cfg = &view->cfg.container,
-				.style_colour = tb_colour,
-				.style_fg = tb_fg,
-				.sticky = is_sticky,
-				.tab_titles = tab_titles,
-				.n_tabs = n_tabs,
-				.active_tab = active_tab,
-				.drop_target = is_drop_target,
+				.style_colour  = tb_colour,
+				.style_fg      = tb_fg,
+				.sticky	       = is_sticky,
+				.tab_titles    = tab_titles,
+				.n_tabs	       = n_tabs,
+				.active_tab    = active_tab,
+				.drop_target   = is_drop_target &&
+				    cow_wm.drag_drop_edge == 0,
 			};
 			cow_titlebar_render(&tbctx);
 			xfree(display_title);

@@ -1360,6 +1360,8 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 	}
 	for (size_t wi = 0; wi < n_draw_wins; wi++) {
 		const pwin_t *w = draw_wins[wi];
+		if (w->container_hidden)
+			continue;
 		int foc = w->focused != 0;
 		if (w->desk != d->nr)
 			continue;
@@ -2097,6 +2099,8 @@ hit_test_window(const state_t *st, double x, double y,
 	int	      n_hits = 0;
 	for (size_t wi = 0; wi < st->n_wins; wi++) {
 		const pwin_t *w = &st->wins[wi];
+		if (w->container_hidden)
+			continue;
 		if (w->desk != d->nr)
 			continue;
 		if (!monitor_visible(st, w->output))

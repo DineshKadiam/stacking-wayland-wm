@@ -664,11 +664,32 @@ manage_update_container_drag(struct cow_seat *seat)
 		return;
 
 	struct cow_view *new_target = manage_container_drag_target(seat);
-	if (new_target == cow_wm.drag_drop_target)
+	uint32_t	 edge	    = 0;
+	if (new_target != NULL) {
+		int x = seat->pointer_x - new_target->x;
+		int y = seat->pointer_y - new_target->y;
+		int w = new_target->content_width,
+		    h = new_target->content_height;
+		/* The titlebar and central area join tabs; content edges split.
+		 */
+		if (x >= 0 && y >= 0 && x < w && y < h) {
+			if (x < w / 4)
+				edge = COW_EDGE_LEFT;
+			else if (x >= w - w / 4)
+				edge = COW_EDGE_RIGHT;
+			else if (y < h / 4)
+				edge = COW_EDGE_TOP;
+			else if (y >= h - h / 4)
+				edge = COW_EDGE_BOTTOM;
+		}
+	}
+	if (new_target == cow_wm.drag_drop_target &&
+	    edge == cow_wm.drag_drop_edge)
 		return;
 	if (cow_wm.drag_drop_target != NULL)
 		cow_wm.drag_drop_target->dec.dirty = true;
 	cow_wm.drag_drop_target = new_target;
+	cow_wm.drag_drop_edge	= edge;
 	if (cow_wm.drag_drop_target != NULL)
 		cow_wm.drag_drop_target->dec.dirty = true;
 }
@@ -677,20 +698,27 @@ static struct cow_view *
 manage_container_drag_target(struct cow_seat *seat)
 {
 	struct cow_view *view;
+	struct cow_view *best = NULL;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
 		if (view->closed || view == seat->op.view)
 			continue;
+		if (view->parent != NULL || view->fullscreen ||
+		    seat->op.view->parent != NULL)
+			continue;
 		if (view->output == NULL || !cow_view_visible(view, view->output))
 			continue;
-		struct cow_box fb = cow_view_frame_box(view);
-		if (seat->pointer_x >= fb.x &&
-		    seat->pointer_x < fb.x + fb.width &&
-		    seat->pointer_y >= fb.y &&
-		    seat->pointer_y < fb.y + fb.height)
-			return (view);
+		if (cow_view_contains_point(view, seat->pointer_x - view->x,
+			seat->pointer_y - view->y))
+			if (best == NULL ||
+			    cow_view_effective_layer(view) >
+				cow_view_effective_layer(best) ||
+			    (cow_view_effective_layer(view) ==
+				    cow_view_effective_layer(best) &&
+				view->raise_seq > best->raise_seq))
+				best = view;
 	}
-	return (NULL);
+	return best;
 }
 
 static enum cow_dec_region
@@ -727,7 +755,7 @@ manage_container_tab_click(struct cow_seat *seat, struct cow_view *view, int lx,
 {
 	int		       btn_s = view->dec.title_thickness;
 	struct cow_container *ctr   = cow_view_container(view);
-	struct cow_container_pane *pane = cow_view_pane(view);
+	struct cow_container_pane *pane	 = cow_view_pane(view);
 
 	if (pane == NULL || pane->n_tabs <= 1)
 		return (false);

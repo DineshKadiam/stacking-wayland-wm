@@ -445,7 +445,14 @@ output_migrate_views(struct cow_output *dying, struct cow_output *target)
 			view->orphan_page_vx = view->desk->page_vx;
 			view->orphan_page_vy = view->desk->page_vy;
 		}
+	}
 
+	/* Group reassignment also moves siblings; save all orphan state first.
+	 */
+	wl_list_for_each(view, &cow_wm.views, wm_link)
+	{
+		if (view->output != dying)
+			continue;
 		if (target != NULL) {
 			uint8_t old_nr = view->desk != NULL ?
 			    view->desk->nr : 0;
@@ -453,6 +460,24 @@ output_migrate_views(struct cow_output *dying, struct cow_output *target)
 			cow_view_reassign_output(view, target);
 			if (preserve && had_desk)
 				cow_view_assign_desk(view, old_nr);
+			if (cow_container_is_split(view)) {
+				struct cow_container *c = cow_view_container(
+				    view);
+				struct cow_box frame = c->frame;
+				frame.x += target->x - dying->x;
+				frame.y += target->y - dying->y;
+				struct cow_box area = target->usable_area;
+				if (frame.x < area.x ||
+				    frame.x + frame.width > area.x + area.width)
+					frame.x = area.x;
+				if (frame.y < area.y ||
+				    frame.y + frame.height >
+					area.y + area.height)
+					frame.y = area.y;
+				view->x += frame.x - c->frame.x;
+				view->y += frame.y - c->frame.y;
+				cow_view_sync_container_pos(view);
+			}
 		} else {
 			wl_list_remove(&view->desk_views);
 			wl_list_init(&view->desk_views);
@@ -460,6 +485,12 @@ output_migrate_views(struct cow_output *dying, struct cow_output *target)
 			wl_list_init(&view->output_views);
 			view->output = NULL;
 			view->desk   = NULL;
+			struct cow_container *container = cow_view_container(
+			    view);
+			if (container != NULL) {
+				container->output = NULL;
+				container->desk	  = NULL;
+			}
 		}
 	}
 }

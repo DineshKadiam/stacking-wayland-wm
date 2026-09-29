@@ -608,6 +608,7 @@ void cow_view_layout_icons_on_output(struct cow_output *);
 void cow_view_invalidate_auto_icon_positions(struct cow_output *);
 
 bool cow_view_is_iconified(const struct cow_view *);
+bool cow_view_has_icon(const struct cow_view *);
 void cow_view_drop_decoration(struct cow_view *);
 
 bool cow_view_is_drop_target(const struct cow_view *);

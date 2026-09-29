@@ -279,6 +279,22 @@ do_resize_step(struct cow_view *view, const char *dir, int sign,
 	if (sign < 0)
 		cow_clamp_dimensions(&w, &h);
 
+	if (cow_container_is_split(view)) {
+		uint32_t edge = anchor_right ? COW_EDGE_LEFT :
+		    anchor_bottom ? COW_EDGE_TOP :
+		    w != view->content_width ? COW_EDGE_RIGHT : COW_EDGE_BOTTOM;
+		int dx = anchor_right ? x - view->x : w - view->content_width;
+		int dy = anchor_bottom ? y - view->y : h - view->content_height;
+		if (!cow_container_resize(view, edge,
+			cow_view_container(view)->frame,
+			cow_view_pane(view)->layout.box, dx, dy)) {
+			cmdq_error(cmdq, "window-resize: container cannot fit size");
+			return;
+		}
+		cow_view_set_maximized(view, false);
+		return;
+	}
+
 	cow_view_clear_expanded_state(view);
 	cow_view_set_tiled_edges(view, RIVER_WINDOW_V1_EDGES_TOP |
 	    RIVER_WINDOW_V1_EDGES_BOTTOM | RIVER_WINDOW_V1_EDGES_LEFT |

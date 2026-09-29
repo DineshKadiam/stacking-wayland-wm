@@ -110,4 +110,7 @@ int cow_decoration_corner_length(const struct cow_view *);
  */
 uint32_t cow_decoration_edges_at(struct cow_view *, int, int, int, int);
 
+/* Hit test content and decoration, using coordinates relative to content. */
+bool cow_view_contains_point(struct cow_view *, int, int);
+
 #endif

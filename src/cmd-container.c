@@ -17,6 +17,7 @@
 #include <string.h>
 
 #include "cow/cmd.h"
+#include "cow/memory.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
@@ -24,10 +25,10 @@ static enum cmd_retval cmd_container_exec(struct cmd *, struct cmd_q *);
 
 struct cmd_entry cmd_container_entry = {
 	"window-container",
-	"t:s:arnpNSP",
+	"t:s:e:f:arcqnpNSP",
 	0,
 	0,
-	"[-t target] [-s source] [-arnpNSP]",
+	"[-t target] [-s source] [-a | -e direction | -f direction | -rcqnpNP]",
 	cmd_container_exec,
 	0,
 };
@@ -41,8 +42,52 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 	struct cow_view *target = cmd_require_target_window(cmdq, "container");
 	if (target == NULL)
 		return (CMD_RETURN_ERROR);
+	if (args_has(args, 'c') || args_has(args, 'q')) {
+		bool ok = args_has(args, 'c') ? cow_container_collapse(target) :
+						cow_container_equalize(target);
+		if (!ok)
+			cmdq_error(cmdq, "container: pane cannot be changed");
+		return ok ? CMD_RETURN_NORMAL : CMD_RETURN_ERROR;
+	}
+	if (args_has(args, 'f')) {
+		const char	*direction = args_get(args, 'f');
+		uint32_t	 edge = strcmp(direction, "left") == 0 ? 4 :
+			    strcmp(direction, "right") == 0	       ? 8 :
+			    strcmp(direction, "up") == 0	       ? 1 :
+			    strcmp(direction, "down") == 0	       ? 2 :
+									 0;
+		struct cow_view *next = edge ?
+		    cow_container_neighbor(target, edge) :
+		    NULL;
+		if (next == NULL) {
+			cmdq_error(cmdq,
+			    "container: no pane in that direction");
+			return CMD_RETURN_ERROR;
+		}
+		cow_container_activate(cow_view_container(next),
+		    next->container_member);
+		return CMD_RETURN_NORMAL;
+	}
 
-	if (args_has(args, 'a')) {
+	if (args_has(args, 'a') || args_has(args, 'e')) {
+		const char	       *edge   = args_get(args, 'e');
+		enum cow_container_axis axis   = COW_CONTAINER_LEAF;
+		bool			before = false;
+		if (edge != NULL) {
+			if (strcmp(edge, "left") == 0 ||
+			    strcmp(edge, "right") == 0)
+				axis = COW_CONTAINER_HORIZONTAL;
+			else if (strcmp(edge, "up") == 0 ||
+			    strcmp(edge, "down") == 0)
+				axis = COW_CONTAINER_VERTICAL;
+			else {
+				cmdq_error(cmdq,
+				    "container: expected left, right, up or down");
+				return CMD_RETURN_ERROR;
+			}
+			before = strcmp(edge, "left") == 0 ||
+			    strcmp(edge, "up") == 0;
+		}
 		/* Resolve source window (-s flag, else focused) */
 		struct cow_view *source = NULL;
 		const char	*s_str	= args_get(args, 's');
@@ -53,6 +98,7 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 				cmdq_error(cmdq,
 				    "container add: bad -s specifier: %s",
 				    cause ? cause : "unknown");
+				xfree(cause);
 				return (CMD_RETURN_ERROR);
 			}
 			source = src_ctx.window;
@@ -88,22 +134,45 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		}
 
 		struct cow_container *ctr = cow_view_container(target);
+		if (source->parent != NULL || target->parent != NULL ||
+		    source->fullscreen || target->fullscreen) {
+			cmdq_error(cmdq,
+			    "container: cannot group dialogs or fullscreen windows");
+			return CMD_RETURN_ERROR;
+		}
 		if (source->container_member != NULL &&
 		    source->container_member->container == ctr) {
+			if (edge != NULL &&
+			    cow_container_split(target, source, axis, before))
+				return CMD_RETURN_NORMAL;
 			cmdq_error(cmdq,
 			    "container add: source is already in this container");
 			return (CMD_RETURN_ERROR);
 		}
 
-		/* If source is in a different container, remove it first */
-		if (source->container_member != NULL)
-			cow_container_remove_view(source);
+		/* Keep a failed transfer from destroying the source layout. */
+		if (source->container_member != NULL) {
+			cmdq_error(cmdq,
+			    "container: detach the source from its current group first");
+			return CMD_RETURN_ERROR;
+		}
 
 		if (ctr != NULL) {
-			cow_container_add(ctr, source);
+			if (!cow_container_add_to(target, source)) {
+				cmdq_error(cmdq,
+				    "container: source does not fit");
+				return CMD_RETURN_ERROR;
+			}
 		} else {
-			cow_container_create(target, source);
+			ctr = cow_container_create(target, source);
 		}
+		if (edge != NULL &&
+		    !cow_container_split(target, source, axis, before)) {
+			cow_container_remove_view(source);
+			cmdq_error(cmdq, "container: split does not fit");
+			return CMD_RETURN_ERROR;
+		}
+		cow_container_activate(ctr, source->container_member);
 		return (CMD_RETURN_NORMAL);
 	}
 
@@ -116,6 +185,12 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		cow_container_remove_view(target);
 		return (CMD_RETURN_NORMAL);
 	}
+
+	if (target->container_member != NULL &&
+	    (args_has(args, 'n') || args_has(args, 'p') ||
+		args_has(args, 'N') || args_has(args, 'P')))
+		cow_container_activate(cow_view_container(target),
+		    target->container_member);
 
 	if (args_has(args, 'n')) {
 		struct cow_container *ctr = cow_view_container(target);

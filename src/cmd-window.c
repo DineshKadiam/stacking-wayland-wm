@@ -156,6 +156,8 @@ winops_apply(struct cow_view *view, struct args *args, struct cmd_q *cmdq)
 		bool target    = cmdq->in_rule ? true : !currently;
 		if (target != currently) {
 			view->flags ^= COW_VIEW_STICKY_DESK_FLAG;
+			cow_container_sync_flags(view,
+			    COW_VIEW_STICKY_DESK_FLAG);
 			view->dec.dirty = true;
 			cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 			/* Becoming non-sticky: assign view back to the
@@ -528,6 +530,20 @@ static bool
 do_maximize(struct cow_view *view, enum maximize_type mt,
     enum maximize_axis axis, bool ignore_reserved, struct cmd_q *cmdq)
 {
+	if (cow_container_is_split(view)) {
+		bool h = axis != MAX_AXIS_V, v = axis != MAX_AXIS_H;
+		bool restore = mt == UNMAXIMIZE ||
+		    ((mt == MAX_TOGGLE || mt == MAX_TOGGLE_KEEP) &&
+			((h && view->maximized_h) || (v && view->maximized_v)));
+		if (!cow_container_maximize(view, h, v, restore,
+			mt == MAXIMIZE_KEEP || mt == MAX_TOGGLE_KEEP,
+			ignore_reserved)) {
+			cmdq_error(cmdq,
+			    "container does not fit the requested area");
+			return false;
+		}
+		return true;
+	}
 	if (view->output == NULL) {
 		cmdq_error(cmdq, "window-maximize: target window has no output");
 		return false;

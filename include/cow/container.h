@@ -26,6 +26,7 @@ struct cow_desk;
 struct cow_output;
 
 struct cow_container_pane {
+	int			     id;
 	struct cow_container_layout  layout;
 	struct wl_list		     tabs;
 	struct cow_container_member *active;
@@ -57,6 +58,8 @@ struct cow_container {
 	int content_width, content_height;
 	/* Outer frame used by split layouts. */
 	struct cow_box frame;
+	struct cow_box restore_frame; /* virtual coordinates, before maximize */
+	bool	       maximized_h, maximized_v;
 
 	struct cow_desk	  *desk;
 	struct cow_output *output;
@@ -78,12 +81,27 @@ bool cow_container_add_to(struct cow_view *, struct cow_view *);
  * Split a tab away from another tab in the same pane. Both must already
  * belong to the container. Failure leaves membership and geometry intact.
  */
-bool cow_container_split(struct cow_view *, struct cow_view *,
-    enum cow_container_axis, bool);
-bool cow_container_arrange(struct cow_container *, struct cow_box);
-bool cow_container_is_split(const struct cow_view *);
-void cow_container_remove_view(struct cow_view *);
-void cow_container_forget_view(struct cow_view *);
+bool	       cow_container_split(struct cow_view *, struct cow_view *,
+	      enum cow_container_axis, bool);
+bool	       cow_container_arrange(struct cow_container *, struct cow_box);
+bool	       cow_container_refresh(struct cow_view *);
+bool	       cow_container_is_split(const struct cow_view *);
+struct cow_box cow_container_frame_at(const struct cow_view *, int, int);
+void cow_container_sync_frame(struct cow_view *);
+bool cow_container_maximize(struct cow_view *, bool, bool, bool, bool, bool);
+void cow_container_reflow(struct cow_view *);
+bool cow_container_resize(struct cow_view *, uint32_t, struct cow_box,
+    struct cow_box, int, int);
+void	       cow_container_resize_save(struct cow_view *, uint32_t, int[2],
+	      unsigned[2]);
+bool cow_container_resize_restore(struct cow_view *, uint32_t, struct cow_box,
+    const int[2], const unsigned[2]);
+bool cow_container_collapse(struct cow_view *);
+bool cow_container_equalize(struct cow_view *);
+struct cow_view *cow_container_neighbor(struct cow_view *, uint32_t);
+void		 cow_container_sync_flags(struct cow_view *, uint32_t);
+void		 cow_container_remove_view(struct cow_view *);
+void		 cow_container_forget_view(struct cow_view *);
 
 /* Activate a container tab. */
 void cow_container_activate(struct cow_container *,
@@ -97,14 +115,17 @@ void cow_container_swap_next(struct cow_container *);
 void cow_container_swap_prev(struct cow_container *);
 
 struct cow_container	  *cow_view_container(const struct cow_view *);
+/* Find a contained window through transient parents, without joining it. */
+struct cow_view *cow_container_ancestor(struct cow_view *, unsigned *);
 struct cow_container_pane *cow_view_pane(const struct cow_view *);
 bool			   cow_view_is_active_tab(const struct cow_view *);
+bool cow_container_hides_view(const struct cow_view *);
 
 /* Destroy a container and detach its members. */
 void cow_container_destroy(struct cow_container *);
 
 /* Restart state. Restoring an invalid record leaves live views unchanged. */
-cJSON *cow_container_save(const struct cow_container *);
+cJSON		     *cow_container_save(const struct cow_container *);
 struct cow_container *cow_container_restore(const cJSON *);
 
 /* Sync container members from the active member. */

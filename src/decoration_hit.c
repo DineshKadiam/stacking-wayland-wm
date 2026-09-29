@@ -46,6 +46,22 @@ cow_decoration_corner_length(const struct cow_view *view)
 	return (view->cfg.handles ? normalized_corner_length(view) : 0);
 }
 
+bool
+cow_view_contains_point(struct cow_view *view, int x, int y)
+{
+	int width, height;
+	cow_view_effective_content_size(view, &width, &height);
+	if (x >= 0 && y >= 0 && x < width && y < height)
+		return true;
+	if (!view->use_ssd)
+		return false;
+	if (cow_titlebar_hit_for(view, width, height, x, y))
+		return true;
+	int fw, fh, cx, cy;
+	cow_titlebar_frame_geometry(view, width, height, &fw, &fh, &cx, &cy);
+	return cow_decoration_edges_at(view, x + cx, y + cy, width, height) != 0;
+}
+
 uint32_t
 cow_decoration_edges_at(struct cow_view *view, int fx, int fy, int cw, int ch)
 {

@@ -53,6 +53,9 @@ void cow_stack_mark_dirty(void);
  */
 void cow_stack_apply(void);
 
+/* Apply a pending raise/lower to a window or its entire container. */
+void cow_stack_apply_pending(struct cow_view *view);
+
 /*
  * Return the smallest raise_seq among non-closed views that share
  * `layer`.  Used by cow_view_lower() to push the target one step

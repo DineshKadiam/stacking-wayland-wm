@@ -124,7 +124,7 @@ cow_titlebar_effective_squeeze(const struct cow_view *view,
     struct cow_titlebar_squeeze			     *out)
 {
 	/*
-	 * Containers with more than one member render a tab strip and
+	 * Panes with more than one tab render a tab strip and
 	 * cannot compose cleanly with squeeze; force NONE there.
 	 */
 	struct cow_container_pane *pane = cow_view_pane(view);

@@ -37,12 +37,55 @@
 
 #include "cow/memory.h"
 #include "cow/stack.h"
+#include "cow/update.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
 #include "river-window-management-v1-client-protocol.h"
 
 static bool stack_dirty;
+
+void
+cow_stack_apply_pending(struct cow_view *view)
+{
+	if (!view->needs_raise && !view->pending_lower)
+		return;
+
+	struct cow_view	     *owner = cow_container_ancestor(view, NULL);
+	struct cow_container *c = owner != NULL ? cow_view_container(owner) :
+						  NULL;
+	uint64_t	      seq;
+	if (view->pending_lower) {
+		seq = cow_stack_min_raise_seq_in_layer(
+		    cow_view_effective_layer(view));
+		if (seq > 0) {
+			seq--;
+		} else {
+			/* Make room below an existing bottommost group. */
+			struct cow_view *v;
+			wl_list_for_each(v, &cow_wm.views, wm_link)
+			    v->raise_seq++;
+			cow_wm.raise_seq_counter++;
+		}
+	} else {
+		seq = ++cow_wm.raise_seq_counter;
+	}
+
+	if (c != NULL) {
+		struct cow_container_member *m;
+		wl_list_for_each(m, &c->members, link)
+		{
+			m->view->raise_seq     = seq;
+			m->view->needs_raise   = false;
+			m->view->pending_lower = false;
+		}
+	}
+	view->raise_seq	    = seq;
+	view->needs_raise   = false;
+	view->pending_lower = false;
+	cow_stack_mark_dirty();
+	cow_update_request(COW_UPDATE_STATUS);
+}
 
 void
 cow_stack_mark_dirty(void)
@@ -54,6 +97,7 @@ struct sort_entry {
 	struct cow_view *view;
 	uint8_t		 layer; /* effective layer */
 	uint64_t	 raise_seq;
+	unsigned	 transient_depth;
 };
 
 static int
@@ -68,7 +112,8 @@ sort_cmp(const void *a_, const void *b_)
 		return -1;
 	if (a->raise_seq > b->raise_seq)
 		return 1;
-	return 0;
+	return (a->transient_depth > b->transient_depth) -
+	    (a->transient_depth < b->transient_depth);
 }
 
 void
@@ -112,6 +157,14 @@ cow_stack_apply(void)
 			entries[i].view	     = v;
 			entries[i].layer     = cow_view_effective_layer(v);
 			entries[i].raise_seq = v->raise_seq;
+			struct cow_view *owner = cow_container_ancestor(v,
+			    &entries[i].transient_depth);
+			if (owner != NULL && owner != v) {
+				entries[i].raise_seq = owner->raise_seq;
+				uint8_t layer = cow_view_effective_layer(owner);
+				if (entries[i].layer < layer)
+					entries[i].layer = layer;
+			}
 			i++;
 		}
 		qsort(entries, view_count, sizeof(*entries), sort_cmp);

@@ -58,6 +58,7 @@ struct cow_module_window_state {
 	int  icon_vx, icon_vy, icon_w, icon_h;
 	int  focused;
 	int  iconified;
+	bool container_hidden;
 };
 
 struct cow_module_snapshot {

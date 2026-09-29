@@ -205,6 +205,7 @@ struct cow_wm {
 	 */
 	struct cow_view *drag_drop_source;
 	struct cow_view *drag_drop_target;
+	uint32_t	 drag_drop_edge;
 
 	/*
 	 * Drag ghost: a small circle that follows the pointer during a

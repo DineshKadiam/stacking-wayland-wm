@@ -57,6 +57,7 @@ make_snapshot(void)
 		snprintf(id, sizeof(id), "window-%d", i);
 		cJSON_AddStringToObject(window, "id", id);
 		cJSON_AddStringToObject(window, "app_id", "test");
+		cJSON_AddBoolToObject(window, "container_hidden", i == 0);
 		cJSON_AddNumberToObject(window, "width", 800);
 		cJSON_AddNumberToObject(window, "height", 600);
 		cJSON_AddItemToArray(windows, window);
@@ -76,6 +77,11 @@ main(void)
 		fprintf(stderr, "complete snapshot was not parsed\n");
 		failed = 1;
 		goto out;
+	}
+	if (!snapshot.wins[0].container_hidden ||
+	    snapshot.wins[1].container_hidden) {
+		fprintf(stderr, "container visibility was not parsed\n");
+		failed = 1;
 	}
 	if (snapshot.n_outs != 24 || snapshot.outs[23].n_desks != 40 ||
 	    snapshot.n_wins != 600 ||

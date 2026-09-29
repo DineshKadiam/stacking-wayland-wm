@@ -46,6 +46,7 @@ pane_save(const struct cow_container_pane *pane)
 	}
 
 	cJSON *tabs = cJSON_AddArrayToObject(node, "tabs");
+	cJSON_AddNumberToObject(node, "collapsed", pane->layout.collapsed);
 	struct cow_container_member *m;
 	wl_list_for_each(m, &pane->tabs, pane_link)
 	{
@@ -80,7 +81,7 @@ cow_container_save(const struct cow_container *c)
 		    &cy);
 		frame.x = active->x - cx;
 		frame.y = active->y - cy;
-	} else {
+	} else if (!active->fullscreen) {
 		/* Account for viewport movement since the last layout. */
 		struct cow_box old     = container_pane_content(c->active),
 			       current = old;
@@ -93,6 +94,10 @@ cow_container_save(const struct cow_container *c)
 		container_frame_delta(frame, old, current, &frame);
 	}
 	cJSON_AddNumberToObject(record, "version", 1);
+	cow_box_json_add(cJSON_AddObjectToObject(record, "restore_frame"),
+	    &c->restore_frame);
+	cJSON_AddBoolToObject(record, "maximized_h", c->maximized_h);
+	cJSON_AddBoolToObject(record, "maximized_v", c->maximized_v);
 	cow_box_json_add(cJSON_AddObjectToObject(record, "frame"), &frame);
 	if (active->identifier != NULL)
 		cJSON_AddStringToObject(record, "active", active->identifier);
@@ -139,7 +144,16 @@ pane_restore(struct container_restore *state, const cJSON *node, unsigned depth)
 	}
 	state->remaining--;
 	struct cow_container_pane *pane = container_pane_create();
-	const cJSON *axis     = cJSON_GetObjectItemCaseSensitive(node, "axis");
+	const cJSON *axis      = cJSON_GetObjectItemCaseSensitive(node, "axis");
+	const cJSON *collapsed = cJSON_GetObjectItemCaseSensitive(node,
+	    "collapsed");
+	if (collapsed != NULL) {
+		int value;
+		if (!state_int(node, "collapsed", &value) || value < 0 ||
+		    value > 2)
+			goto invalid;
+		pane->layout.collapsed = value;
+	}
 	const cJSON *tabs     = cJSON_GetObjectItemCaseSensitive(node, "tabs");
 	const cJSON *children = cJSON_GetObjectItemCaseSensitive(node,
 	    "children");
@@ -287,10 +301,24 @@ cow_container_restore(const cJSON *record)
 		goto fail;
 
 	/* Publish only after the complete record and layout have validated. */
+	const cJSON *restore = cJSON_GetObjectItemCaseSensitive(record,
+	    "restore_frame");
+	if (restore != NULL && !state_box(restore, &c->restore_frame))
+		goto fail;
+	c->maximized_h = cJSON_IsTrue(
+	    cJSON_GetObjectItemCaseSensitive(record, "maximized_h"));
+	c->maximized_v = cJSON_IsTrue(
+	    cJSON_GetObjectItemCaseSensitive(record, "maximized_v"));
+	if ((c->maximized_h && c->restore_frame.width < 1) ||
+	    (c->maximized_v && c->restore_frame.height < 1))
+		goto fail;
 	c->frame = frame;
 	c->id	 = container_allocate_id();
 	wl_list_insert(&cow_wm.containers, &c->wm_link);
-	wl_list_for_each(m, &c->members, link) m->view->container_member = m;
+	wl_list_for_each(m, &c->members, link)
+	{
+		m->view->container_member = m;
+	}
 	container_apply_layout(c);
 	return c;
 

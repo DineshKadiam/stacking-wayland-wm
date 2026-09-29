@@ -598,7 +598,8 @@ cow_state_restore(void)
 		if (!cJSON_IsArray(containers)) {
 			cow_log_warn("state restore: invalid containers array");
 		} else {
-			cJSON_ArrayForEach(record, containers) {
+			cJSON_ArrayForEach(record, containers)
+			{
 				if (cow_container_restore(record) != NULL)
 					restored = true;
 				else

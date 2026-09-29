@@ -19,6 +19,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "cow/cow_box.h"
 
 struct cow_seat;
 struct cow_view;
@@ -92,6 +93,16 @@ struct cow_pointer_op {
 
 	/* For resize: which edges are being dragged */
 	uint32_t resize_edges;
+	bool	       container_resize;
+	bool	       cancelled;
+	int	       container_id;
+	struct cow_box container_frame, pane_frame;
+	int	       container_dividers[2];
+	unsigned       container_shares[2];
+	struct cow_box container_restore_frame;
+	bool	       container_maximized_h, container_maximized_v;
+	bool	       container_keep_h, container_keep_v;
+	bool	       container_ignore_h, container_ignore_v;
 
 	/*
 	 * SCROLL_DRAG state.  Pointer motion is interpreted relative

@@ -118,6 +118,9 @@ seat_handle_window_interaction(void *data,
 
 	struct cow_view *view = cow_view_find(river_window);
 	seat->interacted_view = view;
+	if (view != NULL && view->container_member != NULL)
+		cow_container_activate(cow_view_container(view),
+		    view->container_member);
 
 	/* Focus-follows-click: focus the interacted window */
 	if (view != NULL && view != seat->focused_view) {
@@ -322,6 +325,9 @@ cow_seat_focus_view(struct cow_seat *seat, struct cow_view *view)
 {
 	if (view == NULL || view->closed)
 		return;
+	if (view->container_member != NULL)
+		cow_container_activate(cow_view_container(view),
+		    view->container_member);
 
 	river_seat_v1_focus_window(seat->river_seat, view->river_window);
 	cow_log_debug("focus window (id=%s app_id=%s raise=%s)",
@@ -346,6 +352,9 @@ cow_seat_focus_view_no_raise(struct cow_seat *seat, struct cow_view *view)
 {
 	if (view == NULL || view->closed)
 		return;
+	if (view->container_member != NULL)
+		cow_container_activate(cow_view_container(view),
+		    view->container_member);
 
 	river_seat_v1_focus_window(seat->river_seat, view->river_window);
 	cow_log_debug("focus window (id=%s app_id=%s raise=no)",

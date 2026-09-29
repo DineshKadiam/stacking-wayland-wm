@@ -850,6 +850,7 @@ window_handle_dimensions_hint(void *data, __unused struct river_window_v1 *rw,
 	view->min_height      = min_height;
 	view->max_width	      = max_width;
 	view->max_height      = max_height;
+	(void)cow_container_refresh(view);
 }
 
 static void
@@ -1192,6 +1193,12 @@ cow_view_create(struct river_window_v1 *rw)
 static void
 view_clear_wm_refs(struct cow_view *view)
 {
+	struct cow_view *child;
+	wl_list_for_each(child, &cow_wm.views, wm_link)
+	{
+		if (child->parent == view)
+			child->parent = NULL;
+	}
 	if (cow_wm.drag_drop_target == view)
 		cow_wm.drag_drop_target = NULL;
 	if (cow_wm.drag_drop_source == view)
@@ -1260,14 +1267,29 @@ cow_view_destroy(struct cow_view *view)
 		cow_view_layout_icons_on_output(output);
 }
 
-void
-cow_view_clear_orphan(struct cow_view *view)
+static void
+view_clear_orphan(struct cow_view *view)
 {
 	xfree(view->orphan_output_name);
 	view->orphan_output_name = NULL;
 	view->orphan_desk_nr	 = -1;
 	view->orphan_page_vx	 = 0;
 	view->orphan_page_vy	 = 0;
+}
+
+void
+cow_view_clear_orphan(struct cow_view *view)
+{
+	struct cow_container *c = cow_view_container(view);
+	if (c == NULL) {
+		view_clear_orphan(view);
+		return;
+	}
+	struct cow_container_member *m;
+	wl_list_for_each(m, &c->members, link)
+	{
+		view_clear_orphan(m->view);
+	}
 }
 
 void
@@ -1556,75 +1578,8 @@ view_apply_node_position(struct cow_view *view)
 	}
 	river_node_v1_set_position(view->node, render_x, render_y);
 
-	/*
-	 * Raise / lower no longer call river_node_v1_place_{top,bottom}
-	 * directly: the global stacking order is owned by stack.c and
-	 * enforced once per manage cycle.  Here we only update the
-	 * intra-layer raise_seq counter and mark the stack dirty so the
-	 * deferred pass re-issues node ordering with layer constraints
-	 * respected.
-	 */
-	if (view->needs_raise && view->node != NULL) {
-		/*
-		 * Raising any container member raises the whole
-		 * container together.  Assign a fresh raise_seq to
-		 * every member so the stack sort keeps them contiguous
-		 * within their shared layer.
-		 */
-		if (view->container_member != NULL) {
-			struct cow_container *c =
-			    view->container_member->container;
-			uint64_t seq = ++cow_wm.raise_seq_counter;
-			struct cow_container_member *m;
-			wl_list_for_each(m, &c->members, link)
-			{
-				if (m->view != NULL)
-					m->view->raise_seq = seq;
-			}
-			/* Bias the active member by +0 (already seq),
-			 * non-active members by -1 ... so the active
-			 * one sits on top of its peers.  This preserves
-			 * existing visual semantics (active member
-			 * draws on top of its container peers). */
-			if (c->active != NULL && c->active->view != NULL) {
-				wl_list_for_each(m, &c->members, link)
-				{
-					if (m->view != NULL && m != c->active &&
-					    m->view->raise_seq > 0)
-						m->view->raise_seq--;
-				}
-			}
-		} else {
-			view->raise_seq = ++cow_wm.raise_seq_counter;
-		}
-		view->needs_raise = false;
-		cow_stack_mark_dirty();
-		cow_update_request(COW_UPDATE_STATUS);
-	}
-	if (view->pending_lower && view->node != NULL) {
-		/* Push raise_seq to one below the layer's current floor so
-		 * the deferred sort renders this view bottommost within
-		 * its layer. */
-		uint64_t floor = cow_stack_min_raise_seq_in_layer(
-		    cow_view_effective_layer(view));
-		view->raise_seq	    = (floor > 0) ? floor - 1 : 0;
-		view->pending_lower = false;
-		cow_stack_mark_dirty();
-		cow_update_request(COW_UPDATE_STATUS);
-	}
-
-	/*
-	 * For contained views, pin the node to the container's position.
-	 * propose_dimensions for out-of-sync members is handled by the
-	 * pending_resize mechanism in the manage sequence (via
-	 * cow_view_set_pending_geometry), NOT here.  Calling
-	 * river_window_v1_propose_dimensions from the render sequence
-	 * is a sequence_order protocol violation.
-	 */
-	if (view->container_member != NULL) {
-		struct cow_container *c = view->container_member->container;
-		river_node_v1_set_position(view->node, c->x, c->y);
-	}
+	/* Keep pane positions and off-screen parking computed above. */
+	cow_stack_apply_pending(view);
 }
 
 /* Show or hide the view's surface based on visibility, and update
@@ -1643,8 +1598,8 @@ view_apply_show_hide(struct cow_view *view)
 	/*
 	 * Container z-ordering is owned by the global stack pass
 	 * (stack.c).  Container members share a layer and receive a
-	 * fanned raise_seq when any member is raised, so the sort
-	 * keeps them contiguous and the active member on top.
+	 * shared raise_seq when any member is raised or lowered. Hidden
+	 * tabs stay parked off-screen; each visible pane keeps its position.
 	 */
 
 	if (view->use_ssd) {
@@ -1714,8 +1669,8 @@ cow_view_apply_render(struct cow_view *view)
 	view_apply_pending_clip(view);
 }
 
-void
-cow_view_reassign_output(struct cow_view *view, struct cow_output *output)
+static void
+view_reassign_output(struct cow_view *view, struct cow_output *output)
 {
 	if (output == NULL || output == view->output)
 		return;
@@ -1736,16 +1691,41 @@ cow_view_reassign_output(struct cow_view *view, struct cow_output *output)
 }
 
 void
+cow_view_reassign_output(struct cow_view *view, struct cow_output *output)
+{
+	struct cow_container *c = cow_view_container(view);
+	if (c == NULL) {
+		view_reassign_output(view, output);
+		return;
+	}
+	if (output == NULL)
+		return;
+	c->output = output;
+	c->desk	  = output->current_desk;
+	struct cow_container_member *m;
+	wl_list_for_each(m, &c->members, link)
+	{
+		view_reassign_output(m->view, output);
+		cow_view_sync_vxy_from_global(m->view);
+	}
+}
+
+void
 cow_view_update_output(struct cow_view *view)
 {
 	if (view->output == NULL)
 		return;
 
-	struct cow_box fb = cow_view_frame_box(view);
-	int	       cx = fb.x + fb.width / 2;
-	int	       cy = fb.y + fb.height / 2;
-
-	struct cow_output *target = cow_output_at(cx, cy);
+	struct cow_output *target;
+	if (cow_container_is_split(view)) {
+		struct cow_box frame = cow_container_frame_at(view, view->x,
+		    view->y);
+		target = cow_output_for_box(&frame, view->output);
+	} else {
+		struct cow_box frame = cow_view_frame_box(view);
+		target = cow_output_at(frame.x + frame.width / 2,
+		    frame.y + frame.height / 2);
+	}
 	if (target != NULL && target != view->output) {
 		cow_view_reassign_output(view, target);
 		cow_view_clear_orphan(view);
@@ -1960,6 +1940,7 @@ cow_view_set_page_sticky(struct cow_view *view, bool sticky)
 		view->flags |= COW_VIEW_STICKY_PAGE_FLAG;
 	else
 		view->flags &= ~COW_VIEW_STICKY_PAGE_FLAG;
+	cow_container_sync_flags(view, COW_VIEW_STICKY_PAGE_FLAG);
 	view->dec.dirty = true;
 	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 }
@@ -2070,6 +2051,23 @@ cow_view_save_geometry(struct cow_view *view)
 void
 cow_view_set_maximized(struct cow_view *view, bool max)
 {
+	if (!max && cow_container_is_split(view)) {
+		struct cow_container *c = cow_view_container(view);
+		c->maximized_h = c->maximized_v = false;
+		struct cow_container_member *m;
+		wl_list_for_each(m, &c->members, link)
+		{
+			struct cow_view *v = m->view;
+			v->maximized = v->maximized_h = v->maximized_v = false;
+			v->maximized_h_keep_geometry =
+			    v->maximized_v_keep_geometry = false;
+			v->maximized_h_ignore_reserved =
+			    v->maximized_v_ignore_reserved = false;
+			v->icon_inverted_button		   = -1;
+			v->dec.dirty			   = true;
+			cow_view_set_pending_maximized_hint(v, false);
+		}
+	}
 	bool changed = (view->maximized != max);
 	int maximize_button = max ? cow_view_maximize_button_index() : -1;
 
@@ -2152,6 +2150,10 @@ cow_view_clear_expanded_state(struct cow_view *view)
 {
 	if (view == NULL)
 		return;
+	if (cow_container_is_split(view)) {
+		view->expanded = false;
+		return;
+	}
 	if (!view->expanded &&
 	    view->tiled_edges == RIVER_WINDOW_V1_EDGES_NONE &&
 	    (!view->pending_tiled_edges ||
@@ -2249,6 +2251,8 @@ view_refit_maximized(struct cow_view *view)
 {
 	if (view == NULL || !view->maximized || view->output == NULL)
 		return;
+	if (cow_container_is_split(view))
+		return;
 
 	struct cow_box ha, va;
 	view_maximized_areas(view, &ha, &va);
@@ -2314,6 +2318,10 @@ cow_view_maximize_button_index(void)
 void
 cow_view_maximize(struct cow_view *view)
 {
+	if (cow_container_is_split(view)) {
+		cow_container_maximize(view, true, true, false, false, false);
+		return;
+	}
 	if (view->output == NULL)
 		return;
 
@@ -2366,6 +2374,10 @@ cow_view_maximize(struct cow_view *view)
 void
 cow_view_reflow_maximized(struct cow_view *view)
 {
+	if (view != NULL && cow_container_is_split(view)) {
+		cow_container_reflow(view);
+		return;
+	}
 	if (view == NULL || !view->maximized || view->fullscreen ||
 	    view->output == NULL)
 		return;
@@ -2402,6 +2414,10 @@ cow_view_reflow_maximized(struct cow_view *view)
 void
 cow_view_unmaximize(struct cow_view *view)
 {
+	if (cow_container_is_split(view)) {
+		cow_container_maximize(view, true, true, true, false, false);
+		return;
+	}
 	cow_view_clear_expanded_state(view);
 
 	/* saved_x/y hold virtual (vx/vy) coordinates saved by
@@ -2490,6 +2506,13 @@ cow_view_effective_content_size(const struct cow_view *view, int *width,
 	*height = view->content_height;
 	if (view->sd != COW_SHADE_NONE)
 		cow_view_shaded_content_size(view, view->sd, width, height);
+	struct cow_container_pane *pane = cow_view_pane(view);
+	if (pane != NULL && !view->fullscreen) {
+		if (pane->layout.collapsed == COW_CONTAINER_HORIZONTAL)
+			*width = 0;
+		if (pane->layout.collapsed == COW_CONTAINER_VERTICAL)
+			*height = 0;
+	}
 }
 
 static struct cow_box
@@ -2664,6 +2687,16 @@ cow_view_fullscreen(struct cow_view *view)
 {
 	if (view->output == NULL)
 		return;
+	struct cow_container *c = cow_view_container(view);
+	if (c != NULL) {
+		struct cow_container_member *m;
+		wl_list_for_each(m, &c->members, link)
+		{
+			if (m->view != view && m->view->fullscreen)
+				cow_view_exit_fullscreen(m->view);
+		}
+		cow_container_activate(c, view->container_member);
+	}
 	bool was_fullscreen = view->fullscreen;
 
 	cow_view_clear_expanded_state(view);
@@ -2692,6 +2725,8 @@ cow_view_fullscreen(struct cow_view *view)
 	cow_view_inform_fullscreen_state(view, true);
 	view->fullscreen = true;
 	view->use_ssd	 = false;
+	view->pending_clip = true;
+	view->clip_x = view->clip_y = view->clip_w = view->clip_h = 0;
 	cow_update_request(COW_UPDATE_STATUS);
 	if (!was_fullscreen)
 		cow_rule_fire(COW_RULE_ON_FULLSCREEN, view, view->desk,
@@ -2702,6 +2737,16 @@ void
 cow_view_exit_fullscreen(struct cow_view *view)
 {
 	bool was_fullscreen = view->fullscreen;
+	if (cow_container_is_split(view)) {
+		view->fullscreen = false;
+		cow_view_inform_fullscreen_state(view, false);
+		struct cow_container *c = cow_view_container(view);
+		cow_container_arrange(c, c->frame);
+		if (was_fullscreen)
+			cow_rule_fire(COW_RULE_ON_UNFULLSCREEN, view,
+			    view->desk, view->output);
+		return;
+	}
 
 	/*
 	 * saved_x/saved_y hold the virtual (vx/vy) coordinates from before
@@ -2772,6 +2817,15 @@ cow_view_invalidate_auto_icon_positions(struct cow_output *output)
 	}
 }
 
+bool
+cow_view_has_icon(const struct cow_view *view)
+{
+	struct cow_container *c = cow_view_container(view);
+	return !view->closed && cow_view_is_iconified(view) &&
+	    view->cfg.icon_enabled &&
+	    (c == NULL || (c->active != NULL && c->active->view == view));
+}
+
 /* Compute collision-free automatic icon positions on an output. */
 void
 cow_view_layout_icons_on_output(struct cow_output *output)
@@ -2791,9 +2845,7 @@ cow_view_layout_icons_on_output(struct cow_output *output)
 	/* Size every icon first and reserve manually positioned icons. */
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
-		if (!cow_view_is_iconified(view) || view->closed)
-			continue;
-		if (!view->cfg.icon_enabled)
+		if (!cow_view_has_icon(view))
 			continue;
 		if (view->output != output)
 			continue;
@@ -2808,8 +2860,8 @@ cow_view_layout_icons_on_output(struct cow_output *output)
 	}
 	if (!placement.compact) {
 		wl_list_for_each(view, &cow_wm.views, wm_link) {
-			if (!cow_view_is_iconified(view) || view->closed ||
-			    !view->cfg.icon_enabled || view->output != output ||
+			if (!cow_view_has_icon(view) ||
+			    view->output != output ||
 			    view->icon_manual_position ||
 			    !view->icon_auto_position_valid)
 				continue;
@@ -2828,8 +2880,7 @@ cow_view_layout_icons_on_output(struct cow_output *output)
 
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
-		if (!cow_view_is_iconified(view) || view->closed ||
-		    !view->cfg.icon_enabled || view->output != output ||
+		if (!cow_view_has_icon(view) || view->output != output ||
 		    view->icon_manual_position ||
 		    (!placement.compact && view->icon_auto_position_valid))
 			continue;
@@ -3104,14 +3155,12 @@ icon_colours(const struct cow_view *view, const float **background,
 void
 cow_view_icon_render(struct cow_view *view)
 {
-	if (!cow_view_is_iconified(view) || view->closed)
-		return;
-	if (view->output == NULL)
-		return;
-	if (!view->cfg.icon_enabled) {
+	if (!cow_view_has_icon(view)) {
 		cow_view_icon_destroy(view);
 		return;
 	}
+	if (view->output == NULL)
+		return;
 
 	int icon_w = view->icon_width;
 	int icon_h = view->icon_height;
@@ -3202,33 +3251,69 @@ cow_view_icon_destroy(struct cow_view *view)
 	}
 }
 
+static void
+view_set_iconified(struct cow_view *view, bool iconified)
+{
+	if (iconified) {
+		view->flags |= COW_VIEW_ICONIFIED_FLAG;
+	} else {
+		view->flags &= ~COW_VIEW_ICONIFIED_FLAG;
+		if (!view->icon_manual_position)
+			view->icon_auto_position_valid = false;
+	}
+	cow_view_icon_destroy(view);
+}
+
+static void
+view_group_set_iconified(struct cow_view *view, bool iconified)
+{
+	struct cow_container *c = cow_view_container(view);
+	if (c == NULL) {
+		view_set_iconified(view, iconified);
+		return;
+	}
+	struct cow_container_member *m;
+	wl_list_for_each(m, &c->members, link)
+	{
+		view_set_iconified(m->view, iconified);
+	}
+}
+
 void
 cow_view_iconify(struct cow_view *view)
 {
 	if (cow_view_is_iconified(view))
 		return;
 
-	/* Save geometry for restore */
-	cow_view_save_geometry(view);
-
-	view->flags |= COW_VIEW_ICONIFIED_FLAG;
+	/* Hiding does not change geometry or overwrite maximize restore state.
+	 */
+	view_group_set_iconified(view, true);
 
 	/* Layout all icons on this output */
 	if (view->output != NULL)
 		cow_view_layout_icons_on_output(view->output);
 
-	/* Focus next visible view */
-	struct cow_view *next = cow_view_walk(view, true, cow_view_focusable);
-	if (next != NULL && next != view) {
-		cow_wm.pending_focus = next;
-	} else {
-		struct cow_seat *seat;
+	/* All panes are hidden before choosing a replacement focus. */
+	struct cow_view *focused = cow_wm.focused_view;
+	struct cow_view *pending = cow_wm.pending_focus;
+	if ((focused != NULL && cow_view_is_iconified(focused)) ||
+	    (pending != NULL && cow_view_is_iconified(pending))) {
+		struct cow_view *next = cow_view_walk(view, true,
+		    cow_view_focusable);
+		if (next != NULL && next != view) {
+			cow_wm.pending_focus = next;
+		} else {
+			struct cow_seat *seat;
 
-		cow_wm.pending_focus = NULL;
-		if (cow_wm.focused_view == view)
-			cow_wm.focused_view = NULL;
-		wl_list_for_each(seat, &cow_wm.seats, wm_link)
-			cow_seat_forget_view(seat, view);
+			cow_wm.pending_focus = NULL;
+			if (focused != NULL && cow_view_is_iconified(focused)) {
+				cow_wm.focused_view = NULL;
+				wl_list_for_each(seat, &cow_wm.seats, wm_link)
+				{
+					cow_seat_forget_view(seat, focused);
+				}
+			}
+		}
 	}
 
 	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
@@ -3242,12 +3327,10 @@ cow_view_deiconify(struct cow_view *view)
 	if (!cow_view_is_iconified(view))
 		return;
 
-	view->flags &= ~COW_VIEW_ICONIFIED_FLAG;
-	if (!view->icon_manual_position)
-		view->icon_auto_position_valid = false;
-
-	/* Destroy the icon surface */
-	cow_view_icon_destroy(view);
+	view_group_set_iconified(view, false);
+	if (view->container_member != NULL)
+		cow_container_activate(cow_view_container(view),
+		    view->container_member);
 
 	/* Re-layout remaining icons on this output */
 	if (view->output != NULL)
@@ -3352,6 +3435,7 @@ cow_view_sync_global_from_vxy(struct cow_view *view)
 		return;
 	view->x = view->output->x + (view->vx - view->desk->page_vx);
 	view->y = view->output->y + (view->vy - view->desk->page_vy);
+	cow_container_sync_frame(view);
 }
 
 void

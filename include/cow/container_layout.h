@@ -28,13 +28,14 @@ enum cow_container_axis {
 /*
  * The owner manages node lifetime. Leaves supply minimum frame dimensions;
  * branches supply two children and the first child's share (1..9999).
- * Measurement refreshes branch minima bottom-up.
+ * Measurement refreshes branch minima and collapse state bottom-up.
  * Layout never changes shares, so shrinking and growing is reversible.
  */
 struct cow_container_layout {
 	enum cow_container_axis	     axis;
 	struct cow_container_layout *parent, *child[2];
 	unsigned		     share;
+	enum cow_container_axis	     collapsed;
 	int			     min_width, min_height;
 	struct cow_box		     box, divider;
 };
