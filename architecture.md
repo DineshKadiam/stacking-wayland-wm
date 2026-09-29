@@ -330,20 +330,26 @@ Container ownership, tab activation and member geometry synchronisation live in
 `src/container.c`, with declarations in `include/cow/container.h`. Individual
 decoration resources remain owned by the view.
 
-Containers own a binary split tree with `cow_container_pane` leaves. A pane
+Containers use a binary tree to represent columns and rows: horizontal nodes
+divide columns, and vertical nodes within each column divide rows. Horizontal
+nodes never occur below vertical nodes. Leaves are `cow_container_pane`s. A pane
 owns tab order and selection; the container retains its full membership list
 for group operations and restart state. Visibility and titlebar rendering use
 the pane's selected tab, not the container's last activated member. Fullscreen
 hides the other panes temporarily; snapshots use the same visibility check as
 rendering.
 
-The internal split API can move a tab into a new leaf, nest splits and prune
+The internal split API can move a tab into a new row or column and prune
 empty leaves. Pane rectangles are converted to content rectangles through the
 existing titlebar geometry helpers. Explicit operations arrange the group;
 client dimension events report only a pane's accepted dimensions and must not
 resize the group. `window-container` exposes splits, pane navigation, collapse
 and equalisation. Shared-edge pointer resizes update split proportions through
 the existing pointer-operation loop; outer edges resize the group frame.
+
+Row collapse operates across the entire column, leaving at least one row
+expanded. Whole-container shading renders its titlebars as one horizontal
+strip without replacing the saved layout tree or row-collapse state.
 
 Restart state stores each container's complete tree, split proportions, tab
 order, selected tabs and pre-container floating geometries. The decoder builds

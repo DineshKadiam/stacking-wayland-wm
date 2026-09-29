@@ -716,7 +716,7 @@ cow_decoration_sync_metrics(struct cow_view *view)
 		    cow_titlebar_compute_thickness(&font);
 		cow_font_fini(&font);
 	}
-	dec->title_thickness = view->cfg.titlebar.enabled ?
+	dec->title_thickness = cow_container_title_visible(view) ?
 	    dec->nominal_title_thickness :
 	    0;
 }
@@ -758,9 +758,12 @@ cow_decoration_update(struct cow_view *view, bool active)
 
 	int bw	       = dec->border_width;
 	int tt	       = dec->title_thickness;
+	uint32_t shared_edges = cow_container_shared_edges(view);
 
 	int cw, ch;
-	bool shaded = (view->sd != COW_SHADE_NONE);
+	bool shaded = view->sd != COW_SHADE_NONE ||
+	    (cow_view_container(view) != NULL &&
+		cow_view_container(view)->shaded);
 	cow_view_effective_content_size(view, &cw, &ch);
 
 	int frame_w, frame_h, content_x, content_y;
@@ -833,6 +836,10 @@ cow_decoration_update(struct cow_view *view, bool active)
 			bc				= &drop_bc;
 		}
 
+		cow_border_style_render_pane(dec->buffer->data, stride_px,
+		    frame_w, frame_h, bc, bw, cl, view->cfg.border_style,
+		    cow_container_outer_edges(view));
+
 		/* Render titlebar if enabled */
 		if (tt > 0) {
 			struct cow_font *font = get_titlebar_font();
@@ -882,6 +889,8 @@ cow_decoration_update(struct cow_view *view, bool active)
 			 */
 			struct cow_box tb_rect = cow_titlebar_squeezed_rect_for(
 			    view, cw, ch);
+			struct cow_titlebar_config tb;
+			cow_titlebar_effective_config(view, &tb);
 			struct cow_titlebar_render_ctx tbctx = {
 				.pixels		= dec->buffer->data,
 				.stride_px	= stride_px,
@@ -897,7 +906,7 @@ cow_decoration_update(struct cow_view *view, bool active)
 				.icon_inverted_button =
 				    view->icon_inverted_button,
 				.title_pressed = view->title_pressed,
-				.tb_cfg	       = &view->cfg.titlebar,
+				.tb_cfg	       = &tb,
 				.container_cfg = &view->cfg.container,
 				.style_colour  = tb_colour,
 				.style_fg      = tb_fg,
@@ -1113,6 +1122,17 @@ cow_decoration_update(struct cow_view *view, bool active)
 			    frame_w, frame_h, bw, cl,
 			    view->resize_indicator_edges,
 			    view->cfg.border_resize);
+
+		/* The neighbouring pane owns these dividers, including input.
+		 */
+		uint32_t *pixels = dec->buffer->data;
+		if (shared_edges & COW_EDGE_TOP)
+			memset(pixels, 0, (size_t)bw * dec->buffer->stride);
+		if (shared_edges & COW_EDGE_LEFT) {
+			for (int y = 0; y < frame_h; y++)
+				memset(pixels + y * stride_px, 0,
+				    (size_t)bw * sizeof(*pixels));
+		}
 	}
 
 	dec->frame_width	 = frame_w;
@@ -1170,6 +1190,10 @@ commit:
 				    tbr.height);
 		}
 
+		if (shared_edges & COW_EDGE_TOP)
+			wl_region_subtract(region, 0, 0, frame_w, bw);
+		if (shared_edges & COW_EDGE_LEFT)
+			wl_region_subtract(region, 0, 0, bw, frame_h);
 		wl_surface_set_input_region(view->decoration_surface, region);
 		wl_region_destroy(region);
 	}

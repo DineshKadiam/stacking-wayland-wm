@@ -41,6 +41,7 @@ init_view(struct cow_view *view, char *id)
 	view->content_width	  = 800;
 	view->content_height	  = 600;
 	view->cfg.titlebar.height = view->dec.title_thickness = 20;
+	view->dec.nominal_title_thickness		      = 20;
 	view->cfg.titlebar.enabled			      = true;
 	view->cfg.border = view->dec.border_width = 4;
 	wl_list_init(&view->selections);
@@ -75,6 +76,7 @@ main(void)
 	CHECK(cow_container_arrange(c, c->frame));
 	cow_container_activate(c, b.container_member);
 	cow_container_swap_prev(c);
+	CHECK(cow_container_title_hide(&d));
 	cJSON *record = cow_container_save(c);
 
 	/* Exercise the actual state-file entry points, not just the decoder. */
@@ -92,6 +94,8 @@ main(void)
 	CHECK(cow_view_is_active_tab(&b) && cow_view_is_active_tab(&d));
 	CHECK(!cow_view_is_active_tab(&a) && cow_wm.pending_focus == &b);
 	CHECK(a.container_member->pre_width == 800);
+	CHECK(cow_view_pane(&d)->title_hidden);
+	CHECK(d.dec.title_thickness == 0);
 	cJSON *roundtrip = cow_container_save(c);
 	CHECK(cJSON_Compare(record, roundtrip, true));
 	cJSON_Delete(roundtrip);
@@ -120,11 +124,8 @@ main(void)
 	CHECK(cow_view_is_active_tab(&a) && cow_view_is_active_tab(&d));
 	cow_container_destroy(c);
 	a.closed = true;
-	c	 = cow_container_restore(record);
-	CHECK(c != NULL && c->n_members == 1);
-	CHECK(c->root->layout.axis == COW_CONTAINER_LEAF);
-	CHECK(c->active->view == &d && d.pending_width == 800);
-	cow_container_destroy(c);
+	/* A lone survivor must not regain container chrome on restart. */
+	reject(record);
 	d.closed = true;
 	reject(record);
 	a.closed = b.closed = d.closed = false;
@@ -197,11 +198,13 @@ main(void)
 	CHECK(cow_container_split(&a, &d, COW_CONTAINER_HORIZONTAL, false));
 	CHECK(cow_container_split(&a, &b, COW_CONTAINER_VERTICAL, true));
 	CHECK(cow_container_collapse(&b));
+	CHECK(cow_container_shade(&a, true));
 	record = cow_container_save(c);
 	cow_container_destroy(c);
 	c = cow_container_restore(record);
 	CHECK(c != NULL);
 	CHECK(cow_view_pane(&b)->layout.collapsed == COW_CONTAINER_VERTICAL);
+	CHECK(c->shaded);
 	roundtrip = cow_container_save(c);
 	CHECK(cJSON_Compare(record, roundtrip, true));
 	cJSON_Delete(roundtrip);

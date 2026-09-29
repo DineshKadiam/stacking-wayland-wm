@@ -14,7 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "cow/view.h"
-#include "cow/pointer_op.h"
 #include "container_internal.h"
 #include "cow/decoration.h"
 #include "cow/memory.h"
@@ -30,6 +29,25 @@
 
 static int next_container_id;
 static int next_pane_id;
+static int  pane_index(const struct cow_container_layout *,
+     const struct cow_container_layout *, int *);
+static bool pane_can_expand(const struct cow_container_layout *,
+    const struct cow_container_layout *);
+static bool pane_title_visible(const struct cow_container *,
+    const struct cow_container_pane *);
+
+void
+container_pane_normalize_columns(struct cow_container_layout *node)
+{
+	if (node->axis == COW_CONTAINER_HORIZONTAL) {
+		container_pane_normalize_columns(node->child[0]);
+		container_pane_normalize_columns(node->child[1]);
+	} else if (!pane_can_expand(node, NULL)) {
+		while (node->axis != COW_CONTAINER_LEAF)
+			node = node->child[0];
+		node->collapsed = COW_CONTAINER_LEAF;
+	}
+}
 
 void
 cow_container_sync_flags(struct cow_view *view, uint32_t mask)
@@ -93,6 +111,20 @@ pane_replace(struct cow_container *c, struct cow_container_layout *old,
 }
 
 static void
+pane_branch_insert(struct cow_container *c,
+    struct cow_container_layout		*destination,
+    struct cow_container_layout *branch, struct cow_container_layout *leaf,
+    enum cow_container_axis axis, bool before)
+{
+	branch->axis  = axis;
+	branch->share = 5000;
+	pane_replace(c, destination, branch);
+	branch->child[before ? 0 : 1] = leaf;
+	branch->child[before ? 1 : 0] = destination;
+	destination->parent = leaf->parent = branch;
+}
+
+static void
 pane_prune(struct cow_container *c, struct cow_container_pane *pane)
 {
 	struct cow_container_layout *parent = pane->layout.parent;
@@ -104,6 +136,80 @@ pane_prune(struct cow_container *c, struct cow_container_pane *pane)
 	pane_replace(c, parent, sibling);
 	xfree(container_pane_from_layout(parent));
 	xfree(pane);
+}
+
+static uint32_t
+pane_outer_edges(const struct cow_container *c,
+    const struct cow_container_pane	    *pane)
+{
+	uint32_t edges = COW_EDGE_ALL;
+	if (c->shaded) {
+		int count = 0, index = 0;
+		pane_index(&c->root->layout, NULL, &count);
+		int position = pane_index(&c->root->layout, &pane->layout,
+		    &index);
+		return COW_EDGE_TOP | COW_EDGE_BOTTOM |
+		    (position == 0 ? COW_EDGE_LEFT : 0) |
+		    (position == count - 1 ? COW_EDGE_RIGHT : 0);
+	}
+	for (const struct cow_container_layout *n = &pane->layout;
+	    n->parent != NULL; n		  = n->parent) {
+		bool second = n == n->parent->child[1];
+		if (n->parent->axis == COW_CONTAINER_HORIZONTAL)
+			edges &= ~(second ? COW_EDGE_LEFT : COW_EDGE_RIGHT);
+		else
+			edges &= ~(second ? COW_EDGE_TOP : COW_EDGE_BOTTOM);
+	}
+	return edges;
+}
+
+uint32_t
+cow_container_outer_edges(const struct cow_view *view)
+{
+	struct cow_container_pane *pane = cow_view_pane(view);
+	return pane == NULL || view->fullscreen ?
+	    COW_EDGE_ALL :
+	    pane_outer_edges(cow_view_container(view), pane);
+}
+
+uint32_t
+cow_container_shared_edges(const struct cow_view *view)
+{
+	return ~cow_container_outer_edges(view) &
+	    (COW_EDGE_LEFT | COW_EDGE_TOP);
+}
+
+static void
+pane_frame_metrics(const struct cow_container_member *m, int *fw, int *fh,
+    int *cx, int *cy)
+{
+	const struct cow_view *view = m->view;
+	cow_titlebar_frame_geometry(view, 0, 0, fw, fh, cx, cy);
+	/* Also works while validating restart state, before membership is live.
+	 */
+	int tt	  = pane_title_visible(m->container, m->pane) ?
+	       view->dec.nominal_title_thickness :
+	       0;
+	int delta = tt - view->dec.title_thickness;
+	if (cow_titlebar_is_vertical(view->cfg.titlebar.position))
+		*fw += delta;
+	else
+		*fh += delta;
+	if (view->cfg.titlebar.position == COW_TITLEBAR_TOP)
+		*cy += delta;
+	else if (view->cfg.titlebar.position == COW_TITLEBAR_LEFT)
+		*cx += delta;
+	uint32_t edges = ~pane_outer_edges(m->container, m->pane) &
+	    (COW_EDGE_LEFT | COW_EDGE_TOP);
+	int bw = view->dec.border_width;
+	if (edges & COW_EDGE_LEFT) {
+		*fw -= bw;
+		*cx -= bw;
+	}
+	if (edges & COW_EDGE_TOP) {
+		*fh -= bw;
+		*cy -= bw;
+	}
 }
 
 bool
@@ -132,7 +238,7 @@ container_pane_minimum(struct cow_container_pane *pane, bool client_hints)
 			w = 0;
 		if (pane->layout.collapsed == COW_CONTAINER_VERTICAL)
 			h = 0;
-		cow_titlebar_frame_geometry(view, 0, 0, &fw, &fh, &cx, &cy);
+		pane_frame_metrics(m, &fw, &fh, &cx, &cy);
 		if (fw < 0 || fh < 0 || w > INT_MAX - fw || h > INT_MAX - fh)
 			return false;
 		if (w + fw > minw)
@@ -145,13 +251,44 @@ container_pane_minimum(struct cow_container_pane *pane, bool client_hints)
 	return pane->active != NULL;
 }
 
+static int
+pane_index(const struct cow_container_layout *node,
+    const struct cow_container_layout *target, int *index)
+{
+	if (node == target)
+		return *index;
+	if (node->axis == COW_CONTAINER_LEAF) {
+		(*index)++;
+		return -1;
+	}
+	int found = pane_index(node->child[0], target, index);
+	return found >= 0 ? found : pane_index(node->child[1], target, index);
+}
+
 struct cow_box
 container_pane_content(const struct cow_container_member *m)
 {
 	struct cow_box box = m->pane->layout.box;
 	int	       fw, fh, cx, cy;
 
-	cow_titlebar_frame_geometry(m->view, 0, 0, &fw, &fh, &cx, &cy);
+	if (m->container->shaded) {
+		int count = 0, index = 0;
+		pane_index(&m->container->root->layout, NULL, &count);
+		int position = pane_index(&m->container->root->layout,
+		    &m->pane->layout, &index);
+		box	     = m->container->frame;
+		int start    = (int)((int64_t)box.width * position / count);
+		int end = (int)((int64_t)box.width * (position + 1) / count);
+		box.x += start;
+		box.width = end - start;
+		pane_frame_metrics(m, &fw, &fh, &cx, &cy);
+		box.x += cx;
+		box.y += cy;
+		box.width  = box.width > fw ? box.width - fw : 1;
+		box.height = 0;
+		return box;
+	}
+	pane_frame_metrics(m, &fw, &fh, &cx, &cy);
 	box.x += cx;
 	box.y += cy;
 	box.width -= fw;
@@ -159,9 +296,100 @@ container_pane_content(const struct cow_container_member *m)
 	return box;
 }
 
+static bool
+pane_title_visible(const struct cow_container *c,
+    const struct cow_container_pane	      *pane)
+{
+	if (c->shaded || pane->n_tabs > 1 ||
+	    pane->layout.collapsed != COW_CONTAINER_LEAF)
+		return true;
+	if (!pane->title_hidden && pane->active != NULL &&
+	    pane->active->view->cfg.titlebar.enabled)
+		return true;
+	/* Keep a handle when the last titled pane is removed or replaced. */
+	struct cow_container_member *m;
+	wl_list_for_each(m, &c->members, link)
+	{
+		if (m == m->pane->active &&
+		    (m->pane->n_tabs > 1 ||
+			m->pane->layout.collapsed != COW_CONTAINER_LEAF ||
+			(!m->pane->title_hidden && m->view->cfg.titlebar.enabled)))
+			return false;
+	}
+	struct cow_container_layout *first = &c->root->layout;
+	while (first->axis != COW_CONTAINER_LEAF)
+		first = first->child[0];
+	return first == &pane->layout;
+}
+
+bool
+cow_container_title_visible(const struct cow_view *view)
+{
+	struct cow_container *c = cow_view_container(view);
+	return c == NULL ? view->cfg.titlebar.enabled :
+			   pane_title_visible(c, cow_view_pane(view));
+}
+
+static void
+container_title_metrics(struct cow_container *c)
+{
+	struct cow_container_member *m;
+	wl_list_for_each(m, &c->members, link)
+	{
+		int thickness = cow_container_title_visible(m->view) ?
+		    m->view->dec.nominal_title_thickness :
+		    0;
+		if (m->view->dec.title_thickness != thickness) {
+			m->view->dec.title_thickness = thickness;
+			m->view->dec.dirty	     = true;
+		}
+	}
+}
+
+bool
+cow_container_title_hide(struct cow_view *view)
+{
+	struct cow_container	  *c	= cow_view_container(view);
+	struct cow_container_pane *pane = cow_view_pane(view);
+	if (c == NULL || c->shaded || pane->n_tabs > 1 ||
+	    pane->layout.collapsed != COW_CONTAINER_LEAF)
+		return false;
+	struct cow_container_member *m;
+	bool			     other = false;
+	wl_list_for_each(m, &c->members, link)
+	{
+		if (m->pane != pane && m == m->pane->active &&
+		    cow_container_title_visible(m->view))
+			other = true;
+	}
+	if (!other)
+		return false;
+	pane->title_hidden = true;
+	if (cow_container_arrange(c, c->frame))
+		return true;
+	pane->title_hidden = false;
+	container_title_metrics(c);
+	return false;
+}
+
+bool
+cow_container_titles_restore(struct cow_view *view)
+{
+	struct cow_container *c = cow_view_container(view);
+	if (c == NULL)
+		return false;
+	struct cow_container_member *m;
+	wl_list_for_each(m, &c->members, link)
+	{
+		m->pane->title_hidden = false;
+	}
+	return cow_container_refresh(view);
+}
+
 void
 container_apply_layout(struct cow_container *c)
 {
+	container_title_metrics(c);
 	struct cow_container_member *m;
 	bool split = c->root->layout.axis != COW_CONTAINER_LEAF;
 
@@ -172,15 +400,22 @@ container_apply_layout(struct cow_container *c)
 		struct cow_box box = container_pane_content(m);
 		m->view->use_ssd   = m->pane->active == m;
 		bool collapsed	   = m->pane->layout.collapsed !=
-		    COW_CONTAINER_LEAF;
+			COW_CONTAINER_LEAF ||
+		    c->shaded;
 		m->view->pending_clip = true;
 		m->view->clip_x = m->view->clip_y = 0;
-		m->view->clip_w			  = collapsed ? 1 : box.width;
-		m->view->clip_h			  = collapsed ? 1 : box.height;
+		/* A lone pane must resize freely, without its former tile clip.
+		 */
+		m->view->clip_w = collapsed ? 1 : split ? box.width : 0;
+		m->view->clip_h = collapsed ? 1 : split ? box.height : 0;
 		if (m->pane->layout.collapsed == COW_CONTAINER_HORIZONTAL)
 			box.width = m->view->content_width;
 		if (m->pane->layout.collapsed == COW_CONTAINER_VERTICAL)
 			box.height = m->view->content_height;
+		if (c->shaded) {
+			box.width  = m->view->content_width;
+			box.height = m->view->content_height;
+		}
 		cow_view_set_pending_geometry(m->view, box.x, box.y, box.width,
 		    box.height);
 		cow_view_set_tiled_edges(m->view,
@@ -200,6 +435,38 @@ container_apply_layout(struct cow_container *c)
 	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 }
 
+bool
+cow_container_shaded_size(const struct cow_view *view, int *width, int *height)
+{
+	struct cow_container *c = cow_view_container(view);
+	if (c == NULL || !c->shaded || view->fullscreen)
+		return false;
+	struct cow_box box = container_pane_content(view->container_member);
+	*width		   = box.width;
+	*height		   = box.height;
+	return true;
+}
+
+bool
+cow_container_shade(struct cow_view *view, bool shaded)
+{
+	struct cow_container *c = cow_view_container(view);
+	if (c == NULL || !cow_container_is_split(view) || c->shaded == shaded)
+		return false;
+	struct cow_container_member *m;
+	wl_list_for_each(m, &c->members, link)
+	{
+		if (shaded &&
+		    (m->view->fullscreen ||
+			cow_titlebar_is_vertical(
+			    m->view->cfg.titlebar.position)))
+			return false;
+	}
+	c->shaded = shaded;
+	container_apply_layout(c);
+	return true;
+}
+
 struct cow_box
 cow_container_frame_at(const struct cow_view *view, int x, int y)
 {
@@ -216,6 +483,10 @@ cow_container_frame_at(const struct cow_view *view, int x, int y)
 bool
 cow_container_arrange(struct cow_container *c, struct cow_box frame)
 {
+	container_title_metrics(c);
+	container_pane_normalize_columns(&c->root->layout);
+	if (c->root->layout.axis == COW_CONTAINER_LEAF)
+		c->shaded = false;
 	if (!container_pane_minimum(c->root, true) ||
 	    !cow_container_layout_arrange(&c->root->layout, frame, 0))
 		return false;
@@ -231,6 +502,7 @@ cow_container_refresh(struct cow_view *view)
 	if (!cow_container_is_split(view))
 		return true;
 	struct cow_container *c = cow_view_container(view);
+	container_title_metrics(c);
 	int		      width, height;
 	if (!container_pane_minimum(c->root, true) ||
 	    !cow_container_layout_minimum(&c->root->layout, 0, &width, &height))
@@ -253,10 +525,14 @@ cow_container_refresh(struct cow_view *view)
 void
 cow_container_sync_frame(struct cow_view *view)
 {
+	/* Pending pane positions are not yet reflected in x/y or vx/vy. */
 	if (!cow_container_is_split(view) || view->fullscreen ||
+	    view->pending_resize || view->deferred_position ||
 	    !cow_view_is_active_tab(view))
 		return;
 	struct cow_container *c = cow_view_container(view);
+	if (c->shaded)
+		return;
 	struct cow_box frame = cow_container_frame_at(view, view->x, view->y);
 	if (frame.x == c->frame.x && frame.y == c->frame.y)
 		return;
@@ -271,6 +547,7 @@ cow_container_maximize(struct cow_view *view, bool horizontal, bool vertical,
 	struct cow_container *c = cow_view_container(view);
 	if (c == NULL || view->output == NULL || view->fullscreen)
 		return false;
+	cow_container_shade(view, false);
 	struct cow_output *o = view->output;
 	int ox = o->x - (view->desk != NULL ? view->desk->page_vx : 0);
 	int oy = o->y - (view->desk != NULL ? view->desk->page_vy : 0);
@@ -369,18 +646,39 @@ cow_container_is_split(const struct cow_view *view)
 	return c != NULL && c->root->layout.axis != COW_CONTAINER_LEAF;
 }
 
+static bool
+pane_can_expand(const struct cow_container_layout *node,
+    const struct cow_container_layout		  *except)
+{
+	if (node->axis == COW_CONTAINER_LEAF)
+		return node != except && node->collapsed == COW_CONTAINER_LEAF;
+	return pane_can_expand(node->child[0], except) ||
+	    pane_can_expand(node->child[1], except);
+}
+
+static struct cow_container_layout *
+pane_column(struct cow_container_layout *row)
+{
+	while (
+	    row->parent != NULL && row->parent->axis == COW_CONTAINER_VERTICAL)
+		row = row->parent;
+	return row;
+}
+
 bool
 cow_container_collapse(struct cow_view *view)
 {
 	if (!cow_container_is_split(view) || view->fullscreen ||
-	    !view->cfg.titlebar.enabled)
+	    !cow_container_title_visible(view))
 		return false;
 	struct cow_container	    *c	  = cow_view_container(view);
 	struct cow_container_layout *leaf = &cow_view_pane(view)->layout;
 	enum cow_container_axis	     old  = leaf->collapsed;
+	if (old == COW_CONTAINER_LEAF &&
+	    (cow_titlebar_is_vertical(view->cfg.titlebar.position) ||
+		!pane_can_expand(pane_column(leaf), leaf)))
+		return false;
 	leaf->collapsed = old != COW_CONTAINER_LEAF ? COW_CONTAINER_LEAF :
-	    cow_titlebar_is_vertical(view->cfg.titlebar.position) ?
-						      COW_CONTAINER_HORIZONTAL :
 						      COW_CONTAINER_VERTICAL;
 	if (cow_container_arrange(c, c->frame))
 		return true;
@@ -588,6 +886,10 @@ member_unlink(struct cow_container_member *m)
 			    pane->active, pane_link);
 	}
 	m->view->container_member = NULL;
+	m->view->dec.title_thickness = m->view->cfg.titlebar.enabled ?
+	    m->view->dec.nominal_title_thickness :
+	    0;
+	m->view->dec.dirty	     = true;
 	m->view->pending_clip	  = true;
 	m->view->clip_x = m->view->clip_y = 0;
 	m->view->clip_w = m->view->clip_h = 0;
@@ -701,6 +1003,7 @@ container_add(struct cow_container *c, struct cow_container_pane *pane,
 	}
 
 	/* Sync dimensions to container */
+	container_title_metrics(c);
 	if (c->root->layout.axis == COW_CONTAINER_LEAF)
 		cow_view_set_pending_geometry(view, c->x, c->y,
 		    c->content_width, c->content_height);
@@ -749,6 +1052,10 @@ cow_container_split(struct cow_view *target, struct cow_view *source,
 	struct cow_container_pane   *leaf	     = container_pane_create();
 	struct cow_container_pane   *branch	     = container_pane_create();
 	struct cow_container_member *previous_active = old->active;
+	struct cow_container_layout *destination     = axis ==
+		    COW_CONTAINER_HORIZONTAL ?
+		pane_column(&old->layout) :
+		&old->layout;
 	struct wl_list		    *previous	     = sm->pane_link.prev;
 	struct cow_box		     frame	     = c->frame;
 	if (c->root->layout.axis == COW_CONTAINER_LEAF)
@@ -762,24 +1069,21 @@ cow_container_split(struct cow_view *target, struct cow_view *source,
 	wl_list_insert(&leaf->tabs, &sm->pane_link);
 	leaf->n_tabs	     = 1;
 	leaf->active	     = sm;
-	branch->layout.axis  = axis;
-	branch->layout.share = 5000;
-	pane_replace(c, &old->layout, &branch->layout);
-	branch->layout.child[before ? 0 : 1] = &leaf->layout;
-	branch->layout.child[before ? 1 : 0] = &old->layout;
-	old->layout.parent = leaf->layout.parent = &branch->layout;
+	pane_branch_insert(c, destination, &branch->layout, &leaf->layout, axis,
+	    before);
 	if (cow_container_arrange(c, frame))
 		return true;
 
 	/* Restore membership and topology atomically on a rejected split. */
-	pane_replace(c, &branch->layout, &old->layout);
+	pane_replace(c, &branch->layout, destination);
 	wl_list_remove(&sm->pane_link);
 	wl_list_insert(previous, &sm->pane_link);
 	sm->pane = old;
 	old->n_tabs++;
 	old->active = previous_active;
-	xfree(leaf);
+	container_pane_destroy(leaf);
 	xfree(branch);
+	container_title_metrics(c);
 	return false;
 }
 
@@ -814,6 +1118,7 @@ cow_container_activate(struct cow_container *c,
 	member->view->use_ssd	  = true;
 	member->view->dec.dirty	  = true;
 	member->view->needs_raise = true;
+	container_title_metrics(c);
 
 	/*
 	 * Re-sync the new active member's geometry to the container's
@@ -965,21 +1270,7 @@ cow_container_remove_view(struct cow_view *view)
 		cow_container_arrange(c, c->frame);
 
 	if (c->n_members <= 1) {
-		/* Disband: release the last member too */
-		if (!wl_list_empty(&c->members)) {
-			struct cow_container_member *last =
-			    wl_container_of(c->members.next, last, link);
-			struct cow_view *lv = last->view;
-			member_unlink(last);
-			xfree(last);
-			lv->use_ssd = true;
-			cow_decoration_fini(&lv->dec);
-			cow_decoration_init(lv);
-			lv->dec.dirty = true;
-		}
-		wl_list_remove(&c->wm_link);
-		container_pane_destroy(c->root);
-		xfree(c);
+		cow_container_destroy(c);
 	} else if (was_active) {
 		/* Activate the first remaining member */
 		struct cow_container_member *next =
@@ -999,6 +1290,7 @@ cow_container_destroy(struct cow_container *c)
 	{
 		m->view->use_ssd = true;
 		member_unlink(m);
+		cow_view_set_tiled_edges(m->view, RIVER_WINDOW_V1_EDGES_NONE);
 		xfree(m);
 	}
 	wl_list_remove(&c->wm_link);
@@ -1038,8 +1330,13 @@ cow_container_forget_view(struct cow_view *view)
 		c->active->view->use_ssd   = true;
 		c->active->view->dec.dirty = true;
 	}
+	container_title_metrics(c);
 	if (was_split)
 		cow_container_arrange(c, c->frame);
+	/* A surviving window is no longer a container, even after a close. */
+	if (c->n_members == 1)
+		cow_container_destroy(c);
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 }
 
 struct cow_container *

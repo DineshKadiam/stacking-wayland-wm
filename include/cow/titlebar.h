@@ -34,6 +34,11 @@ struct cow_view;
  * Compute titlebar thickness from a font.
  */
 int cow_titlebar_compute_thickness(struct cow_font *);
+/* Borrowed strings: the returned configuration must not be freed. */
+void cow_titlebar_effective_config(const struct cow_view *,
+    struct cow_titlebar_config *);
+void cow_titlebar_button_counts(const struct cow_titlebar_config *, int *,
+    int *);
 
 /*
  * Resolve the effective squeeze configuration for 'view'.

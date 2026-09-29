@@ -2071,8 +2071,9 @@ decoration profile:
 
 ## window-container \[-t target\] \[-s source\] action
 
-Choose one action below. Containers can contain tabbed panes separated by
-horizontal or vertical splits.
+Choose one action below. Containers contain side-by-side columns, each holding
+vertically stacked tabbed panes. Left/right splits add a column beside the
+target's column; up/down splits add a row beside the target pane.
 
 Squeezed titlebars apply to panes with a single tab. Panes with multiple tabs
 use the full titlebar for their tab strip. Squeezing does not change the pane's
@@ -2094,20 +2095,24 @@ when necessary. Lowering those minima does not automatically shrink it.
   Detach a source in another pane or container with **-r** first. Dialogs
   and fullscreen windows cannot be grouped.
 
+  Adjacent panes share one border, drawn by the pane to its left or above.
+  Handle marks appear only at the container's outer corners.
   Resize a shared border to change the split; resize an outer border to
   resize the container. Tab cycling and reordering apply to the target pane.
   Empty panes disappear when their last application closes or is detached.
 
   For example, using three distinct application IDs:
 
-      window-container -t %editor -s %terminal -e right
-      window-container -t %terminal -s %monitor -e down
+  ```text
+  window-container -t %editor -s %terminal -e right
+  window-container -t %terminal -s %monitor -e down
 
-      +-------------------+-------------------+
-      | editor            | terminal          |
-      |                   +-------------------+
-      |                   | monitor           |
-      +-------------------+-------------------+
+  +-------------------+-------------------+
+  | editor            | terminal          |
+  |                   +-------------------+
+  |                   | monitor           |
+  +-------------------+-------------------+
+  ```
 
 **window-container -a**
 
@@ -2139,6 +2144,84 @@ when necessary. Lowering those minima does not automatically shrink it.
 : Collapse or restore the target pane to its titlebar. Space is given to
   adjacent panes along the split axis. The original split proportion is
   retained for restoration. A titlebar must be enabled.
+
+  Collapse requires a horizontal titlebar and at least one other expanded row
+  in the column. The last expanded row is left unchanged.
+
+  **window-shade** is separate: it gathers the whole container's titlebars
+  into a strip. Shading again restores the columns, row sizes and collapsed
+  rows. All panes must use horizontal titlebars. Hidden pane titles are
+  temporarily shown while the container is shaded.
+
+  Use `self.container_split` to give titlebar double-clicks a row-collapse
+  action while retaining shade/unshade for ordinary windows and plain tab
+  groups. A shaded container is unshaded first:
+
+  ```text
+  bind-decoration -2 titlebar script {
+      if self.container_split and not self.shaded {
+          window-container -c
+      } else {
+          window-shade -d titlebar
+      }
+  }
+  ```
+
+**window-container -H** \[-t *target*\]
+
+: Hide the target pane's titlebar without changing its decoration profile.
+  The last visible titlebar and panes containing multiple tabs cannot be
+  hidden. Adding a tab to a hidden-title pane makes its tab strip visible.
+  Collapsed rows must be expanded
+  first. If closing a pane or changing tabs leaves no titlebar, the first
+  remaining pane automatically supplies one, even if its window normally has
+  no titlebar.
+
+**window-container -U** \[-t *target*\]
+
+: Restore the hidden pane titles in the target's container. Windows whose
+  decoration profile disables titles retain that setting, except for the
+  protected container handle.
+
+  The default configuration uses three pane buttons on the right:
+
+  ```text
+  [ - ]  [ ↗ ]  [ × ]
+   hide  detach close
+  ```
+
+  Buttons 4, 2 and 0 respectively hide the pane title, detach the active tab,
+  and close the active window. They retain the theme's button colours and
+  relief. Panes with multiple tabs omit the hide button so their tab strip
+  remains visible, even if the decoration profile disables titlebars.
+  Ordinary windows and plain tabbed groups keep their normal buttons.
+  Tabs within a split container use the pane buttons. Button actions remain
+  configurable with **bind-decoration**; the default bindings test
+  `self.container_split` to distinguish the two cases.
+
+  Double-click a pane title to collapse or restore its row. Middle-click a
+  title to shade or unshade the whole container. **Super+Ctrl+Alt+t** restores
+  hidden pane titles. With an existing configuration, add:
+
+  ```text
+  mouse T:0+middle window-shade -d titlebar
+  bind LCA+t window-container -U
+  bind-decoration 4 window-container -H
+  bind-decoration 2 script {
+      if self.container_split {
+          window-container -r
+      } else {
+          winops -i
+      }
+  }
+  bind-decoration 0 script {
+      if self.container_split {
+          winops -c
+      } else {
+          window-maximize -T
+      }
+  }
+  ```
 
 **window-container -q** \[-t *target*\]
 

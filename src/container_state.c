@@ -47,6 +47,7 @@ pane_save(const struct cow_container_pane *pane)
 
 	cJSON *tabs = cJSON_AddArrayToObject(node, "tabs");
 	cJSON_AddNumberToObject(node, "collapsed", pane->layout.collapsed);
+	cJSON_AddBoolToObject(node, "title_hidden", pane->title_hidden);
 	struct cow_container_member *m;
 	wl_list_for_each(m, &pane->tabs, pane_link)
 	{
@@ -98,6 +99,7 @@ cow_container_save(const struct cow_container *c)
 	    &c->restore_frame);
 	cJSON_AddBoolToObject(record, "maximized_h", c->maximized_h);
 	cJSON_AddBoolToObject(record, "maximized_v", c->maximized_v);
+	cJSON_AddBoolToObject(record, "shaded", c->shaded);
 	cow_box_json_add(cJSON_AddObjectToObject(record, "frame"), &frame);
 	if (active->identifier != NULL)
 		cJSON_AddStringToObject(record, "active", active->identifier);
@@ -144,6 +146,11 @@ pane_restore(struct container_restore *state, const cJSON *node, unsigned depth)
 	}
 	state->remaining--;
 	struct cow_container_pane *pane = container_pane_create();
+	const cJSON *hidden		= cJSON_GetObjectItemCaseSensitive(node,
+			"title_hidden");
+	if (hidden != NULL && !cJSON_IsBool(hidden))
+		goto invalid;
+	pane->title_hidden     = cJSON_IsTrue(hidden);
 	const cJSON *axis      = cJSON_GetObjectItemCaseSensitive(node, "axis");
 	const cJSON *collapsed = cJSON_GetObjectItemCaseSensitive(node,
 	    "collapsed");
@@ -252,6 +259,18 @@ invalid:
 	return NULL;
 }
 
+static bool
+pane_columns_valid(const struct cow_container_layout *node, bool rows)
+{
+	if (node->axis == COW_CONTAINER_LEAF)
+		return node->collapsed != COW_CONTAINER_HORIZONTAL;
+	if (rows && node->axis == COW_CONTAINER_HORIZONTAL)
+		return false;
+	rows = rows || node->axis == COW_CONTAINER_VERTICAL;
+	return pane_columns_valid(node->child[0], rows) &&
+	    pane_columns_valid(node->child[1], rows);
+}
+
 struct cow_container *
 cow_container_restore(const cJSON *record)
 {
@@ -272,7 +291,8 @@ cow_container_restore(const cJSON *record)
 				   cJSON_GetObjectItemCaseSensitive(record, "tree"), 0);
 	const cJSON *active = cJSON_GetObjectItemCaseSensitive(record,
 	    "active");
-	if (!state.valid || c->root == NULL ||
+	if (!state.valid || c->root == NULL || c->n_members < 2 ||
+	    !pane_columns_valid(&c->root->layout, false) ||
 	    (active != NULL && !cJSON_IsString(active)))
 		goto fail;
 
@@ -295,11 +315,14 @@ cow_container_restore(const cJSON *record)
 	}
 	/* Flat tab groups historically permit clients below their size hints.
 	 */
+	container_pane_normalize_columns(&c->root->layout);
 	if (!container_pane_minimum(c->root,
 		c->root->layout.axis != COW_CONTAINER_LEAF) ||
 	    !cow_container_layout_arrange(&c->root->layout, frame, 0))
 		goto fail;
 
+	c->shaded = c->root->layout.axis != COW_CONTAINER_LEAF &&
+	    cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(record, "shaded"));
 	/* Publish only after the complete record and layout have validated. */
 	const cJSON *restore = cJSON_GetObjectItemCaseSensitive(record,
 	    "restore_frame");

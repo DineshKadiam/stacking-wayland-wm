@@ -31,6 +31,7 @@ struct cow_container_pane {
 	struct wl_list		     tabs;
 	struct cow_container_member *active;
 	int			     n_tabs;
+	bool			     title_hidden;
 };
 
 /* Tabbed container membership. */
@@ -60,6 +61,7 @@ struct cow_container {
 	struct cow_box frame;
 	struct cow_box restore_frame; /* virtual coordinates, before maximize */
 	bool	       maximized_h, maximized_v;
+	bool	       shaded;
 
 	struct cow_desk	  *desk;
 	struct cow_output *output;
@@ -97,6 +99,11 @@ void	       cow_container_resize_save(struct cow_view *, uint32_t, int[2],
 bool cow_container_resize_restore(struct cow_view *, uint32_t, struct cow_box,
     const int[2], const unsigned[2]);
 bool cow_container_collapse(struct cow_view *);
+bool cow_container_title_visible(const struct cow_view *);
+bool cow_container_title_hide(struct cow_view *);
+bool cow_container_titles_restore(struct cow_view *);
+bool cow_container_shade(struct cow_view *, bool);
+bool cow_container_shaded_size(const struct cow_view *, int *, int *);
 bool cow_container_equalize(struct cow_view *);
 struct cow_view *cow_container_neighbor(struct cow_view *, uint32_t);
 void		 cow_container_sync_flags(struct cow_view *, uint32_t);
@@ -120,6 +127,9 @@ struct cow_view *cow_container_ancestor(struct cow_view *, unsigned *);
 struct cow_container_pane *cow_view_pane(const struct cow_view *);
 bool			   cow_view_is_active_tab(const struct cow_view *);
 bool cow_container_hides_view(const struct cow_view *);
+/* Borders supplied by the neighbouring pane to the left or above. */
+uint32_t cow_container_shared_edges(const struct cow_view *);
+uint32_t cow_container_outer_edges(const struct cow_view *);
 
 /* Destroy a container and detach its members. */
 void cow_container_destroy(struct cow_container *);

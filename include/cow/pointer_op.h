@@ -52,14 +52,6 @@ enum cow_pointer_op_type {
 };
 
 /*
- * Resize edge flags (matching river's river_window_v1.edges enum).
- */
-#define COW_EDGE_TOP 1
-#define COW_EDGE_BOTTOM 2
-#define COW_EDGE_LEFT 4
-#define COW_EDGE_RIGHT 8
-
-/*
  * State for an in-progress pointer operation.
  */
 struct cow_pointer_op {

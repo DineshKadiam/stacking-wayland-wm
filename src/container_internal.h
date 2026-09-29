@@ -27,6 +27,7 @@ bool	       container_pane_minimum(struct cow_container_pane *, bool);
 struct cow_box container_pane_content(const struct cow_container_member *);
 bool container_frame_delta(struct cow_box, struct cow_box, struct cow_box,
     struct cow_box *);
+void container_pane_normalize_columns(struct cow_container_layout *);
 void container_apply_layout(struct cow_container *);
 int  container_allocate_id(void);
 

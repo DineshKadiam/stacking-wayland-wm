@@ -106,6 +106,8 @@ main(void)
 		"{ if self.title matches \"cowiconman:*\" and "
 		    "self.output == \"eDP-1\" { nop } }",
 		"{ if self.title not matches \"cowiconman:*\" { nop } }",
+		"{ if self.container_split and not self.shaded { "
+		    "nop } else { nop } }",
 		"{ for w in (windows where w.title matches \"cowiconman:*\") "
 		    "{ nop } }",
 		"{ for o in (outputs) {\n"

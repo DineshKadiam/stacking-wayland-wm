@@ -2504,6 +2504,8 @@ cow_view_effective_content_size(const struct cow_view *view, int *width,
 {
 	*width = view->content_width;
 	*height = view->content_height;
+	if (cow_container_shaded_size(view, width, height))
+		return;
 	if (view->sd != COW_SHADE_NONE)
 		cow_view_shaded_content_size(view, view->sd, width, height);
 	struct cow_container_pane *pane = cow_view_pane(view);
@@ -2602,6 +2604,16 @@ view_place_for_shade_edge(struct cow_view *view, int direction,
 void
 cow_view_shade(struct cow_view *view, int direction)
 {
+	if (cow_container_is_split(view)) {
+		if (cow_view_container(view)->shaded) {
+			cow_view_unshade(view);
+			return;
+		}
+		if (cow_container_shade(view, true))
+			cow_rule_fire(COW_RULE_ON_SHADE, view, view->desk,
+			    view->output);
+		return;
+	}
 	if (view->sd != COW_SHADE_NONE) {
 		cow_view_unshade(view);
 		return;
@@ -2642,6 +2654,12 @@ cow_view_shade(struct cow_view *view, int direction)
 void
 cow_view_unshade(struct cow_view *view)
 {
+	if (cow_container_is_split(view) && cow_view_container(view)->shaded) {
+		if (cow_container_shade(view, false))
+			cow_rule_fire(COW_RULE_ON_UNSHADE, view, view->desk,
+			    view->output);
+		return;
+	}
 	if (view->sd == COW_SHADE_NONE)
 		return;
 
@@ -2687,6 +2705,7 @@ cow_view_fullscreen(struct cow_view *view)
 {
 	if (view->output == NULL)
 		return;
+	cow_container_shade(view, false);
 	struct cow_container *c = cow_view_container(view);
 	if (c != NULL) {
 		struct cow_container_member *m;

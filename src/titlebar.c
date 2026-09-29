@@ -51,15 +51,57 @@ titlebar_button_visible(const struct cow_titlebar_config *tb, int idx)
 		tb->buttons[idx].image != NULL);
 }
 
-static int
-titlebar_visible_button_count(const struct cow_titlebar_config *tb)
+void
+cow_titlebar_button_counts(const struct cow_titlebar_config *tb, int *left,
+    int *right)
 {
-	int n = 0;
+	*left = *right = 0;
 	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++) {
 		if (titlebar_button_visible(tb, i))
-			n++;
+			(*(i % 2 ? left : right))++;
 	}
-	return n;
+}
+
+void
+cow_titlebar_effective_config(const struct cow_view *view,
+    struct cow_titlebar_config			    *tb)
+{
+	*tb = view->cfg.titlebar;
+	if (!cow_container_is_split(view))
+		return;
+	/* Pane controls retain the theme's button colours and relief. */
+	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++) {
+		tb->buttons[i].image		 = NULL;
+		tb->buttons[i].vector.num_points = 0;
+	}
+	tb->buttons[0].vector = (struct cow_vector_button) {
+		.num_points = 4,
+		.points = {
+			{ .x = 30, .y = 30, .colour = COW_VECTOR_INVISIBLE },
+			{ .x = 70, .y = 70, .colour = COW_VECTOR_FG },
+			{ .x = 70, .y = 30, .colour = COW_VECTOR_INVISIBLE },
+			{ .x = 30, .y = 70, .colour = COW_VECTOR_FG },
+		},
+	};
+	tb->buttons[2].vector = (struct cow_vector_button) {
+		.num_points = 5,
+		.points = {
+			{ .x = 30, .y = 70, .colour = COW_VECTOR_INVISIBLE },
+			{ .x = 70, .y = 30, .colour = COW_VECTOR_FG },
+			{ .x = 40, .y = 30, .colour = COW_VECTOR_FG },
+			{ .x = 70, .y = 30, .colour = COW_VECTOR_INVISIBLE },
+			{ .x = 70, .y = 60, .colour = COW_VECTOR_FG },
+		},
+	};
+	tb->buttons[4].vector = (struct cow_vector_button) {
+		.num_points = 2,
+		.points = {
+			{ .x = 30, .y = 50, .colour = COW_VECTOR_INVISIBLE },
+			{ .x = 70, .y = 50, .colour = COW_VECTOR_FG },
+		},
+	};
+	if (cow_view_pane(view)->n_tabs > 1)
+		tb->buttons[4].vector.num_points = 0;
 }
 
 bool
@@ -128,7 +170,8 @@ cow_titlebar_effective_squeeze(const struct cow_view *view,
 	 * cannot compose cleanly with squeeze; force NONE there.
 	 */
 	struct cow_container_pane *pane = cow_view_pane(view);
-	if (pane != NULL && pane->n_tabs > 1) {
+	if (pane != NULL &&
+	    (pane->n_tabs > 1 || cow_view_container(view)->shaded)) {
 		out->mode      = COW_SQUEEZE_NONE;
 		out->justify   = COW_JUST_LEFT;
 		out->width     = 0;
@@ -146,8 +189,9 @@ cow_titlebar_effective_squeeze(const struct cow_view *view,
 struct cow_box
 cow_titlebar_squeezed_rect(const struct cow_view *view)
 {
-	return cow_titlebar_squeezed_rect_for(view, view->content_width,
-	    view->content_height);
+	int width, height;
+	cow_view_effective_content_size(view, &width, &height);
+	return cow_titlebar_squeezed_rect_for(view, width, height);
 }
 
 struct cow_box
@@ -212,8 +256,11 @@ cow_titlebar_squeezed_rect_for(const struct cow_view *view, int cw, int ch)
 		 * each of width tt), plus internal padding that matches
 		 * the text_inset + right_pad used by cow_titlebar_render.
 		 */
-		int btn_run = tt *
-		    titlebar_visible_button_count(&view->cfg.titlebar);
+		struct cow_titlebar_config tb;
+		cow_titlebar_effective_config(view, &tb);
+		int left, right;
+		cow_titlebar_button_counts(&tb, &left, &right);
+		int   btn_run	    = tt * (left + right);
 		int   text	    = 0;
 		char *display_title = cow_decoration_display_title(view);
 		if (display_title != NULL && display_title[0] != '\0') {
@@ -278,13 +325,16 @@ cow_titlebar_squeezed_rect_for(const struct cow_view *view, int cw, int ch)
 bool
 cow_titlebar_hit(const struct cow_view *view, int lx, int ly)
 {
-	return cow_titlebar_hit_for(view, view->content_width,
-	    view->content_height, lx, ly);
+	int width, height;
+	cow_view_effective_content_size(view, &width, &height);
+	return cow_titlebar_hit_for(view, width, height, lx, ly);
 }
 
 int
 cow_titlebar_button_at(const struct cow_view *view, int lx, int ly)
 {
+	struct cow_titlebar_config tb;
+	cow_titlebar_effective_config(view, &tb);
 	static const int left_order[] = { 1, 3, 5, 7, 9 };
 	static const int right_order[] = { 0, 2, 4, 6, 8 };
 	int tt = view->dec.title_thickness;
@@ -293,8 +343,10 @@ cow_titlebar_button_at(const struct cow_view *view, int lx, int ly)
 		return (-1);
 	struct cow_box tbr = cow_titlebar_squeezed_rect(view);
 	int frame_w, frame_h, content_x, content_y;
-	cow_titlebar_frame_geometry(view, view->content_width,
-	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
+	int	       width, height;
+	cow_view_effective_content_size(view, &width, &height);
+	cow_titlebar_frame_geometry(view, width, height, &frame_w, &frame_h,
+	    &content_x, &content_y);
 	int pos_coord = cow_titlebar_is_vertical(view->cfg.titlebar.position) ?
 	    ly + content_y : lx + content_x;
 	int l = cow_titlebar_is_vertical(view->cfg.titlebar.position) ? tbr.y :
@@ -307,7 +359,7 @@ cow_titlebar_button_at(const struct cow_view *view, int lx, int ly)
 	int pos = 0;
 	for (size_t i = 0; i < nitems(left_order); i++) {
 		int idx = left_order[i];
-		if (!titlebar_button_visible(&view->cfg.titlebar, idx))
+		if (!titlebar_button_visible(&tb, idx))
 			continue;
 		int x = l + pos++ * tt;
 		if (pos_coord >= x && pos_coord < x + tt)
@@ -316,7 +368,7 @@ cow_titlebar_button_at(const struct cow_view *view, int lx, int ly)
 	pos = 0;
 	for (size_t i = 0; i < nitems(right_order); i++) {
 		int idx = right_order[i];
-		if (!titlebar_button_visible(&view->cfg.titlebar, idx))
+		if (!titlebar_button_visible(&tb, idx))
 			continue;
 		int x = r - (++pos * tt);
 		if (pos_coord >= x && pos_coord < x + tt)
@@ -637,14 +689,7 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 	static const int right_order[] = { 0, 2, 4, 6, 8 };
 	int btn_s = tb_h;
 	int left_btns = 0, right_btns = 0;
-	for (size_t i = 0; i < sizeof left_order / sizeof left_order[0]; i++) {
-		if (titlebar_button_visible(tb_cfg, left_order[i]))
-			left_btns++;
-	}
-	for (size_t i = 0; i < sizeof right_order / sizeof right_order[0]; i++) {
-		if (titlebar_button_visible(tb_cfg, right_order[i]))
-			right_btns++;
-	}
+	cow_titlebar_button_counts(tb_cfg, &left_btns, &right_btns);
 
 	int pos = 0;
 	for (size_t i = 0; i < sizeof left_order / sizeof left_order[0]; i++) {

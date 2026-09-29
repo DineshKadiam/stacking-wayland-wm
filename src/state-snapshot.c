@@ -164,7 +164,10 @@ state_snapshot_view(const struct cow_view *view)
 	state_value_unref(selections);
 	rec_set_bool(r, "maximized", view->maximized);
 	rec_set_bool(r, "fullscreen", view->fullscreen);
-	rec_set_bool(r, "shaded", view->sd != COW_SHADE_NONE);
+	rec_set_bool(r, "shaded",
+	    view->sd != COW_SHADE_NONE ||
+		(cow_view_container(view) != NULL &&
+		    cow_view_container(view)->shaded));
 	rec_set_bool(r, "iconified", cow_view_is_iconified(view));
 	rec_set_bool(r, "circulate_skip",
 	    (view->flags & COW_VIEW_CIRCULATE_SKIP_FLAG) != 0);
@@ -176,6 +179,7 @@ state_snapshot_view(const struct cow_view *view)
 	    (view->flags & COW_VIEW_STICKY_PAGE_FLAG) != 0);
 
 	rec_set_string(r, "container_id", "");
+	rec_set_bool(r, "container_split", cow_container_is_split(view));
 	rec_set_bool(r, "container_active", false);
 	rec_set_number(r, "pane_id", -1);
 	rec_set_bool(r, "pane_active", cow_view_is_active_tab(view));

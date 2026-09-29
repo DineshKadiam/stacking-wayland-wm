@@ -36,5 +36,7 @@ struct cow_border_colour;
  * relief and handle marks is rendered.
  */
 void cow_border_style_render(uint32_t *, int, int, int, const struct cow_border_colour *, int, int, int);
+void cow_border_style_render_pane(uint32_t *, int, int, int,
+    const struct cow_border_colour *, int, int, int, uint32_t);
 
 #endif

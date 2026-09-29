@@ -25,10 +25,10 @@ static enum cmd_retval cmd_container_exec(struct cmd *, struct cmd_q *);
 
 struct cmd_entry cmd_container_entry = {
 	"window-container",
-	"t:s:e:f:arcqnpNSP",
+	"t:s:e:f:arcqnpNSPHU",
 	0,
 	0,
-	"[-t target] [-s source] [-a | -e direction | -f direction | -rcqnpNP]",
+	"[-t target] [-s source] [-a | -e direction | -f direction | -rcqnpNPHU]",
 	cmd_container_exec,
 	0,
 };
@@ -42,6 +42,15 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 	struct cow_view *target = cmd_require_target_window(cmdq, "container");
 	if (target == NULL)
 		return (CMD_RETURN_ERROR);
+	if (args_has(args, 'H') || args_has(args, 'U')) {
+		bool ok = args_has(args, 'H') ?
+		    cow_container_title_hide(target) :
+		    cow_container_titles_restore(target);
+		if (!ok)
+			cmdq_error(cmdq,
+			    "container: cannot change a protected, tabbed or collapsed titlebar");
+		return ok ? CMD_RETURN_NORMAL : CMD_RETURN_ERROR;
+	}
 	if (args_has(args, 'c') || args_has(args, 'q')) {
 		bool ok = args_has(args, 'c') ? cow_container_collapse(target) :
 						cow_container_equalize(target);

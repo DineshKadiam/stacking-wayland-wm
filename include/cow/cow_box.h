@@ -21,6 +21,16 @@
 
 #include <cJSON.h>
 
+/* Edge flags shared by layout, decoration and resize operations.
+ * Values match river_window_v1.edges.
+ */
+#define COW_EDGE_TOP 1
+#define COW_EDGE_BOTTOM 2
+#define COW_EDGE_LEFT 4
+#define COW_EDGE_RIGHT 8
+#define COW_EDGE_ALL \
+	(COW_EDGE_TOP | COW_EDGE_BOTTOM | COW_EDGE_LEFT | COW_EDGE_RIGHT)
+
 /*
  * Simple box struct replacing wlr_box.
  */

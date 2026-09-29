@@ -855,6 +855,7 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 {
 	enum cow_pointer_op_type finished_type = seat->op.type;
 	bool icon_moved     = seat->op.icon_moved;
+	bool joined_container = false;
 	struct cow_output *drop_output = seat->op.drop_output;
 	int drop_edge = seat->op.drop_edge;
 	cow_pan_cancel();
@@ -962,6 +963,7 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 			    COW_CONTAINER_VERTICAL,
 			(edge & (COW_EDGE_LEFT | COW_EDGE_TOP)) != 0))
 			cow_container_remove_view(view);
+		joined_container = added && view->container_member != NULL;
 	} else if (cow_wm.drag_drop_target != NULL) {
 		/* Normal drop: clear any lingering indicator */
 		cow_wm.drag_drop_target->dec.dirty = true;
@@ -972,7 +974,8 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 	cow_drag_ghost_destroy();
 	cow_geometry_window_hide();
 
-	if (finished_type != COW_POINTER_OP_ICON_MOVE) {
+	/* Joining adopts the target's output, not the source's old geometry. */
+	if (finished_type != COW_POINTER_OP_ICON_MOVE && !joined_container) {
 		int width = view->proposed_width > 0 ? view->proposed_width :
 		    view->content_width;
 		int height = view->proposed_height > 0 ? view->proposed_height :

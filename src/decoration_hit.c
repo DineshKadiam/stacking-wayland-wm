@@ -62,8 +62,8 @@ cow_view_contains_point(struct cow_view *view, int x, int y)
 	return cow_decoration_edges_at(view, x + cx, y + cy, width, height) != 0;
 }
 
-uint32_t
-cow_decoration_edges_at(struct cow_view *view, int fx, int fy, int cw, int ch)
+static uint32_t
+decoration_edges_at(struct cow_view *view, int fx, int fy, int cw, int ch)
 {
 	struct dec_frame_hit hit = {
 		.bw = view->dec.border_width,
@@ -108,4 +108,26 @@ cow_decoration_edges_at(struct cow_view *view, int fx, int fy, int cw, int ch)
 	if (hit.fx >= hit.frame_w - hit.bw)
 		return (COW_EDGE_RIGHT);
 	return (0);
+}
+
+uint32_t
+cow_decoration_edges_at(struct cow_view *view, int fx, int fy, int cw, int ch)
+{
+	uint32_t shared = cow_container_shared_edges(view);
+	int	 bw	= view->dec.border_width;
+	if (((shared & COW_EDGE_LEFT) && fx < bw) ||
+	    ((shared & COW_EDGE_TOP) && fy < bw))
+		return 0;
+	uint32_t edges = decoration_edges_at(view, fx, fy, cw, ch) & ~shared;
+	uint32_t outer = cow_container_outer_edges(view);
+	if ((edges & outer) != edges) {
+		int fw, fh, cx, cy;
+		cow_titlebar_frame_geometry(view, cw, ch, &fw, &fh, &cx, &cy);
+		/* Internal dividers have no extended corner handles. */
+		if (fx >= bw && fx < fw - bw)
+			edges &= ~(COW_EDGE_LEFT | COW_EDGE_RIGHT);
+		if (fy >= bw && fy < fh - bw)
+			edges &= ~(COW_EDGE_TOP | COW_EDGE_BOTTOM);
+	}
+	return edges;
 }

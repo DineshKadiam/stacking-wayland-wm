@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "cow/border.h"
+#include "cow/cow_box.h"
 
 #include <stdbool.h>
 #include <stdlib.h>
@@ -886,8 +887,14 @@ static void
 draw_handle_marks(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
     int cls, const int w[7], int style, const uint32_t *base,
     const struct edge_colours *ec, const struct cow_border_colour *colors,
-    const float *reference)
+    const float *reference, uint32_t outer_edges)
 {
+	bool top    = (outer_edges & COW_EDGE_TOP) != 0;
+	bool bottom = (outer_edges & COW_EDGE_BOTTOM) != 0;
+	bool left   = (outer_edges & COW_EDGE_LEFT) != 0;
+	bool right  = (outer_edges & COW_EDGE_RIGHT) != 0;
+	bool nw = top && left, ne = top && right;
+	bool sw = bottom && left, se = bottom && right;
 	int w_dout     = w[0] + ((style == COW_BORDER_STYLE_MWM) ? 1 : 0);
 	int inset      = (w[5] > 0 || w[6] > 0) ? 1 : 0;
 	int mark_len   = bws - w_dout - inset;
@@ -905,33 +912,44 @@ draw_handle_marks(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
 
 	/* Sidebar marks */
 	if (sbw > 0) {
-		draw_y_mark_tinted(pixels, base, stride, fw_s, fh_s, cls, 0,
-		    mark_len, mark_thick, offset_tl, false, base != NULL, 1,
-		    ec->n[1], reference);
-		draw_y_mark_tinted(pixels, base, stride, fw_s, fh_s, cls + sbw,
-		    0, mark_len, mark_thick, offset_tl, true, base != NULL, 0,
-		    ec->n[0], reference);
-		draw_y_mark_tinted(pixels, base, stride, fw_s, fh_s, cls,
-		    fh_s - bws + bws + offset_br, mark_len, mark_thick,
-		    offset_tl, false, base != NULL, 1, ec->s[1], reference);
-		draw_y_mark_tinted(pixels, base, stride, fw_s, fh_s, cls + sbw,
-		    fh_s - bws + bws + offset_br, mark_len, mark_thick,
-		    offset_tl, true, base != NULL, 0, ec->s[0], reference);
+		if (nw)
+			draw_y_mark_tinted(pixels, base, stride, fw_s, fh_s,
+			    cls, 0, mark_len, mark_thick, offset_tl, false,
+			    base != NULL, 1, ec->n[1], reference);
+		if (ne)
+			draw_y_mark_tinted(pixels, base, stride, fw_s, fh_s,
+			    cls + sbw, 0, mark_len, mark_thick, offset_tl, true,
+			    base != NULL, 0, ec->n[0], reference);
+		if (sw)
+			draw_y_mark_tinted(pixels, base, stride, fw_s, fh_s,
+			    cls, fh_s - bws + bws + offset_br, mark_len,
+			    mark_thick, offset_tl, false, base != NULL, 1,
+			    ec->s[1], reference);
+		if (se)
+			draw_y_mark_tinted(pixels, base, stride, fw_s, fh_s,
+			    cls + sbw, fh_s - bws + bws + offset_br, mark_len,
+			    mark_thick, offset_tl, true, base != NULL, 0,
+			    ec->s[0], reference);
 	}
 	if (sbh > 0) {
-		draw_x_mark_tinted(pixels, base, stride, fw_s, fh_s, 0, cls,
-		    mark_len, mark_thick, offset_tl, false, base != NULL, 1,
-		    ec->w[1], reference);
-		draw_x_mark_tinted(pixels, base, stride, fw_s, fh_s, 0,
-		    cls + sbh, mark_len, mark_thick, offset_tl, true,
-		    base != NULL, 0, ec->w[0], reference);
-		draw_x_mark_tinted(pixels, base, stride, fw_s, fh_s,
-		    fw_s - bws + bws + offset_br, cls, mark_len, mark_thick,
-		    offset_tl, false, base != NULL, 1, ec->e[1], reference);
-		draw_x_mark_tinted(pixels, base, stride, fw_s, fh_s,
-		    fw_s - bws + bws + offset_br, cls + sbh, mark_len,
-		    mark_thick, offset_tl, true, base != NULL, 0, ec->e[0],
-		    reference);
+		if (nw)
+			draw_x_mark_tinted(pixels, base, stride, fw_s, fh_s, 0,
+			    cls, mark_len, mark_thick, offset_tl, false,
+			    base != NULL, 1, ec->w[1], reference);
+		if (sw)
+			draw_x_mark_tinted(pixels, base, stride, fw_s, fh_s, 0,
+			    cls + sbh, mark_len, mark_thick, offset_tl, true,
+			    base != NULL, 0, ec->w[0], reference);
+		if (ne)
+			draw_x_mark_tinted(pixels, base, stride, fw_s, fh_s,
+			    fw_s - bws + bws + offset_br, cls, mark_len,
+			    mark_thick, offset_tl, false, base != NULL, 1,
+			    ec->e[1], reference);
+		if (se)
+			draw_x_mark_tinted(pixels, base, stride, fw_s, fh_s,
+			    fw_s - bws + bws + offset_br, cls + sbh, mark_len,
+			    mark_thick, offset_tl, true, base != NULL, 0,
+			    ec->e[0], reference);
 	}
 
 	/* Corner marks */
@@ -961,7 +979,10 @@ draw_handle_marks(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
 		    1 },
 	};
 
+	const bool enabled[] = { nw, ne, sw, se };
 	for (int ci = 0; ci < 4; ci++) {
+		if (!enabled[ci])
+			continue;
 		uint32_t xm_colour, ym_colour;
 		int	 xm_shade, ym_shade;
 		bool	 sampled = (base != NULL && !cm[ci].has_explicit);
@@ -989,10 +1010,49 @@ draw_handle_marks(uint32_t *pixels, int stride, int fw_s, int fh_s, int bws,
 	}
 }
 
+/* Continue straight borders through pane joins instead of bevelled corners. */
+static void
+join_pane_borders(uint32_t *pixels, int stride, int width, int height, int bw,
+    uint32_t outer)
+{
+	/* Sampling a straight edge needs space between the opposite borders. */
+	if (outer == COW_EDGE_ALL || width <= 2 * bw || height <= 2 * bw)
+		return;
+	const struct {
+		uint32_t horizontal, vertical;
+	} corners[] = {
+		{ COW_EDGE_TOP,	COW_EDGE_LEFT  },
+		{ COW_EDGE_TOP,	COW_EDGE_RIGHT },
+		{ COW_EDGE_BOTTOM, COW_EDGE_LEFT	 },
+		{ COW_EDGE_BOTTOM, COW_EDGE_RIGHT },
+	};
+	for (size_t corner = 0; corner < sizeof(corners) / sizeof(corners[0]);
+	    corner++) {
+		uint32_t h = corners[corner].horizontal;
+		uint32_t v = corners[corner].vertical;
+		if ((outer & (h | v)) == (h | v))
+			continue;
+		int x0 = v == COW_EDGE_LEFT ? 0 : width - bw;
+		int y0 = h == COW_EDGE_TOP ? 0 : height - bw;
+		/* Outer edges take precedence; internal crossings run
+		 * vertically. */
+		bool vertical_wins = (outer & v) || !(outer & h);
+		/* Extend the middle of that edge through the corner square. */
+		for (int y = y0; y < y0 + bw; y++) {
+			for (int x = x0; x < x0 + bw; x++) {
+				int sx = vertical_wins ? x : width / 2;
+				int sy = vertical_wins ? height / 2 : y;
+				pixels[y * stride + x] =
+				    pixels[sy * stride + sx];
+			}
+		}
+	}
+}
+
 void
-cow_border_style_render(uint32_t *pixels, int stride_px, int frame_w,
+cow_border_style_render_pane(uint32_t *pixels, int stride_px, int frame_w,
     int frame_h, const struct cow_border_colour *colors, int border_width,
-    int corner_length, int style)
+    int corner_length, int style, uint32_t outer_edges)
 {
 	if (frame_w < 2 || frame_h < 2 || border_width < 1)
 		return;
@@ -1051,13 +1111,26 @@ cow_border_style_render(uint32_t *pixels, int stride_px, int frame_w,
 		/* Overdraw corners with explicit colors */
 		overdraw_explicit_corners(pixels, stride_px, frame_w, frame_h,
 		    cls, w, colors);
+	}
+	join_pane_borders(pixels, stride_px, frame_w, frame_h, bws,
+	    outer_edges);
 
+	if (corners_enabled) {
 		/* Draw handle marks on all 8 frame parts */
 		draw_handle_marks(pixels, stride_px, frame_w, frame_h, bws, cls,
 		    w, style, relief_base, &ec, colors,
-		    relief_base != NULL ? relief_reference : NULL);
+		    relief_base != NULL ? relief_reference : NULL, outer_edges);
 	}
 	paint_border_images(pixels, stride_px, frame_w, frame_h, bws,
 	    corners_enabled ? cls : 0, colors);
 	free(relief_base);
+}
+
+void
+cow_border_style_render(uint32_t *pixels, int stride_px, int frame_w,
+    int frame_h, const struct cow_border_colour *colors, int border_width,
+    int corner_length, int style)
+{
+	cow_border_style_render_pane(pixels, stride_px, frame_w, frame_h,
+	    colors, border_width, corner_length, style, COW_EDGE_ALL);
 }

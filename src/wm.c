@@ -760,8 +760,12 @@ manage_container_tab_click(struct cow_seat *seat, struct cow_view *view, int lx,
 	if (pane == NULL || pane->n_tabs <= 1)
 		return (false);
 
-	int strip_x = btn_s;
-	int strip_w = content_w - 3 * btn_s;
+	struct cow_titlebar_config tb;
+	cow_titlebar_effective_config(view, &tb);
+	int left, right;
+	cow_titlebar_button_counts(&tb, &left, &right);
+	int strip_x = left * btn_s;
+	int strip_w = content_w - (left + right) * btn_s;
 	if (strip_w <= 0 || lx < strip_x || lx >= strip_x + strip_w)
 		return (false);
 
