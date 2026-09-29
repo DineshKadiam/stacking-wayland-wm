@@ -391,6 +391,20 @@ alias_args_test = executable('test-alias-args',
 )
 test('alias-args', alias_args_test)
 
+resize_test_sources = []
+foreach source : wm_test_sources
+    if source != 'src/cmd-resize.c'
+        resize_test_sources += source
+    endif
+endforeach
+resize_direction_test = executable('test-resize-direction',
+    ['tests/resize-direction.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
+    objects: cow.extract_objects(resize_test_sources),
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('resize-direction', resize_direction_test)
+
 xpm_test = executable('test-xpm',
     'tests/test_xpm.c',
     'src/xpm.c',

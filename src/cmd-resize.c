@@ -46,7 +46,7 @@ struct cmd_entry cmd_resize_entry = {
 	"t:gsWd:w:h:e:",
 	0,
 	0,
-	"[-gs] [-d dir] [-e edges|automatic|automatic-simple] [-W] [-w width] [-h height]",
+	"[-gs] [-d dir] [-e edges|automatic|automatic-corner] [-W] [-w width] [-h height]",
 	cmd_resize_exec,
 	0,
 };
@@ -94,16 +94,16 @@ cmd_resize_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (seat == NULL)
 		seat = cow_seat_primary();
 	if (edges_str != NULL) {
-		bool simple = strcmp(edges_str, "automatic-simple") == 0;
-		if (simple || strcmp(edges_str, "automatic") == 0) {
-			if (!automatic_edges(view, seat, &edges, cmdq, simple))
+		bool corners = strcmp(edges_str, "automatic-corner") == 0;
+		if (corners || strcmp(edges_str, "automatic") == 0) {
+			if (!automatic_edges(view, seat, &edges, cmdq, corners))
 				return (CMD_RETURN_ERROR);
 			if (edges == 0)
 				return (CMD_RETURN_NORMAL);
 		} else if (!parse_edges(edges_str, &edges)) {
 			cmdq_error(cmdq,
 			    "window-resize: -e: bad edge spec '%s' "
-			    "(expected n|s|e|w|ne|nw|se|sw|automatic|automatic-simple)",
+			    "(expected n|s|e|w|ne|nw|se|sw|automatic|automatic-corner)",
 			    edges_str);
 			return (CMD_RETURN_ERROR);
 		}
@@ -114,7 +114,7 @@ cmd_resize_exec(struct cmd *self, struct cmd_q *cmdq)
 
 static bool
 automatic_edges(struct cow_view *view, struct cow_seat *seat, uint32_t *edges,
-    struct cmd_q *cmdq, bool simple)
+    struct cmd_q *cmdq, bool corners)
 {
 	if (seat == NULL || !seat->has_pointer_position) {
 		cmdq_error(cmdq,
@@ -123,8 +123,8 @@ automatic_edges(struct cow_view *view, struct cow_seat *seat, uint32_t *edges,
 	}
 
 	struct cow_box frame = cow_view_frame_box(view);
-	int px = seat->pointer_x - frame.x;
-	int py = seat->pointer_y - frame.y;
+	int64_t px = (int64_t)seat->pointer_x - frame.x;
+	int64_t py = (int64_t)seat->pointer_y - frame.y;
 	if (px < 0 || py < 0 || px >= frame.width || py >= frame.height) {
 		cmdq_error(cmdq,
 		    "window-resize: pointer is outside the target window");
@@ -132,29 +132,19 @@ automatic_edges(struct cow_view *view, struct cow_seat *seat, uint32_t *edges,
 	}
 
 	uint32_t found = 0;
-        if (simple) {
-            if (px * 2 < frame.width)
-                found |= COW_EDGE_LEFT;
-            else
-                found |= COW_EDGE_RIGHT;
-            if (py * 2 < frame.height)
-                found |= COW_EDGE_TOP;
-            else
-                found |= COW_EDGE_BOTTOM;
-        } else {
-            if (px * 3 < frame.width)
-                    found |= COW_EDGE_LEFT;
-            else if (px * 3 >= frame.width * 2)
-                    found |= COW_EDGE_RIGHT;
-            if (py * 3 < frame.height)
-                    found |= COW_EDGE_TOP;
-            else if (py * 3 >= frame.height * 2)
-                    found |= COW_EDGE_BOTTOM;
-            if (found == 0) {
-                    *edges = 0;
-                    return true;
-            }
-        }
+	if (corners) {
+		found = (px * 2 < frame.width ? COW_EDGE_LEFT : COW_EDGE_RIGHT) |
+		    (py * 2 < frame.height ? COW_EDGE_TOP : COW_EDGE_BOTTOM);
+	} else {
+		if (px * 3 < frame.width)
+			found |= COW_EDGE_LEFT;
+		else if (px * 3 >= (int64_t)frame.width * 2)
+			found |= COW_EDGE_RIGHT;
+		if (py * 3 < frame.height)
+			found |= COW_EDGE_TOP;
+		else if (py * 3 >= (int64_t)frame.height * 2)
+			found |= COW_EDGE_BOTTOM;
+	}
 
 	*edges = found;
 	return true;

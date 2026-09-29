@@ -1466,7 +1466,7 @@ Move a window. With no flags, begin an interactive move using the mouse.
   position places the outer frame relative to the usable area's top
   edge.
 
-## window-resize \[-t target\] \[-gs\] \[-d dir\] \[-e edges\|automatic\|automatic-simple\] \[-W\] \[-w width\] \[-h height\]
+## window-resize \[-t target\] \[-gs\] \[-d dir\] \[-e edges\|automatic\|automatic-corner\] \[-W\] \[-w width\] \[-h height\]
 
 Resize a window. With no flags, begin an interactive resize operation with the
 mouse, from the bottom-right corner.
@@ -1484,7 +1484,7 @@ mouse, from the bottom-right corner.
 
 : Shrink the window in direction *dir* by one step.
 
-**-e** *edges\|automatic\|automatic-simple*
+**-e** *edges\|automatic\|automatic-corner*
 
 : Begin an interactive resize anchored on the named *edges* -- a compass
   spec built from the letters *n*, *s*, *e*, *w*. Single letters select
@@ -1495,7 +1495,8 @@ mouse, from the bottom-right corner.
   *automatic*, the pointer position in the target window's 3x3 grid
   selects the corresponding edge or corner. No resize starts from the
   centre cell or when the pointer is outside the target window.
-  **automatic-simple** uses a 2x2 grid and selects only corners.
+  **automatic-corner** uses a 2x2 grid and always selects a corner, with
+  no centre dead zone. The pointer must still be inside the window.
   If **border.resize** is configured, the selected borders use that colour
   until the operation ends. This visual feedback applies only when
   **-e** is present.
