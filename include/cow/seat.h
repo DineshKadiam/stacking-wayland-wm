@@ -141,6 +141,8 @@ struct cow_seat {
 	 * normal move.  Cleared on every op release.
 	 */
 	bool container_drag;
+	/* Titlebar drag restricted to the source's pane layout. */
+	bool pane_drag;
 
 	/* Per-seat layer-shell state (opaque to consumers). */
 	struct cow_layer_shell_seat *layer_shell_state;

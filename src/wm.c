@@ -661,15 +661,19 @@ static void
 manage_update_container_drag(struct cow_seat *seat)
 {
 	if (!seat->container_drag || !seat->op_in_progress ||
-	    seat->op.type != COW_POINTER_OP_MOVE || !seat->has_pointer_position ||
-	    seat->op.view == NULL || seat->op.view->closed ||
-	    seat->op.view->container_member != NULL)
+	    seat->op.type != COW_POINTER_OP_MOVE ||
+	    !seat->has_pointer_position || seat->op.view == NULL ||
+	    seat->op.view->closed ||
+	    (seat->op.view->container_member != NULL && !seat->pane_drag))
 		return;
 
-	struct cow_view *new_target = cow_container_drop_target_at(
-	    seat->pointer_x, seat->pointer_y, seat->op.view);
+	struct cow_view		  *new_target = seat->pane_drag ?
+		      cow_container_pane_drop_target_at(seat->pointer_x, seat->pointer_y,
+			  seat->op.view) :
+		      cow_container_drop_target_at(seat->pointer_x, seat->pointer_y,
+			  seat->op.view);
 	struct cow_container_pane *empty = NULL;
-	if (!cow_container_window_owner(seat->op.view))
+	if (!seat->pane_drag && !cow_container_window_owner(seat->op.view))
 		cow_container_empty_at(seat->pointer_x, seat->pointer_y,
 		    seat->op.view, &empty);
 	if (empty != NULL)
@@ -885,6 +889,9 @@ manage_decoration_click(struct cow_seat *seat, struct cow_view *view)
 			       view->cfg.titlebar.position) ||
 		    !manage_container_tab_click(seat, view, lx, cw)) {
 			region = COW_DEC_REGION_TITLEBAR;
+		} else if (cow_container_is_split(view)) {
+			view   = cow_view_pane(view)->active->view;
+			region = COW_DEC_REGION_TITLEBAR;
 		} else {
 			seat->last_click_view = NULL;
 			return;
@@ -898,6 +905,14 @@ manage_decoration_click(struct cow_seat *seat, struct cow_view *view)
 	struct timespec now;
 	int clicks = manage_click_count(seat, view, region, &now);
 	cow_dec_binding_dispatch(seat, view, region, clicks);
+	if (region == COW_DEC_REGION_TITLEBAR && cow_container_is_split(view) &&
+	    !view->container_placeholder && seat->op_in_progress &&
+	    seat->op.type == COW_POINTER_OP_MOVE && seat->op.view == view &&
+	    !seat->container_drag && seat->op.group_count == 0) {
+		seat->pane_drag = seat->container_drag = true;
+		cow_wm.drag_drop_source		       = view;
+		cow_pan_cancel();
+	}
 	manage_store_click(seat, view, region, &now, clicks);
 }
 
@@ -957,8 +972,8 @@ manage_process_seat(struct cow_seat *seat)
 		cow_pointer_op_start_icon_move(seat, view);
 	}
 	manage_titlebar_button_release(seat);
-	cow_pointer_op_process(seat);
 	manage_update_container_drag(seat);
+	cow_pointer_op_process(seat);
 	if (seat->container_drag && seat->op_in_progress &&
 	    cow_wm.drag_ghost_surface == NULL &&
 	    cow_wm.drag_drop_source != NULL)

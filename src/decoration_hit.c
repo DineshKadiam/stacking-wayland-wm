@@ -43,6 +43,11 @@ normalized_corner_length(const struct cow_view *view)
 int
 cow_decoration_corner_length(const struct cow_view *view)
 {
+	/* Only the outer frame needs visible resize handles. Keep the hit
+	 * regions independent so pane border bindings still work.
+	 */
+	if (cow_container_is_split(view))
+		return 0;
 	return (view->cfg.handles ? normalized_corner_length(view) : 0);
 }
 

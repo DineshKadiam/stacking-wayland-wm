@@ -177,8 +177,12 @@ main(void)
 	CHECK(!cow_container_add(c, &d));
 
 	/* Split a tab into an independent pane, without real River objects. */
+	a.cfg.handles = true;
+	a.cfg.corner_length = 20;
+	CHECK(cow_decoration_corner_length(&a) > 0);
 	CHECK(cow_container_split(&a, &d, COW_CONTAINER_HORIZONTAL, false));
 	CHECK(cow_container_is_split(&a));
+	CHECK(cow_decoration_corner_length(&a) == 0);
 	CHECK(cow_view_pane(&a) != cow_view_pane(&d));
 	CHECK(a.pending_width < 800 && d.pending_width < 800);
 	CHECK(a.pending_x < d.pending_x);
@@ -563,6 +567,7 @@ main(void)
 	CHECK(standalone_tb.buttons[0].vector.num_points ==
 	    a.cfg.titlebar.buttons[0].vector.num_points);
 	CHECK(!cow_container_is_split(&a));
+	CHECK(cow_decoration_corner_length(&a) > 0);
 	CHECK(a.pending_clip && a.clip_w == 0 && a.clip_h == 0);
 	CHECK(a.pending_tiled_edges_value == 0);
 	cow_view_sync_container_geometry(&a, a.x, a.y, 1000, 700);
@@ -825,6 +830,10 @@ main(void)
 	CHECK(cow_container_pane_window_count(c->root) == 0);
 	CHECK(cow_container_is_split(&b));
 	CHECK(!cow_container_is_split(&a));
+	CHECK(cow_decoration_corner_length(&a) > 0);
+	b.cfg.handles = true;
+	b.cfg.corner_length = 20;
+	CHECK(cow_decoration_corner_length(&b) == 0);
 	CHECK(cow_container_title_hide(&b));
 	CHECK(!cow_container_title_visible(&b));
 	a.needs_raise = true;
@@ -1071,6 +1080,63 @@ main(void)
 	wl_list_remove(&obstacle.wm_link);
 	cow_container_destroy(c);
 	wl_list_remove(&output.wm_link);
+
+	/* Rearranging panes retains their tabs and the outer frame. */
+	{
+		struct cow_view panes[3] = { 0 };
+		for (size_t i = 0; i < 3; i++) {
+			panes[i].content_width	= 600;
+			panes[i].content_height = 400;
+			panes[i].use_ssd	= true;
+		}
+		c = cow_container_create(&panes[0], &panes[1]);
+		CHECK(c != NULL);
+		CHECK(cow_container_add_to(&panes[0], &panes[2]));
+		CHECK(cow_container_split(&panes[0], &panes[1],
+		    COW_CONTAINER_HORIZONTAL, false));
+		struct cow_box		   original = c->frame;
+		struct cow_container_pane *moving   = cow_view_pane(&panes[0]);
+		CHECK(cow_container_rearrange(&panes[1], &panes[0],
+		    COW_CONTAINER_VERTICAL, false));
+		CHECK(cow_view_pane(&panes[0]) == moving);
+		CHECK(
+		    cow_view_pane(&panes[2]) == moving && moving->n_tabs == 2);
+		CHECK(panes[0].pending_y > panes[1].pending_y);
+		CHECK(memcmp(&original, &c->frame, sizeof(original)) == 0);
+		CHECK(!cow_container_rearrange(&panes[2], &panes[0],
+		    COW_CONTAINER_HORIZONTAL, true));
+		struct cow_container_pane *root = c->root;
+		panes[0].min_width		= 10000;
+		CHECK(!cow_container_rearrange(&panes[1], &panes[0],
+		    COW_CONTAINER_HORIZONTAL, true));
+		CHECK(c->root == root &&
+		    root->layout.axis == COW_CONTAINER_VERTICAL);
+		CHECK(
+		    cow_view_pane(&panes[0]) == moving && moving->n_tabs == 2);
+		CHECK(!cow_container_rearrange(&panes[1], &panes[0],
+		    COW_CONTAINER_LEAF, false));
+		CHECK(c->root == root && moving->n_tabs == 2);
+		panes[0].min_width = 0;
+		CHECK(cow_container_arrange(c, original));
+		CHECK(cow_container_rearrange(&panes[1], &panes[0],
+		    COW_CONTAINER_LEAF, false));
+		CHECK(c->root->n_tabs == 3 && c->n_members == 3);
+		CHECK(cow_view_pane(&panes[0]) == cow_view_pane(&panes[1]));
+		CHECK(cow_view_pane(&panes[2]) == c->root);
+		CHECK(memcmp(&original, &c->frame, sizeof(original)) == 0);
+		CHECK(cow_container_split(&panes[0], &panes[1],
+		    COW_CONTAINER_HORIZONTAL, false));
+		CHECK(cow_container_split(&panes[0], &panes[2],
+		    COW_CONTAINER_VERTICAL, false));
+		CHECK(cow_container_rearrange(&panes[0], &panes[1],
+		    COW_CONTAINER_VERTICAL, true));
+		CHECK(panes[1].pending_y < panes[0].pending_y);
+		CHECK(cow_container_rearrange(&panes[1], &panes[2],
+		    COW_CONTAINER_HORIZONTAL, false));
+		CHECK(panes[2].pending_x > panes[1].pending_x);
+		CHECK(memcmp(&original, &c->frame, sizeof(original)) == 0);
+		cow_container_destroy(c);
+	}
 	cow_wm.current_output = NULL;
 	return 0;
 }

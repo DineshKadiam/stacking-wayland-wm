@@ -136,6 +136,9 @@ void cow_container_placeholder_destroy(struct cow_container_pane *);
 struct cow_container	  *cow_container_empty_at(int, int, struct cow_view *,
 	 struct cow_container_pane **);
 struct cow_view *cow_container_drop_target_at(int, int, struct cow_view *);
+struct cow_view *cow_container_pane_drop_target_at(int, int, struct cow_view *);
+bool		 cow_container_rearrange(struct cow_view *, struct cow_view *,
+		enum cow_container_axis, bool);
 struct cow_container	  *cow_container_find(const char *);
 struct cow_container_pane *cow_container_pane_find(struct cow_container *,
     const char *);

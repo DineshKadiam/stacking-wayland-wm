@@ -1452,6 +1452,80 @@ cow_container_add_to(struct cow_view *target, struct cow_view *source)
 	return m != NULL && container_add(m->container, m->pane, source);
 }
 
+/* Move a whole pane, keeping its tabs and saved detach geometries intact. */
+bool
+cow_container_rearrange(struct cow_view *target, struct cow_view *source,
+    enum cow_container_axis axis, bool before)
+{
+	struct cow_container	  *c	= cow_view_container(source);
+	struct cow_container_pane *from = cow_view_pane(source);
+	struct cow_container_pane *to	= cow_view_pane(target);
+	if (!c || cow_view_container(target) != c || !from || !to ||
+	    from == to || source->closed || target->closed ||
+	    source->container_placeholder || !from->layout.parent ||
+	    (axis != COW_CONTAINER_LEAF && axis != COW_CONTAINER_HORIZONTAL &&
+		axis != COW_CONTAINER_VERTICAL))
+		return false;
+
+	struct cow_container_layout *parent = from->layout.parent;
+	struct cow_container_layout  saved  = *parent;
+	struct cow_container_layout *sibling =
+	    parent->child[parent->child[0] == &from->layout];
+	struct cow_container_member *active = to->active;
+	int			     count  = from->n_tabs;
+	pane_replace(c, parent, sibling);
+	struct cow_container_layout *destination = axis ==
+		COW_CONTAINER_HORIZONTAL ?
+	    pane_column(&to->layout) :
+	    &to->layout;
+
+	if (axis == COW_CONTAINER_LEAF) {
+		struct cow_container_member *m, *next;
+		wl_list_for_each_safe(m, next, &from->tabs, pane_link)
+		{
+			wl_list_remove(&m->pane_link);
+			wl_list_insert(to->tabs.prev, &m->pane_link);
+			m->pane = to;
+		}
+		to->n_tabs += count;
+		from->n_tabs = 0;
+		to->active   = from->active;
+	} else {
+		pane_branch_insert(c, destination, parent, &from->layout, axis,
+		    before);
+	}
+	if (!cow_container_arrange(c, c->frame)) {
+		if (axis == COW_CONTAINER_LEAF) {
+			for (int i = 0; i < count; i++) {
+				struct cow_container_member *m =
+				    wl_container_of(to->tabs.prev, m,
+					pane_link);
+				wl_list_remove(&m->pane_link);
+				wl_list_insert(&from->tabs, &m->pane_link);
+				m->pane = from;
+			}
+			from->n_tabs = count;
+			to->n_tabs -= count;
+			to->active = active;
+		} else {
+			pane_replace(c, parent, destination);
+		}
+		pane_replace(c, sibling, parent);
+		*parent		    = saved;
+		from->layout.parent = sibling->parent = parent;
+		container_title_metrics(c);
+		return false;
+	}
+	if (axis == COW_CONTAINER_LEAF) {
+		cow_container_placeholder_destroy(to);
+		xfree(container_pane_from_layout(parent));
+		container_pane_destroy(from);
+	}
+	cow_container_activate(c, source->container_member);
+	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
+	return true;
+}
+
 bool
 cow_container_split(struct cow_view *target, struct cow_view *source,
     enum cow_container_axis axis, bool before)

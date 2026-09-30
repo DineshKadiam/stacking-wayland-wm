@@ -933,6 +933,21 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 		if (cow_wm.drag_drop_target != NULL)
 			cow_wm.drag_drop_target->dec.dirty = true;
 		cow_wm.drag_drop_target = NULL;
+	} else if (seat->pane_drag) {
+		struct cow_view *target	    = cow_wm.drag_drop_target;
+		uint32_t	 edge	    = cow_wm.drag_drop_edge;
+		bool		 rearranged = false;
+		if (target != NULL) {
+			target->dec.dirty = true;
+			rearranged = cow_container_rearrange(target, view,
+			    edge == 0 ? COW_CONTAINER_LEAF :
+				(edge & (COW_EDGE_LEFT | COW_EDGE_RIGHT)) ?
+					COW_CONTAINER_HORIZONTAL :
+					COW_CONTAINER_VERTICAL,
+			    (edge & (COW_EDGE_LEFT | COW_EDGE_TOP)) != 0);
+		}
+		seat->op.cancelled	= !rearranged;
+		cow_wm.drag_drop_target = NULL;
 	} else if (empty_container != NULL) {
 		joined_container = cow_container_insert(empty_container,
 		    empty_pane, view);
@@ -986,6 +1001,9 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 		cow_wm.drag_drop_target->dec.dirty = true;
 		cow_wm.drag_drop_target		   = NULL;
 	}
+	/* Even a cancelled pane drag must not reassign the layout's output. */
+	joined_container |= seat->pane_drag;
+	seat->pane_drag		= false;
 	seat->container_drag	= false;
 	cow_wm.drag_drop_pane	= NULL;
 	cow_wm.drag_drop_source = NULL;
@@ -1175,6 +1193,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 		cow_wm.drag_drop_source = NULL;
 		cow_wm.drag_drop_pane	= NULL;
 		seat->container_drag = false;
+		seat->pane_drag		= false;
 		cow_drag_ghost_destroy();
 
 		cow_pointer_op_disarm_attached(seat);
@@ -1195,7 +1214,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 	 * fires.  Use the seat's tracked pointer position to arm pan_edge
 	 * by proximity instead.
 	 */
-	if (seat->has_pointer_position)
+	if (seat->has_pointer_position && !seat->pane_drag)
 		cow_output_pan_op_arm(seat);
 
 	int dx = seat->op_dx;
@@ -1212,7 +1231,8 @@ cow_pointer_op_process(struct cow_seat *seat)
 		 * 2-click bind-decoration action to see the pre-press
 		 * state.
 		 */
-		if (!seat->op.unmax_done && (dx != 0 || dy != 0) &&
+		if (!seat->pane_drag && !seat->op.unmax_done &&
+		    (dx != 0 || dy != 0) &&
 		    (view->maximized || view->expanded)) {
 			if (view->maximized)
 				cow_view_set_maximized(view, false);

@@ -539,8 +539,8 @@ view_above(struct cow_view *a, struct cow_view *b)
 		    a->raise_seq > b->raise_seq));
 }
 
-struct cow_view *
-cow_container_drop_target_at(int x, int y, struct cow_view *source)
+static struct cow_view *
+drop_target_at(int x, int y, struct cow_view *source, bool internal)
 {
 	if (!source || source->container_placeholder || source->parent)
 		return NULL;
@@ -549,13 +549,20 @@ cow_container_drop_target_at(int x, int y, struct cow_view *source)
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
 		if (view->closed || view == source ||
-		    view->container_placeholder || view->parent ||
-		    view->fullscreen || !view->output ||
+		    (!internal && view->container_placeholder) ||
+		    view->parent || view->fullscreen || !view->output ||
 		    !cow_view_visible(view, view->output))
 			continue;
-		if ((group && cow_container_top_group(view) == group) ||
-		    !cow_container_can_tab(cow_view_container(view), source))
+		if (internal) {
+			if (!cow_view_container(source) ||
+			    cow_view_container(view) !=
+				cow_view_container(source) ||
+			    cow_view_pane(view) == cow_view_pane(source))
+				continue;
+		} else if ((group && cow_container_top_group(view) == group) ||
+		    !cow_container_can_tab(cow_view_container(view), source)) {
 			continue;
+		}
 		/* The outer decorations join whole layouts as tabs. Inside the
 		 * frame, the panes own drops, including their split-edge zones.
 		 */
@@ -569,6 +576,18 @@ cow_container_drop_target_at(int x, int y, struct cow_view *source)
 			best = view;
 	}
 	return best;
+}
+
+struct cow_view *
+cow_container_drop_target_at(int x, int y, struct cow_view *source)
+{
+	return drop_target_at(x, y, source, false);
+}
+
+struct cow_view *
+cow_container_pane_drop_target_at(int x, int y, struct cow_view *source)
+{
+	return drop_target_at(x, y, source, true);
 }
 
 struct cow_container *

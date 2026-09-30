@@ -317,6 +317,12 @@ cancel_first_press_op(struct cow_seat *seat)
 {
 	if (!seat->op_in_progress)
 		return;
+	if (seat->pane_drag) {
+		seat->op.cancelled = true;
+		seat->op_released  = true;
+		cow_pointer_op_process(seat);
+		return;
+	}
 	if (seat->op.type == COW_POINTER_OP_RESIZE && seat->op.view != NULL &&
 	    !seat->op.view->closed) {
 		river_window_v1_inform_resize_end(

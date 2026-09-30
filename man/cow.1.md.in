@@ -2475,6 +2475,12 @@ when necessary. Lowering those minima does not automatically shrink it.
 : Move the tab containing *target* one position to the left in the tab
   strip. The tab remains active. No-op if it is already the first tab.
 
+With **bind-decoration titlebar window-move**, dragging an embedded pane's
+titlebar rearranges that pane and its tabs inside the container. Drop on another
+pane's edge to place it alongside, or in its centre to join its tabs. Releasing
+outside the layout or pressing Escape cancels. The outer titlebar still moves
+the whole container; use the detach button to remove a window.
+
 See also **window-move -C**, which allows containers to be formed interactively
 by dragging an uncontained window onto another. The titlebar or central area
 joins its tab set; the content edges create a split, indicated by an orange
