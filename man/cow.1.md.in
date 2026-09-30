@@ -298,7 +298,8 @@ separates them.
 
 : Snapshot *SOURCE* at loop entry and execute the body once per matching
   element with *NAME* bound to the current record. *SOURCE* is one of
-  **windows**, **desks**, **outputs** (or **screens**), **rules**, or
+  **windows**, **containers**, **panes**, **desks**, **outputs** (or
+  **screens**), **rules**, or
   **selections**. An optional **where** clause filters the snapshot with the supplied
   expression (evaluated per element with *NAME* in scope). The body sees
   a fresh sub-scope; let bindings inside the body don't leak out.
@@ -1087,8 +1088,8 @@ printed to standard output.
 
 : Return all records for the topic. This is supported by *window*,
   *output*, *desk*, *rule*, *style*, *decor*, *menu*, *binding*, and
-  *command*, *selection*, and *alias*. It cannot be combined with **-t**
-  or a resource name.
+  *command*, *selection*, *alias*, *container*, and *pane*. It cannot be
+  combined with **-t** or a resource name.
 
 **-f** *format*
 
@@ -1103,6 +1104,8 @@ printed to standard output.
   **show desk**. It uses the normal command context syntax described in
   **COMMAND REFERENCING**. Without **-t**, the focused window, current
   output, or current desk is used respectively.
+  For **show container** and **show pane**, select a member window with
+  **-t**, or omit it to use the focused window.
 
 **-F** *expr*
 
@@ -1111,6 +1114,57 @@ printed to standard output.
   empty array. **-F** requires **-a**.
 
 **Topics:**
+
+**show container**, **show -a container**
+
+: Return the target window's container or all containers. A target outside
+  a container produces an error. Records contain *id*, *active_window_id*,
+  *pane_count*, *window_count*, *split*, *shaded*, *iconified*, *output*,
+  *output_number*, *desk*, and *frame* (x, y, width, height).
+
+**show pane**, **show -a pane**
+
+: Return the target window's pane or all container panes. Records contain
+  *id*, *container_id*, *active_window_id*, *tab_count*, *collapsed*,
+  *title_hidden*, *title_visible*, *output*, *output_number*, *desk*, and
+  *frame*. Each pane appears once, regardless of its number of tabs.
+
+  *title_hidden* is the requested hiding preference; *title_visible* is the
+  effective policy. A protected handle or multi-tab pane can have both set.
+  Shading a split container does not change the reported layout frames.
+  Collapsed pane frames describe their allocated titlebar area.
+  Coordinates are global screen
+  coordinates. Container and pane IDs are session-local.
+
+  The same records are available in the DSL as **containers** and **panes**.
+  Join them to **windows** using *container_id* and *pane_id*. These loops
+  do not change the command target implicitly: use *active_window_id* with
+  **-t** or **focus -i**. As with other collections, each loop snapshots its
+  source at entry.
+
+  Iconify each container on the focused window's output once:
+
+  ```text
+  script {
+      for c in (containers where c.output == self.output) {
+          winops -t "##{c.active_window_id}" -i
+      }
+  }
+  ```
+
+  Build a menu with one entry per pane in the focused container:
+
+  ```text
+  script {
+      menu-clear Panes
+      for p in (panes where p.container_id == self.container_id) {
+          for w in (windows where w.id == p.active_window_id) {
+              menu-add Panes "#{w.title} (#{p.tab_count} tabs)" "focus -i #{w.id}"
+          }
+      }
+      menu-show Panes
+  }
+  ```
 
 **show window**, **show -a window**
 

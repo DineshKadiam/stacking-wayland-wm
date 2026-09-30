@@ -143,6 +143,10 @@ state_source_from_dsl(enum dsl_source source)
 	switch (source) {
 	case DSL_SRC_WINDOWS:
 		return (STATE_SRC_WINDOWS);
+	case DSL_SRC_CONTAINERS:
+		return (STATE_SRC_CONTAINERS);
+	case DSL_SRC_PANES:
+		return (STATE_SRC_PANES);
 	case DSL_SRC_DESKS:
 		return (STATE_SRC_DESKS);
 	case DSL_SRC_OUTPUTS:

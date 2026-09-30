@@ -26,9 +26,13 @@ struct cow_rule;
 struct cow_style;
 struct cow_menu;
 struct cow_alias;
+struct cow_container;
+struct cow_container_pane;
 
 enum state_source {
 	STATE_SRC_WINDOWS,
+	STATE_SRC_CONTAINERS,
+	STATE_SRC_PANES,
 	STATE_SRC_DESKS,
 	STATE_SRC_OUTPUTS,
 	STATE_SRC_RULES,
@@ -48,6 +52,9 @@ enum state_source {
  */
 struct state_value *state_snapshot_collection(enum state_source);
 struct state_value *state_snapshot_view(const struct cow_view *);
+struct state_value *state_snapshot_container(const struct cow_container *);
+struct state_value *state_snapshot_pane(const struct cow_container *,
+    const struct cow_container_pane *);
 struct state_value *state_snapshot_output(const struct cow_output *);
 struct state_value *state_snapshot_desk(const struct cow_desk *);
 struct state_value *state_snapshot_rule(const struct cow_rule *);

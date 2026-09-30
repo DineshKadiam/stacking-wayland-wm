@@ -124,6 +124,9 @@ main(void)
 		    "# A comment containing } must not close the body.\n"
 		    "} }",
 		"{ for s in (selections where s.count > 1) { nop } }",
+		"{ for c in (containers where c.split) { "
+		    "for p in (panes where p.container_id == c.id) { "
+		    "for w in (windows where w.pane_id == p.id) { nop } } } }",
 	};
 
 	for (size_t repeat = 0; repeat < 100; repeat++) {

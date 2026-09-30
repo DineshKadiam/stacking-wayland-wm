@@ -106,6 +106,80 @@ rec_set_box(struct state_value *rec, const char *key, const struct cow_box *box)
 	state_value_unref(v);
 }
 
+static void
+rec_set_container_id(struct state_value *r, const char *key,
+    const struct cow_container *c)
+{
+	char id[32];
+	snprintf(id, sizeof(id), "container-%d", c->id);
+	rec_set_string(r, key, id);
+}
+
+static void
+rec_set_container_location(struct state_value *r, const struct cow_container *c)
+{
+	rec_set_string(r, "output", c->output ? c->output->name : NULL);
+	rec_set_number(r, "output_number", c->output ? c->output->number : 0);
+	rec_set_number(r, "desk", c->desk ? c->desk->nr : -1);
+}
+
+struct state_value *
+state_snapshot_container(const struct cow_container *c)
+{
+	struct state_value    *r      = state_value_record();
+	const struct cow_view *active = c->active ? c->active->view : NULL;
+	int		       panes  = 0;
+	struct cow_container_member *m;
+	wl_list_for_each(m, &c->members, link)
+	{
+		if (m == m->pane->active)
+			panes++;
+	}
+	rec_set_container_id(r, "id", c);
+	rec_set_string(r, "active_window_id",
+	    active ? active->identifier : NULL);
+	rec_set_number(r, "pane_count", panes);
+	rec_set_number(r, "window_count", c->n_members);
+	bool split = c->root->layout.axis != COW_CONTAINER_LEAF;
+	rec_set_bool(r, "split", split);
+	rec_set_bool(r, "shaded",
+	    c->shaded || (active != NULL && active->sd != COW_SHADE_NONE));
+	rec_set_bool(r, "iconified",
+	    active != NULL && cow_view_is_iconified(active));
+	rec_set_container_location(r, c);
+	struct cow_box frame = !split && active != NULL ?
+	    cow_view_frame_box(active) :
+	    c->frame;
+	rec_set_box(r, "frame", &frame);
+	return r;
+}
+
+struct state_value *
+state_snapshot_pane(const struct cow_container *c,
+    const struct cow_container_pane	       *pane)
+{
+	struct state_value    *r      = state_value_record();
+	const struct cow_view *active = pane->active ? pane->active->view :
+						       NULL;
+	rec_set_number(r, "id", pane->id);
+	rec_set_container_id(r, "container_id", c);
+	rec_set_string(r, "active_window_id",
+	    active ? active->identifier : NULL);
+	rec_set_number(r, "tab_count", pane->n_tabs);
+	rec_set_bool(r, "collapsed",
+	    pane->layout.collapsed != COW_CONTAINER_LEAF);
+	rec_set_bool(r, "title_hidden", pane->title_hidden);
+	rec_set_bool(r, "title_visible",
+	    active != NULL && cow_container_title_visible(active));
+	rec_set_container_location(r, c);
+	struct cow_box frame = c->root->layout.axis == COW_CONTAINER_LEAF &&
+		active != NULL ?
+	    cow_view_frame_box(active) :
+	    pane->layout.box;
+	rec_set_box(r, "frame", &frame);
+	return r;
+}
+
 struct state_value *
 state_snapshot_view(const struct cow_view *view)
 {
@@ -182,6 +256,7 @@ state_snapshot_view(const struct cow_view *view)
 	rec_set_bool(r, "container_split", cow_container_is_split(view));
 	rec_set_bool(r, "container_active", false);
 	rec_set_number(r, "pane_id", -1);
+	rec_set_bool(r, "pane_collapsed", false);
 	rec_set_bool(r, "pane_active", cow_view_is_active_tab(view));
 	rec_set_bool(r, "container_hidden",
 	    cow_container_hides_view(view) ||
@@ -189,9 +264,7 @@ state_snapshot_view(const struct cow_view *view)
 		    cow_view_is_iconified(view) && !cow_view_has_icon(view)));
 	if (view->container_member != NULL) {
 		struct cow_container *ctr = view->container_member->container;
-		char		      id[32];
-		snprintf(id, sizeof(id), "container-%d", ctr->id);
-		rec_set_string(r, "container_id", id);
+		rec_set_container_id(r, "container_id", ctr);
 		rec_set_number(r, "pane_id", view->container_member->pane->id);
 		rec_set_bool(r, "pane_collapsed",
 		    view->container_member->pane->layout.collapsed !=
@@ -555,6 +628,31 @@ state_snapshot_collection(enum state_source src)
 	struct state_value *list = state_value_list();
 
 	switch (src) {
+	case STATE_SRC_CONTAINERS:
+	case STATE_SRC_PANES: {
+		struct cow_container *c;
+		wl_list_for_each(c, &cow_wm.containers, wm_link)
+		{
+			if (src == STATE_SRC_CONTAINERS) {
+				struct state_value *r =
+				    state_snapshot_container(c);
+				state_list_append(list, r);
+				state_value_unref(r);
+			} else {
+				struct cow_container_member *m;
+				wl_list_for_each(m, &c->members, link)
+				{
+					if (m != m->pane->active)
+						continue;
+					struct state_value *r =
+					    state_snapshot_pane(c, m->pane);
+					state_list_append(list, r);
+					state_value_unref(r);
+				}
+			}
+		}
+		break;
+	}
 	case STATE_SRC_WINDOWS: {
 		struct cow_view *vw;
 		wl_list_for_each(vw, &cow_wm.views, wm_link)

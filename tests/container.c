@@ -15,6 +15,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "cow/view.h"
 #include "cow/stack.h"
@@ -23,6 +24,9 @@
 #include "cow/border.h"
 #include "cow/titlebar.h"
 #include "cow/wm.h"
+#include "state-snapshot.h"
+#include "cow/cmd.h"
+#include "cow/memory.h"
 
 #define CHECK(expr)                                                        \
 	do {                                                               \
@@ -32,6 +36,21 @@
 			abort();                                           \
 		}                                                          \
 	} while (0)
+
+static void
+check_command(const char *text)
+{
+	struct cmd_list *list  = NULL;
+	char		*cause = NULL;
+	CHECK(cmd_string_parse(text, &list, NULL, 0, &cause) == 0);
+	struct cmd_q *queue = cmdq_new();
+	queue->client_fd    = -1;
+	cmdq_run(queue, list);
+	CHECK(!queue->failed);
+	cmdq_free(queue);
+	cmd_list_free(list);
+	xfree(cause);
+}
 
 int
 main(void)
@@ -560,6 +579,46 @@ main(void)
 	cow_titlebar_button_counts(&tb, &left_buttons, &right_buttons);
 	CHECK(left_buttons == 0 && right_buttons == 2);
 	CHECK(tb.buttons[4].vector.num_points == 0);
+	/* Collections contain one record per group/pane, not per tab. */
+	a.identifier		       = "pane-a";
+	b.identifier		       = "pane-b";
+	d.identifier		       = "pane-d";
+	struct state_value *containers = state_snapshot_collection(
+	    STATE_SRC_CONTAINERS);
+	struct state_value *panes = state_snapshot_collection(STATE_SRC_PANES);
+	CHECK(containers->u.list.n == 1 && panes->u.list.n == 2);
+	struct state_value *group = containers->u.list.items[0];
+	CHECK(state_record_get(group, "window_count")->u.n == 3);
+	CHECK(state_record_get(group, "pane_count")->u.n == 2);
+	CHECK(state_value_truthy(state_record_get(group, "split")));
+	struct state_value *pane_record = state_snapshot_pane(c,
+	    cow_view_pane(&a));
+	CHECK(
+	    state_record_get(pane_record, "id")->u.n == cow_view_pane(&a)->id);
+	CHECK(state_record_get(pane_record, "tab_count")->u.n == 2);
+	CHECK(strcmp(state_record_get(pane_record, "active_window_id")->u.s,
+		  cow_view_pane(&a)->active->view->identifier) == 0);
+	CHECK(
+	    state_value_truthy(state_record_get(pane_record, "title_hidden")));
+	CHECK(
+	    state_value_truthy(state_record_get(pane_record, "title_visible")));
+	CHECK(strcmp(state_record_get(pane_record, "container_id")->u.s,
+		  state_record_get(group, "id")->u.s) == 0);
+	struct state_value *frame = state_record_get(pane_record, "frame");
+	CHECK(state_record_get(frame, "width")->u.n ==
+	    cow_view_pane(&a)->layout.box.width);
+	state_value_unref(pane_record);
+	state_value_unref(containers);
+	state_value_unref(panes);
+	check_command("show -a container");
+	check_command("show -a -F 'self.tab_count == 2' pane");
+	check_command("show -t '#pane-a' container");
+	check_command("show -t '#pane-a' pane");
+	check_command("script { for c in (containers) { "
+		      "if c.window_count != 3 { nop #{c.invalid} } "
+		      "for p in (panes where p.container_id == c.id) { "
+		      "if p.tab_count < 1 { nop #{p.invalid} } "
+		      "show -t \"##{p.active_window_id}\" pane } } }");
 	cow_container_forget_view(&b);
 	CHECK(cow_container_title_visible(&a));
 	CHECK(!cow_container_is_split(&a));

@@ -215,6 +215,13 @@ and expressions such as `for w in (windows)`. `state-value.c` supplies the
 neutral typed representation used by both the expression evaluator and JSON
 serialization; it is not tied to either interface.
 
+Container and pane collections use these same adapters. They contain IDs and
+group-level state rather than copies of window records: windows link through
+`container_id` and `pane_id`, and each group or pane names its active window.
+Pane snapshots distinguish requested title hiding from effective visibility.
+Unlike window iteration, container and pane loops do not change the implicit
+command target; callers select a member window explicitly.
+
 ## Manage And Render Sequences
 
 River drives two key phases through the `river_window_manager_v1` API. These

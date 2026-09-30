@@ -74,6 +74,8 @@ enum dsl_cmp_op {
 /* Source identifiers used by DSL_N_FOR. */
 enum dsl_source {
 	DSL_SRC_WINDOWS,
+	DSL_SRC_CONTAINERS,
+	DSL_SRC_PANES,
 	DSL_SRC_DESKS,
 	DSL_SRC_OUTPUTS,
 	DSL_SRC_RULES,

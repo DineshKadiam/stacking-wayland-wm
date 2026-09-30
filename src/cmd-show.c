@@ -22,6 +22,7 @@
 #include "cow/cmd.h"
 #include "cow/cmd-filter.h"
 #include "cow/config.h"
+#include "cow/container.h"
 #include "cow/diagnostics.h"
 #include "cow/ipc.h"
 #include "cow/keyboard_layout.h"
@@ -109,6 +110,10 @@ state_topic(const char *topic, enum state_source *source)
 {
 	if (strcmp(topic, "window") == 0)
 		*source = STATE_SRC_WINDOWS;
+	else if (strcmp(topic, "container") == 0)
+		*source = STATE_SRC_CONTAINERS;
+	else if (strcmp(topic, "pane") == 0)
+		*source = STATE_SRC_PANES;
 	else if (strcmp(topic, "output") == 0)
 		*source = STATE_SRC_OUTPUTS;
 	else if (strcmp(topic, "desk") == 0)
@@ -200,6 +205,24 @@ cmd_show_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (strcmp(topic, "decor") == 0) {
 		cmdq_error(cmdq, "show: decor requires a name or -a");
 		return (CMD_RETURN_ERROR);
+	}
+
+	if (strcmp(topic, "container") == 0 || strcmp(topic, "pane") == 0) {
+		if (args->argc != 1)
+			goto no_name;
+		struct cow_view *view = cmd_require_target_window(cmdq, "show");
+		if (view == NULL)
+			return CMD_RETURN_ERROR;
+		struct cow_container *c = cow_view_container(view);
+		if (c == NULL) {
+			cmdq_error(cmdq,
+			    "show: target window is not in a container");
+			return CMD_RETURN_ERROR;
+		}
+		struct state_value *record = strcmp(topic, "container") == 0 ?
+		    state_snapshot_container(c) :
+		    state_snapshot_pane(c, cow_view_pane(view));
+		return show_record(topic, record, format, cmdq);
 	}
 
 	if (strcmp(topic, "window") == 0) {
@@ -443,15 +466,18 @@ show_collection(enum state_source source, const char *filter_expr,
 	}
 	cmd_filter_free(&filter);
 	const char *topic = source == STATE_SRC_WINDOWS ? "window" :
-	    source == STATE_SRC_OUTPUTS ? "output" :
-	    source == STATE_SRC_DESKS ? "desk" :
-	    source == STATE_SRC_RULES ? "rule" :
-	    source == STATE_SRC_STYLES ? "style" :
-	    source == STATE_SRC_DECOR ? "decor" :
-	    source == STATE_SRC_MENUS ? "menu" :
-	    source == STATE_SRC_BINDINGS ? "binding" :
-	    source == STATE_SRC_SELECTIONS ? "selection" :
-	    source == STATE_SRC_ALIASES ? "alias" : "command";
+	    source == STATE_SRC_CONTAINERS		? "container" :
+	    source == STATE_SRC_PANES			? "pane" :
+	    source == STATE_SRC_OUTPUTS			? "output" :
+	    source == STATE_SRC_DESKS			? "desk" :
+	    source == STATE_SRC_RULES			? "rule" :
+	    source == STATE_SRC_STYLES			? "style" :
+	    source == STATE_SRC_DECOR			? "decor" :
+	    source == STATE_SRC_MENUS			? "menu" :
+	    source == STATE_SRC_BINDINGS		? "binding" :
+	    source == STATE_SRC_SELECTIONS		? "selection" :
+	    source == STATE_SRC_ALIASES			? "alias" :
+							  "command";
 	return (show_record(topic, result, format, cmdq));
 }
 
