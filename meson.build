@@ -411,6 +411,14 @@ container_state_test = executable('test-container-state',
 )
 test('container-state', container_state_test)
 
+style_state_test = executable('test-style-state',
+    ['tests/style-state.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
+    objects: cow.extract_objects(wm_test_sources),
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('style-state', style_state_test)
+
 config_layers_test = executable('test-config-layers',
     ['tests/config-layers.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
     objects: cow.extract_objects(wm_test_sources),

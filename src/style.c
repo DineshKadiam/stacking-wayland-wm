@@ -35,6 +35,8 @@
 #include "cow/wm.h"
 
 #include "decor-profile.h"
+#include "config-serialize.h"
+#include "state-snapshot.h"
 
 static struct wl_list styles;
 static bool styles_initialised;
@@ -93,6 +95,7 @@ cow_style_destroy(struct cow_style *style)
 	}
 	cow_policy_fini(&style->policy);
 	xfree(style->body);
+	xfree(style->file);
 	xfree(style);
 }
 
@@ -768,4 +771,79 @@ bool
 cow_style_is_applying(void)
 {
 	return (applying);
+}
+
+cJSON *
+cow_style_save_runtime(void)
+{
+	cJSON		 *saved = cJSON_CreateArray();
+	struct cow_style *style;
+	wl_list_for_each(style, cow_styles_head(), link)
+	{
+		if (!style->runtime)
+			continue;
+		struct state_value *snapshot = state_snapshot_style(style);
+		/* The serializer supplies its own surrounding newlines. */
+		char		   *body  = xstrdup(style->body);
+		struct state_value *value = state_value_string(trim(body));
+		state_record_set(snapshot, "body", value);
+		state_value_unref(value);
+		xfree(body);
+		char *command = cow_config_serialize_topic("style", snapshot);
+		state_value_unref(snapshot);
+		cJSON *record = cJSON_CreateObject();
+		cJSON_AddStringToObject(record, "command", trim(command));
+		if (style->file != NULL)
+			cJSON_AddStringToObject(record, "file", style->file);
+		cJSON_AddItemToArray(saved, record);
+		xfree(command);
+	}
+	return saved;
+}
+
+void
+cow_style_restore_runtime(const cJSON *saved)
+{
+	if (!cJSON_IsArray(saved))
+		return;
+	const cJSON *record;
+	cJSON_ArrayForEach(record, saved)
+	{
+		const cJSON *text = cJSON_GetObjectItemCaseSensitive(record,
+		    "command");
+		const cJSON *file = cJSON_GetObjectItemCaseSensitive(record,
+		    "file");
+		if (!cJSON_IsString(text))
+			continue;
+		struct cmd_list *list  = NULL;
+		char		*cause = NULL;
+		if (cmd_string_parse(text->valuestring, &list,
+			cJSON_IsString(file) ? file->valuestring : NULL, 0,
+			&cause) != 0) {
+			cow_log_warn("state restore: invalid style: %s",
+			    cause != NULL ? cause : "parse error");
+			xfree(cause);
+			continue;
+		}
+		if (list == NULL)
+			continue;
+		struct cmd *cmd = TAILQ_FIRST(&list->list);
+		/* Restore definitions only, never executable startup commands.
+		 * Fresh configuration definitions take precedence by name.
+		 */
+		if (cmd != NULL && TAILQ_NEXT(cmd, qentry) == NULL &&
+		    cmd->entry == &cmd_style_entry &&
+		    !args_has(cmd->args, 'd') &&
+		    args_get(cmd->args, 'n') != NULL &&
+		    cow_style_find_by_name(args_get(cmd->args, 'n')) == NULL) {
+			struct cmd_q *cmdq = cmdq_new();
+			cmdq->client_fd	   = -1;
+			if (!cmdq_run_immediate(cmdq, list))
+				cow_log_warn(
+				    "state restore: could not restore style %s",
+				    args_get(cmd->args, 'n'));
+			(void)cmdq_free(cmdq);
+		}
+		cmd_list_free(list);
+	}
 }

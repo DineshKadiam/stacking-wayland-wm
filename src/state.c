@@ -30,6 +30,7 @@
 #include "cow/output.h"
 #include "cow/selection.h"
 #include "cow/stack.h"
+#include "cow/style.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
@@ -77,6 +78,7 @@ cow_state_save(void)
 	const char *path = cow_state_path();
 
 	cJSON *root = cJSON_CreateObject();
+	cJSON_AddItemToObject(root, "runtime_styles", cow_style_save_runtime());
 
 	/* Save per-output current sheet */
 	cJSON		  *outputs = cJSON_AddArrayToObject(root, "outputs");
@@ -684,6 +686,9 @@ cow_state_restore(void)
 			cow_wm.pending_focus = view;
 	}
 
+	if (cow_wm.restarted)
+		cow_style_restore_runtime(
+		    cJSON_GetObjectItem(root, "runtime_styles"));
 	cJSON_Delete(root);
 
 	/* Remove the state file after restore -- it's transient */

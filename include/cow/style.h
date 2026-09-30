@@ -20,6 +20,7 @@
 #include <stdint.h>
 
 #include <wayland-client.h>
+#include <cJSON.h>
 
 #include "cow/policy.h"
 
@@ -59,6 +60,8 @@ struct cow_style_entry {
 struct cow_style {
 	struct cow_policy policy;
 	char             *body;
+	char		  *file;
+	bool		   runtime;
 	struct wl_list     entries;
 	struct wl_list     link;
 };
@@ -77,5 +80,7 @@ void cow_style_cancel_pending_initial(struct cow_view *);
 void cow_style_reflow_anchors(struct cow_output *);
 void cow_style_apply_all_live(void);
 bool cow_style_is_applying(void);
+cJSON *cow_style_save_runtime(void);
+void   cow_style_restore_runtime(const cJSON *);
 
 #endif /* COW_STYLE_H */

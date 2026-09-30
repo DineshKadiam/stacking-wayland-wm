@@ -16,6 +16,7 @@
 
 #include "cow/cmd.h"
 #include "cow/memory.h"
+#include "cow/ipc.h"
 #include "cow/policy.h"
 #include "cow/style.h"
 
@@ -70,6 +71,9 @@ cmd_style_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	struct cow_style *style = xcalloc(1, sizeof(*style));
+	style->runtime		= !cow_ipc.startup_mode;
+	if (self->file != NULL)
+		style->file = xstrdup(self->file);
 	cow_policy_init(&style->policy);
 	style->policy.name = xstrdup(name);
 	style->policy.is_global = global;
@@ -84,8 +88,7 @@ cmd_style_exec(struct cmd *self, struct cmd_q *cmdq)
 			cmdq_error(cmdq, "style: %s",
 			    cause != NULL ? cause : "bad -t spec");
 			xfree(cause);
-			cow_policy_fini(&style->policy);
-			xfree(style);
+			cow_style_destroy(style);
 			return (CMD_RETURN_ERROR);
 		}
 	}
