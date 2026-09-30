@@ -46,15 +46,20 @@ pane_save(const struct cow_container_pane *pane)
 	}
 
 	cJSON *tabs = cJSON_AddArrayToObject(node, "tabs");
+	if (pane->name != NULL)
+		cJSON_AddStringToObject(node, "name", pane->name);
 	cJSON_AddNumberToObject(node, "collapsed", pane->layout.collapsed);
 	cJSON_AddBoolToObject(node, "title_hidden", pane->title_hidden);
 	struct cow_container_member *m;
 	wl_list_for_each(m, &pane->tabs, pane_link)
 	{
-		if (m->view->closed || m->view->identifier == NULL)
+		if (m->view->closed || m->view->container_placeholder ||
+		    m->view->identifier == NULL)
 			continue;
 		cJSON *tab = cJSON_CreateObject();
 		cJSON_AddStringToObject(tab, "id", m->view->identifier);
+		if (cow_container_window_owner(m->view))
+			cJSON_AddBoolToObject(tab, "frame", true);
 		struct cow_box restore = { m->pre_x, m->pre_y, m->pre_width,
 			m->pre_height };
 		cow_box_json_add(cJSON_AddObjectToObject(tab, "restore"),
@@ -70,11 +75,14 @@ pane_save(const struct cow_container_pane *pane)
 cJSON *
 cow_container_save(const struct cow_container *c)
 {
-	cJSON		      *record = cJSON_CreateObject();
+	cJSON *record = cJSON_CreateObject();
+	if (c->name != NULL)
+		cJSON_AddStringToObject(record, "name", c->name);
 	struct cow_box	       frame  = c->frame;
-	const struct cow_view *active = c->active->view;
+	const struct cow_view *active = c->active ? c->active->view : NULL;
 
-	if (c->root->layout.axis == COW_CONTAINER_LEAF) {
+	if (!c->framed && active != NULL &&
+	    c->root->layout.axis == COW_CONTAINER_LEAF) {
 		/* Preserve full content dimensions when the frame is shaded. */
 		int cx, cy;
 		cow_titlebar_frame_geometry(active, active->content_width,
@@ -82,7 +90,7 @@ cow_container_save(const struct cow_container *c)
 		    &cy);
 		frame.x = active->x - cx;
 		frame.y = active->y - cy;
-	} else if (!active->fullscreen) {
+	} else if (active != NULL && !active->fullscreen) {
 		/* Account for viewport movement since the last layout. */
 		struct cow_box old     = container_pane_content(c->active),
 			       current = old;
@@ -95,13 +103,43 @@ cow_container_save(const struct cow_container *c)
 		container_frame_delta(frame, old, current, &frame);
 	}
 	cJSON_AddNumberToObject(record, "version", 1);
+	cJSON_AddBoolToObject(record, "persistent", c->persistent);
+	cJSON_AddBoolToObject(record, "framed", c->framed);
+	if (c->frame_view) {
+		const struct cow_view *v = c->frame_view;
+		if (v->identifier)
+			cJSON_AddStringToObject(record, "frame_id",
+			    v->identifier);
+		cJSON *state = cJSON_AddObjectToObject(record, "frame_state");
+		struct cow_box restore = { v->saved_x, v->saved_y,
+			v->saved_width, v->saved_height };
+		cow_box_json_add(cJSON_AddObjectToObject(state, "restore"),
+		    &restore);
+		cJSON_AddNumberToObject(state, "flags", v->flags);
+		cJSON_AddNumberToObject(state, "layer", v->layer);
+		cJSON_AddNumberToObject(state, "shade", v->sd);
+		cJSON_AddBoolToObject(state, "maximized_h", v->maximized_h);
+		cJSON_AddBoolToObject(state, "maximized_v", v->maximized_v);
+		cJSON_AddBoolToObject(state, "ignore_h",
+		    v->maximized_h_ignore_reserved);
+		cJSON_AddBoolToObject(state, "ignore_v",
+		    v->maximized_v_ignore_reserved);
+		cJSON_AddBoolToObject(state, "keep_h",
+		    v->maximized_h_keep_geometry);
+		cJSON_AddBoolToObject(state, "keep_v",
+		    v->maximized_v_keep_geometry);
+	}
+	if (c->persistent && c->output != NULL && c->desk != NULL) {
+		cJSON_AddStringToObject(record, "output", c->output->name);
+		cJSON_AddNumberToObject(record, "desk", c->desk->nr);
+	}
 	cow_box_json_add(cJSON_AddObjectToObject(record, "restore_frame"),
 	    &c->restore_frame);
 	cJSON_AddBoolToObject(record, "maximized_h", c->maximized_h);
 	cJSON_AddBoolToObject(record, "maximized_v", c->maximized_v);
 	cJSON_AddBoolToObject(record, "shaded", c->shaded);
 	cow_box_json_add(cJSON_AddObjectToObject(record, "frame"), &frame);
-	if (active->identifier != NULL)
+	if (active != NULL && active->identifier != NULL)
 		cJSON_AddStringToObject(record, "active", active->identifier);
 	cJSON_AddItemToObject(record, "tree", pane_save(c->root));
 	return record;
@@ -132,9 +170,95 @@ state_box(const cJSON *object, struct cow_box *box)
 
 struct container_restore {
 	struct cow_container *container;
+	struct cow_container *replace;
 	unsigned	      remaining;
 	bool		      valid;
 };
+
+/* Native container windows are recreated on restart. Resolve saved tab
+ * references through their layout, not through a vanished River id.
+ */
+static struct cow_container *
+restore_frame(const char *id)
+{
+	struct cow_container *c;
+	wl_list_for_each(c, &cow_wm.containers, wm_link)
+	{
+		if ((c->restore_identifier &&
+			strcmp(c->restore_identifier, id) == 0) ||
+		    (c->frame_view && c->frame_view->identifier &&
+			strcmp(c->frame_view->identifier, id) == 0))
+			return c;
+	}
+	return NULL;
+}
+
+static cJSON *pending_tab_groups;
+
+bool
+cow_container_restore_defer(const cJSON *record)
+{
+	const cJSON *tree = cJSON_GetObjectItemCaseSensitive(record, "tree");
+	const cJSON *tabs = cJSON_GetObjectItemCaseSensitive(tree, "tabs"),
+		    *tab;
+	cJSON_ArrayForEach(tab, tabs)
+	{
+		if (!cJSON_IsTrue(
+			cJSON_GetObjectItemCaseSensitive(tab, "frame")))
+			continue;
+		if (!pending_tab_groups)
+			pending_tab_groups = cJSON_CreateArray();
+		cJSON_AddItemToArray(pending_tab_groups,
+		    cJSON_Duplicate(record, true));
+		return true;
+	}
+	return false;
+}
+
+void
+cow_container_restore_pending(void)
+{
+	for (int i = 0; i < cJSON_GetArraySize(pending_tab_groups);) {
+		const cJSON *record = cJSON_GetArrayItem(pending_tab_groups, i);
+		const cJSON *tree   = cJSON_GetObjectItemCaseSensitive(record,
+		      "tree");
+		const cJSON *tabs   = cJSON_GetObjectItemCaseSensitive(tree,
+				  "tabs"),
+			    *tab;
+		bool waiting = false;
+		cJSON_ArrayForEach(tab, tabs)
+		{
+			const cJSON *id = cJSON_GetObjectItemCaseSensitive(tab,
+			    "id");
+			if (!cJSON_IsString(id) ||
+			    !cJSON_IsTrue(
+				cJSON_GetObjectItemCaseSensitive(tab, "frame")))
+				continue;
+			struct cow_container *c = restore_frame(
+			    id->valuestring);
+			if (c &&
+			    (!c->frame_view || !c->frame_view->has_dimensions ||
+				c->frame_view->pending_resize ||
+				c->frame_state.pending))
+				waiting = true;
+		}
+		if (waiting) {
+			i++;
+			continue;
+		}
+		if (cow_container_restore(record))
+			cow_update_request(
+			    COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
+		cJSON_DeleteItemFromArray(pending_tab_groups, i);
+	}
+}
+
+void
+cow_container_restore_clear(void)
+{
+	cJSON_Delete(pending_tab_groups);
+	pending_tab_groups = NULL;
+}
 
 static struct cow_container_pane *
 pane_restore(struct container_restore *state, const cJSON *node, unsigned depth)
@@ -204,6 +328,14 @@ pane_restore(struct container_restore *state, const cJSON *node, unsigned depth)
 	}
 
 	const cJSON *active = cJSON_GetObjectItemCaseSensitive(node, "active");
+	const cJSON *name   = cJSON_GetObjectItemCaseSensitive(node, "name");
+	if (name != NULL) {
+		if (!cJSON_IsString(name) || name->valuestring[0] == '\0' ||
+		    cow_container_pane_find(state->container,
+			name->valuestring) != NULL)
+			goto invalid;
+		pane->name = xstrdup(name->valuestring);
+	}
 	if (!cJSON_IsArray(tabs) || children != NULL ||
 	    (active != NULL && !cJSON_IsString(active)))
 		goto invalid;
@@ -220,9 +352,19 @@ pane_restore(struct container_restore *state, const cJSON *node, unsigned depth)
 		state->remaining--;
 		struct cow_view *view = cow_view_find_by_identifier(
 		    id->valuestring);
+		if (cJSON_IsTrue(
+			cJSON_GetObjectItemCaseSensitive(tab, "frame"))) {
+			struct cow_container *child = restore_frame(
+			    id->valuestring);
+			view = child ? child->frame_view : NULL;
+		}
 		if (view == NULL)
 			continue;
-		if (view->container_member != NULL)
+		if (!cow_container_can_tab(state->container, view) ||
+		    (cow_container_window_owner(view) && depth != 0))
+			goto invalid;
+		if (view->container_member != NULL &&
+		    view->container_member->container != state->replace)
 			goto invalid;
 		struct cow_container_member *m;
 		wl_list_for_each(m, &state->container->members, link)
@@ -247,10 +389,13 @@ pane_restore(struct container_restore *state, const cJSON *node, unsigned depth)
 			strcmp(active->valuestring, id->valuestring) == 0))
 			pane->active = m;
 	}
-	if (pane->n_tabs == 0) {
+	if (pane->n_tabs == 0 && !state->container->persistent) {
+		xfree(pane->name);
 		xfree(pane);
 		return NULL;
 	}
+	if (pane->n_tabs == 0)
+		pane->layout.collapsed = COW_CONTAINER_LEAF;
 	return pane;
 
 invalid:
@@ -284,30 +429,146 @@ cow_container_restore(const cJSON *record)
 
 	struct cow_container *c = xcalloc(1, sizeof(*c));
 	wl_list_init(&c->members);
+	struct cow_container *replace = NULL;
+	const cJSON *persistent	      = cJSON_GetObjectItemCaseSensitive(record,
+		  "persistent");
+	if (persistent != NULL && !cJSON_IsBool(persistent))
+		goto fail;
+	c->persistent = cJSON_IsTrue(persistent);
+	c->framed     = cJSON_IsTrue(
+		cJSON_GetObjectItemCaseSensitive(record, "framed"));
+	const cJSON *frame_id = cJSON_GetObjectItemCaseSensitive(record,
+	    "frame_id");
+	if (frame_id) {
+		if (!cJSON_IsString(frame_id) || !*frame_id->valuestring)
+			goto fail;
+		c->restore_identifier = xstrdup(frame_id->valuestring);
+	}
+	const cJSON *frame_state = cJSON_GetObjectItemCaseSensitive(record,
+	    "frame_state");
+	if (frame_state) {
+		struct cow_container_frame_state *s = &c->frame_state;
+		int				  flags;
+		if (!cJSON_IsObject(frame_state) ||
+		    !state_box(cJSON_GetObjectItemCaseSensitive(frame_state,
+				   "restore"),
+			&s->restore) ||
+		    !state_int(frame_state, "flags", &flags) || flags < 0 ||
+		    !state_int(frame_state, "layer", &s->layer) ||
+		    s->layer < 0 || s->layer > UINT8_MAX ||
+		    !state_int(frame_state, "shade", &s->shade) ||
+		    s->shade < COW_SHADE_NONE || s->shade >= COW_SHADE_ERROR)
+			goto fail;
+		s->flags       = (uint32_t)flags;
+		s->maximized_h = cJSON_IsTrue(
+		    cJSON_GetObjectItemCaseSensitive(frame_state,
+			"maximized_h"));
+		s->maximized_v = cJSON_IsTrue(
+		    cJSON_GetObjectItemCaseSensitive(frame_state,
+			"maximized_v"));
+		s->ignore_h = cJSON_IsTrue(
+		    cJSON_GetObjectItemCaseSensitive(frame_state, "ignore_h"));
+		s->ignore_v = cJSON_IsTrue(
+		    cJSON_GetObjectItemCaseSensitive(frame_state, "ignore_v"));
+		s->keep_h = cJSON_IsTrue(
+		    cJSON_GetObjectItemCaseSensitive(frame_state, "keep_h"));
+		s->keep_v = cJSON_IsTrue(
+		    cJSON_GetObjectItemCaseSensitive(frame_state, "keep_v"));
+		if ((s->maximized_h && s->restore.width < 1) ||
+		    (s->maximized_v && s->restore.height < 1))
+			goto fail;
+		s->pending = true;
+	}
+	const cJSON *name = cJSON_GetObjectItemCaseSensitive(record, "name");
+	if (name != NULL) {
+		if (!cJSON_IsString(name) || name->valuestring[0] == '\0')
+			goto fail;
+		replace = cow_container_find(name->valuestring);
+		/* Config and mapping rules may already have populated this
+		 * layout.
+		 */
+		if (replace != NULL && (!replace->persistent || !c->persistent))
+			goto fail;
+		c->name = xstrdup(name->valuestring);
+	}
+	if (c->persistent && c->name == NULL)
+		goto fail;
 	struct container_restore state = { .container = c,
+		.replace			      = replace,
 		.remaining			      = 4096,
 		.valid				      = true };
 	c->root			       = pane_restore(&state,
 				   cJSON_GetObjectItemCaseSensitive(record, "tree"), 0);
 	const cJSON *active = cJSON_GetObjectItemCaseSensitive(record,
 	    "active");
-	if (!state.valid || c->root == NULL || c->n_members < 2 ||
+	if (!state.valid || c->root == NULL ||
+	    (c->n_members < 2 && c->name == NULL &&
+		!(c->framed && c->n_members == 1)) ||
 	    !pane_columns_valid(&c->root->layout, false) ||
 	    (active != NULL && !cJSON_IsString(active)))
 		goto fail;
+	struct cow_container_pane *pane = NULL;
+	while ((pane = cow_container_pane_next(c, pane)) != NULL) {
+		if (pane->name != NULL &&
+		    cow_container_pane_find(c, pane->name) != pane)
+			goto fail;
+	}
 
 	struct cow_container_member *m;
+	/* Do not discard clients added by rules but absent from saved state.
+	 */
+	if (replace != NULL) {
+		struct cow_container_member *old;
+		wl_list_for_each(old, &replace->members, link)
+		{
+			if (old->view->container_placeholder)
+				continue;
+			bool found = false;
+			wl_list_for_each(m, &c->members, link)
+			{
+				if (m->view == old->view) {
+					found = true;
+					break;
+				}
+			}
+			if (!found)
+				goto fail;
+		}
+	}
 	wl_list_for_each(m, &c->members, link)
 	{
 		if (c->active == NULL)
 			c->active = m->pane->active;
-		if (active != NULL && m == m->pane->active &&
-		    strcmp(active->valuestring, m->view->identifier) == 0)
+		struct cow_container *child = cow_container_window_owner(
+		    m->view);
+		const char *id = child && child->restore_identifier ?
+		    child->restore_identifier :
+		    m->view->identifier;
+		if (active != NULL && m == m->pane->active && id &&
+		    strcmp(active->valuestring, id) == 0)
 			c->active = m;
 	}
-	c->output = c->active->view->output;
-	c->desk	  = c->active->view->desk;
-	c->flags  = c->active->view->flags;
+	if (c->active != NULL) {
+		c->output = c->active->view->output;
+		c->desk	  = c->active->view->desk;
+		c->flags  = c->active->view->flags;
+	} else if (!c->persistent) {
+		goto fail;
+	} else {
+		const cJSON *output = cJSON_GetObjectItemCaseSensitive(record,
+		    "output");
+		int	     desk;
+		if (output != NULL) {
+			if (!cJSON_IsString(output) ||
+			    !state_int(record, "desk", &desk) || desk < 0 ||
+			    desk > UINT8_MAX)
+				goto fail;
+			c->output = cow_output_find_by_name(
+			    output->valuestring);
+			if (c->output != NULL)
+				c->desk = cow_desk_by_nr(c->output, desk);
+		}
+	}
 	wl_list_for_each(m, &c->members, link)
 	{
 		if (m->view->output != c->output || m->view->desk != c->desk)
@@ -316,12 +577,14 @@ cow_container_restore(const cJSON *record)
 	/* Flat tab groups historically permit clients below their size hints.
 	 */
 	container_pane_normalize_columns(&c->root->layout);
-	if (!container_pane_minimum(c->root,
-		c->root->layout.axis != COW_CONTAINER_LEAF) ||
-	    !cow_container_layout_arrange(&c->root->layout, frame, 0))
+	if ((c->n_members != 0 || (frame.width > 0 && frame.height > 0)) &&
+	    (!container_pane_minimum(c->root,
+		 c->root->layout.axis != COW_CONTAINER_LEAF) ||
+		!cow_container_layout_arrange(&c->root->layout, frame, 0)))
 		goto fail;
 
-	c->shaded = c->root->layout.axis != COW_CONTAINER_LEAF &&
+	c->shaded = c->n_members > 0 &&
+	    c->root->layout.axis != COW_CONTAINER_LEAF &&
 	    cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(record, "shaded"));
 	/* Publish only after the complete record and layout have validated. */
 	const cJSON *restore = cJSON_GetObjectItemCaseSensitive(record,
@@ -337,6 +600,8 @@ cow_container_restore(const cJSON *record)
 		goto fail;
 	c->frame = frame;
 	c->id	 = container_allocate_id();
+	if (replace != NULL)
+		cow_container_destroy(replace);
 	wl_list_insert(&cow_wm.containers, &c->wm_link);
 	wl_list_for_each(m, &c->members, link)
 	{
@@ -356,6 +621,8 @@ fail:
 		}
 	}
 	container_pane_destroy(c->root);
+	xfree(c->name);
+	xfree(c->restore_identifier);
 	xfree(c);
 	return NULL;
 }

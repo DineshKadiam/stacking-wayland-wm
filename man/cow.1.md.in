@@ -1118,15 +1118,15 @@ printed to standard output.
 **show container**, **show -a container**
 
 : Return the target window's container or all containers. A target outside
-  a container produces an error. Records contain *id*, *active_window_id*,
-  *pane_count*, *window_count*, *split*, *shaded*, *iconified*, *output*,
+  a container produces an error. Records contain *id*, *name*, *active_window_id*,
+  *pane_count*, *window_count*, *persistent*, *split*, *shaded*, *iconified*, *output*,
   *output_number*, *desk*, and *frame* (x, y, width, height).
 
 **show pane**, **show -a pane**
 
 : Return the target window's pane or all container panes. Records contain
-  *id*, *container_id*, *active_window_id*, *tab_count*, *collapsed*,
-  *title_hidden*, *title_visible*, *output*, *output_number*, *desk*, and
+  *id*, *name*, *container_id*, *active_window_id*, *tab_count*, *collapsed*,
+  *empty*, *title_hidden*, *title_visible*, *output*, *output_number*, *desk*, and
   *frame*. Each pane appears once, regardless of its number of tabs.
 
   *title_hidden* is the requested hiding preference; *title_visible* is the
@@ -2123,11 +2123,28 @@ decoration profile:
     decor -d editor-tab title_format "Editor"
     decor -a editor-tab -t %foot
 
-## window-container \[-t target\] \[-s source\] action
+## window-container \[-t target | -G name\] \[-b pane-name\] \[-s source\] action
+
+Use **-t** to select a target window, or **-G** to select an existing container
+by name, independently of focus. **-G** does not create or name a container;
+use **-N** to name one, or **-E -N** to create an empty named layout.
+
+Add **-b** to select a named pane within that container. It also works with
+**-t**, using the selected window's container. Unknown container or pane names
+produce an error.
+
+Without **-b**, **-G** targets the outer window for adding, detaching, cycling
+and reordering tabs. Other actions use its active pane, or its first pane if
+empty. **-s** selects the source window to add or split into the target;
+defaults when selectors are omitted are described under each action.
 
 Choose one action below. Containers contain side-by-side columns, each holding
 vertically stacked tabbed panes. Left/right splits add a column beside the
 target's column; up/down splits add a row beside the target pane.
+
+Split containers have a separate outer border and titlebar. Its ordinary
+buttons operate on the whole container; inner titlebars use pane controls.
+Plain tabbed groups retain their existing single titlebar.
 
 Squeezed titlebars apply to panes with a single tab. Panes with multiple tabs
 use the full titlebar for their tab strip. Squeezing does not change the pane's
@@ -2183,11 +2200,170 @@ when necessary. Lowering those minima does not automatically shrink it.
   it in the stack. This is useful in environments where mouse modifier
   combinations are unavailable (e.g. VNC).
 
+  A pane container's outer window can itself be a tab. Its panes remain
+  together: switching away hides the layout, and switching back restores
+  it. The selector-free **-a** action uses the whole layout when a pane has
+  focus. Explicit pane targets still add tabs within that pane.
+
+  For a layout named `work` and an uncontained browser window:
+
+  ```text
+  window-container -G work -s %firefox -a
+  window-container -G work -n
+  window-container -G work -r
+  ```
+
+  These commands join the layout and browser as outer tabs, switch tabs,
+  then detach the complete layout. Titlebar dragging with
+  **window-move -C** also joins outer windows as tabs. Drop on the outer
+  titlebar to join the whole layout, or inside a pane to tab or split there.
+  Dropping on the content edge of a single-window outer tab gives that tab
+  its own pane layout, leaving the other tabs unchanged.
+  Layouts cannot be placed inside other layouts' panes. Outer tab groups
+  survive restart.
+  When cycling from a pane without its own tabs, **-n** and **-p** switch
+  the outer tabs instead.
+
+**window-container -N** *name* \[-t *target*\]
+
+: Name or rename the target's container. If the window is not contained,
+  create a named, single-window container around it. Names are unique across
+  containers and do not change application titles. Split containers display
+  this name in their outer titlebar. An empty name removes the name.
+
+  Named containers survive with one window so mapping rules can add others
+  later. Unless created with **-E**, they disappear when their final window
+  closes or is detached.
+  Anonymous single-window containers dissolve automatically. Names survive
+  a CoW restart. Use **-E** to define a layout before opening applications.
+
+**window-container -B** *name* \[-t *target*\]
+
+: Name or rename the target pane. Pane names are unique within their
+  container and survive restart. An empty name clears the pane name. The
+  name stays with the pane when its active tab changes, and disappears when
+  the pane is removed. Splitting retains the target pane's name; the new
+  pane starts unnamed.
+
+**window-container -G** *name* \[**-b** *pane-name*\] *action*
+
+: Target a named container instead of using **-t**. Without **-b**, its
+  outer window is used for adding, detaching, cycling and reordering tabs.
+  Other actions use its active pane, or its first pane if empty.
+  **-b** selects a named
+  pane, independent of focus;
+  it can also be used with **-t** to select a pane in that window's container.
+  Unknown names produce an error. Source selection with **-s** is unchanged.
+
+  ```text
+  window-container -t %editor -N work
+  window-container -G work -B editor
+  window-container -G work -b editor -s %terminal -e down
+  window-container -t %terminal -B terminal
+  window-container -G work -b terminal -s %monitor -a
+  ```
+
+  Rules can create a group on its first matching window, then split later
+  windows into rows. Use an explicit source so pointer focus does not select
+  the wrong application. This example gives matching foot windows the
+  application ID `work-terminal` (for example, `foot -a work-terminal`):
+
+  ```text
+  rule -g -T on-map -n work-terminals -s %work-terminal script {
+      for c in (containers where c.name == "work") {
+          window-container -G work -s "##{self.id}" -e down
+          break
+      }
+      window-container -t "##{self.id}" -N work
+  }
+  ```
+
+  The first window establishes the name; subsequent windows join before
+  the idempotent naming command runs. To target a fixed pane instead of the
+  active one, name that pane with **-B** and add **-b** to the split command.
+  Use **-a** instead of **-e down** to add tabs rather than rows.
+
+**window-container -E -N** *name* **-B** *pane-name*
+
+: Create a persistent container with one empty, named pane. An empty container
+  opens as a normal decorated window, using the usual placement policy.
+  Names must be unique. Unlike ordinary containers,
+  its panes remain when their last windows close or are detached.
+  Repeating **-E** declarations leaves existing named panes and their
+  applications unchanged, so the same configuration can be reloaded.
+
+**window-container -G** *name* **-b** *pane* **-E -e** *direction* **-B** *new-pane*
+
+: Add an empty pane beside the named pane. *direction* is **left**, **right**,
+  **up**, or **down**. Left/right adds a column; up/down adds a row within
+  the column. This requires a persistent container created with **-E**.
+
+  The outer window keeps its ordinary border, titlebar and buttons, whether
+  panes are empty or occupied. Move, resize, shade and iconify operate on the
+  group; closing it asks its applications to close and removes the empty
+  layout. Each vacant pane has its own decoration and labelled drop area.
+  Inserting an application replaces that pane's contents, not the outer
+  window. Closing or detaching the application restores the vacant pane.
+  Vacant panes can be focused, hidden, detached or closed using their pane
+  controls, just like occupied panes.
+
+  Drag an independent window into a placeholder using **window-move -C**
+  (the default Alt+Super+left-drag binding), or insert it explicitly:
+
+  ```text
+  window-container -G work -b terminal -s %foot -a
+  ```
+
+  Or select the source with the pointer:
+
+  ```text
+  pick-window window-container -G work -b terminal -a
+  ```
+
+  Dropping into a placeholder highlights and fills that pane, without
+  creating another split. Further insertions with **-a** add tabs. Normal
+  container operations become available through its populated panes.
+  Layouts, empty panes and their names survive restart.
+
+  For example, define a workspace before launching any programs:
+
+  ```text
+  window-container -E -N work -B editor
+  window-container -G work -b editor -E -e right -B terminal
+  window-container -G work -b terminal -E -e down -B monitor
+
+  +------------------+------------------+
+  |                  | terminal         |
+  | editor           +------------------+
+  |                  | monitor          |
+  +------------------+------------------+
+  ```
+
+  Use an on-map rule to fill a pane when a matching application opens:
+
+  ```text
+  rule -g -T on-map -n work-terminal -s %work-terminal script {
+      window-container -G work -b terminal -s "##{self.id}" -a
+  }
+  bind L+Return exec foot -a work-terminal
+  ```
+
+  The rule matches the application ID, not the next window to appear.
+  Launching the same application from a terminal works too. Choose distinct
+  IDs for different destinations where the application supports them.
+  See `examples/persistent-containers.conf` for a complete example.
+
+**window-container -G** *name* **-D**
+
+: Dissolve the container and remove its empty panes. Existing application
+  windows remain open and independent. This also removes a wholly empty
+  layout. **-t** may select a member instead of naming the container.
+
 **window-container -r** \[-t *target*\]
 
 : Remove *target* from its container and restore its saved floating geometry.
-  If the container drops to one
-  member, the container is dissolved.
+  An anonymous container dissolves when only one member remains. Named
+  containers retain one member; persistent layouts also retain empty panes.
 
 **window-container -f** *left|right|up|down*
 
@@ -2224,12 +2400,11 @@ when necessary. Lowering those minima does not automatically shrink it.
 **window-container -H** \[-t *target*\]
 
 : Hide the target pane's titlebar without changing its decoration profile.
-  The last visible titlebar and panes containing multiple tabs cannot be
-  hidden. Adding a tab to a hidden-title pane makes its tab strip visible.
-  Collapsed rows must be expanded
-  first. If closing a pane or changing tabs leaves no titlebar, the first
-  remaining pane automatically supplies one, even if its window normally has
-  no titlebar.
+  Panes containing multiple tabs cannot hide their tab strip. Adding a tab
+  to a hidden-title pane makes its strip visible. Collapsed rows must be
+  expanded first. The outer container titlebar remains available when all
+  inner titles are hidden. Groups without an outer titlebar retain a title
+  on at least one pane.
 
 **window-container -U** \[-t *target*\]
 
@@ -2290,7 +2465,7 @@ when necessary. Lowering those minima does not automatically shrink it.
 
 : Activate the previous tab in the pane that holds *target*.
 
-**window-container -N** \[-t *target*\]
+**window-container -R** \[-t *target*\]
 
 : Move the tab containing *target* one position to the right in the tab
   strip. The tab remains active. No-op if it is already the last tab.

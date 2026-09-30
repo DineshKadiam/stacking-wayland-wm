@@ -136,7 +136,6 @@ static bool manage_titlebar_button_press(struct cow_seat *, struct cow_view *,
 static void manage_titlebar_button_raw_press(struct cow_seat *);
 static void manage_titlebar_button_pending(struct cow_seat *);
 static int  manage_next_button_click_ms(void);
-static struct cow_view *manage_container_drag_target(struct cow_seat *);
 static enum cow_dec_region decoration_outer_region(struct cow_view *, int, int,
     int, int);
 
@@ -333,6 +332,8 @@ registry_global(__unused void *data, struct wl_registry *registry,
 	} else if (strcmp(interface, "wl_shm") == 0) {
 		cow_wm.shm = wl_registry_bind(registry, name, &wl_shm_interface,
 		    1);
+	} else if (strcmp(interface, "xdg_wm_base") == 0) {
+		cow_container_window_bind(registry, name);
 	} else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0 &&
 	    version >= 1) {
 		cow_wm.wl_layer_shell = wl_registry_bind(registry, name,
@@ -426,6 +427,7 @@ handle_wm_manage_start(__unused void *data,
 
 	manage_destroy_removed();
 	manage_tick_outputs();
+	cow_container_manage_windows();
 	manage_configure_views();
 	cow_menu_run_deferred_action();
 
@@ -443,6 +445,7 @@ handle_wm_manage_start(__unused void *data,
 		cow_state_restore();
 	}
 
+	cow_container_manage_windows();
 	manage_apply_deferred_views();
 	manage_apply_focus();
 	cow_keyboard_layout_reconcile_focus();
@@ -663,7 +666,14 @@ manage_update_container_drag(struct cow_seat *seat)
 	    seat->op.view->container_member != NULL)
 		return;
 
-	struct cow_view *new_target = manage_container_drag_target(seat);
+	struct cow_view *new_target = cow_container_drop_target_at(
+	    seat->pointer_x, seat->pointer_y, seat->op.view);
+	struct cow_container_pane *empty = NULL;
+	if (!cow_container_window_owner(seat->op.view))
+		cow_container_empty_at(seat->pointer_x, seat->pointer_y,
+		    seat->op.view, &empty);
+	if (empty != NULL)
+		new_target = NULL;
 	uint32_t	 edge	    = 0;
 	if (new_target != NULL) {
 		int x = seat->pointer_x - new_target->x;
@@ -672,7 +682,9 @@ manage_update_container_drag(struct cow_seat *seat)
 		    h = new_target->content_height;
 		/* The titlebar and central area join tabs; content edges split.
 		 */
-		if (x >= 0 && y >= 0 && x < w && y < h) {
+		if (!cow_container_window_owner(new_target) &&
+		    !cow_container_window_owner(seat->op.view) && x >= 0 &&
+		    y >= 0 && x < w && y < h) {
 			if (x < w / 4)
 				edge = COW_EDGE_LEFT;
 			else if (x >= w - w / 4)
@@ -684,41 +696,15 @@ manage_update_container_drag(struct cow_seat *seat)
 		}
 	}
 	if (new_target == cow_wm.drag_drop_target &&
-	    edge == cow_wm.drag_drop_edge)
+	    edge == cow_wm.drag_drop_edge && empty == cow_wm.drag_drop_pane)
 		return;
 	if (cow_wm.drag_drop_target != NULL)
 		cow_wm.drag_drop_target->dec.dirty = true;
 	cow_wm.drag_drop_target = new_target;
+	cow_wm.drag_drop_pane	= empty;
 	cow_wm.drag_drop_edge	= edge;
 	if (cow_wm.drag_drop_target != NULL)
 		cow_wm.drag_drop_target->dec.dirty = true;
-}
-
-static struct cow_view *
-manage_container_drag_target(struct cow_seat *seat)
-{
-	struct cow_view *view;
-	struct cow_view *best = NULL;
-	wl_list_for_each(view, &cow_wm.views, wm_link)
-	{
-		if (view->closed || view == seat->op.view)
-			continue;
-		if (view->parent != NULL || view->fullscreen ||
-		    seat->op.view->parent != NULL)
-			continue;
-		if (view->output == NULL || !cow_view_visible(view, view->output))
-			continue;
-		if (cow_view_contains_point(view, seat->pointer_x - view->x,
-			seat->pointer_y - view->y))
-			if (best == NULL ||
-			    cow_view_effective_layer(view) >
-				cow_view_effective_layer(best) ||
-			    (cow_view_effective_layer(view) ==
-				    cow_view_effective_layer(best) &&
-				view->raise_seq > best->raise_seq))
-				best = view;
-	}
-	return best;
 }
 
 static enum cow_dec_region
@@ -1424,6 +1410,7 @@ handle_wm_render_start(__unused void *data,
 	render_outputs();
 	render_views();
 	cow_stack_apply();
+	cow_container_render_windows();
 	cow_geometry_window_render();
 	cow_draw_exec_render();
 	render_drag_ghost();
@@ -1564,6 +1551,7 @@ bool
 cow_wm_init(void)
 {
 	struct wl_list saved_menus = cow_wm.menus;
+	struct wl_list saved_containers = cow_wm.containers;
 
 	memset(&cow_wm, 0, sizeof(cow_wm));
 	cow_update_reset();
@@ -1588,7 +1576,7 @@ cow_wm_init(void)
 	wl_list_init(&cow_wm.outputs);
 	wl_list_init(&cow_wm.seats);
 	cow_keyboard_layout_init();
-	wl_list_init(&cow_wm.containers);
+	cow_wm.containers = saved_containers;
 	wl_list_init(&cow_wm.new_views);
 	wl_list_init(&cow_wm.closed_views);
 	wl_list_init(&cow_wm.wl_outputs);
@@ -1693,6 +1681,13 @@ cow_wm_fini(void)
 	struct cow_view *view, *view_tmp;
 	wl_list_for_each_safe(view, view_tmp, &cow_wm.views, wm_link)
 		cow_view_destroy(view);
+	struct cow_container *container, *next_container;
+	wl_list_for_each_safe(container, next_container, &cow_wm.containers,
+	    wm_link)
+	{
+		cow_container_destroy(container);
+	}
+	cow_container_window_fini();
 
 	cow_status_fini();
 	cow_keyboard_layout_fini();

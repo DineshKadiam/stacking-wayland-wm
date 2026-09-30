@@ -127,7 +127,8 @@ cow_state_save(void)
 	struct cow_view *view;
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
-		if (view->closed || view->identifier == NULL)
+		if (view->closed || view->identifier == NULL ||
+		    cow_container_window_view(view))
 			continue;
 
 		cJSON *v = cJSON_CreateObject();
@@ -600,7 +601,8 @@ cow_state_restore(void)
 		} else {
 			cJSON_ArrayForEach(record, containers)
 			{
-				if (cow_container_restore(record) != NULL)
+				if (cow_container_restore_defer(record) ||
+				    cow_container_restore(record) != NULL)
 					restored = true;
 				else
 					cow_log_debug(

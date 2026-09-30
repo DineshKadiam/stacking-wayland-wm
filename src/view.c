@@ -975,6 +975,7 @@ window_handle_app_id(void *data, __unused struct river_window_v1 *rw,
 	struct cow_view *view = data;
 
 	xstrset(&view->app_id, app_id);
+	cow_container_window_identify(view);
 	xfree(view->application_icon);
 	view->application_icon = cow_app_icon_resolve(view->app_id,
 	    view->cfg.icon_size);
@@ -1237,6 +1238,7 @@ cow_view_destroy(struct cow_view *view)
 	view_clear_wm_refs(view);
 	view_clear_seat_refs(view);
 	cow_pick_forget_view(view);
+	cow_container_window_forget(view);
 	cow_container_forget_view(view);
 	cow_view_icon_destroy(view);
 	cow_selection_fini_view(view);
@@ -1328,8 +1330,11 @@ cow_view_configure(struct cow_view *view)
 	view->configured = true;
 
 	/* Focus and raise new windows on the next manage cycle */
-	view->needs_raise = true;
-	view->needs_focus = true;
+	struct cow_container *frame	= cow_container_window_owner(view);
+	bool		      focus_new = !view->container_placeholder &&
+	    (frame == NULL || cow_container_window_count(frame) == 0);
+	view->needs_raise = focus_new;
+	view->needs_focus = focus_new;
 	cow_update_request(COW_UPDATE_MANAGE);
 }
 
@@ -1604,6 +1609,11 @@ view_apply_show_hide(struct cow_view *view)
 
 	if (view->use_ssd) {
 		bool active = (view == cow_wm.focused_view);
+		struct cow_container *frame  = cow_container_window_owner(view);
+		struct cow_view	     *focused =
+		    cow_container_ancestor(cow_wm.focused_view, NULL);
+		if (frame && focused && cow_view_container(focused) == frame)
+			active = true;
 		cow_decoration_update(view, active);
 	}
 }
@@ -1630,8 +1640,13 @@ cow_view_apply_render(struct cow_view *view)
 
 	view_cleanup_stale_decoration(view);
 
-	if (view->node == NULL)
+	if (view->node == NULL) {
 		view->node = river_window_v1_get_node(view->river_window);
+		/* New nodes need ordering even when mapping does not raise them,
+		 * notably container backing windows beneath their panes.
+		 */
+		cow_stack_mark_dirty();
+	}
 
 	view_compute_initial_placement(view);
 
@@ -1693,7 +1708,7 @@ view_reassign_output(struct cow_view *view, struct cow_output *output)
 void
 cow_view_reassign_output(struct cow_view *view, struct cow_output *output)
 {
-	struct cow_container *c = cow_view_container(view);
+	struct cow_container *c = cow_container_top_group(view);
 	if (c == NULL) {
 		view_reassign_output(view, output);
 		return;
@@ -1702,11 +1717,10 @@ cow_view_reassign_output(struct cow_view *view, struct cow_output *output)
 		return;
 	c->output = output;
 	c->desk	  = output->current_desk;
-	struct cow_container_member *m;
-	wl_list_for_each(m, &c->members, link)
-	{
-		view_reassign_output(m->view, output);
-		cow_view_sync_vxy_from_global(m->view);
+	struct cow_view *member = NULL;
+	while ((member = cow_container_next_view(c, member)) != NULL) {
+		view_reassign_output(member, output);
+		cow_view_sync_vxy_from_global(member);
 	}
 }
 
@@ -1996,17 +2010,14 @@ cow_view_set_layer(struct cow_view *view, int requested)
 	 *       exec sh -c 'echo "$COW_EVENT" >> ~/cow-layer.log'
 	 */
 	bool any_changed = false;
-	if (view->container_member != NULL) {
-		struct cow_container *c = view->container_member->container;
-		struct cow_container_member *m;
-		wl_list_for_each(m, &c->members, link)
-		{
-			if (m->view == NULL)
+	struct cow_container *c		  = cow_container_top_group(view);
+	if (c != NULL) {
+		struct cow_view *member = NULL;
+		while ((member = cow_container_next_view(c, member)) != NULL) {
+			if (member->layer == new_layer)
 				continue;
-			if (m->view->layer == new_layer)
-				continue;
-			uint8_t prev   = m->view->layer;
-			m->view->layer = new_layer;
+			uint8_t prev   = member->layer;
+			member->layer  = new_layer;
 			any_changed    = true;
 
 			char payload[64];
@@ -2014,8 +2025,8 @@ cow_view_set_layer(struct cow_view *view, int requested)
 			/* FIXME: we can/should use cJSOJ here. */
 			snprintf(payload, sizeof payload,
 			    "{\"prev\":%u,\"current\":%u}", prev, new_layer);
-			cow_rule_fire_json(COW_RULE_ON_LAYER_CHANGE, m->view,
-			    m->view->desk, m->view->output, payload);
+			cow_rule_fire_json(COW_RULE_ON_LAYER_CHANGE, member,
+			    member->desk, member->output, payload);
 		}
 	} else if (view->layer != new_layer) {
 		uint8_t prev = view->layer;
@@ -2318,6 +2329,11 @@ cow_view_maximize_button_index(void)
 void
 cow_view_maximize(struct cow_view *view)
 {
+	struct cow_container *c = cow_view_container(view);
+	if (c && c->frame_view) {
+		cow_view_maximize(c->frame_view);
+		return;
+	}
 	if (cow_container_is_split(view)) {
 		cow_container_maximize(view, true, true, false, false, false);
 		return;
@@ -2414,6 +2430,11 @@ cow_view_reflow_maximized(struct cow_view *view)
 void
 cow_view_unmaximize(struct cow_view *view)
 {
+	struct cow_container *c = cow_view_container(view);
+	if (c && c->frame_view) {
+		cow_view_unmaximize(c->frame_view);
+		return;
+	}
 	if (cow_container_is_split(view)) {
 		cow_container_maximize(view, true, true, true, false, false);
 		return;
@@ -2604,6 +2625,11 @@ view_place_for_shade_edge(struct cow_view *view, int direction,
 void
 cow_view_shade(struct cow_view *view, int direction)
 {
+	struct cow_container *c = cow_view_container(view);
+	if (c && c->frame_view) {
+		cow_view_shade(c->frame_view, direction);
+		return;
+	}
 	if (cow_container_is_split(view)) {
 		if (cow_view_container(view)->shaded) {
 			cow_view_unshade(view);
@@ -2654,6 +2680,11 @@ cow_view_shade(struct cow_view *view, int direction)
 void
 cow_view_unshade(struct cow_view *view)
 {
+	struct cow_container *c = cow_view_container(view);
+	if (c && c->frame_view) {
+		cow_view_unshade(c->frame_view);
+		return;
+	}
 	if (cow_container_is_split(view) && cow_view_container(view)->shaded) {
 		if (cow_container_shade(view, false))
 			cow_rule_fire(COW_RULE_ON_UNSHADE, view, view->desk,
@@ -2841,7 +2872,7 @@ cow_view_has_icon(const struct cow_view *view)
 {
 	struct cow_container *c = cow_view_container(view);
 	return !view->closed && cow_view_is_iconified(view) &&
-	    view->cfg.icon_enabled &&
+	    view->cfg.icon_enabled && (c == NULL || c->frame_view == NULL) &&
 	    (c == NULL || (c->active != NULL && c->active->view == view));
 }
 
@@ -3286,16 +3317,14 @@ view_set_iconified(struct cow_view *view, bool iconified)
 static void
 view_group_set_iconified(struct cow_view *view, bool iconified)
 {
-	struct cow_container *c = cow_view_container(view);
+	struct cow_container *c = cow_container_top_group(view);
 	if (c == NULL) {
 		view_set_iconified(view, iconified);
 		return;
 	}
-	struct cow_container_member *m;
-	wl_list_for_each(m, &c->members, link)
-	{
-		view_set_iconified(m->view, iconified);
-	}
+	struct cow_view *member = NULL;
+	while ((member = cow_container_next_view(c, member)) != NULL)
+		view_set_iconified(member, iconified);
 }
 
 void

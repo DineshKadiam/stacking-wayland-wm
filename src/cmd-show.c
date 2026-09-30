@@ -213,13 +213,17 @@ cmd_show_exec(struct cmd *self, struct cmd_q *cmdq)
 		struct cow_view *view = cmd_require_target_window(cmdq, "show");
 		if (view == NULL)
 			return CMD_RETURN_ERROR;
-		struct cow_container *c = cow_view_container(view);
+		bool is_container = strcmp(topic, "container") == 0;
+		struct cow_container *c = is_container ?
+		    cow_container_window_owner(view) : NULL;
+		if (c == NULL)
+			c = cow_view_container(view);
 		if (c == NULL) {
 			cmdq_error(cmdq,
 			    "show: target window is not in a container");
 			return CMD_RETURN_ERROR;
 		}
-		struct state_value *record = strcmp(topic, "container") == 0 ?
+		struct state_value *record = is_container ?
 		    state_snapshot_container(c) :
 		    state_snapshot_pane(c, cow_view_pane(view));
 		return show_record(topic, record, format, cmdq);

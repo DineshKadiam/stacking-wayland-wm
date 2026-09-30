@@ -453,6 +453,8 @@ struct cow_view {
 
 	/* Container membership, if any. */
 	struct cow_container_member *container_member;
+	struct cow_container	     *container_owner;
+	bool			     container_placeholder;
 
 	struct cow_view_cfg cfg;
 

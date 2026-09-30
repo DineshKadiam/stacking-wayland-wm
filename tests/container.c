@@ -27,6 +27,8 @@
 #include "state-snapshot.h"
 #include "cow/cmd.h"
 #include "cow/memory.h"
+#include "cow/seat.h"
+#include "cow/pointer_op.h"
 
 #define CHECK(expr)                                                        \
 	do {                                                               \
@@ -37,6 +39,18 @@
 		}                                                          \
 	} while (0)
 
+static struct cow_container *
+pending_split(struct cow_view *view)
+{
+	struct cow_container *c;
+	wl_list_for_each(c, &cow_wm.containers, wm_link)
+	{
+		if (c->split_target == view)
+			return c;
+	}
+	return NULL;
+}
+
 static void
 check_command(const char *text)
 {
@@ -46,6 +60,10 @@ check_command(const char *text)
 	struct cmd_q *queue = cmdq_new();
 	queue->client_fd    = -1;
 	cmdq_run(queue, list);
+	if (queue->failed)
+		fprintf(stderr, "command failed: %s\n", text);
+	for (u_int i = 0; i < ARRAY_LENGTH(&queue->causes); i++)
+		fprintf(stderr, "%s\n", ARRAY_ITEM(&queue->causes, i));
 	CHECK(!queue->failed);
 	cmdq_free(queue);
 	cmd_list_free(list);
@@ -536,7 +554,9 @@ main(void)
 	c = cow_container_create(&a, &b);
 	CHECK(cow_container_split(&a, &b, COW_CONTAINER_HORIZONTAL, false));
 	CHECK(a.clip_w > 0 && a.clip_h > 0);
+	cow_wm.drag_drop_pane = cow_view_pane(&b);
 	cow_container_forget_view(&b);
+	CHECK(cow_wm.drag_drop_pane == NULL);
 	CHECK(a.container_member == NULL && wl_list_empty(&cow_wm.containers));
 	struct cow_titlebar_config standalone_tb;
 	cow_titlebar_effective_config(&a, &standalone_tb);
@@ -640,5 +660,417 @@ main(void)
 	cow_container_forget_view(&a);
 	CHECK(b.container_member == NULL);
 	CHECK(wl_list_empty(&cow_wm.containers) && b.dec.dirty);
+
+	/* Names bootstrap a group and target panes independently of focus. */
+	check_command("window-container -t '#pane-a' -N work");
+	c = cow_container_find("work");
+	CHECK(c != NULL && c->n_members == 1);
+	CHECK(!cow_container_set_name(&b, "work"));
+	CHECK(b.container_member == NULL);
+	check_command("window-container -G work -B editor");
+	check_command(
+	    "window-container -G work -b editor -s '#pane-b' -e right");
+	CHECK(c->n_members == 2 && cow_container_is_split(&a));
+	check_command("window-container -t '#pane-b' -B terminal");
+	CHECK(!cow_container_pane_set_name(&b, "editor"));
+	CHECK(cow_container_pane_find(c, "editor") == cow_view_pane(&a));
+	check_command("window-container -G work -b terminal -s '#pane-d' -a");
+	CHECK(cow_view_pane(&b) == cow_view_pane(&d));
+	cow_container_remove_view(&d);
+	cow_container_forget_view(&b);
+	CHECK(cow_container_find("work") == c && c->n_members == 1);
+	CHECK(cow_container_pane_find(c, "editor") == cow_view_pane(&a));
+	check_command("window-container -G work -N renamed");
+	CHECK(cow_container_find("work") == NULL);
+	CHECK(cow_container_find("renamed") == c);
+	check_command("window-container -G renamed -N ''");
+	CHECK(a.container_member == NULL && wl_list_empty(&cow_wm.containers));
+	CHECK(cow_container_set_name(&a, "final"));
+	cow_container_forget_view(&a);
+	CHECK(cow_container_find("final") == NULL);
+	/* The same script can bootstrap a group and split subsequent windows.
+	 */
+	const char *ids[] = { "pane-a", "pane-b", "pane-d" };
+	for (size_t i = 0; i < 3; i++) {
+		char *script;
+		xasprintf(&script,
+		    "script { let id = \"%s\"\n"
+		    "for c in (containers where c.name == \"automatic\") { "
+		    "window-container -G automatic -s \"##{id}\" -e down\n break }\n"
+		    "window-container -t \"##{id}\" -N automatic }",
+		    ids[i]);
+		check_command(script);
+		xfree(script);
+	}
+	c = cow_container_find("automatic");
+	CHECK(c != NULL && c->n_members == 3 && cow_container_is_split(&a));
+	cow_container_destroy(c);
+	/* Empty named layouts are addressable before any window exists. */
+	check_command("window-container -E -N workspace -B editor");
+	check_command(
+	    "window-container -G workspace -b editor -E -e right -B terminal");
+	check_command(
+	    "window-container -G workspace -b terminal -E -e down -B monitor");
+	c = cow_container_find("workspace");
+	CHECK(c != NULL && c->persistent && c->n_members == 0 &&
+	    c->active == NULL);
+	struct state_value *empty = state_snapshot_container(c);
+	CHECK(state_record_get(empty, "pane_count")->u.n == 3);
+	state_value_unref(empty);
+	check_command("show -a -F 'self.empty' pane");
+	check_command(
+	    "window-container -G workspace -b editor -s '#pane-a' -a");
+	check_command(
+	    "window-container -G workspace -b terminal -s '#pane-b' -a");
+	CHECK(c->n_members == 2);
+	CHECK(cow_view_pane(&a) != cow_view_pane(&b));
+	struct cow_container_pane *reserved = cow_view_pane(&b);
+	cow_container_forget_view(&b);
+	CHECK(cow_container_pane_find(c, "terminal") == reserved);
+	CHECK(reserved->active == NULL && reserved->n_tabs == 0);
+	check_command(
+	    "window-container -G workspace -b terminal -s '#pane-b' -a");
+	cow_container_remove_view(&a);
+	CHECK(cow_container_shade(&b, true));
+	cow_container_remove_view(&b);
+	CHECK(c->active == NULL && c->n_members == 0 && !c->shaded);
+	CHECK(cow_container_pane_find(c, "editor") != NULL);
+	cJSON *saved_layout = cow_container_save(c);
+	/* Restore over the still-empty config declaration. */
+	c = cow_container_restore(saved_layout);
+	CHECK(c != NULL && c->persistent && c->n_members == 0);
+	CHECK(cow_container_pane_find(c, "terminal") != NULL);
+	CHECK(cow_container_pane_find(c, "monitor") != NULL);
+	cJSON_Delete(saved_layout);
+	check_command(
+	    "window-container -G workspace -b monitor -s '#pane-d' -a");
+	CHECK(cow_view_container(&d) == c);
+	check_command("window-container -G workspace -D");
+	CHECK(d.container_member == NULL &&
+	    cow_container_find("workspace") == NULL);
+	/* Empty panes are drop targets, but not through covering windows. */
+	output.x = output.y = 0;
+	output.width	    = 1280;
+	output.height	    = 720;
+	output.usable_area  = (struct cow_box) { 0, 30, 1280, 690 };
+	output.current_desk = &desk;
+	desk.page_vx = desk.page_vy = 0;
+	wl_list_init(&output.desk_set.desks);
+	wl_list_insert(&output.desk_set.desks, &desk.set_link);
+	wl_list_insert(&cow_wm.outputs, &output.wm_link);
+	cow_wm.current_output = &output;
+	a.closed = b.closed = d.closed = true;
+	check_command("window-container -E -N drop-test -B left");
+	check_command(
+	    "window-container -G drop-test -b left -E -e right -B right");
+	c = cow_container_find("drop-test");
+	c->output = &output;
+	c->desk	  = &desk;
+	CHECK(cow_container_arrange(c, output.usable_area));
+	CHECK(c->output == &output && c->desk == &desk && c->frame.y == 30);
+	/* A backing window is managed normally, but must never become a member.
+	 */
+	cow_container_set_frame(c, &a);
+	CHECK(cow_container_window_owner(&a) == c);
+	CHECK(cow_container_window_view(&a));
+	a.closed = false;
+	check_command("show -t '#pane-a' container");
+	a.closed = true;
+	CHECK(!cow_container_insert(c, c->root, &a));
+	CHECK(c->n_members == 0);
+	cow_container_window_forget(&a);
+	CHECK(c->frame_view == NULL && !cow_container_window_view(&a));
+	struct cow_container_pane *hit = NULL;
+	CHECK(cow_container_empty_at(900, 100, NULL, &hit) == c);
+	CHECK(strcmp(hit->name, "right") == 0);
+	a.closed	= false;
+	a.output	= &output;
+	a.desk		= &desk;
+	a.x		= 800;
+	a.y		= 50;
+	a.content_width = a.content_height = 200;
+	a.pending_resize = a.deferred_position = false;
+	a.vx				       = 800;
+	a.vy				       = 50;
+	CHECK(cow_container_empty_at(900, 100, NULL, &hit) == NULL);
+	CHECK(cow_container_empty_at(900, 100, &a, &hit) == c);
+	desk.page_vx = 1280;
+	struct cow_box shifted = c->frame;
+	shifted.x -= 1280;
+	CHECK(cow_container_arrange(c, shifted));
+	CHECK(c->frame.x == -1280);
+	CHECK(cow_container_empty_at(900, 100, &a, &hit) == NULL);
+	desk.page_vx = 0;
+	CHECK(cow_container_arrange(c, output.usable_area));
+	CHECK(cow_container_empty_at(900, 100, &a, &hit) == c);
+	cow_wm.drag_drop_pane = hit;
+	check_command("window-container -G drop-test -D");
+	CHECK(cow_wm.drag_drop_pane == NULL);
+	/* Vacant pane views share normal membership, not application counts.
+	 * The permanent frame supplies the handle when its pane title is
+	 * hidden.
+	 */
+	c	  = cow_container_create_empty("framed", "vacant");
+	c->output = &output;
+	c->desk	  = &desk;
+	CHECK(cow_container_arrange(c, output.usable_area));
+	cow_container_set_frame(c, &a);
+	c->framed		= true;
+	b.closed		= false;
+	b.container_placeholder = true;
+	b.output		= &output;
+	b.desk			= &desk;
+	CHECK(cow_container_add_placeholder(c, c->root, &b));
+	CHECK(cow_container_window_count(c) == 0);
+	CHECK(cow_container_pane_window_count(c->root) == 0);
+	CHECK(cow_container_is_split(&b));
+	CHECK(!cow_container_is_split(&a));
+	CHECK(cow_container_title_hide(&b));
+	CHECK(!cow_container_title_visible(&b));
+	a.needs_raise = true;
+	cow_stack_apply_pending(&a);
+	CHECK(a.raise_seq == b.raise_seq);
+	b.needs_raise = true;
+	cow_stack_apply_pending(&b);
+	CHECK(a.raise_seq == b.raise_seq);
+	cJSON *empty_state = cow_container_save(c);
+	CHECK(cJSON_IsTrue(cJSON_GetObjectItem(empty_state, "framed")));
+	CHECK(cJSON_GetArraySize(
+		  cJSON_GetObjectItem(cJSON_GetObjectItem(empty_state, "tree"),
+		      "tabs")) == 0);
+	cJSON_Delete(empty_state);
+	cow_container_forget_view(&b);
+	b.container_placeholder = false;
+	cow_container_destroy(c);
+	/* Expand either pane through the outer frame, on an offset output.
+	 * Treating a pane's requested growth as a layout delta moves the frame
+	 * off its output and hides every pane under origin page visibility.
+	 */
+	output.x	   = 1920;
+	output.y	   = 1080;
+	output.width	   = 1920;
+	output.height	   = 1080;
+	output.usable_area = (struct cow_box) { 1920, 1098, 1920, 1062 };
+	a.x		   = 2100;
+	a.y		   = 1200;
+	a.vx		   = 180;
+	a.vy		   = 120;
+	a.content_width	   = 600;
+	a.content_height   = 400;
+	a.expanded	   = false;
+	a.pending_resize   = false;
+	c		   = cow_container_create_empty("expand", "left");
+	c->output	   = &output;
+	c->desk		   = &desk;
+	cow_container_set_frame(c, &a);
+	c->framed	   = true;
+	CHECK(cow_container_arrange(c,
+	    (struct cow_box) { 2100, 1200, 600, 400 }));
+	CHECK(cow_container_split_empty(c, c->root, "right",
+	    COW_CONTAINER_HORIZONTAL, false));
+	d.closed = false;
+	d.output = &output;
+	d.desk	 = &desk;
+	CHECK(cow_container_insert(c, cow_container_pane_find(c, "left"), &b));
+	CHECK(cow_container_insert(c, cow_container_pane_find(c, "right"), &d));
+	a.pending_resize = b.pending_resize = d.pending_resize = false;
+	check_command("window-expand -t '#pane-d' -T");
+	CHECK(a.expanded && a.pending_resize);
+	CHECK(!b.expanded && !d.expanded && !b.pending_resize &&
+	    !d.pending_resize);
+	int extra_w, extra_h, inset_x, inset_y;
+	cow_titlebar_frame_geometry(&a, 0, 0, &extra_w, &extra_h, &inset_x,
+	    &inset_y);
+	CHECK(a.pending_x == output.usable_area.x + inset_x);
+	CHECK(a.pending_y == output.usable_area.y + inset_y);
+	CHECK(a.pending_width == output.usable_area.width - extra_w);
+	CHECK(a.pending_height == output.usable_area.height - extra_h);
+	/* Toggling from the other pane restores the same outer geometry. */
+	check_command("window-expand -t '#pane-b' -T");
+	CHECK(!a.expanded && a.pending_x == 2100 && a.pending_y == 1200);
+	CHECK(a.pending_width == 600 && a.pending_height == 400);
+	/* Unrelated windows still constrain directional expansion. */
+	struct cow_view obstacle = { .has_dimensions = true,
+		.output				     = &output,
+		.desk				     = &desk,
+		.x				     = 3000,
+		.y				     = 1200,
+		.content_width			     = 100,
+		.content_height			     = 400 };
+	wl_list_insert(&cow_wm.views, &obstacle.wm_link);
+	struct cow_box expand_frame = cow_view_frame_box(&a);
+	check_command("window-expand -t '#pane-b' -d right -T");
+	CHECK(a.pending_x == 2100 && a.pending_y == 1200);
+	CHECK(a.pending_width == obstacle.x - expand_frame.x - extra_w);
+	CHECK(a.pending_height == 400);
+	check_command("window-expand -t '#pane-a' -T");
+	CHECK(!a.expanded && a.pending_width == 600 && a.pending_height == 400);
+	wl_list_remove(&obstacle.wm_link);
+	/* Holding the outer titlebar must not snap the frame to its own panes.
+	 */
+	struct cow_config config = { .snap_distance = 12,
+		.clamp_mode			    = COW_CLAMP_NONE };
+	cow_config		 = &config;
+	a.pending_resize	 = false;
+	a.closed = b.closed = d.closed = false;
+	a.has_dimensions = b.has_dimensions = d.has_dimensions = true;
+	CHECK(cow_container_arrange(c,
+	    (struct cow_box) { a.x, a.y, a.content_width, a.content_height }));
+	struct cow_view *drag_panes[] = { &b, &d };
+	for (size_t i = 0; i < 2; i++) {
+		struct cow_view *pane = drag_panes[i];
+		pane->x		      = pane->pending_x;
+		pane->y		      = pane->pending_y;
+		pane->content_width   = pane->pending_width;
+		pane->content_height  = pane->pending_height;
+		pane->pending_resize  = false;
+		cow_view_sync_vxy_from_global(pane);
+	}
+	struct cow_seat seat = {
+		.op_in_progress = true,
+		.op		= { .type = COW_POINTER_OP_MOVE,
+				   .view	  = &a,
+				   .start_x  = a.x,
+				   .start_y  = a.y }
+	};
+	for (int i = 0; i < 3; i++) {
+		cow_pointer_op_process(&seat);
+		CHECK(a.x == 2100 && a.y == 1200);
+	}
+	/* Snapping to a separate window remains available. */
+	obstacle.x = cow_view_frame_box(&a).x - 3 - obstacle.content_width;
+	wl_list_insert(&cow_wm.views, &obstacle.wm_link);
+	cow_pointer_op_process(&seat);
+	CHECK(a.x == 2097);
+	wl_list_remove(&obstacle.wm_link);
+	cow_config = NULL;
+	/* A complete layout can be one outer tab without flattening panes. */
+	a.x		    = 2100;
+	a.pending_resize    = false;
+	obstacle.identifier = "outer-tab";
+	obstacle.use_ssd    = true;
+	wl_list_insert(&cow_wm.views, &obstacle.wm_link);
+	/* The frame must not intercept pane drops, regardless of list order. */
+	a.layer = b.layer = d.layer = 4;
+	a.raise_seq = b.raise_seq = d.raise_seq = 10;
+	wl_list_remove(&a.wm_link);
+	wl_list_insert(&cow_wm.views, &a.wm_link);
+	CHECK(
+	    cow_container_drop_target_at(b.x + 20, b.y + 20, &obstacle) == &b);
+	CHECK(
+	    cow_container_drop_target_at(d.x + 20, d.y + 20, &obstacle) == &d);
+	CHECK(
+	    cow_container_drop_target_at(a.x + 40, a.y - 10, &obstacle) == &a);
+	wl_list_remove(&a.wm_link);
+	wl_list_insert(cow_wm.views.prev, &a.wm_link);
+	CHECK(
+	    cow_container_drop_target_at(b.x + 20, b.y + 20, &obstacle) == &b);
+	struct cow_view cover = { .has_dimensions = true,
+		.output				  = &output,
+		.desk				  = &desk,
+		.x				  = b.x,
+		.y				  = b.y,
+		.content_width			  = 100,
+		.content_height			  = 100,
+		.layer				  = 4,
+		.raise_seq			  = 11 };
+	wl_list_insert(&cow_wm.views, &cover.wm_link);
+	CHECK(cow_container_drop_target_at(b.x + 20, b.y + 20, &obstacle) ==
+	    &cover);
+	wl_list_remove(&cover.wm_link);
+	struct cow_container *tabs = cow_container_create(&a, &obstacle);
+	CHECK(cow_container_window_owner(&a) == c);
+	CHECK(cow_view_container(&a) == tabs);
+	CHECK(cow_container_top_group(&b) == tabs);
+	CHECK(cow_container_top_group(&d) == tabs);
+	struct cow_view *member	     = NULL;
+	int		 group_count = 0;
+	while ((member = cow_container_next_view(tabs, member)) != NULL)
+		group_count++;
+	CHECK(group_count == 4);
+	CHECK(!cow_container_can_tab(c, &a));
+	CHECK(!cow_container_split(&a, &obstacle, COW_CONTAINER_HORIZONTAL,
+	    false));
+	cow_container_activate(tabs, obstacle.container_member);
+	CHECK(cow_container_hides_view(&b) && cow_container_hides_view(&d));
+	check_command("window-container -G expand -n");
+	CHECK(tabs->active->view == &a);
+	cow_container_activate(tabs, obstacle.container_member);
+	cow_container_activate(c, b.container_member);
+	CHECK(tabs->active->view == &a);
+	CHECK(!cow_container_hides_view(&b) && !cow_container_hides_view(&d));
+	CHECK(cow_wm.pending_focus == &b);
+	cJSON *tab_state = cow_container_save(tabs);
+	CHECK(cow_container_restore_defer(tab_state));
+	cow_container_destroy(tabs);
+	c->restore_identifier = xstrdup(a.identifier);
+	a.identifier	      = "recreated-frame";
+	cow_container_set_frame(c, NULL);
+	cow_container_restore_pending();
+	CHECK(!a.container_member);
+	cow_container_set_frame(c, &a);
+	a.pending_resize = false;
+	cow_container_restore_pending();
+	tabs = cow_view_container(&a);
+	CHECK(tabs && cow_view_container(&obstacle) == tabs);
+	CHECK(tabs->active->view == &a);
+	CHECK(cow_container_window_owner(&a) == c);
+	cJSON_Delete(tab_state);
+	cow_container_restore_clear();
+	/* Losing a pane must not dissolve the layout out of its outer tab. */
+	char *layout_name = c->name;
+	c->name		  = NULL;
+	cow_container_forget_view(&d);
+	CHECK(cow_container_window_owner(&a) == c);
+	CHECK(cow_view_container(&a) == tabs && cow_view_container(&b) == c);
+	c->name = layout_name;
+	cow_container_remove_view(&a);
+	CHECK(!a.container_member && !obstacle.container_member);
+	CHECK(cow_container_window_owner(&a) == c);
+	CHECK(cow_view_container(&b) == c && !cow_view_container(&d));
+	/* Split an ordinary outer tab without splitting its layout sibling. */
+	obstacle.closed = d.closed = false;
+	obstacle.content_width	   = 800;
+	obstacle.content_height	   = 600;
+	tabs			   = cow_container_create(&a, &obstacle);
+	CHECK(cow_container_add_to(&obstacle, &d));
+	cow_container_activate(tabs, obstacle.container_member);
+	struct cow_container_member *slot = obstacle.container_member;
+	CHECK(cow_container_split(&obstacle, &d, COW_CONTAINER_HORIZONTAL,
+	    false));
+	struct cow_container *promoted = pending_split(&obstacle);
+	CHECK(promoted != NULL);
+	CHECK(obstacle.container_member == slot);
+	struct cow_view promoted_frame = { .has_dimensions = true,
+		.output					   = &output,
+		.desk					   = &desk,
+		.content_width				   = 800,
+		.content_height				   = 600 };
+	cow_container_set_frame(promoted, &promoted_frame);
+	CHECK(cow_container_complete_tab_split(promoted));
+	CHECK(promoted_frame.container_member == slot && tabs->n_members == 2);
+	CHECK(cow_view_container(&obstacle) == promoted);
+	CHECK(cow_view_container(&d) == promoted);
+	CHECK(cow_view_pane(&obstacle) != cow_view_pane(&d));
+	CHECK(cow_view_container(&a) == tabs && cow_view_container(&b) == c);
+	CHECK(tabs->active == slot && cow_wm.pending_focus == &d);
+	cow_container_destroy(tabs);
+	cow_container_destroy(promoted);
+	/* Cancelling before the new frame maps leaves the original tabs. */
+	tabs = cow_container_create(&a, &obstacle);
+	CHECK(cow_container_add_to(&obstacle, &d));
+	CHECK(cow_container_split(&obstacle, &d, COW_CONTAINER_VERTICAL, true));
+	promoted = pending_split(&obstacle);
+	CHECK(promoted != NULL);
+	cow_container_window_forget(&d);
+	cow_container_set_frame(promoted, &promoted_frame);
+	CHECK(!cow_container_complete_tab_split(promoted));
+	CHECK(cow_view_container(&obstacle) == tabs);
+	cow_container_destroy(promoted);
+	cow_container_destroy(tabs);
+	wl_list_remove(&obstacle.wm_link);
+	cow_container_destroy(c);
+	wl_list_remove(&output.wm_link);
+	cow_wm.current_output = NULL;
 	return 0;
 }

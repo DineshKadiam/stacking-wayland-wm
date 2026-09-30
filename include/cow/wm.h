@@ -205,6 +205,7 @@ struct cow_wm {
 	 */
 	struct cow_view *drag_drop_source;
 	struct cow_view *drag_drop_target;
+	struct cow_container_pane *drag_drop_pane;
 	uint32_t	 drag_drop_edge;
 
 	/*

@@ -24,8 +24,20 @@
 struct cow_view;
 struct cow_desk;
 struct cow_output;
+struct wl_registry;
+
+struct cow_container_frame_state {
+	struct cow_box restore;
+	uint32_t       flags;
+	int	       layer, shade;
+	bool	       maximized_h, maximized_v;
+	bool	       ignore_h, ignore_v, keep_h, keep_v;
+	bool	       pending;
+};
 
 struct cow_container_pane {
+	char				 *name;
+	struct cow_container_window	 *placeholder;
 	int			     id;
 	struct cow_container_layout  layout;
 	struct wl_list		     tabs;
@@ -47,6 +59,19 @@ struct cow_container_member {
 };
 
 struct cow_container {
+	char *name;
+	char
+	    *restore_identifier; /* Previous outer-window id, during restart. */
+	struct cow_container_window *frame_window;
+	struct cow_view		    *frame_view;
+	/* A single outer tab awaiting its own native pane-layout frame. */
+	struct cow_view	       *split_target, *split_source;
+	enum cow_container_axis split_axis;
+	bool			split_before;
+	bool persistent; /* Explicit layout: retain empty panes. */
+	bool framed;
+	bool syncing_frame;
+	struct cow_container_frame_state frame_state;
 	struct wl_list		     wm_link; /* cow_wm.containers */
 	struct wl_list		     members; /* cow_container_member.link */
 	int			     id;
@@ -57,7 +82,7 @@ struct cow_container {
 	/* Geometry (authoritative for all members) */
 	int x, y;
 	int content_width, content_height;
-	/* Outer frame used by split layouts. */
+	/* Pane layout bounds; inside the outer window when framed is true. */
 	struct cow_box frame;
 	struct cow_box restore_frame; /* virtual coordinates, before maximize */
 	bool	       maximized_h, maximized_v;
@@ -72,9 +97,53 @@ struct cow_container {
  * Container API
  * ----------------------------------------------------------------------- */
 
-/* Create a container from two uncontained views. */
+/* Create a container from uncontained views; second may be NULL for naming. */
 struct cow_container *cow_container_create(struct cow_view *,
     struct cow_view *);
+struct cow_container *cow_container_create_empty(const char *, const char *);
+struct cow_container_pane *cow_container_pane_next(const struct cow_container *,
+    struct cow_container_pane *);
+bool			   cow_container_split_empty(struct cow_container *,
+			  struct cow_container_pane *, const char *, enum cow_container_axis, bool);
+bool cow_container_insert(struct cow_container *, struct cow_container_pane *,
+    struct cow_view *);
+void cow_container_manage_windows(void);
+bool cow_container_complete_tab_split(struct cow_container *);
+void cow_container_render_windows(void);
+void cow_container_window_bind(struct wl_registry *, uint32_t);
+void cow_container_window_fini(void);
+void cow_container_window_destroy(struct cow_container *);
+void cow_container_set_frame(struct cow_container *, struct cow_view *);
+void cow_container_window_geometry(struct cow_container *);
+struct cow_container *cow_container_group(const struct cow_view *);
+/* Outermost tab group, including panes carried by a tabbed frame. */
+struct cow_container *cow_container_top_group(const struct cow_view *);
+struct cow_view	     *cow_container_next_view(const struct cow_container *,
+	 struct cow_view *);
+bool		      cow_container_can_tab(const struct cow_container *,
+		     const struct cow_view *);
+int		      cow_container_window_count(const struct cow_container *);
+int  cow_container_pane_window_count(const struct cow_container_pane *);
+bool cow_container_add_placeholder(struct cow_container *,
+    struct cow_container_pane *, struct cow_view *);
+void cow_container_remove_empty_pane(struct cow_container *,
+    struct cow_container_pane *);
+void cow_container_window_identify(struct cow_view *);
+void cow_container_window_forget(struct cow_view *);
+bool cow_container_window_view(const struct cow_view *);
+struct cow_container *cow_container_window_owner(const struct cow_view *);
+void cow_container_placeholder_destroy(struct cow_container_pane *);
+struct cow_container	  *cow_container_empty_at(int, int, struct cow_view *,
+	 struct cow_container_pane **);
+struct cow_view *cow_container_drop_target_at(int, int, struct cow_view *);
+struct cow_container	  *cow_container_find(const char *);
+struct cow_container_pane *cow_container_pane_find(struct cow_container *,
+    const char *);
+bool cow_container_set_name(struct cow_view *, const char *);
+bool cow_container_pane_set_name(struct cow_view *, const char *);
+bool cow_container_rename(struct cow_container *, const char *);
+bool cow_container_pane_rename(struct cow_container *,
+    struct cow_container_pane *, const char *);
 
 /* Add/remove a view from a container. */
 bool cow_container_add(struct cow_container *, struct cow_view *);
@@ -137,6 +206,9 @@ void cow_container_destroy(struct cow_container *);
 /* Restart state. Restoring an invalid record leaves live views unchanged. */
 cJSON		     *cow_container_save(const struct cow_container *);
 struct cow_container *cow_container_restore(const cJSON *);
+bool		      cow_container_restore_defer(const cJSON *);
+void		      cow_container_restore_pending(void);
+void		      cow_container_restore_clear(void);
 
 /* Sync container members from the active member. */
 void cow_view_sync_container_pos(struct cow_view *);

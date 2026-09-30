@@ -52,8 +52,9 @@ cow_stack_apply_pending(struct cow_view *view)
 		return;
 
 	struct cow_view	     *owner = cow_container_ancestor(view, NULL);
-	struct cow_container *c = owner != NULL ? cow_view_container(owner) :
-						  NULL;
+	struct cow_container *c	    = owner != NULL ?
+		cow_container_top_group(owner) :
+		cow_container_top_group(view);
 	uint64_t	      seq;
 	if (view->pending_lower) {
 		seq = cow_stack_min_raise_seq_in_layer(
@@ -72,12 +73,11 @@ cow_stack_apply_pending(struct cow_view *view)
 	}
 
 	if (c != NULL) {
-		struct cow_container_member *m;
-		wl_list_for_each(m, &c->members, link)
-		{
-			m->view->raise_seq     = seq;
-			m->view->needs_raise   = false;
-			m->view->pending_lower = false;
+		struct cow_view *member = NULL;
+		while ((member = cow_container_next_view(c, member)) != NULL) {
+			member->raise_seq     = seq;
+			member->needs_raise   = false;
+			member->pending_lower = false;
 		}
 	}
 	view->raise_seq	    = seq;
@@ -159,6 +159,13 @@ cow_stack_apply(void)
 			entries[i].raise_seq = v->raise_seq;
 			struct cow_view *owner = cow_container_ancestor(v,
 			    &entries[i].transient_depth);
+			struct cow_container *c	    = owner ?
+				cow_view_container(owner) :
+				NULL;
+			if (c && c->frame_view) {
+				entries[i].raise_seq = c->frame_view->raise_seq;
+				entries[i].transient_depth++;
+			}
 			if (owner != NULL && owner != v) {
 				entries[i].raise_seq = owner->raise_seq;
 				uint8_t layer = cow_view_effective_layer(owner);

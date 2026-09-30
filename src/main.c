@@ -125,6 +125,7 @@ main(int argc, char *argv[])
 	wl_list_init(&cow_wm.menu_graveyard);
 	wl_list_init(&cow_wm.views);
 	wl_list_init(&cow_wm.outputs);
+	wl_list_init(&cow_wm.containers);
 
 	/*
 	 * Resolve the config path: use the explicit -c path if given,

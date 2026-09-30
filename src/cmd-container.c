@@ -20,15 +20,41 @@
 #include "cow/memory.h"
 #include "cow/view.h"
 #include "cow/wm.h"
+#include "cow/update.h"
 
 static enum cmd_retval cmd_container_exec(struct cmd *, struct cmd_q *);
 
+static struct cow_view *
+container_frame_target(struct cow_view *view)
+{
+	struct cow_container *c = view ? cow_view_container(view) : NULL;
+	return c && c->frame_view ? c->frame_view : view;
+}
+
+static bool
+container_direction(const char *edge, enum cow_container_axis *axis,
+    bool *before)
+{
+	if (edge == NULL)
+		return false;
+	if (strcmp(edge, "left") == 0 || strcmp(edge, "right") == 0)
+		*axis = COW_CONTAINER_HORIZONTAL;
+	else if (strcmp(edge, "up") == 0 || strcmp(edge, "down") == 0)
+		*axis = COW_CONTAINER_VERTICAL;
+	else
+		return false;
+	*before = strcmp(edge, "left") == 0 || strcmp(edge, "up") == 0;
+	return true;
+}
+
 struct cmd_entry cmd_container_entry = {
 	"window-container",
-	"t:s:e:f:arcqnpNSPHU",
+	"t:s:e:f:N:G:B:b:arcqnpRSPHUED",
 	0,
 	0,
-	"[-t target] [-s source] [-a | -e direction | -f direction | -rcqnpNPHU]",
+	"[-t target | -G name] [-b pane] [-s source] "
+	"[-E -N name -B pane | -E -e direction -B pane | -D | "
+	"-N name | -B pane-name | -a | -e direction | -f direction | -rcqnpRPHU]",
 	cmd_container_exec,
 	0,
 };
@@ -37,11 +63,120 @@ static enum cmd_retval
 cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	struct args *args = self->args;
+	if (args_has(args, 'E') && args_has(args, 'N')) {
+		if (!args_has(args, 'B') || args_has(args, 'G') ||
+		    args_has(args, 't') || args_has(args, 'e') ||
+		    cow_container_create_empty(args_get(args, 'N'),
+			args_get(args, 'B')) == NULL) {
+			cmdq_error(cmdq,
+			    "container: use -E -N unique-name -B pane-name");
+			return CMD_RETURN_ERROR;
+		}
+		return CMD_RETURN_NORMAL;
+	}
 
 	/* Resolve the target window (-t or focused) */
-	struct cow_view *target = cmd_require_target_window(cmdq, "container");
-	if (target == NULL)
+	struct cow_view	     *target = NULL;
+	struct cow_container *named  = NULL;
+	if (args_has(args, 'G')) {
+		if (args_has(args, 't')) {
+			cmdq_error(cmdq,
+			    "container: -G and -t are mutually exclusive");
+			return CMD_RETURN_ERROR;
+		}
+		named = cow_container_find(args_get(args, 'G'));
+		if (named == NULL) {
+			cmdq_error(cmdq, "container: unknown name: %s",
+			    args_get(args, 'G'));
+			return CMD_RETURN_ERROR;
+		}
+		target = named->active ? named->active->view : NULL;
+	} else {
+		target = cmd_require_target_window(cmdq, "container");
+	}
+	if (target == NULL && named == NULL)
 		return (CMD_RETURN_ERROR);
+	struct cow_container	  *container = named ? named :
+						       cow_view_container(target);
+	if (container == NULL)
+		container = cow_container_window_owner(target);
+	struct cow_container_pane *selected  = target ?
+	     cow_view_pane(target) :
+	     cow_container_pane_next(container, NULL);
+	if (selected == NULL && container != NULL)
+		selected = cow_container_pane_next(container, NULL);
+	if (args_has(args, 'b')) {
+		struct cow_container_pane *pane =
+		    cow_container_pane_find(container, args_get(args, 'b'));
+		if (pane == NULL) {
+			cmdq_error(cmdq, "container: unknown pane: %s",
+			    args_get(args, 'b'));
+			return CMD_RETURN_ERROR;
+		}
+		selected = pane;
+		target	 = pane->active ? pane->active->view : NULL;
+	}
+	if (args_has(args, 'D')) {
+		if (container == NULL) {
+			cmdq_error(cmdq, "container: no container to dissolve");
+			return CMD_RETURN_ERROR;
+		}
+		cow_container_destroy(container);
+		cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
+		return CMD_RETURN_NORMAL;
+	}
+	if (args_has(args, 'E')) {
+		enum cow_container_axis axis;
+		bool			before;
+		if (container == NULL || selected == NULL ||
+		    !args_has(args, 'B') ||
+		    !container_direction(args_get(args, 'e'), &axis, &before) ||
+		    !cow_container_split_empty(container, selected,
+			args_get(args, 'B'), axis, before)) {
+			cmdq_error(cmdq,
+			    "container: cannot create empty pane; use -E -e direction -B unique-name in an explicit layout");
+			return CMD_RETURN_ERROR;
+		}
+		return CMD_RETURN_NORMAL;
+	}
+	if (container != NULL && selected != NULL && args_has(args, 'a') &&
+	    !args_has(args, 'e') && args_has(args, 'b')) {
+		struct cow_view *source = args_has(args, 's') ?
+		    cmdq->source.window :
+		    cmd_ctx_target_window(cmdq);
+		if (source == NULL ||
+		    !cow_container_insert(container, selected, source)) {
+			cmdq_error(cmdq,
+			    "container: cannot insert source into pane");
+			return CMD_RETURN_ERROR;
+		}
+		return CMD_RETURN_NORMAL;
+	}
+	if (args_has(args, 'N') || args_has(args, 'B')) {
+		bool ok = args_has(args, 'N') ?
+		    (container ? cow_container_rename(container,
+				     args_get(args, 'N')) :
+				 cow_container_set_name(target,
+				     args_get(args, 'N'))) :
+		    (selected &&
+			cow_container_pane_rename(container, selected,
+			    args_get(args, 'B')));
+		if (!ok)
+			cmdq_error(cmdq,
+			    "container: name is already used or target cannot be named");
+		return ok ? CMD_RETURN_NORMAL : CMD_RETURN_ERROR;
+	}
+	/* A named layout without -b addresses its outer window. */
+	if (named && !args_has(args, 'b') && named->frame_view &&
+	    (args_has(args, 'a') || args_has(args, 'r') ||
+		args_has(args, 'n') || args_has(args, 'p') ||
+		args_has(args, 'R') || args_has(args, 'P')))
+		target = named->frame_view;
+	if (target == NULL) {
+		cmdq_error(cmdq,
+		    "container: this action requires a populated pane");
+		return CMD_RETURN_ERROR;
+	}
 	if (args_has(args, 'H') || args_has(args, 'U')) {
 		bool ok = args_has(args, 'H') ?
 		    cow_container_title_hide(target) :
@@ -83,41 +218,37 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		enum cow_container_axis axis   = COW_CONTAINER_LEAF;
 		bool			before = false;
 		if (edge != NULL) {
-			if (strcmp(edge, "left") == 0 ||
-			    strcmp(edge, "right") == 0)
-				axis = COW_CONTAINER_HORIZONTAL;
-			else if (strcmp(edge, "up") == 0 ||
-			    strcmp(edge, "down") == 0)
-				axis = COW_CONTAINER_VERTICAL;
-			else {
+			if (!container_direction(edge, &axis, &before)) {
 				cmdq_error(cmdq,
 				    "container: expected left, right, up or down");
 				return CMD_RETURN_ERROR;
 			}
-			before = strcmp(edge, "left") == 0 ||
-			    strcmp(edge, "up") == 0;
 		}
 		/* Resolve source window (-s flag, else focused) */
-		struct cow_view *source = NULL;
-		const char	*s_str	= args_get(args, 's');
-		if (s_str != NULL) {
-			struct cmd_ctx src_ctx;
-			char	      *cause = NULL;
-			if (!cmd_ctx_parse(s_str, &src_ctx, &cause)) {
-				cmdq_error(cmdq,
-				    "container add: bad -s specifier: %s",
-				    cause ? cause : "unknown");
-				xfree(cause);
-				return (CMD_RETURN_ERROR);
-			}
-			source = src_ctx.window;
-		} else {
-			source = cow_wm.focused_view;
-		}
+		struct cow_view *source = args_has(args, 's') ?
+		    cmdq->source.window :
+		    cow_wm.focused_view;
 
 		if (source == NULL || source->closed) {
 			cmdq_error(cmdq, "container add: no source window");
 			return (CMD_RETURN_ERROR);
+		}
+		/* The selector-free tab binding groups whole top-level windows.
+		 * Explicit pane selectors retain their existing local meaning.
+		 */
+		if (!edge && !args_has(args, 't') && !args_has(args, 's') &&
+		    !args_has(args, 'G') && !args_has(args, 'b')) {
+			source = container_frame_target(source);
+			target = source;
+		}
+		if (source->container_placeholder ||
+		    target->container_placeholder ||
+		    (edge &&
+			(cow_container_window_owner(source) ||
+			    cow_container_window_owner(target)))) {
+			cmdq_error(cmdq,
+			    "container: layouts can be tabs, not nested panes");
+			return CMD_RETURN_ERROR;
 		}
 
 		/*
@@ -127,8 +258,27 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		 * thing.
 		 */
 		if (target == source) {
+			if (args_has(args, 'G') || args_has(args, 'b')) {
+				cmdq_error(cmdq,
+				    "container: source is already the target");
+				return CMD_RETURN_ERROR;
+			}
 			target = cow_view_walk(source, true,
 			    cow_view_focusable);
+			struct cow_container *group = cow_container_top_group(
+			    source);
+			struct cow_view *first = target;
+			while (group && target && target != source &&
+			    cow_container_top_group(target) == group) {
+				target = cow_view_walk(target, true,
+				    cow_view_focusable);
+				if (target == first) {
+					target = NULL;
+					break;
+				}
+			}
+			if (!edge)
+				target = container_frame_target(target);
 			if (target == NULL || target == source) {
 				cmdq_error(cmdq,
 				    "container add: no other window to group with");
@@ -143,6 +293,11 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		}
 
 		struct cow_container *ctr = cow_view_container(target);
+		if (!cow_container_can_tab(ctr, source)) {
+			cmdq_error(cmdq,
+			    "container: a layout must join an outer tab group");
+			return CMD_RETURN_ERROR;
+		}
 		if (source->parent != NULL || target->parent != NULL ||
 		    source->fullscreen || target->fullscreen) {
 			cmdq_error(cmdq,
@@ -195,9 +350,18 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_NORMAL);
 	}
 
+	/* With no local tab strip, cycle the tab carrying this whole layout. */
+	if ((args_has(args, 'n') || args_has(args, 'p') ||
+		args_has(args, 'R') || args_has(args, 'P')) &&
+	    target->container_member && cow_view_pane(target)->n_tabs == 1) {
+		struct cow_container *c = cow_view_container(target);
+		if (c->frame_view && c->frame_view->container_member)
+			target = c->frame_view;
+	}
 	if (target->container_member != NULL &&
+	    !cow_container_window_owner(target) &&
 	    (args_has(args, 'n') || args_has(args, 'p') ||
-		args_has(args, 'N') || args_has(args, 'P')))
+		args_has(args, 'R') || args_has(args, 'P')))
 		cow_container_activate(cow_view_container(target),
 		    target->container_member);
 
@@ -223,7 +387,7 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_NORMAL);
 	}
 
-	if (args_has(args, 'N')) {
+	if (args_has(args, 'R')) {
 		struct cow_container *ctr = cow_view_container(target);
 		if (ctr == NULL) {
 			cmdq_error(cmdq,

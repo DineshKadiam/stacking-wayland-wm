@@ -285,6 +285,10 @@ cmd_window_expand_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (view == NULL)
 		return (CMD_RETURN_ERROR);
 
+	struct cow_container *c = cow_view_container(view);
+	if (c && c->frame_view)
+		view = c->frame_view;
+
 	enum expand_dir dir = resolve_direction(args_get(args, 'd'));
 	if (dir == EXPAND_ERROR) {
 		cmdq_error(cmdq, "window-expand: invalid direction");
@@ -320,6 +324,9 @@ cmd_window_maximize_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	if (view == NULL)
 		return (CMD_RETURN_ERROR);
+	struct cow_container *c = cow_view_container(view);
+	if (c && c->frame_view)
+		view = c->frame_view;
 
 	bool		   want_h = args_has(args, 'h');
 	bool		   want_v = args_has(args, 'v');
@@ -803,10 +810,13 @@ do_expand(struct cow_view *view, enum expand_dir dir, bool toggle)
 	    ua->y + ua->height :
 	    fy2;
 
+	struct cow_container *group = cow_container_top_group(view);
 	struct cow_view *other;
 	wl_list_for_each(other, &cow_wm.views, wm_link)
 	{
 		if (other == view || other->closed || !other->has_dimensions)
+			continue;
+		if (group && cow_container_top_group(other) == group)
 			continue;
 		if (other->output != view->output)
 			continue;

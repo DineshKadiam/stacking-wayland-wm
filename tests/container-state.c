@@ -238,6 +238,60 @@ main(void)
 	a.content_height = 600;
 	b.min_width	 = 0;
 
+	/* Named single-window groups and pane names survive restart. */
+	CHECK(cow_container_set_name(&a, "work"));
+	CHECK(cow_container_pane_set_name(&a, "editor"));
+	c      = cow_view_container(&a);
+	record = cow_container_save(c);
+	CHECK(cow_container_restore(record) == NULL);
+	cow_container_destroy(c);
+	c = cow_container_restore(record);
+	CHECK(c != NULL && c->n_members == 1);
+	CHECK(cow_container_find("work") == c);
+	CHECK(cow_container_pane_find(c, "editor") == cow_view_pane(&a));
+	cow_container_destroy(c);
+	cJSON_Delete(record);
+
+	/* Missing clients must not remove reserved panes. */
+	c = cow_container_create_empty("layout", "left");
+	CHECK(c != NULL);
+	CHECK(cow_container_split_empty(c, c->root, "right",
+	    COW_CONTAINER_HORIZONTAL, false));
+	CHECK(cow_container_insert(c, cow_container_pane_find(c, "left"), &a));
+	record = cow_container_save(c);
+	cow_container_destroy(c);
+	a.closed = true;
+	c	 = cow_container_restore(record);
+	CHECK(c != NULL && c->n_members == 0 && c->persistent);
+	CHECK(c->root->layout.box.width == c->frame.width);
+	CHECK(c->root->layout.box.height == c->frame.height);
+	CHECK(cow_container_pane_find(c, "right")->layout.box.width > 0);
+	CHECK(cow_container_pane_find(c, "left") != NULL);
+	CHECK(cow_container_pane_find(c, "right") != NULL);
+	cow_container_destroy(c);
+	a.closed = false;
+	/* Mapping rules can populate a config-created layout before restore.
+	 * Failed restoration must leave those live memberships untouched.
+	 */
+	c = cow_container_create_empty("layout", "left");
+	CHECK(cow_container_insert(c, c->root, &a));
+	CHECK(cow_container_insert(c, c->root, &b));
+	CHECK(cow_container_restore(record) == NULL);
+	CHECK(cow_view_container(&a) == c && cow_view_container(&b) == c);
+	cow_container_remove_view(&b);
+	struct cow_container *restored = cow_container_restore(record);
+	CHECK(restored != NULL && restored != c);
+	CHECK(cow_view_container(&a) == restored);
+	CHECK(cow_container_pane_find(restored, "right") != NULL);
+	cow_container_destroy(restored);
+	cJSON *children = cJSON_GetObjectItem(cJSON_GetObjectItem(record,
+						  "tree"),
+	    "children");
+	cJSON_ReplaceItemInObject(cJSON_GetArrayItem(children, 1), "name",
+	    cJSON_CreateString("left"));
+	reject(record);
+	cJSON_Delete(record);
+
 	/* Accept the former per-window flat membership format. */
 	char path[512];
 	CHECK(snprintf(path, sizeof(path), "%s/cow-state.json", directory) > 0);
@@ -253,6 +307,32 @@ main(void)
 	c = cow_view_container(&a);
 	CHECK(c != NULL && c->n_members == 2 && c->active->view == &b);
 	cow_container_destroy(c);
+	/* Internal frame state survives without saving an application tab. */
+	c = cow_container_create_empty("framed", "vacant");
+	CHECK(cow_container_arrange(c, (struct cow_box) { 30, 40, 800, 600 }));
+	struct cow_view frame = { .saved_x   = 10,
+		.saved_y		     = 20,
+		.saved_width		     = 500,
+		.saved_height		     = 400,
+		.maximized_h		     = true,
+		.maximized_h_ignore_reserved = true,
+		.layer			     = 6,
+		.sd			     = COW_SHADE_NORTH,
+		.flags = COW_VIEW_ICONIFIED_FLAG | COW_VIEW_STICKY_DESK_FLAG };
+	c->framed	      = true;
+	cow_container_set_frame(c, &frame);
+	record		      = cow_container_save(c);
+	cow_container_destroy(c);
+	c = cow_container_restore(record);
+	CHECK(c && c->framed && c->frame_state.pending && c->n_members == 0);
+	CHECK(c->frame_state.maximized_h && c->frame_state.ignore_h);
+	CHECK(c->frame_state.restore.width == 500 &&
+	    c->frame_state.restore.height == 400);
+	CHECK(c->frame_state.shade == COW_SHADE_NORTH &&
+	    c->frame_state.layer == 6);
+	CHECK(c->frame_state.flags == frame.flags);
+	cow_container_destroy(c);
+	cJSON_Delete(record);
 	CHECK(rmdir(directory) == 0);
 	return 0;
 }

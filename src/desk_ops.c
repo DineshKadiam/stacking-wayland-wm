@@ -277,16 +277,14 @@ view_assign_desk(struct cow_view *view, uint8_t desk_nr)
 void
 cow_view_assign_desk(struct cow_view *view, uint8_t desk_nr)
 {
-	struct cow_container *c = cow_view_container(view);
+	struct cow_container *c = cow_container_top_group(view);
 	if (c == NULL) {
 		view_assign_desk(view, desk_nr);
 		return;
 	}
-	struct cow_container_member *m;
-	wl_list_for_each(m, &c->members, link)
-	{
-		view_assign_desk(m->view, desk_nr);
-	}
+	struct cow_view *member = NULL;
+	while ((member = cow_container_next_view(c, member)) != NULL)
+		view_assign_desk(member, desk_nr);
 	c->desk = view->desk;
 }
 

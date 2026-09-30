@@ -298,11 +298,18 @@ snap_edges(struct cow_view *view, int *frame_left, int *frame_top,
 	 * snapping, allow our left to snap to their right and our right
 	 * to their left (and top/bottom analogues), so windows align
 	 * touching their neighbours. */
-	struct cow_view *other;
+	struct cow_container *container = cow_container_top_group(view);
+	struct cow_view	     *other;
 	wl_list_for_each(other, &cow_wm.views, wm_link)
 	{
 		if (other == view || pointer_op_group_contains(op, other) ||
 		    !other->has_dimensions)
+			continue;
+		/* Panes move with their frame, so cannot be snap targets for it
+		 * or for another pane in the same container.
+		 */
+		if (container != NULL &&
+		    cow_container_top_group(other) == container)
 			continue;
 		if (!cow_view_visible(other, view->output))
 			continue;
@@ -856,6 +863,13 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 	enum cow_pointer_op_type finished_type = seat->op.type;
 	bool icon_moved     = seat->op.icon_moved;
 	bool joined_container = false;
+	struct cow_container_pane *empty_pane	    = NULL;
+	struct cow_container	  *empty_container  = NULL;
+	if (!seat->op.cancelled && seat->container_drag &&
+	    finished_type == COW_POINTER_OP_MOVE &&
+	    view->container_member == NULL && !cow_container_window_owner(view))
+		empty_container = cow_container_empty_at(seat->pointer_x,
+		    seat->pointer_y, view, &empty_pane);
 	struct cow_output *drop_output = seat->op.drop_output;
 	int drop_edge = seat->op.drop_edge;
 	cow_pan_cancel();
@@ -919,6 +933,9 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 		if (cow_wm.drag_drop_target != NULL)
 			cow_wm.drag_drop_target->dec.dirty = true;
 		cow_wm.drag_drop_target = NULL;
+	} else if (empty_container != NULL) {
+		joined_container = cow_container_insert(empty_container,
+		    empty_pane, view);
 	} else if (seat->container_drag &&
 	    seat->op.type == COW_POINTER_OP_MOVE &&
 	    view->container_member != NULL) {
@@ -970,6 +987,7 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 		cow_wm.drag_drop_target		   = NULL;
 	}
 	seat->container_drag	= false;
+	cow_wm.drag_drop_pane	= NULL;
 	cow_wm.drag_drop_source = NULL;
 	cow_drag_ghost_destroy();
 	cow_geometry_window_hide();
@@ -1155,6 +1173,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 			cow_wm.drag_drop_target->dec.dirty = true;
 		cow_wm.drag_drop_target = NULL;
 		cow_wm.drag_drop_source = NULL;
+		cow_wm.drag_drop_pane	= NULL;
 		seat->container_drag = false;
 		cow_drag_ghost_destroy();
 

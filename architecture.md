@@ -222,6 +222,23 @@ Pane snapshots distinguish requested title hiding from effective visibility.
 Unlike window iteration, container and pane loops do not change the implicit
 command target; callers select a member window explicitly.
 
+Optional container names are globally unique; pane names are unique within
+their container. Names are runtime identity, separate from displayed titles,
+and are included in restart state and query records. An explicitly named
+container may retain one member for mapping rules to populate later. Explicit
+layouts (`window-container -E`) also retain empty panes and an empty group.
+Pane enumeration walks the layout tree, not the membership list. Application
+counts exclude the internal views used for vacant panes.
+
+`container_empty.c` creates native xdg toplevels for the permanent outer frame
+and vacant panes. These reuse the normal decoration, focus and pointer paths.
+The outer frame is not a member of its own layout: its buttons control the
+group. Its client rectangle contains the pane layout. Vacant pane views are
+temporary members, replaced when an application joins and recreated when it
+leaves. Internal windows are recreated from the container record on restart,
+rather than saved as application members. Drops and on-map rules use the same
+pane insertion path.
+
 ## Manage And Render Sequences
 
 River drives two key phases through the `river_window_manager_v1` API. These
@@ -339,15 +356,15 @@ decoration resources remain owned by the view.
 
 Containers use a binary tree to represent columns and rows: horizontal nodes
 divide columns, and vertical nodes within each column divide rows. Horizontal
-nodes never occur below vertical nodes. Leaves are `cow_container_pane`s. A pane
-owns tab order and selection; the container retains its full membership list
-for group operations and restart state. Visibility and titlebar rendering use
-the pane's selected tab, not the container's last activated member. Fullscreen
-hides the other panes temporarily; snapshots use the same visibility check as
-rendering.
+nodes never occur below vertical nodes. Leaves are `cow_container_pane`s. A
+pane owns tab order and selection; the container retains its full membership
+list for group operations and restart state. Visibility and titlebar rendering
+use the pane's selected tab, not the container's last activated member.
+Fullscreen hides the other panes temporarily; snapshots use the same visibility
+check as rendering.
 
-The internal split API can move a tab into a new row or column and prune
-empty leaves. Pane rectangles are converted to content rectangles through the
+The internal split API can move a tab into a new row or column and prune empty
+leaves. Pane rectangles are converted to content rectangles through the
 existing titlebar geometry helpers. Explicit operations arrange the group;
 client dimension events report only a pane's accepted dimensions and must not
 resize the group. `window-container` exposes splits, pane navigation, collapse
@@ -355,18 +372,29 @@ and equalisation. Shared-edge pointer resizes update split proportions through
 the existing pointer-operation loop; outer edges resize the group frame.
 
 Row collapse operates across the entire column, leaving at least one row
-expanded. Whole-container shading renders its titlebars as one horizontal
-strip without replacing the saved layout tree or row-collapse state.
+expanded. Whole-container shading renders its titlebars as one horizontal strip
+without replacing the saved layout tree or row-collapse state.
 
-Restart state stores each container's complete tree, split proportions, tab
+Whole pane layouts can be tabs in an ordinary outer tab group. The layout's
+native frame owns the panes and separately holds membership in the tab group.
+Group traversal includes both levels for stacking, desk/output changes,
+iconification and sticky flags. A hidden outer tab hides all its panes;
+activating a pane selects that tab. Nesting a layout inside another layout's
+pane is rejected. Restart restores these outer tab groups after recreating the
+native frames, resolving their old identifiers through saved layout state.
+
+`src/container_state.c` stores each container's complete tree, split proportions, tab
 order, selected tabs and pre-container floating geometries. The decoder builds
 and validates an unpublished tree before attaching any live views. Missing
 clients remove tabs or empty panes; no particular anchor window must survive.
-Legacy flat membership records remain readable.
+Legacy flat membership records remain readable. The private
+`src/container_internal.h` shares runtime helpers with the decoder.
 
 `src/container_layout.c` provides the geometry calculation for split
 containers. It operates on a binary tree of horizontal and vertical splits,
-with minimum frame sizes at the leaves. It allocates no Wayland objects and
+with minimum frame sizes at the leaves. A bottom-up measurement pass feeds a
+top-down arrangement pass, visiting each node once per pass.
+It allocates no Wayland objects and
 sends no requests. An invalid or undersized layout is rejected without changing
 the previous geometry; temporary minimum-size constraints do not overwrite the
 requested split proportions. This layout engine is tested independently and

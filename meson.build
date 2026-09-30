@@ -127,6 +127,7 @@ srcs = [
     'src/view.c',
     'src/container.c',
     'src/container_state.c',
+    'src/container_empty.c',
     'src/container_layout.c',
     'src/wm.c',
     'src/xpm.c',
