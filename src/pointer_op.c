@@ -863,6 +863,18 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 	enum cow_pointer_op_type finished_type = seat->op.type;
 	bool icon_moved     = seat->op.icon_moved;
 	bool joined_container = false;
+	bool			   detached_container = false;
+	bool detach_pane = false;
+	if (seat->pane_drag && seat->has_pointer_position &&
+	    !seat->op.cancelled) {
+		struct cow_container *c = cow_view_container(view);
+		if (c != NULL) {
+			struct cow_box frame = c->frame_view ?
+			    cow_view_frame_box(c->frame_view) : c->frame;
+			detach_pane = !cow_box_contains_point(&frame,
+			    seat->pointer_x, seat->pointer_y);
+		}
+	}
 	struct cow_container_pane *empty_pane	    = NULL;
 	struct cow_container	  *empty_container  = NULL;
 	if (!seat->op.cancelled && seat->container_drag &&
@@ -933,7 +945,7 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 		if (cow_wm.drag_drop_target != NULL)
 			cow_wm.drag_drop_target->dec.dirty = true;
 		cow_wm.drag_drop_target = NULL;
-	} else if (seat->pane_drag) {
+	} else if (seat->pane_drag && !detach_pane) {
 		struct cow_view *target	    = cow_wm.drag_drop_target;
 		uint32_t	 edge	    = cow_wm.drag_drop_edge;
 		bool		 rearranged = false;
@@ -963,16 +975,36 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 		/* cow_container_remove_view restores pre-container
 		 * dimensions */
 		cow_container_remove_view(view);
-		/* Use restored (proposed) size for centring on pointer */
-		int rw = view->proposed_width > 0 ? view->proposed_width :
-						     view->content_width;
-		int rh = view->proposed_height > 0 ? view->proposed_height :
-						      view->content_height;
+		/* Detach queues the restored size, not yet proposed to River.
+		 * Replace its old position with the drop position as well.
+		 */
+		int rw = view->pending_resize ? view->pending_width :
+						view->content_width;
+		int rh = view->pending_resize ? view->pending_height :
+						view->content_height;
+		struct cow_output *output = cow_output_at(seat->pointer_x,
+		    seat->pointer_y);
+		if (output && output->current_desk) {
+			cow_view_reassign_output(view, output);
+			cow_view_assign_desk(view, output->current_desk->nr);
+			cow_view_clear_orphan(view);
+		}
 		int frame_w, frame_h, content_x, content_y;
 		cow_titlebar_frame_geometry(view, rw, rh, &frame_w, &frame_h,
 		    &content_x, &content_y);
 		view->x		= seat->pointer_x - frame_w / 2 + content_x;
 		view->y		= seat->pointer_y - frame_h / 2 + content_y;
+		/* Keep the content origin on the drop page, even near an edge.
+		 */
+		if (output) {
+			if (view->x < output->x)
+				view->x = output->x;
+			if (view->y < output->y)
+				view->y = output->y;
+		}
+		cow_view_sync_vxy_from_global(view);
+		cow_view_set_pending_geometry(view, view->x, view->y, rw, rh);
+		detached_container = true;
 		view->dec.dirty = true;
 		cow_update_request(COW_UPDATE_MANAGE);
 	} else if (seat->container_drag &&
@@ -1011,7 +1043,8 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 	cow_geometry_window_hide();
 
 	/* Joining adopts the target's output, not the source's old geometry. */
-	if (finished_type != COW_POINTER_OP_ICON_MOVE && !joined_container) {
+	if (finished_type != COW_POINTER_OP_ICON_MOVE && !joined_container &&
+	    !detached_container) {
 		int width = view->proposed_width > 0 ? view->proposed_width :
 		    view->content_width;
 		int height = view->proposed_height > 0 ? view->proposed_height :

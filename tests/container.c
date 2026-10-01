@@ -16,6 +16,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #include "cow/view.h"
 #include "cow/stack.h"
@@ -29,6 +31,7 @@
 #include "cow/memory.h"
 #include "cow/seat.h"
 #include "cow/pointer_op.h"
+#include "river-window-management-v1-client-protocol.h"
 
 #define CHECK(expr)                                                        \
 	do {                                                               \
@@ -1249,5 +1252,114 @@ main(void)
 		cow_container_destroy(c);
 	}
 	cow_wm.current_output = NULL;
+	/* Mouse detachment replaces saved positions with the drop coordinates,
+	 * including the destination desk and viewport. No compositor is needed
+	 * to queue the seat's op_end request.
+	 */
+	int sockets[2];
+	CHECK(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == 0);
+	struct wl_display *display = wl_display_connect_to_fd(sockets[0]);
+	CHECK(display != NULL);
+	struct river_seat_v1 *river_seat = (struct river_seat_v1 *)
+	    wl_proxy_create((struct wl_proxy *)display,
+		&river_seat_v1_interface);
+	CHECK(river_seat != NULL);
+	for (int scenario = 0; scenario < 4; scenario++) {
+		int cross_output = scenario % 2;
+		bool pane_drag = scenario >= 2;
+		struct cow_output outputs[2]  = { 0 };
+		struct cow_desk	  desks[2]    = { 0 };
+		struct cow_view	  windows[2]  = { 0 };
+		struct cow_config drag_config = { .clamp_mode = COW_CLAMP_NONE,
+			.page_cols			      = 3,
+			.page_rows			      = 3,
+			.edge_scroll			      = true,
+			.page_visibility = COW_PAGE_VISIBILITY_ORIGIN };
+		wl_list_init(&drag_config.icon_placement_overrides);
+		cow_config = &drag_config;
+		wl_list_init(&cow_wm.outputs);
+		wl_list_init(&cow_wm.views);
+		for (int i = 0; i < 2; i++) {
+			outputs[i].x		= i * 1600;
+			outputs[i].width	= 1600;
+			outputs[i].height	= 900;
+			outputs[i].current_desk = &desks[i];
+			wl_list_init(&outputs[i].visible_views);
+			wl_list_init(&outputs[i].desk_set.desks);
+			wl_list_init(&desks[i].views);
+			desks[i].nr	 = i;
+			desks[i].page_vx = 3200;
+			desks[i].page_vy = 900;
+			wl_list_insert(&outputs[i].desk_set.desks,
+			    &desks[i].set_link);
+			wl_list_insert(&cow_wm.outputs, &outputs[i].wm_link);
+			windows[i].output	  = &outputs[0];
+			windows[i].desk		  = &desks[0];
+			windows[i].has_dimensions = true;
+			windows[i].content_width  = 400;
+			windows[i].content_height = 300;
+			windows[i].x		  = 100;
+			windows[i].y		  = 100;
+			wl_list_insert(&cow_wm.views, &windows[i].wm_link);
+			wl_list_insert(&desks[0].views, &windows[i].desk_views);
+			wl_list_insert(&outputs[0].visible_views,
+			    &windows[i].output_views);
+		}
+		c = cow_container_create(&windows[0], &windows[1]);
+		if (pane_drag)
+			CHECK(cow_container_split(&windows[1], &windows[0],
+			    COW_CONTAINER_VERTICAL, false));
+		if (!cross_output) {
+			wl_list_remove(&desks[1].set_link);
+			wl_list_insert(&outputs[0].desk_set.desks,
+			    &desks[1].set_link);
+			outputs[0].current_desk = &desks[1];
+		}
+		struct cow_seat drag = {
+			.river_seat	      = river_seat,
+			.op_in_progress	      = true,
+			.op_released	      = true,
+			.container_drag	      = true,
+			.pane_drag = pane_drag,
+			.has_pointer_position = true,
+			.pointer_x	      = cross_output ? 1650 : 800,
+			.pointer_y	      = 450,
+			.op		      = { .type = COW_POINTER_OP_MOVE,
+						 .view	= &windows[0] }
+		};
+		if (pane_drag) {
+			/* A click without a drop target inside the layout cancels,
+			 * as does Escape even when the pointer is outside.
+			 */
+			struct cow_seat cancelled = drag;
+			cancelled.pointer_x = c->frame.x + c->frame.width / 2;
+			cancelled.pointer_y = c->frame.y + c->frame.height / 2;
+			cow_pointer_op_process(&cancelled);
+			CHECK(windows[0].container_member != NULL);
+			CHECK(cancelled.op.cancelled);
+			cancelled = drag;
+			cancelled.op.cancelled = true;
+			cow_pointer_op_process(&cancelled);
+			CHECK(windows[0].container_member != NULL);
+		}
+		windows[0].proposed_width = 123;
+		cow_pointer_op_process(&drag);
+		CHECK(windows[0].container_member == NULL);
+		CHECK(windows[0].output == &outputs[cross_output]);
+		CHECK(windows[0].desk == &desks[1]);
+		CHECK(windows[0].pending_width == 400 &&
+		    windows[0].pending_height == 300);
+		CHECK(windows[0].x == (cross_output ? 1600 : 600) &&
+		    windows[0].y == 300);
+		CHECK(windows[0].pending_x == windows[0].x &&
+		    windows[0].pending_y == windows[0].y);
+		CHECK(windows[0].vx == (cross_output ? 3200 : 3800) &&
+		    windows[0].vy == 1200);
+		CHECK(wl_list_empty(&cow_wm.containers));
+	}
+	cow_config = NULL;
+	wl_proxy_destroy((struct wl_proxy *)river_seat);
+	wl_display_disconnect(display);
+	close(sockets[1]);
 	return 0;
 }

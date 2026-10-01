@@ -2524,9 +2524,10 @@ the whole container; use the detach button to remove a window.
 See also **window-move -C**, which allows containers to be formed interactively
 by dragging an uncontained window onto another. The titlebar or central area
 joins its tab set; the content edges create a split, indicated by an orange
-border on the destination side. A window already in a container is detached by
-this operation. In environments where mouse modifier combinations are
-unreliable (e.g. VNC), bind **container add** to a key instead:
+border on the destination side. A window already in a container is detached at
+the pointer, using its previous size and the destination output's current desk
+and page. In environments where mouse modifier combinations are unreliable
+(e.g. VNC), bind **container add** to a key instead:
 
     bind L+g   window-container -a
     bind LS+g  window-container -r
