@@ -47,6 +47,8 @@ struct cow_ipc {
 	struct cow_ipc_client clients[COW_IPC_MAX_CLIENTS];
 	int		      num_clients;
 	bool		      startup_mode;
+	bool		      loading_defaults;
+	bool		      skip_defaults;
 };
 
 extern struct cow_ipc cow_ipc;
@@ -71,11 +73,11 @@ void cow_ipc_fini(void);
 bool cow_ipc_dispatch(const char *, int);
 
 /*
- * Load a line-based config file by dispatching each line as a command.
+ * Load defaults, then the user configuration; either path may be NULL.
  * Exec commands are deferred until cow_exec_run_deferred() is called.
  * Returns true on success.
  */
-bool cow_ipc_load_config(const char *);
+bool cow_ipc_load_config(const char *, const char *);
 bool cow_ipc_include_config(const char *, struct cmd_q *);
 
 /*

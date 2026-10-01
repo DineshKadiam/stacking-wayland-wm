@@ -42,7 +42,7 @@
 #endif
 
 static const char *usage =
-    "usage: cow [-hsv] [-c config] [-l level] [-o file] "
+    "usage: cow [-hnsv] [-c config] [-l level] [-o file] "
     "[-C auto|always|never]\n";
 
 int
@@ -56,13 +56,16 @@ main(int argc, char *argv[])
 	enum cow_log_colour log_colour = COW_LOG_COLOUR_AUTO;
 	int	    ch;
 
-	while ((ch = getopt(argc, argv, "C:c:hl:o:sv")) != -1) {
+	while ((ch = getopt(argc, argv, "C:c:hl:no:sv")) != -1) {
 		switch (ch) {
 		case 'C':
 			log_colour_value = optarg;
 			break;
 		case 'c':
 			config_path = optarg;
+			break;
+		case 'n':
+			cow_ipc.skip_defaults = true;
 			break;
 		case 'l':
 			log_level_value = optarg;
@@ -126,14 +129,17 @@ main(int argc, char *argv[])
 	/*
 	 * Resolve the config path: use the explicit -c path if given,
 	 * otherwise search the default locations.  If nothing is found,
-	 * proceed with built-in defaults and no warning -- the user may
+	 * proceed with the shipped defaults -- the user may
 	 * simply not have a config file yet.
 	 */
 	if (config_path == NULL)
 		config_path = cow_config_default_path();
 
-	if (config_path != NULL && !cow_ipc_load_config(config_path))
-		cow_log_warn("config load failed, using defaults");
+	if (!cow_ipc_load_config(cow_ipc.skip_defaults ?
+		    NULL :
+		    cow_config_defaults_path(),
+		config_path))
+		cow_log_warn("user config load failed");
 
 	/*
 	 * Decoration-click defaults.  Each (region, clicks) pair is

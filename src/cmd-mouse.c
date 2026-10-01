@@ -32,16 +32,16 @@ static enum cmd_retval cmd_mouse_exec(struct cmd *, struct cmd_q *);
 
 struct cmd_entry cmd_mouse_entry = {
 	"mouse",
-	"",
-	2,
+	"+d",
+	1,
 	-1,
-	"mouse [contexts:]key action ...",
+	"mouse [-d] [contexts:]key [action ...]",
 	cmd_mouse_exec,
 	CMD_CONFIG,
 };
 
 static enum cmd_retval
-add_mouse_binding(struct cmd *self)
+update_mouse_binding(struct cmd *self)
 {
 	struct args *args = self->args;
 	struct wl_list *bindings = &cow_config->mouse_bindings;
@@ -57,6 +57,10 @@ add_mouse_binding(struct cmd *self)
 		}
 	}
 
+	if (args_has(args, 'd')) {
+		cow_rebind_all_seats();
+		return CMD_RETURN_NORMAL;
+	}
 	struct cow_mouse_binding_entry *entry = xcalloc(1, sizeof(*entry));
 	entry->key_string		      = xstrdup(args->argv[0]);
 	entry->action_string =
@@ -71,6 +75,11 @@ add_mouse_binding(struct cmd *self)
 static enum cmd_retval
 cmd_mouse_exec(struct cmd *self, struct cmd_q *cmdq)
 {
+	if ((args_has(self->args, 'd') && self->args->argc != 1) ||
+	    (!args_has(self->args, 'd') && self->args->argc < 2)) {
+		cmdq_error(cmdq, "usage: %s", cmd_mouse_entry.usage);
+		return CMD_RETURN_ERROR;
+	}
 	uint32_t context;
 	const char *mouse, *error;
 	if (!cow_binding_parse_context(self->args->argv[0], &context,
@@ -82,5 +91,5 @@ cmd_mouse_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 	(void)context;
 	(void)mouse;
-	return add_mouse_binding(self);
+	return update_mouse_binding(self);
 }

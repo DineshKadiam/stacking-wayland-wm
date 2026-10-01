@@ -41,6 +41,7 @@ enum cow_menu_relief {
 };
 
 struct cow_menu_style {
+	uint32_t default_fields; /* Properties supplied by shipped defaults. */
 	float bg[4];	    /* background colour */
 	float fg[4];	    /* item text colour */
 	float title_bg[4];  /* title item background */
@@ -114,6 +115,7 @@ struct cow_menu_item {
 };
 
 struct cow_menu {
+	bool inherited; /* replace default items on first menu-add */
 	char		      *name;  /* unique identifier used in config */
 	struct cow_menu_style style; /* values for explicitly overridden fields */
 	uint32_t	       style_overrides;

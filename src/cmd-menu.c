@@ -180,6 +180,15 @@ cmd_menu_add_exec(struct cmd *self, struct cmd_q *cmdq)
 		xfree(action);
 		return (CMD_RETURN_ERROR);
 	}
+	if (m->inherited) {
+		cow_menu_clear(m);
+		/* Record the implicit replacement for configuration export.
+		 */
+		char *argv[] = { "menu-clear", (char *)name };
+		char *clear  = cmd_argv_to_command_string(2, argv, 0);
+		cow_config_command_add(cow_config, clear);
+		xfree(clear);
+	}
 	if (args_has(args, 'T'))
 		cow_menu_enable_typeahead(m);
 	if (args_has(args, 'M'))
@@ -721,6 +730,45 @@ cmd_menu_style_exec(struct cmd *self, struct cmd_q *cmdq)
 
 out:
 	if (ret == CMD_RETURN_NORMAL) {
+		if (!cow_ipc.loading_defaults) {
+			uint32_t gradient_field = field == COW_MENU_STYLE_BG ?
+			    COW_MENU_STYLE_BG_GRADIENT :
+			    field == COW_MENU_STYLE_TITLE_BG ?
+			    COW_MENU_STYLE_TITLE_BG_GRADIENT :
+			    0;
+			const struct cow_menu_style *source = st;
+			if (menu_name &&
+			    (!menu ||
+				!(menu->style_overrides & gradient_field)))
+				source = &cow_config->menu_style;
+			if (gradient_field &&
+			    (source->default_fields & gradient_field)) {
+				struct cow_gradient *gradient = field ==
+					COW_MENU_STYLE_BG ?
+				    &st->bg_gradient :
+				    &st->title_bg_gradient;
+				gradient->mode = COW_GRADIENT_NONE;
+				field |= gradient_field;
+				char *argv[] = { "menu-style", "-m",
+					(char *)menu_name,
+					gradient_field ==
+						COW_MENU_STYLE_BG_GRADIENT ?
+					    "bg.gradient" :
+					    "title.bg.gradient",
+					"none" };
+				char *clear  = menu_name ?
+				     cmd_argv_to_command_string(5, argv, 0) :
+				     cmd_argv_to_command_string(3,
+					 (char *[]) { argv[0], argv[3],
+					     argv[4] },
+					 0);
+				cow_config_command_add(cow_config, clear);
+				xfree(clear);
+			}
+			st->default_fields &= ~field;
+		} else {
+			st->default_fields |= field;
+		}
 		if (menu_name != NULL && menu == NULL)
 			menu = cow_menu_create(menu_name);
 		if (menu_name != NULL && menu == NULL) {

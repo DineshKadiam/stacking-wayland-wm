@@ -36,6 +36,7 @@
 #include "cow/ipc.h"
 #include "cow/keybinding.h"
 #include "cow/memory.h"
+#include "cow/menu.h"
 #include "cow/util.h"
 #include "cow/wm.h"
 
@@ -51,7 +52,11 @@ static struct cow_ipc_client *ipc_find_client_fd(int);
 bool
 cow_ipc_init(void)
 {
+	char *config_path = cow_ipc.config_path;
+	bool  skip_defaults = cow_ipc.skip_defaults;
 	memset(&cow_ipc, 0, sizeof(cow_ipc));
+	cow_ipc.config_path = config_path;
+	cow_ipc.skip_defaults = skip_defaults;
 	cow_ipc.server_fd = -1;
 	for (int i = 0; i < COW_IPC_MAX_CLIENTS; i++)
 		cow_ipc.clients[i].fd = -1;
@@ -240,18 +245,29 @@ cow_ipc_dispatch(const char *line, int client_fd)
 }
 
 bool
-cow_ipc_load_config(const char *path)
+cow_ipc_load_config(const char *defaults, const char *path)
 {
 	cow_ipc.startup_mode = true;
 
-	bool ok = cow_ipc_load_file(path, -1, NULL);
+	if (defaults != NULL) {
+		cow_ipc.loading_defaults = true;
+		if (!cow_ipc_load_file(defaults, -1, NULL))
+			cow_log_warn(
+			    "cannot load defaults: %s; using built-in values",
+			    defaults);
+		cow_ipc.loading_defaults = false;
+		struct cow_menu *menu;
+		wl_list_for_each(menu, &cow_wm.menus, link)
+		    menu->inherited = true;
+	}
+	bool ok = path == NULL || cow_ipc_load_file(path, -1, NULL);
 
 	cow_ipc.startup_mode = false;
 
 	if (!ok)
 		cow_log_error("cannot open config: %s", path);
 
-	if (ok) {
+	if (ok && path != NULL) {
 		/* Remember the path so that 'moocow quit -r' doesn't crash. */
 		char *new_path = xstrdup(path);
 		xfree(cow_ipc.config_path);

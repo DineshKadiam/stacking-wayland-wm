@@ -529,6 +529,7 @@ int cow_config_repeat_interval_ms(void);
  * ~/.config/cow/cow.conf, /etc/cow/cow.conf.
  */
 const char *cow_config_default_path(void);
+const char *cow_config_defaults_path(void);
 
 bool cow_config_get_output_background(struct cow_config *, const char *,
     float[4]);

@@ -483,6 +483,12 @@ cow_config_destroy(struct cow_config *config)
 }
 
 const char *
+cow_config_defaults_path(void)
+{
+	return COW_DATADIR "/cow-defaults.conf";
+}
+
+const char *
 cow_config_default_path(void)
 {
 	static char path[4096];

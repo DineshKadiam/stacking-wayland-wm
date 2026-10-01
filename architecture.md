@@ -41,7 +41,7 @@ river -c 'cow-start'
 
 At startup CoW:
 
-1. Loads configuration commands from `cow.conf`;
+1. Loads the installed `cow-defaults.conf`, then user commands from `cow.conf`;
 2. Connects to the Wayland display;
 3. Binds River's window-management protocol globals;
 4. Creates command and status sockets under `XDG_RUNTIME_DIR`;
@@ -51,6 +51,13 @@ At startup CoW:
 The configuration file and runtime IPC use the same command language. This is
 intentional: a line in `cow.conf` should usually be usable through `moocow` as
 well.
+
+The package-owned baseline is installed under `datadir/cow`. Startup and
+`quit -r` use the same defaults-then-user loader; `cow -n` disables the
+baseline. Menus inherited from defaults are replaced on their first user
+`menu-add`. That implicit clear is recorded alongside configuration commands so
+exported configs can be replayed without accumulating duplicate entries.
+`show config -D` reads the installed baseline without executing it.
 
 CoW does not need a CoW-specific file descriptor from River. It connects like
 any other Wayland client by calling `wl_display_connect(NULL)`. libwayland then

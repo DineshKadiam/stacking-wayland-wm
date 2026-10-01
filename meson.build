@@ -391,6 +391,15 @@ alias_args_test = executable('test-alias-args',
 )
 test('alias-args', alias_args_test)
 
+config_layers_test = executable('test-config-layers',
+    ['tests/config-layers.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
+    objects: cow.extract_objects(wm_test_sources),
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('config-layers', config_layers_test,
+    args: files('config/cow/cow-defaults.conf'))
+
 icon_hover_sources = []
 foreach source : wm_test_sources
     if source != 'src/view.c'
@@ -667,6 +676,11 @@ install_data(
     'config/cow/cowbar.conf',
     'config/cow/cowclock.conf',
     install_dir: etc_prefix + '/etc/cow',
+)
+
+install_data(
+    'config/cow/cow-defaults.conf',
+    install_dir: datadir / 'cow',
 )
 
 install_data(

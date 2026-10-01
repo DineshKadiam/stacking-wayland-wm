@@ -77,10 +77,6 @@ do_reload(struct cmd_q *cmdq)
 	const char *path = cow_ipc.config_path;
 	if (path == NULL)
 		path = cow_config_default_path();
-	if (path == NULL) {
-		cmdq_error(cmdq, "quit -r: no config file found");
-		return;
-	}
 
 	struct cow_config *old = cow_config;
 	cow_config	       = cow_config_create();
@@ -98,7 +94,10 @@ do_reload(struct cmd_q *cmdq)
 	cow_menu_destroy_all();
 	wl_list_init(&cow_wm.menus);
 
-	if (!cow_ipc_load_config(path)) {
+	if (!cow_ipc_load_config(cow_ipc.skip_defaults ?
+		    NULL :
+		    cow_config_defaults_path(),
+		path)) {
 		cmdq_error(cmdq, "quit -r: config load failed");
 		return;
 	}
@@ -155,5 +154,6 @@ do_reload(struct cmd_q *cmdq)
 	}
 
 	cow_update_request(COW_UPDATE_MANAGE);
-	cow_log_info("configuration reloaded from %s", path);
+	cow_log_info("configuration reloaded from %s",
+	    cow_ipc.config_path ? cow_ipc.config_path : "defaults");
 }

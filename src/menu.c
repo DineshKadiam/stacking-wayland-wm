@@ -820,6 +820,7 @@ cow_menu_clear(struct cow_menu *menu)
 {
 	if (menu == NULL)
 		return;
+	menu->inherited = false;
 	struct cow_menu_item *it, *tmp;
 	wl_list_for_each_safe(it, tmp, &menu->items, link)
 	{

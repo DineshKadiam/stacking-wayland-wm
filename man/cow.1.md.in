@@ -10,7 +10,7 @@ cow - Compositor On Wayland
 
 # SYNOPSIS
 
-**cow** \[**-hv**\] \[**-c** *config*\] \[**-l** *level*\] \[**-o** *file*\]
+**cow** \[**-hnv**\] \[**-c** *config*\] \[**-l** *level*\] \[**-o** *file*\]
 \[**-C** *auto\|always\|never*\]
 
 # DESCRIPTION
@@ -36,6 +36,11 @@ bindings, etc.
 **-h**
 
 : Print usage and exit.
+
+**-n**
+
+: Skip the installed defaults. Built-in fallback values and the selected
+  user configuration still apply. This also applies to configuration reloads.
 
 **-l** *level*
 
@@ -439,6 +444,44 @@ the same across all outputs. See the *deskstop\_configuration* setting.
 
 # CONFIGURATION
 
+CoW first loads **<PREFIX>/share/cow/cow-defaults.conf**, then your
+**cow.conf**. The installed defaults provide decorations, container controls,
+bindings and menus, but do not start applications. Package upgrades update this
+baseline; put your changes in **cow.conf**, not the installed defaults file.
+
+The defaults use a teal gradient theme. Setting a solid menu or decoration
+colour replaces its inherited default gradient. Explicitly configured gradients
+are retained, so their colours can still have a separate fallback. Changing a
+titlebar colour also updates inherited tab colours in that decor profile;
+explicit tab settings are left alone.
+
+Settings and matching bindings in your file override the defaults. Use **bind
+-d** or **mouse -d** to remove unwanted bindings. The first **menu-add** for a
+shipped menu replaces its default entries; subsequent additions append
+normally. **menu-style** alone leaves the entries intact. Use **menu-clear** or
+**menu-destroy** to remove them explicitly.
+
+**quit -r** reloads both layers, even without a user file. **-c** selects the
+user layer, while **-n** skips the installed defaults. If the defaults file is
+missing, CoW warns and continues with built-in fallback values.
+
+Inspect the defaults and override just what you need:
+
+```sh
+moocow show config -D -f config | less
+moocow show config step
+moocow show -a binding -f config
+```
+
+For example, a user **cow.conf** can contain:
+
+```text
+set step 40
+alias terminal exec foot
+decor -d default titlebar.font 'sans-serif Bold 12'
+decor -a default
+```
+
 ## Search Order
 
 Unless overridden with **-c** or **\$COW\_CONFIG**, the configuration file is
@@ -716,6 +759,11 @@ Examples:
     bind 0:L+Return   window-maximize     # over titlebar button 0
 
 ## mouse \[contexts:\]key action ...
+
+## mouse -d \[contexts:\]key
+
+With **-d**, remove the binding with that exact key specification. This can
+remove a mouse binding inherited from the installed defaults.
 
 Mouse bindings use the same modifier format as the **bind** command. The button
 name replaces the keysym:
@@ -1185,6 +1233,14 @@ printed to standard output.
   written directly:
 
       moocow show -f config config > cow.generated.conf
+
+**show config -D**
+
+: Inspect the installed defaults without executing them. JSON contains
+  *path*, *enabled* (whether loading defaults is enabled), and *config* (the
+  file text). With **-f config**, print the file directly, including comments.
+  This shows the installed baseline, not user overrides or built-in fallback
+  values, and also works when CoW was started with **-n**.
 
 ## quit \[-r\]
 
@@ -2797,6 +2853,11 @@ closes. A status client sends no further input and receives an initial JSON
 snapshot followed by a snapshot after each state change.
 
 # FILES
+
+*<PREFIX>/share/cow/cow-defaults.conf*
+
+: Package-owned defaults, loaded before the selected user configuration
+  unless **-n** is given. Inspect with **show config -D**.
 
 *~/cow.conf*
 

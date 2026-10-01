@@ -31,6 +31,7 @@
 struct decor_entry {
 	char	       *key;
 	char	       *value;
+	bool		inherited;
 	struct wl_list link;
 };
 
@@ -176,6 +177,58 @@ cow_decor_reset_profiles(void)
 	runtime_active_profile = NULL;
 }
 
+static void
+decor_override_defaults(struct decor_profile *profile, const char *key,
+    const char *value)
+{
+	static const struct {
+		const char *colour, *effect;
+		bool	    copy_colour;
+	} dependencies[] = {
+		{ "border.active",		   "border.active.gradient",	     false },
+		{ "border.inactive",		     "border.inactive.gradient",	 false },
+		{ "titlebar.active_colour",	    "titlebar.active_gradient",	false },
+		{ "titlebar.inactive_colour",      "titlebar.inactive_gradient",
+		    false								      },
+		{ "titlebar.active_colour",	    "container.tab.active_gradient",
+		    false								      },
+		{ "titlebar.inactive_colour",      "container.tab.inactive_gradient",
+		    false								      },
+		{ "titlebar.active_colour",	    "container.tab.active_colour",
+		    true								       },
+		{ "titlebar.inactive_colour",      "container.tab.inactive_colour",
+		    true								       },
+		{ "titlebar.fg_active",		"container.tab.fg_active",	   true	},
+		{ "titlebar.fg_inactive",	  "container.tab.fg_inactive",       true  },
+		{ "container.tab.active_colour",
+		    "container.tab.active_gradient",				     false },
+		{ "container.tab.inactive_colour",
+		    "container.tab.inactive_gradient",				       false },
+	};
+	if (cow_ipc.loading_defaults)
+		return;
+	for (size_t i = 0; i < nitems(dependencies); i++) {
+		if (strcmp(key, dependencies[i].colour) != 0)
+			continue;
+		struct decor_entry *entry;
+		wl_list_for_each(entry, &profile->entries, link)
+		{
+			if (!entry->inherited ||
+			    strcmp(entry->key, dependencies[i].effect))
+				continue;
+			const char *replacement = dependencies[i].copy_colour ?
+			    value :
+			    "none";
+			xstrset(&entry->value, replacement);
+			char *argv[]  = { "decor", "-d", profile->name,
+				 entry->key, entry->value };
+			char *command = cmd_argv_to_command_string(5, argv, 0);
+			cow_config_command_add(cow_config, command);
+			xfree(command);
+		}
+	}
+}
+
 static enum cmd_retval
 decor_define(const char *name, const char *key, const char *value,
     struct cmd_q *cmdq)
@@ -189,6 +242,7 @@ decor_define(const char *name, const char *key, const char *value,
 		return (CMD_RETURN_ERROR);
 
 	struct decor_profile *profile = decor_profile_get(name);
+	decor_override_defaults(profile, key, stored);
 
 	struct decor_entry *entry;
 	wl_list_for_each(entry, &profile->entries, link)
@@ -196,6 +250,7 @@ decor_define(const char *name, const char *key, const char *value,
 		if (strcmp(entry->key, key) == 0) {
 			xfree(entry->value);
 			entry->value = stored;
+			entry->inherited = cow_ipc.loading_defaults;
 			cow_style_apply_all_live();
 			return (CMD_RETURN_NORMAL);
 		}
@@ -204,6 +259,7 @@ decor_define(const char *name, const char *key, const char *value,
 	entry = xcalloc(1, sizeof(*entry));
 	entry->key = xstrdup(key);
 	entry->value = stored;
+	entry->inherited = cow_ipc.loading_defaults;
 	wl_list_insert(profile->entries.prev, &entry->link);
 	cow_style_apply_all_live();
 	return (CMD_RETURN_NORMAL);

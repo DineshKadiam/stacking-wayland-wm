@@ -15,6 +15,7 @@
  */
 
 #include <cJSON.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "cow/alias.h"
@@ -44,6 +45,7 @@ static enum cmd_retval show_record(const char *, struct state_value *,
     const char *, struct cmd_q *);
 static enum cmd_retval do_show_config(const char *, const char *,
     struct cmd_q *);
+static enum cmd_retval show_defaults(const char *, struct cmd_q *);
 static cJSON	      *show_config_value(const char *, struct cmd_q *);
 static cJSON	      *show_config_object(struct cmd_q *);
 static void	       json_add_snapshot(cJSON *, const char *,
@@ -93,10 +95,10 @@ static const char *show_config_keys[] = {
 
 struct cmd_entry cmd_show_entry = {
 	"show",
-	"aF:f:t:",
+	"DaF:f:t:",
 	1,
 	2,
-	"show [-f json|config] [-t target] TOPIC [name] | "
+	"show [-D] [-f json|config] [-t target] TOPIC [name] | "
 	"show -a [-f json|config] [-F expr] TOPIC",
 	cmd_show_exec,
 	0,
@@ -150,6 +152,15 @@ cmd_show_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_ERROR);
 	}
 
+	if (args_has(args, 'D')) {
+		if (strcmp(topic, "config") != 0 || args->argc != 1 || all ||
+		    has_target || filter_expr != NULL) {
+			cmdq_error(cmdq,
+			    "show: -D requires config without a key or selectors");
+			return CMD_RETURN_ERROR;
+		}
+		return show_defaults(format, cmdq);
+	}
 	if (all) {
 		if (!state_topic(topic, &source)) {
 			cmdq_error(cmdq, "show: -a is not valid with %s", topic);
@@ -468,6 +479,45 @@ show_record(const char *topic, struct state_value *record, const char *format,
 	}
 	cow_ipc_respond_data(cmdq->client_fd, json);
 	return (CMD_RETURN_NORMAL);
+}
+
+static enum cmd_retval
+show_defaults(const char *format, struct cmd_q *cmdq)
+{
+	const char *path = cow_config_defaults_path();
+	FILE	   *file = fopen(path, "r");
+	if (file == NULL) {
+		cmdq_error(cmdq, "show: cannot read defaults: %s", path);
+		return CMD_RETURN_ERROR;
+	}
+	char   *text = xstrdup(""), *line = NULL;
+	size_t	size = 0, length = 0;
+	ssize_t n;
+	while ((n = getline(&line, &size, file)) >= 0) {
+		text = xrealloc(text, length + n + 1, 1);
+		memcpy(text + length, line, n + 1);
+		length += n;
+	}
+	xfree(line);
+	bool failed = ferror(file);
+	fclose(file);
+	if (failed) {
+		xfree(text);
+		cmdq_error(cmdq, "show: cannot read defaults: %s", path);
+		return CMD_RETURN_ERROR;
+	}
+	if (strcmp(format, "config") == 0)
+		cow_ipc_respond_formatted(cmdq->client_fd, "config", text);
+	else {
+		cJSON *result = cJSON_CreateObject();
+		cJSON_AddStringToObject(result, "path", path);
+		cJSON_AddBoolToObject(result, "enabled",
+		    !cow_ipc.skip_defaults);
+		cJSON_AddStringToObject(result, "config", text);
+		cow_ipc_respond_data(cmdq->client_fd, result);
+	}
+	xfree(text);
+	return CMD_RETURN_NORMAL;
 }
 
 static enum cmd_retval
