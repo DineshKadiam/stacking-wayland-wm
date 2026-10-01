@@ -1333,7 +1333,7 @@ cow_container_split_empty(struct cow_container *c,
     struct cow_container_pane *pane, const char *name,
     enum cow_container_axis axis, bool before)
 {
-	if (!c->persistent || *name == '\0' ||
+	if (*name == '\0' ||
 	    (axis != COW_CONTAINER_HORIZONTAL &&
 		axis != COW_CONTAINER_VERTICAL))
 		return false;
@@ -1343,6 +1343,10 @@ cow_container_split_empty(struct cow_container *c,
 		return true;
 	if (!container_can_split(c))
 		return false;
+	struct cow_box frame = c->frame;
+	if (!c->persistent && !c->frame_view &&
+	    c->root->layout.axis == COW_CONTAINER_LEAF && pane->active)
+		frame = cow_view_frame_box(pane->active->view);
 	struct cow_container_layout *destination = axis ==
 		COW_CONTAINER_HORIZONTAL ?
 	    pane_column(&pane->layout) :
@@ -1356,8 +1360,9 @@ cow_container_split_empty(struct cow_container *c,
 	branch->layout.child[before ? 0 : 1] = &leaf->layout;
 	branch->layout.child[before ? 1 : 0] = destination;
 	destination->parent = leaf->layout.parent = &branch->layout;
-	if ((c->frame.width == 0 && c->n_members == 0) ||
-	    cow_container_arrange(c, c->frame)) {
+	if ((frame.width == 0 && c->n_members == 0) ||
+	    cow_container_arrange(c, frame)) {
+		c->persistent = true;
 		cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 		return true;
 	}
@@ -1968,7 +1973,7 @@ cow_container_remove_view(struct cow_view *view)
 	if (c->persistent && c->n_members == 0) {
 		container_became_empty(c);
 	} else if (c->n_members == 0 ||
-	    (c->n_members == 1 && c->name == NULL &&
+	    (c->n_members == 1 && c->name == NULL && !c->persistent &&
 		(!c->frame_view || !c->frame_view->container_member))) {
 		cow_container_destroy(c);
 	} else if (was_active) {
@@ -2038,8 +2043,8 @@ cow_container_forget_view(struct cow_view *view)
 	container_title_metrics(c);
 	if (was_split)
 		cow_container_arrange(c, c->frame);
-	/* Keep named single-window groups available for later additions. */
-	if (c->n_members == 1 && c->name == NULL &&
+	/* Keep named or persistent groups available for later additions. */
+	if (c->n_members == 1 && c->name == NULL && !c->persistent &&
 	    (!c->frame_view || !c->frame_view->container_member))
 		cow_container_destroy(c);
 	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);

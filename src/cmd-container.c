@@ -152,7 +152,7 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		    !cow_container_split_empty(container, selected,
 			args_get(args, 'B'), axis, before)) {
 			cmdq_error(cmdq,
-			    "container: cannot create empty pane; use -E -e direction -B unique-name in an explicit layout");
+			    "container: cannot add empty pane; select a container with room to split and use -E -e direction -B name");
 			return CMD_RETURN_ERROR;
 		}
 		return CMD_RETURN_NORMAL;

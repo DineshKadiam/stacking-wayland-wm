@@ -506,8 +506,6 @@ cow_container_restore(const cJSON *record)
 			goto fail;
 		c->name = xstrdup(name->valuestring);
 	}
-	if (c->persistent && c->name == NULL)
-		goto fail;
 	struct container_restore state = { .container = c,
 		.replace			      = replace,
 		.remaining			      = 4096,
@@ -517,7 +515,7 @@ cow_container_restore(const cJSON *record)
 	const cJSON *active = cJSON_GetObjectItemCaseSensitive(record,
 	    "active");
 	if (!state.valid || c->root == NULL ||
-	    (c->n_members < 2 && c->name == NULL &&
+	    (c->n_members < 2 && c->name == NULL && !c->persistent &&
 		!(c->framed && c->n_members == 1)) ||
 	    !pane_columns_valid(&c->root->layout, false) ||
 	    (active != NULL && !cJSON_IsString(active)))

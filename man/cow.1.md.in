@@ -2233,10 +2233,10 @@ when necessary. Lowering those minima does not automatically shrink it.
   this name in their outer titlebar. An empty name removes the name.
 
   Named containers survive with one window so mapping rules can add others
-  later. Unless created with **-E**, they disappear when their final window
-  closes or is detached.
-  Anonymous single-window containers dissolve automatically. Names survive
-  a CoW restart. Use **-E** to define a layout before opening applications.
+  later. Unless made persistent with **-E**, they disappear when their final
+  window closes or is detached, and anonymous groups dissolve when only one
+  window remains. Names survive a CoW restart. Use **-E** to define a layout
+  before opening applications.
 
 **window-container -B** *name* \[-t *target*\]
 
@@ -2297,7 +2297,12 @@ when necessary. Lowering those minima does not automatically shrink it.
 
 : Add an empty pane beside the named pane. *direction* is **left**, **right**,
   **up**, or **down**. Left/right adds a column; up/down adds a row within
-  the column. This requires a persistent container created with **-E**.
+  the column. Adding an empty pane makes the container persistent.
+  Omit **-G** and **-b** to split beside the focused pane, for example:
+
+  ```text
+  window-container -E -e left -B spare
+  ```
 
   The outer window keeps its ordinary border, titlebar and buttons, whether
   panes are empty or occupied. Move, resize, shade and iconify operate on the

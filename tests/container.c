@@ -725,6 +725,38 @@ main(void)
 	}
 	c = cow_container_find("automatic");
 	CHECK(c != NULL && c->n_members == 3 && cow_container_is_split(&a));
+	struct cow_box split_frame = c->frame;
+	CHECK(!cow_container_split_empty(c, cow_view_pane(&a), "",
+	    COW_CONTAINER_HORIZONTAL, true));
+	CHECK(!c->persistent);
+	check_command("window-container -t '#pane-a' -E -e left -B spare");
+	CHECK(c->persistent && c->n_members == 3);
+	CHECK(memcmp(&c->frame, &split_frame, sizeof(split_frame)) == 0);
+	CHECK(cow_container_pane_find(c, "spare") != NULL);
+	cow_container_destroy(c);
+	/* Existing anonymous tab groups can gain empty panes and survive
+	 * restart.
+	 */
+	c					 = cow_container_create(&a, &b);
+	struct cow_container_pane *original_tabs = cow_view_pane(&a);
+	struct cow_box		   original_frame = cow_view_frame_box(&a);
+	check_command("window-container -t '#pane-a' -E -e left -B spare");
+	CHECK(c->persistent && c->name == NULL && c->n_members == 2);
+	CHECK(cow_view_pane(&a) == original_tabs &&
+	    cow_view_pane(&b) == original_tabs);
+	CHECK(memcmp(&c->frame, &original_frame, sizeof(original_frame)) == 0);
+	CHECK(cow_container_pane_find(c, "spare")->n_tabs == 0);
+	check_command("window-container -t '#pane-a' -E -e left -B spare");
+	CHECK(cow_container_pane_next(c, cow_container_pane_next(c, NULL)) ==
+	    original_tabs);
+	cow_container_remove_view(&a);
+	cow_container_forget_view(&b);
+	cJSON *converted = cow_container_save(c);
+	cow_container_destroy(c);
+	c = cow_container_restore(converted);
+	CHECK(c != NULL && c->persistent && c->name == NULL);
+	CHECK(cow_container_pane_find(c, "spare") != NULL);
+	cJSON_Delete(converted);
 	cow_container_destroy(c);
 	/* Empty named layouts are addressable before any window exists. */
 	check_command("window-container -E -N workspace -B editor");
