@@ -419,6 +419,20 @@ style_state_test = executable('test-style-state',
 )
 test('style-state', style_state_test)
 
+arguments_test_sources = []
+foreach source : wm_test_sources
+    if source != 'src/arguments.c'
+        arguments_test_sources += source
+    endif
+endforeach
+arguments_test = executable('test-arguments',
+    ['tests/arguments.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
+    objects: cow.extract_objects(arguments_test_sources),
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('arguments', arguments_test)
+
 config_layers_test = executable('test-config-layers',
     ['tests/config-layers.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
     objects: cow.extract_objects(wm_test_sources),

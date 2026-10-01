@@ -148,12 +148,19 @@ winops_apply(struct cow_view *view, struct args *args, struct cmd_q *cmdq)
 	if (args_has(args, 'l'))
 		do_lower(view);
 
-	 /* Sticky-flag.  -s toggles desk-sticky, -S toggles page-sticky. */
+	/* Combined -sS toggles full stickiness as one state.
+	 */
+	bool	 both	     = args_has(args, 's') && args_has(args, 'S');
+	uint32_t sticky_mask = COW_VIEW_STICKY_DESK_FLAG |
+	    COW_VIEW_STICKY_PAGE_FLAG;
+	bool sticky_target = cmdq->in_rule ||
+	    (view->flags & sticky_mask) != sticky_mask;
 	if (args_has(args, 's')) {
 		if (!cmdq->in_style)
 			view->policy_overrides |= COW_VIEW_POLICY_STICKY_DESK;
 		bool currently = (view->flags & COW_VIEW_STICKY_DESK_FLAG) != 0;
-		bool target    = cmdq->in_rule ? true : !currently;
+		bool target    = both ? sticky_target :
+					cmdq->in_rule || !currently;
 		if (target != currently) {
 			view->flags ^= COW_VIEW_STICKY_DESK_FLAG;
 			cow_container_sync_flags(view,
@@ -177,7 +184,8 @@ winops_apply(struct cow_view *view, struct args *args, struct cmd_q *cmdq)
 		if (!cmdq->in_style)
 			view->policy_overrides |= COW_VIEW_POLICY_STICKY_PAGE;
 		bool currently = (view->flags & COW_VIEW_STICKY_PAGE_FLAG) != 0;
-		bool target    = cmdq->in_rule ? true : !currently;
+		bool target    = both ? sticky_target :
+					cmdq->in_rule || !currently;
 		cow_view_set_page_sticky(view, target);
 	}
 

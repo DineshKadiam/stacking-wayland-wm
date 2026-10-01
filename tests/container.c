@@ -980,6 +980,31 @@ main(void)
 	CHECK(a.x == 2097);
 	wl_list_remove(&obstacle.wm_link);
 	cow_config = NULL;
+	/* Combined stickiness normalises either mixed state across the group.
+	 */
+	uint32_t sticky_mask = COW_VIEW_STICKY_DESK_FLAG |
+	    COW_VIEW_STICKY_PAGE_FLAG;
+	for (unsigned state = 0; state < 4; state++) {
+		a.flags &= ~sticky_mask;
+		if (state & 1)
+			a.flags |= COW_VIEW_STICKY_DESK_FLAG;
+		if (state & 2)
+			a.flags |= COW_VIEW_STICKY_PAGE_FLAG;
+		cow_container_sync_flags(&a, sticky_mask);
+		check_command("winops -t '#pane-b' -Ss");
+		uint32_t expected = state == 3 ? 0 : sticky_mask;
+		CHECK((a.flags & sticky_mask) == expected);
+		CHECK((b.flags & sticky_mask) == expected);
+		CHECK((d.flags & sticky_mask) == expected);
+	}
+	check_command("winops -t '#pane-b' -s");
+	CHECK((a.flags & sticky_mask) == COW_VIEW_STICKY_DESK_FLAG);
+	check_command("winops -t '#pane-b' -S");
+	CHECK((a.flags & sticky_mask) == sticky_mask);
+	check_command("winops -t '#pane-b' -s");
+	CHECK((a.flags & sticky_mask) == COW_VIEW_STICKY_PAGE_FLAG);
+	check_command("winops -t '#pane-b' -S");
+	CHECK((a.flags & sticky_mask) == 0);
 	/* A complete layout can be one outer tab without flattening panes. */
 	a.x		    = 2100;
 	a.pending_resize    = false;

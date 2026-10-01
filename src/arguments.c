@@ -115,7 +115,10 @@ args_parse(const char *template, int argc, char **argv)
 				args_free(args);
 				return (NULL);
 			}
-			args_set(args, opt, optarg);
+			/* musl leaves optarg unchanged for argument-free flags.
+			 * It may still point into a previous command's freed argv.
+			 */
+			args_set(args, opt, ptr[1] == ':' ? optarg : NULL);
 		}
 		argc -= optind;
 		argv += optind;
