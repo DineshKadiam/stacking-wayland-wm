@@ -117,7 +117,8 @@ cmdq_error(struct cmd_q *cmdq, const char *fmt, ...)
 	va_end(ap);
 
 	xasprintf(&cause, "%s:%u: %s",
-	    cmd->file != NULL ? cmd->file : "<command>", cmd->line, msg);
+	    cmd != NULL && cmd->file != NULL ? cmd->file : "<command>",
+	    cmd != NULL ? cmd->line : 0, msg);
 	cmdq_add_cause(cmdq, cause);
 
 	xfree(msg);
