@@ -50,6 +50,7 @@ pane_save(const struct cow_container_pane *pane)
 		cJSON_AddStringToObject(node, "name", pane->name);
 	cJSON_AddNumberToObject(node, "collapsed", pane->layout.collapsed);
 	cJSON_AddBoolToObject(node, "title_hidden", pane->title_hidden);
+	cJSON_AddNumberToObject(node, "zoom", pane->zoom);
 	struct cow_container_member *m;
 	wl_list_for_each(m, &pane->tabs, pane_link)
 	{
@@ -173,6 +174,7 @@ struct container_restore {
 	struct cow_container *replace;
 	unsigned	      remaining;
 	bool		      valid;
+	unsigned	      zoom_count;
 };
 
 /* Native container windows are recreated on restart. Resolve saved tab
@@ -274,7 +276,18 @@ pane_restore(struct container_restore *state, const cJSON *node, unsigned depth)
 			"title_hidden");
 	if (hidden != NULL && !cJSON_IsBool(hidden))
 		goto invalid;
-	pane->title_hidden     = cJSON_IsTrue(hidden);
+	pane->title_hidden = cJSON_IsTrue(hidden);
+	const cJSON *zoom  = cJSON_GetObjectItemCaseSensitive(node, "zoom");
+	if (zoom != NULL) {
+		int value;
+		if (!state_int(node, "zoom", &value) ||
+		    value < COW_CONTAINER_ZOOM_NONE ||
+		    value > COW_CONTAINER_ZOOM_ALL)
+			goto invalid;
+		pane->zoom = value;
+		if (value != COW_CONTAINER_ZOOM_NONE && ++state->zoom_count > 1)
+			goto invalid;
+	}
 	const cJSON *axis      = cJSON_GetObjectItemCaseSensitive(node, "axis");
 	const cJSON *collapsed = cJSON_GetObjectItemCaseSensitive(node,
 	    "collapsed");
@@ -291,6 +304,8 @@ pane_restore(struct container_restore *state, const cJSON *node, unsigned depth)
 
 	if (axis != NULL) {
 		int share;
+		if (pane->zoom != COW_CONTAINER_ZOOM_NONE)
+			goto invalid;
 		if (!cJSON_IsString(axis) || tabs != NULL ||
 		    !cJSON_IsArray(children) ||
 		    cJSON_GetArraySize(children) != 2 ||

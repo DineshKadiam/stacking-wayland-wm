@@ -2397,6 +2397,27 @@ when necessary. Lowering those minima does not automatically shrink it.
   }
   ```
 
+**window-container -z** *column|container|off* \[-t *target*\]
+
+: Temporarily enlarge the target pane to fill its column or the whole
+  container. Its tabs stay available; the other panes in that area are
+  hidden. Repeat the same scope to restore the layout, or use **off**.
+  An outer frame targets its active pane. **-G** and **-b** may also select
+  a named container and pane.
+
+  Zoom preserves the split proportions and outer window geometry, including
+  across restarts. Focusing a hidden pane ends zoom. Unzoom before resizing
+  internal dividers, rearranging panes or collapsing rows. A collapsed row
+  must be expanded before zooming. Windows can still be detached or closed.
+
+  ```text
+  bind LA+z window-container -z column
+  bind LAS+z window-container -z container
+  ```
+
+  Window records expose **pane_zoom** as *off*, *column* or *container*;
+  pane records expose the same value as **zoom**.
+
 **window-container -H** \[-t *target*\]
 
 : Hide the target pane's titlebar without changing its decoration profile.
@@ -2405,6 +2426,19 @@ when necessary. Lowering those minima does not automatically shrink it.
   expanded first. The outer container titlebar remains available when all
   inner titles are hidden. Groups without an outer titlebar retain a title
   on at least one pane.
+
+**window-container -T** \[-A\] \[-t *target*\]
+
+: Toggle the target pane's titlebar. An outer container window targets its
+  active pane. With **-A**, restore all titles if any are hidden; otherwise
+  hide every eligible pane title in that container. Required titles, tab
+  strips and collapsed-row titles remain visible. Decoration profiles are
+  unchanged.
+
+  ```text
+  bind LCA+t window-container -T
+  bind LCAS+t window-container -TA
+  ```
 
 **window-container -U** \[-t *target*\]
 

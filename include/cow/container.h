@@ -35,7 +35,14 @@ struct cow_container_frame_state {
 	bool	       pending;
 };
 
+enum cow_container_zoom {
+	COW_CONTAINER_ZOOM_NONE,
+	COW_CONTAINER_ZOOM_COLUMN,
+	COW_CONTAINER_ZOOM_ALL,
+};
+
 struct cow_container_pane {
+	enum cow_container_zoom		  zoom;
 	char				 *name;
 	struct cow_container_window	 *placeholder;
 	int			     id;
@@ -174,6 +181,8 @@ bool cow_container_collapse(struct cow_view *);
 bool cow_container_title_visible(const struct cow_view *);
 bool cow_container_title_hide(struct cow_view *);
 bool cow_container_titles_restore(struct cow_view *);
+bool cow_container_titles_toggle(struct cow_view *, bool);
+bool cow_container_zoom(struct cow_view *, enum cow_container_zoom);
 bool cow_container_shade(struct cow_view *, bool);
 bool cow_container_shaded_size(const struct cow_view *, int *, int *);
 bool cow_container_equalize(struct cow_view *);

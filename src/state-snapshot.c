@@ -174,6 +174,10 @@ state_snapshot_pane(const struct cow_container *c,
 	rec_set_bool(r, "collapsed",
 	    pane->layout.collapsed != COW_CONTAINER_LEAF);
 	rec_set_bool(r, "title_hidden", pane->title_hidden);
+	rec_set_string(r, "zoom",
+	    pane->zoom == COW_CONTAINER_ZOOM_COLUMN  ? "column" :
+		pane->zoom == COW_CONTAINER_ZOOM_ALL ? "container" :
+						       "off");
 	rec_set_bool(r, "title_visible",
 	    active != NULL && cow_container_title_visible(active));
 	rec_set_container_location(r, c);
@@ -262,6 +266,7 @@ state_snapshot_view(const struct cow_view *view)
 	rec_set_bool(r, "container_active", false);
 	rec_set_number(r, "pane_id", -1);
 	rec_set_bool(r, "pane_collapsed", false);
+	rec_set_string(r, "pane_zoom", "off");
 	rec_set_bool(r, "pane_active", cow_view_is_active_tab(view));
 	rec_set_bool(r, "container_hidden",
 	    cow_container_hides_view(view) ||
@@ -271,6 +276,12 @@ state_snapshot_view(const struct cow_view *view)
 		struct cow_container *ctr = view->container_member->container;
 		rec_set_container_id(r, "container_id", ctr);
 		rec_set_number(r, "pane_id", view->container_member->pane->id);
+		enum cow_container_zoom zoom =
+		    view->container_member->pane->zoom;
+		rec_set_string(r, "pane_zoom",
+		    zoom == COW_CONTAINER_ZOOM_COLUMN  ? "column" :
+			zoom == COW_CONTAINER_ZOOM_ALL ? "container" :
+							 "off");
 		rec_set_bool(r, "pane_collapsed",
 		    view->container_member->pane->layout.collapsed !=
 			COW_CONTAINER_LEAF);

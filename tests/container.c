@@ -585,6 +585,22 @@ main(void)
 	CHECK(b.dec.title_thickness == 20);
 	CHECK(cow_container_titles_restore(&a));
 	CHECK(a.dec.title_thickness == 20);
+	CHECK(cow_container_titles_toggle(&a, false));
+	CHECK(a.dec.title_thickness == 0 && b.dec.title_thickness == 20);
+	CHECK(cow_container_titles_toggle(&a, false));
+	CHECK(a.dec.title_thickness == 20);
+	CHECK(cow_container_titles_toggle(&a, true));
+	CHECK(
+	    cow_container_title_visible(&a) || cow_container_title_visible(&b));
+	CHECK(cow_container_titles_toggle(&b, true));
+	CHECK(a.dec.title_thickness == 20 && b.dec.title_thickness == 20);
+	int saved_frame_width = c->frame.width;
+	c->frame.width	      = 0;
+	CHECK(!cow_container_titles_toggle(&a, true));
+	CHECK(!cow_view_pane(&a)->title_hidden &&
+	    !cow_view_pane(&b)->title_hidden);
+	CHECK(a.dec.title_thickness == 20 && b.dec.title_thickness == 20);
+	c->frame.width = saved_frame_width;
 	CHECK(cow_container_title_hide(&a));
 	struct cow_titlebar_config tb;
 	cow_titlebar_effective_config(&b, &tb);
@@ -836,6 +852,17 @@ main(void)
 	CHECK(cow_decoration_corner_length(&b) == 0);
 	CHECK(cow_container_title_hide(&b));
 	CHECK(!cow_container_title_visible(&b));
+	CHECK(cow_container_titles_restore(&a));
+	CHECK(cow_container_title_visible(&b));
+	CHECK(cow_container_titles_toggle(&a, false));
+	CHECK(!cow_container_title_visible(&b));
+	CHECK(cow_container_titles_toggle(&a, true));
+	CHECK(cow_container_title_visible(&b));
+	check_command("window-container -G framed -TA");
+	CHECK(!cow_container_title_visible(&b));
+	check_command("window-container -G framed -T");
+	CHECK(cow_container_title_visible(&b));
+	CHECK(cow_container_title_hide(&b));
 	a.needs_raise = true;
 	cow_stack_apply_pending(&a);
 	CHECK(a.raise_seq == b.raise_seq);
@@ -990,6 +1017,9 @@ main(void)
 	struct cow_container *tabs = cow_container_create(&a, &obstacle);
 	CHECK(cow_container_window_owner(&a) == c);
 	CHECK(cow_view_container(&a) == tabs);
+	CHECK(cow_container_title_hide(&b));
+	CHECK(cow_container_titles_restore(&a));
+	CHECK(cow_container_title_visible(&b));
 	CHECK(cow_container_top_group(&b) == tabs);
 	CHECK(cow_container_top_group(&d) == tabs);
 	struct cow_view *member	     = NULL;
@@ -1135,6 +1165,30 @@ main(void)
 		    COW_CONTAINER_HORIZONTAL, false));
 		CHECK(panes[2].pending_x > panes[1].pending_x);
 		CHECK(memcmp(&original, &c->frame, sizeof(original)) == 0);
+		int row_height	 = panes[0].pending_height;
+		int column_width = panes[0].pending_width;
+		CHECK(cow_container_zoom(&panes[0], COW_CONTAINER_ZOOM_COLUMN));
+		CHECK(panes[0].pending_height > row_height);
+		CHECK(panes[0].pending_width == column_width);
+		CHECK(cow_container_hides_view(&panes[1]));
+		CHECK(!cow_container_hides_view(&panes[2]));
+		CHECK(cow_container_zoom(&panes[0], COW_CONTAINER_ZOOM_ALL));
+		CHECK(panes[0].pending_width > column_width);
+		CHECK(cow_container_hides_view(&panes[2]));
+		CHECK(memcmp(&original, &c->frame, sizeof(original)) == 0);
+		CHECK(cow_container_zoom(&panes[0], COW_CONTAINER_ZOOM_ALL));
+		CHECK(panes[0].pending_height == row_height);
+		CHECK(panes[0].pending_width == column_width);
+		CHECK(!cow_container_hides_view(&panes[1]));
+		CHECK(cow_container_zoom(&panes[0], COW_CONTAINER_ZOOM_COLUMN));
+		cow_container_activate(c, panes[1].container_member);
+		CHECK(
+		    cow_view_pane(&panes[0])->zoom == COW_CONTAINER_ZOOM_NONE);
+		CHECK(panes[0].pending_height == row_height);
+		CHECK(cow_container_zoom(&panes[0], COW_CONTAINER_ZOOM_ALL));
+		cow_container_forget_view(&panes[0]);
+		CHECK(!cow_container_hides_view(&panes[1]));
+		CHECK(!cow_container_hides_view(&panes[2]));
 		cow_container_destroy(c);
 	}
 	cow_wm.current_output = NULL;

@@ -49,12 +49,13 @@ container_direction(const char *edge, enum cow_container_axis *axis,
 
 struct cmd_entry cmd_container_entry = {
 	"window-container",
-	"t:s:e:f:N:G:B:b:arcqnpRSPHUED",
+	"t:s:e:f:N:G:B:b:z:arcqnpRSPHUEDTA",
 	0,
 	0,
 	"[-t target | -G name] [-b pane] [-s source] "
 	"[-E -N name -B pane | -E -e direction -B pane | -D | "
-	"-N name | -B pane-name | -a | -e direction | -f direction | -rcqnpRPHU]",
+	"-N name | -B pane-name | -a | -e direction | -f direction | "
+	"-z column|container|off | -T [-A] | -rcqnpRPHU]",
 	cmd_container_exec,
 	0,
 };
@@ -63,6 +64,23 @@ static enum cmd_retval
 cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	struct args *args = self->args;
+	unsigned     actions = 0;
+	for (const char *flag = "arcqnpRPHUTzofED"; *flag; flag++)
+		actions += args_has(args, *flag) != 0;
+	/* -e qualifies an add, and -N/-B name an empty layout or pane. */
+	if (args_has(args, 'e') && !args_has(args, 'a') && !args_has(args, 'E'))
+		actions++;
+	if (!args_has(args, 'E'))
+		actions += (args_has(args, 'N') != 0) +
+		    (args_has(args, 'B') != 0);
+	if (actions != 1 || (args_has(args, 'A') && !args_has(args, 'T')) ||
+	    (args_has(args, 's') &&
+		(args_has(args, 'E') ||
+		    (!args_has(args, 'a') && !args_has(args, 'e'))))) {
+		cmdq_error(cmdq,
+		    "container: specify one action with its supported options");
+		return CMD_RETURN_ERROR;
+	}
 	if (args_has(args, 'E') && args_has(args, 'N')) {
 		if (!args_has(args, 'B') || args_has(args, 'G') ||
 		    args_has(args, 't') || args_has(args, 'e') ||
@@ -170,17 +188,40 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (named && !args_has(args, 'b') && named->frame_view &&
 	    (args_has(args, 'a') || args_has(args, 'r') ||
 		args_has(args, 'n') || args_has(args, 'p') ||
-		args_has(args, 'R') || args_has(args, 'P')))
+		args_has(args, 'R') || args_has(args, 'P') ||
+		args_has(args, 'T') || args_has(args, 'U') ||
+		args_has(args, 'z')))
 		target = named->frame_view;
 	if (target == NULL) {
 		cmdq_error(cmdq,
 		    "container: this action requires a populated pane");
 		return CMD_RETURN_ERROR;
 	}
-	if (args_has(args, 'H') || args_has(args, 'U')) {
-		bool ok = args_has(args, 'H') ?
-		    cow_container_title_hide(target) :
-		    cow_container_titles_restore(target);
+	if (args_has(args, 'z')) {
+		const char	       *value = args_get(args, 'z');
+		enum cow_container_zoom scope;
+		if (strcmp(value, "column") == 0)
+			scope = COW_CONTAINER_ZOOM_COLUMN;
+		else if (strcmp(value, "container") == 0)
+			scope = COW_CONTAINER_ZOOM_ALL;
+		else if (strcmp(value, "off") == 0)
+			scope = COW_CONTAINER_ZOOM_NONE;
+		else {
+			cmdq_error(cmdq,
+			    "container: expected zoom scope column, container or off");
+			return CMD_RETURN_ERROR;
+		}
+		if (!cow_container_zoom(target, scope)) {
+			cmdq_error(cmdq, "container: cannot zoom this pane");
+			return CMD_RETURN_ERROR;
+		}
+		return CMD_RETURN_NORMAL;
+	}
+	if (args_has(args, 'H') || args_has(args, 'U') || args_has(args, 'T')) {
+		bool ok = args_has(args, 'T') ?
+		    cow_container_titles_toggle(target, args_has(args, 'A')) :
+		    args_has(args, 'H') ? cow_container_title_hide(target) :
+					  cow_container_titles_restore(target);
 		if (!ok)
 			cmdq_error(cmdq,
 			    "container: cannot change a protected, tabbed or collapsed titlebar");
@@ -365,50 +406,18 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		cow_container_activate(cow_view_container(target),
 		    target->container_member);
 
-	if (args_has(args, 'n')) {
-		struct cow_container *ctr = cow_view_container(target);
-		if (ctr == NULL) {
-			cmdq_error(cmdq,
-			    "container next: window is not in a container");
-			return (CMD_RETURN_ERROR);
-		}
+	struct cow_container *ctr = cow_view_container(target);
+	if (ctr == NULL) {
+		cmdq_error(cmdq, "container: window is not in a container");
+		return CMD_RETURN_ERROR;
+	}
+	if (args_has(args, 'n'))
 		cow_container_activate_next(ctr);
-		return (CMD_RETURN_NORMAL);
-	}
-
-	if (args_has(args, 'p')) {
-		struct cow_container *ctr = cow_view_container(target);
-		if (ctr == NULL) {
-			cmdq_error(cmdq,
-			    "container prev: window is not in a container");
-			return (CMD_RETURN_ERROR);
-		}
+	else if (args_has(args, 'p'))
 		cow_container_activate_prev(ctr);
-		return (CMD_RETURN_NORMAL);
-	}
-
-	if (args_has(args, 'R')) {
-		struct cow_container *ctr = cow_view_container(target);
-		if (ctr == NULL) {
-			cmdq_error(cmdq,
-			    "container swap-next: window is not in a container");
-			return (CMD_RETURN_ERROR);
-		}
+	else if (args_has(args, 'R'))
 		cow_container_swap_next(ctr);
-		return (CMD_RETURN_NORMAL);
-	}
-
-	if (args_has(args, 'P')) {
-		struct cow_container *ctr = cow_view_container(target);
-		if (ctr == NULL) {
-			cmdq_error(cmdq,
-			    "container swap-prev: window is not in a container");
-			return (CMD_RETURN_ERROR);
-		}
+	else
 		cow_container_swap_prev(ctr);
-		return (CMD_RETURN_NORMAL);
-	}
-
-	cmdq_error(cmdq, "container: unknown command: %s", args->argv[0]);
-	return (CMD_RETURN_ERROR);
+	return CMD_RETURN_NORMAL;
 }
