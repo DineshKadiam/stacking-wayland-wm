@@ -1066,7 +1066,7 @@ specify the name, example:
 
 Defined rules can be seen with the **show** command.
 
-## style -d -n \<name\> \| -g \| -t output\[:desk\] -n \<name\> \[-s sel\] { ... }
+## style -d -n \<name\> \| \[-r\] -g \| -t output\[:desk\] -n \<name\> \[-s sel\] { ... }
 
 Define states for windows. Styles reuse the same names, scopes, and selectors
 as rules, but describe window state rather than executing commands in response
@@ -1076,6 +1076,10 @@ style overriding any previous properties within it/
 The selector forms are the same as for **rule**: **%app-id**, **/title/**, and
 **\#identifier**. A global style uses **-g**. With **-t output\[:desk\]**,
 either part may be omitted to match any output or desk.
+
+Use **-r** to replace an existing named style, keeping its position in the
+style order, or create it if absent. The replacement is validated before the
+old style is removed. Without **-r**, duplicate names are an error.
 
 The following properties are reapplied when a window's title or scope changes
 and when the configuration is reloaded:

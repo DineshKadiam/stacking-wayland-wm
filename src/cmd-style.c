@@ -24,10 +24,10 @@ static enum cmd_retval cmd_style_exec(struct cmd *, struct cmd_q *);
 
 struct cmd_entry cmd_style_entry = {
 	"style",
-	"+dgn:t:s:",
+	"+dgrn:t:s:",
 	0,
 	1,
-	"style -g | -t output[:desk] -n name [-s selector] { ... }\n"
+	"style [-r] -g | -t output[:desk] -n name [-s selector] { ... }\n"
 	"style -d -n name",
 	cmd_style_exec,
 	CMD_OWN_TS | CMD_CONFIG,
@@ -43,7 +43,7 @@ cmd_style_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_ERROR);
 	}
 	if (args_has(args, 'd')) {
-		if (args->argc != 0 || args_has(args, 'g') ||
+		if (args->argc != 0 || args_has(args, 'g') || args_has(args, 'r') ||
 		    args_get(args, 't') != NULL || args_get(args, 's') != NULL) {
 			cmdq_error(cmdq, "usage: style -d -n name");
 			return (CMD_RETURN_ERROR);
@@ -65,7 +65,7 @@ cmd_style_exec(struct cmd *self, struct cmd_q *cmdq)
 		cmdq_error(cmdq, "style: exactly one brace-delimited body is required");
 		return (CMD_RETURN_ERROR);
 	}
-	if (cow_style_find_by_name(name) != NULL) {
+	if (!args_has(args, 'r') && cow_style_find_by_name(name) != NULL) {
 		cmdq_error(cmdq, "style: a style named '%s' already exists", name);
 		return (CMD_RETURN_ERROR);
 	}

@@ -30,8 +30,8 @@
 		}                                                  \
 	} while (0)
 
-static void
-run(const char *text)
+static bool
+run_result(const char *text)
 {
 	struct cmd_list *list  = NULL;
 	char		*cause = NULL;
@@ -40,9 +40,16 @@ run(const char *text)
 	struct cmd_q *queue = cmdq_new();
 	queue->client_fd    = -1;
 	cmdq_run(queue, list);
-	CHECK(!queue->failed);
+	bool ok = !queue->failed;
 	cmdq_free(queue);
 	cmd_list_free(list);
+	return ok;
+}
+
+static void
+run(const char *text)
+{
+	CHECK(run_result(text));
 }
 
 int
@@ -94,6 +101,19 @@ main(void)
 	cow_style_restore_runtime(saved);
 	CHECK(cow_style_find_by_name("pager") == style);
 	cJSON_Delete(saved);
+	cow_style_fini();
+	run("style -r -g -n restartable {\nlayer 2\n}");
+	run("style -g -n later {\nlayer 4\n}");
+	run("style -r -g -n restartable {\nlayer 3\n}");
+	CHECK(wl_list_length(cow_styles_head()) == 2);
+	style = cow_style_find_by_name("restartable");
+	CHECK(strstr(style->body, "layer 3") != NULL);
+	CHECK(!run_result("style -r -g -n restartable {\ninvalid true\n}"));
+	CHECK(cow_style_find_by_name("restartable") == style);
+	CHECK(!run_result("style -g -n restartable {\nlayer 1\n}"));
+	CHECK(cow_style_find_by_name("restartable") == style);
+	CHECK(cow_styles_head()->next == &style->link);
+	CHECK(style->link.next == &cow_style_find_by_name("later")->link);
 	cow_style_fini();
 	return 0;
 }

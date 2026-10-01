@@ -37,6 +37,46 @@ or iconified. This uses CoW's container machinery.
 The format is line-oriented. Blank lines and lines starting with **\#** are
 ignored. Labels and commands containing whitespace must be quoted.
 
+## Self-contained panels
+
+A cowbuttons setup may keep its embedded modules' configuration in the same
+file. Wrap each program's settings in **module** *program* **{ ... }**.
+Each program reads only its own section using its normal configuration
+syntax. Existing standalone files do not need a wrapper.
+
+An optional **cow { ... }** block contains CoW commands. Cowbuttons submits
+them before creating its window, for example to install its placement and
+decoration style. Startup stops if CoW rejects these commands. Other modules
+ignore this block. These commands run when cowbuttons starts; restart
+cowbuttons to reapply them after restarting CoW.
+Use **style -r** for named styles in this block so relaunching the panel
+replaces its previous definition.
+
+Cowbuttons supplies **COWBUTTONS_CONFIG** to external applications. It is the
+absolute path to its configuration file; quote it in shell commands:
+
+    module cowbuttons {
+        show panel bar
+        panel bar {
+            row {
+                external "cowpager -f \"$COWBUTTONS_CONFIG\"" app_id cowpager
+            }
+        }
+    }
+    module cowpager {
+        show pager embedded
+        pager embedded {
+            current-only true
+        }
+    }
+
+Keep section braces on separate lines as above, and put shared-file settings
+inside their program's section. The programs remain independent clients;
+they do not exchange configuration or communicate with one another.
+
+See **examples/cowbuttons/application-row.conf** for a complete panel in one
+file, including its CoW style, pager, and icon manager.
+
 Colours may be opaque **0xRRGGBB** values or **0xRRGGBBAA** values carrying an
 alpha component. In the latter form, **00** is fully transparent and **FF** is
 fully opaque. For example, **style button.bg 0x282828CC** uses an 80-percent

@@ -16,6 +16,7 @@
 #include "cow/module_config.h"
 
 #include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -159,6 +160,141 @@ cow_module_config_parse_bool(const char *s, bool *out)
 	return false;
 }
 
+/* Comments must not swallow the next line when they end in a backslash.
+ * Count escaping while scanning so a literal doubled backslash is retained.
+ */
+static bool
+line_continues(const char *line, size_t len)
+{
+	char quote = 0;
+	for (size_t i = 0; i < len; i++) {
+		if (line[i] == '\\') {
+			if (i + 1 == len)
+				return true;
+			i++;
+		} else if (quote) {
+			if (line[i] == quote)
+				quote = 0;
+		} else if (line[i] == '"' || line[i] == '\'')
+			quote = line[i];
+		else if (line[i] == '#' && line[i + 1] != '{')
+			break;
+	}
+	return false;
+}
+
+/* Keep skipped lines blank so each parser reports original line numbers.
+ * Only outer section wrappers are removed; their contents retain the
+ * owning module's grammar.
+ */
+ssize_t
+cow_module_config_getline(struct cow_module_config_reader *reader,
+    char **line, size_t *cap, FILE *file)
+{
+	/* Return one blank for each joined physical line, after the logical
+	 * line. Existing callers can keep counting from its starting line.
+	 */
+	if (reader->continuation_lines > 0) {
+		reader->continuation_lines--;
+		(*line)[0] = '\n';
+		(*line)[1] = '\0';
+		return 1;
+	}
+	ssize_t len = getline(line, cap, file);
+	if (len < 0)
+		return len;
+	for (;;) {
+		size_t end = (size_t)len;
+		if (end > 0 && (*line)[end - 1] == '\n')
+			end--;
+		if (end > 0 && (*line)[end - 1] == '\r')
+			end--;
+		if (!line_continues(*line, end))
+			break;
+		char *next = NULL;
+		size_t next_cap = 0;
+		ssize_t n = getline(&next, &next_cap, file);
+		if (n < 0) {
+			free(next);
+			break;
+		}
+		if ((size_t)n > SIZE_MAX - end - 1) {
+			free(next);
+			errno = ENOMEM;
+			return -1;
+		}
+		size_t need = end + (size_t)n + 1;
+		if (need > *cap) {
+			char *grown = realloc(*line, need);
+			if (grown == NULL) {
+				free(next);
+				return -1;
+			}
+			*line = grown;
+			*cap = need;
+		}
+		(*line)[end - 1] = ' ';
+		memcpy(*line + end, next, (size_t)n + 1);
+		len = (ssize_t)(need - 1);
+		reader->continuation_lines++;
+		free(next);
+	}
+	bool emit = reader->section ? reader->selected : !reader->scoped_only;
+	if (reader->depth == 0) {
+		char *fields[4];
+		char error[64];
+		int n = cow_module_config_parse_fields(*line, fields, 4,
+		    error, sizeof(error));
+		const char *owner = NULL;
+		if (n == 3 && !strcmp(fields[0], "module") &&
+		    !strcmp(fields[2], "{"))
+			owner = fields[1];
+		else if (n == 2 && !strcmp(fields[0], "cow") &&
+		    !strcmp(fields[1], "{"))
+			owner = "cow";
+		if (owner != NULL) {
+			reader->section = true;
+			reader->selected = !strcmp(owner, reader->prog);
+			emit = false;
+		}
+		if (n >= 0)
+			cow_module_config_free_fields(fields, n);
+	}
+	char quote = 0;
+	for (const char *p = *line; *p; p++) {
+		if (*p == '\\' && p[1]) {
+			p++;
+			continue;
+		}
+		if (quote) {
+			if (*p == quote)
+				quote = 0;
+			continue;
+		}
+		if (*p == '"' || *p == '\'') {
+			quote = *p;
+			continue;
+		}
+		if (*p == '#' && p[1] != '{')
+			break;
+		if (*p == '{')
+			reader->depth++;
+		else if (*p == '}') {
+			reader->depth--;
+			if (reader->section && reader->depth == 0) {
+				reader->section = false;
+				emit = false;
+			}
+		}
+	}
+	if (!emit) {
+		(*line)[0] = '\n';
+		(*line)[1] = '\0';
+		return 1;
+	}
+	return len;
+}
+
 bool
 cow_module_config_load(const char *prog, const char *path, int max_fields,
     cow_module_config_cb cb, void *data)
@@ -168,6 +304,7 @@ cow_module_config_load(const char *prog, const char *path, int max_fields,
 	size_t cap = 0;
 	unsigned int lineno = 0;
 	bool ok = true;
+	struct cow_module_config_reader reader = { .prog = prog };
 
 	f = fopen(path, "r");
 	if (f == NULL) {
@@ -175,7 +312,7 @@ cow_module_config_load(const char *prog, const char *path, int max_fields,
 		return false;
 	}
 
-	while (getline(&line, &cap, f) != -1) {
+	while (cow_module_config_getline(&reader, &line, &cap, f) != -1) {
 		char *fields[max_fields];
 		char err[128] = "";
 		const char *why = NULL;
@@ -211,6 +348,10 @@ cow_module_config_load(const char *prog, const char *path, int max_fields,
 		cow_module_config_free_fields(fields, n);
 	}
 
+	if (reader.depth != 0 || ferror(f)) {
+		fprintf(stderr, "%s: %s: incomplete configuration\n", prog, path);
+		ok = false;
+	}
 	free(line);
 	fclose(f);
 	return ok;

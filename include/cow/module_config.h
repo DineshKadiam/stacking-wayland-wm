@@ -18,6 +18,20 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <sys/types.h>
+
+struct cow_module_config_reader {
+	const char *prog;
+	int depth;
+	bool section;
+	bool selected;
+	bool scoped_only;
+	unsigned int continuation_lines;
+};
+
+ssize_t cow_module_config_getline(struct cow_module_config_reader *,
+    char **, size_t *, FILE *);
 
 struct cow_module_config_line {
 	const char   *prog;

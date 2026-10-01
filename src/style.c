@@ -138,7 +138,13 @@ void
 cow_style_add(struct cow_style *style)
 {
 	styles_lazy_init();
-	wl_list_insert(styles.prev, &style->link);
+	struct cow_style *old = cow_style_find_by_name(style->policy.name);
+	if (old != NULL) {
+		wl_list_insert(old->link.prev, &style->link);
+		wl_list_remove(&old->link);
+		cow_style_destroy(old);
+	} else
+		wl_list_insert(styles.prev, &style->link);
 	if (cow_config != NULL && !cow_ipc.startup_mode)
 		cow_style_apply_all_live();
 }

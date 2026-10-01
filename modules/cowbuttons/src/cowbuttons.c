@@ -329,6 +329,7 @@ static struct state    current_state;
 static cJSON				 *external_windows;
 static int	       dirty = 1;
 static char	      *config_dir;
+static char	      *config_file;
 static struct cow_module_config_instances config_instances;
 static char	       instance_title[256] = PROG;
 static struct panel_selection *selected_panels;
@@ -1583,6 +1584,7 @@ load_row(char **fields, int n, const char **why)
 static int
 scan_selected_panels(const char *path)
 {
+	struct cow_module_config_reader reader = { .prog = PROG };
 	FILE *f;
 	char *line = NULL;
 	size_t cap = 0;
@@ -1596,7 +1598,7 @@ scan_selected_panels(const char *path)
 		return 0;
 	}
 	config_instances.count = 0;
-	while (getline(&line, &cap, f) != -1) {
+	while (cow_module_config_getline(&reader, &line, &cap, f) != -1) {
 		char *fields[MAX_FIELDS] = { 0 };
 		char err[128] = "";
 		const char *why = NULL;
@@ -1654,6 +1656,7 @@ scan_selected_panels(const char *path)
 static int
 load_config(const char *path)
 {
+	struct cow_module_config_reader reader = { .prog = PROG };
 	FILE *f;
 	char *line = NULL;
 	size_t cap = 0;
@@ -1675,7 +1678,7 @@ load_config(const char *path)
 		return 0;
 	}
 
-	while (getline(&line, &cap, f) != -1) {
+	while (cow_module_config_getline(&reader, &line, &cap, f) != -1) {
 		char *fields[MAX_FIELDS] = { 0 };
 		char err[128] = "";
 		const char *why = NULL;
@@ -1833,7 +1836,7 @@ line_error:
 
 	free(line);
 	fclose(f);
-	if (n_blocks != 0) {
+	if (n_blocks != 0 || reader.depth != 0) {
 		fprintf(stderr, "%s: %s:%u: unclosed block\n", PROG, path,
 		    lineno);
 		return 0;
@@ -3337,6 +3340,8 @@ external_start(int index, const struct win_info *host, const cJSON *windows)
 		setenv("COWBUTTONS_PANEL_DIRECTION",
 		    panel_direction_name(panel->direction), 1);
 		setenv("COWBUTTONS_PANEL_MODE", "attached", 1);
+		if (config_file != NULL)
+			setenv("COWBUTTONS_CONFIG", config_file, 1);
 		execl("/bin/sh", "sh", "-c", p->external_command, (char *)NULL);
 		_exit(127);
 	}
@@ -4024,6 +4029,46 @@ parse_args(int argc, char **argv, char **config_path)
 	return optind == argc;
 }
 
+static bool
+apply_cow_config(const char *path)
+{
+	struct cow_module_config_reader reader = {
+		.prog = "cow", .scoped_only = true,
+	};
+	FILE *file = fopen(path, "r");
+	if (file == NULL)
+		return false;
+	char *line = NULL, *body = NULL;
+	size_t cap = 0, used = 0;
+	ssize_t len;
+	while ((len = cow_module_config_getline(&reader, &line, &cap, file)) >= 0) {
+		if (len == 1 && line[0] == '\n')
+			continue;
+		body = xrealloc(body, used + (size_t)len + 1, 1);
+		memcpy(body + used, line, (size_t)len);
+		used += (size_t)len;
+		body[used] = '\0';
+	}
+	bool ok = reader.depth == 0 && !ferror(file);
+	free(line);
+	fclose(file);
+	if (ok && body != NULL) {
+		char *command;
+		xasprintf(&command, "script {\n%s\n}", body);
+		char *response = cow_module_cmd_request(PROG, command, true);
+		cJSON *root = response != NULL ? cJSON_Parse(response) : NULL;
+		ok = root != NULL && cJSON_IsTrue(cJSON_GetObjectItem(root, "ok"));
+		if (!ok)
+			fprintf(stderr, "%s: cow configuration failed: %s\n", PROG,
+			    response != NULL ? response : "no response");
+		cJSON_Delete(root);
+		free(response);
+		free(command);
+	}
+	free(body);
+	return ok;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -4053,6 +4098,12 @@ main(int argc, char **argv)
 		}
 	}
 	if (!load_config(config_path)) {
+		free(config_path);
+		return 1;
+	}
+	config_file = realpath(config_path, NULL);
+	if (config_file == NULL || !apply_cow_config(config_file)) {
+		free(config_file);
 		free(config_path);
 		return 1;
 	}
@@ -4180,6 +4231,7 @@ main(int argc, char **argv)
 	free(style.image);
 	free(style.image_pressed);
 	free(config_dir);
+	free(config_file);
 	wl_display_disconnect(display);
 	return 0;
 }
