@@ -75,6 +75,7 @@ struct cow_container {
 	struct cow_view	       *split_target, *split_source;
 	enum cow_container_axis split_axis;
 	bool			split_before;
+	bool split_empty;
 	bool persistent; /* Explicit layout: retain empty panes. */
 	bool framed;
 	bool syncing_frame;

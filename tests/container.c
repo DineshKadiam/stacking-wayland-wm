@@ -55,7 +55,7 @@ pending_split(struct cow_view *view)
 }
 
 static void
-check_command(const char *text)
+check_command_result(const char *text, bool success)
 {
 	struct cmd_list *list  = NULL;
 	char		*cause = NULL;
@@ -63,14 +63,20 @@ check_command(const char *text)
 	struct cmd_q *queue = cmdq_new();
 	queue->client_fd    = -1;
 	cmdq_run(queue, list);
-	if (queue->failed)
+	if (queue->failed && success)
 		fprintf(stderr, "command failed: %s\n", text);
 	for (u_int i = 0; i < ARRAY_LENGTH(&queue->causes); i++)
 		fprintf(stderr, "%s\n", ARRAY_ITEM(&queue->causes, i));
-	CHECK(!queue->failed);
+	CHECK(!queue->failed == success);
 	cmdq_free(queue);
 	cmd_list_free(list);
 	xfree(cause);
+}
+
+static void
+check_command(const char *text)
+{
+	check_command_result(text, true);
 }
 
 int
@@ -751,6 +757,50 @@ main(void)
 	CHECK(memcmp(&c->frame, &split_frame, sizeof(split_frame)) == 0);
 	CHECK(cow_container_pane_find(c, "spare") != NULL);
 	cow_container_destroy(c);
+	/* An ordinary window becomes the occupied half of a persistent layout.
+	 * Validate options before creating it and undo failed splits.
+	 */
+	CHECK(a.container_member == NULL);
+	const char *invalid_actions[] = {
+		"window-container",
+		"window-container -n -p",
+		"window-container -H -U",
+		"window-container -a -r",
+		"window-container -N validation -B pane",
+		"window-container -E -N validation -D",
+		"window-container -z column -o clockwise",
+		"window-container -A",
+	};
+	for (size_t i = 0;
+	    i < sizeof(invalid_actions) / sizeof(invalid_actions[0]); i++)
+		check_command_result(invalid_actions[i], false);
+	CHECK(cow_container_find("validation") == NULL);
+	check_command_result("window-container -t '#pane-a' -E -e invalid -B spare",
+	    false);
+	CHECK(a.container_member == NULL);
+	a.fullscreen = true;
+	check_command_result("window-container -t '#pane-a' -E -e right -B spare",
+	    false);
+	CHECK(a.container_member == NULL);
+	a.fullscreen = false;
+	int saved_min_width = a.min_width;
+	a.min_width = 100000;
+	check_command_result("window-container -t '#pane-a' -E -e right -B spare",
+	    false);
+	CHECK(a.container_member == NULL);
+	a.min_width = saved_min_width;
+	struct cow_box standalone_frame = cow_view_frame_box(&a);
+	check_command("window-container -t '#pane-a' -E -e right -B pane-right");
+	c = cow_view_container(&a);
+	CHECK(c != NULL && c->persistent && c->n_members == 1);
+	CHECK(memcmp(&c->frame, &standalone_frame, sizeof(standalone_frame)) == 0);
+	struct cow_container_pane *right_pane = cow_container_pane_find(c,
+	    "pane-right");
+	CHECK(right_pane != NULL && right_pane->n_tabs == 0);
+	CHECK(right_pane->layout.box.x > cow_view_pane(&a)->layout.box.x);
+	check_command("window-container -t '#pane-a' -E -e down");
+	CHECK(cow_container_pane_next(c, cow_view_pane(&a))->name == NULL);
+	cow_container_destroy(c);
 	/* Existing anonymous tab groups can gain empty panes and survive
 	 * restart.
 	 */
@@ -776,6 +826,10 @@ main(void)
 	cJSON_Delete(converted);
 	cow_container_destroy(c);
 	/* Empty named layouts are addressable before any window exists. */
+	check_command("window-container -E -N unnamed-test");
+	c = cow_container_find("unnamed-test");
+	CHECK(c != NULL && c->root->name == NULL);
+	cow_container_destroy(c);
 	check_command("window-container -E -N workspace -B editor");
 	check_command(
 	    "window-container -G workspace -b editor -E -e right -B terminal");
@@ -1217,6 +1271,31 @@ main(void)
 	obstacle.closed = d.closed = false;
 	obstacle.content_width	   = 800;
 	obstacle.content_height	   = 600;
+	for (int named = 0; named < 2; named++) {
+		tabs = cow_container_create(&a, &obstacle);
+		cow_container_activate(tabs, obstacle.container_member);
+		struct cow_container_member *old_slot = obstacle.container_member;
+		CHECK(cow_container_split_empty(tabs, cow_view_pane(&obstacle),
+		    named ? "spare" : NULL, COW_CONTAINER_HORIZONTAL, false));
+		struct cow_container *empty_layout = pending_split(&obstacle);
+		CHECK(empty_layout != NULL && empty_layout->split_empty);
+		struct cow_view empty_frame = { .has_dimensions = true,
+			.output = &output, .desk = &desk,
+			.content_width = 800, .content_height = 600 };
+		cow_container_set_frame(empty_layout, &empty_frame);
+		CHECK(cow_container_complete_tab_split(empty_layout));
+		CHECK(tabs->n_members == 2 && empty_frame.container_member == old_slot);
+		CHECK(cow_view_container(&a) == tabs);
+		CHECK(cow_container_window_owner(&a) == c);
+		CHECK(cow_view_container(&obstacle) == empty_layout);
+		CHECK(empty_layout->persistent && empty_layout->n_members == 1);
+		struct cow_container_pane *vacant = cow_container_pane_next(
+		    empty_layout, cow_view_pane(&obstacle));
+		CHECK(vacant != NULL && vacant->n_tabs == 0);
+		CHECK(named ? strcmp(vacant->name, "spare") == 0 : vacant->name == NULL);
+		cow_container_destroy(tabs);
+		cow_container_destroy(empty_layout);
+	}
 	tabs			   = cow_container_create(&a, &obstacle);
 	CHECK(cow_container_add_to(&obstacle, &d));
 	cow_container_activate(tabs, obstacle.container_member);

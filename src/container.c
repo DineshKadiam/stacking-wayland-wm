@@ -1235,12 +1235,12 @@ cow_container_pane_find(struct cow_container *c, const char *name)
 struct cow_container *
 cow_container_create_empty(const char *name, const char *pane_name)
 {
-	if (*name == '\0' || *pane_name == '\0')
+	if (*name == '\0' || (pane_name && *pane_name == '\0'))
 		return NULL;
 	struct cow_container *existing = cow_container_find(name);
 	if (existing != NULL)
 		return existing->persistent &&
-			cow_container_pane_find(existing, pane_name) ?
+			(!pane_name || cow_container_pane_find(existing, pane_name)) ?
 		    existing :
 		    NULL;
 	struct cow_container *c = xcalloc(1, sizeof(*c));
@@ -1249,7 +1249,7 @@ cow_container_create_empty(const char *name, const char *pane_name)
 	c->persistent		= true;
 	wl_list_init(&c->members);
 	c->root	      = container_pane_create();
-	c->root->name = xstrdup(pane_name);
+	c->root->name = xstrdup0(pane_name);
 	wl_list_insert(&cow_wm.containers, &c->wm_link);
 	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 	return c;
@@ -1281,22 +1281,22 @@ container_can_split(const struct cow_container *c)
 
 static bool
 container_split_outer_tab(struct cow_view *target, struct cow_view *source,
-    enum cow_container_axis axis, bool before)
+    enum cow_container_axis axis, bool before, const char *empty_name)
 {
 	struct cow_container *outer = cow_view_container(target);
 	if (!outer || outer->framed || outer->persistent ||
 	    outer->root->layout.axis != COW_CONTAINER_LEAF)
 		return false;
 	if (cow_container_window_owner(target) ||
-	    cow_container_window_owner(source))
+	    (source && cow_container_window_owner(source)))
 		return false;
 	struct cow_container *pending;
 	wl_list_for_each(pending, &cow_wm.containers, wm_link)
 	{
 		if (pending->split_target == target ||
 		    pending->split_source == target ||
-		    pending->split_target == source ||
-		    pending->split_source == source)
+		    (source && (pending->split_target == source ||
+			pending->split_source == source)))
 			return false;
 	}
 	struct cow_container *c = xcalloc(1, sizeof(*c));
@@ -1311,6 +1311,9 @@ container_split_outer_tab(struct cow_view *target, struct cow_view *source,
 	c->flags	= target->flags;
 	c->split_target = target;
 	c->split_source = source;
+	c->split_empty = source == NULL;
+	if (c->split_empty)
+		c->root->name = xstrdup0(empty_name);
 	c->split_axis	= axis;
 	c->split_before = before;
 	wl_list_insert(&cow_wm.containers, &c->wm_link);
@@ -1323,21 +1326,26 @@ cow_container_complete_tab_split(struct cow_container *c)
 {
 	struct cow_view *target = c->split_target, *source = c->split_source;
 	struct cow_view *frame = c->frame_view;
-	if (!target || !source || !frame || target->closed || source->closed)
+	if (!target || !frame || target->closed ||
+	    (!c->split_empty && (!source || source->closed)))
 		return false;
 	struct cow_container_member *tm = target->container_member;
-	struct cow_container_member *sm = source->container_member;
-	if (!tm || !sm || tm == sm || tm->container != sm->container ||
-	    tm->pane != sm->pane || tm->container->framed ||
+	struct cow_container_member *sm = source ? source->container_member : NULL;
+	if (!tm || (!c->split_empty && (!sm || tm == sm ||
+	    tm->container != sm->container || tm->pane != sm->pane)) ||
+	    tm->container->framed ||
 	    tm->container->root->layout.axis != COW_CONTAINER_LEAF)
 		return false;
 	struct cow_container	    *outer = tm->container;
-	struct cow_container_member *members[2];
+	struct cow_container_member *members[2] = { NULL, NULL };
 	struct cow_container_pane   *leaves[2];
 	struct cow_view		    *views[2] = { target, source };
 	/* Validate the new layout before changing either outer tab. */
 	for (int i = 0; i < 2; i++) {
 		leaves[i]	      = container_pane_create();
+		leaves[i]->layout.parent = &c->root->layout;
+		if (i == 1 && c->split_empty)
+			continue;
 		members[i]	      = xcalloc(1, sizeof(*members[i]));
 		*members[i]	      = i == 0 ? *tm : *sm;
 		members[i]->container = c;
@@ -1346,7 +1354,6 @@ cow_container_complete_tab_split(struct cow_container *c)
 		wl_list_insert(c->members.prev, &members[i]->link);
 		leaves[i]->n_tabs	 = 1;
 		leaves[i]->active	 = members[i];
-		leaves[i]->layout.parent = &c->root->layout;
 	}
 	c->root->layout.axis			       = c->split_axis;
 	c->root->layout.share			       = 5000;
@@ -1355,6 +1362,8 @@ cow_container_complete_tab_split(struct cow_container *c)
 	if (!container_pane_minimum(c->root, true) ||
 	    !cow_container_layout_arrange(&c->root->layout, c->frame, 0)) {
 		for (int i = 0; i < 2; i++) {
+			if (members[i] == NULL)
+				continue;
 			wl_list_remove(&members[i]->link);
 			wl_list_remove(&members[i]->pane_link);
 			xfree(members[i]);
@@ -1362,14 +1371,23 @@ cow_container_complete_tab_split(struct cow_container *c)
 		return false;
 	}
 	bool active = outer->active == tm || outer->active == sm;
-	member_unlink(sm);
-	xfree(sm);
+	if (sm != NULL) {
+		member_unlink(sm);
+		xfree(sm);
+	}
 	/* Replace the target in place, retaining the outer tab order. */
 	tm->view		= frame;
 	frame->container_member = tm;
-	c->n_members		= 2;
+	c->n_members = c->split_empty ? 1 : 2;
+	if (c->split_empty) {
+		leaves[1]->name = c->root->name;
+		c->root->name = NULL;
+		c->persistent = true;
+	}
 	c->split_target = c->split_source = NULL;
 	for (int i = 0; i < 2; i++) {
+		if (members[i] == NULL)
+			continue;
 		views[i]->container_member = members[i];
 		views[i]->use_ssd	   = true;
 		views[i]->dec.dirty	   = true;
@@ -1380,7 +1398,7 @@ cow_container_complete_tab_split(struct cow_container *c)
 	container_title_metrics(outer);
 	container_apply_layout(c);
 	if (active)
-		cow_container_activate(c, members[1]);
+		cow_container_activate(c, members[c->split_empty ? 0 : 1]);
 	else {
 		c->active      = members[0];
 		frame->use_ssd = false;
@@ -1395,7 +1413,7 @@ cow_container_split_empty(struct cow_container *c,
     struct cow_container_pane *pane, const char *name,
     enum cow_container_axis axis, bool before)
 {
-	if (*name == '\0' ||
+	if ((name != NULL && *name == '\0') ||
 	    (axis != COW_CONTAINER_HORIZONTAL &&
 		axis != COW_CONTAINER_VERTICAL))
 		return false;
@@ -1404,7 +1422,9 @@ cow_container_split_empty(struct cow_container *c,
 	if (cow_container_pane_find(c, name))
 		return true;
 	if (!container_can_split(c))
-		return false;
+		return pane && pane->active &&
+		    container_split_outer_tab(pane->active->view, NULL,
+			axis, before, name);
 	struct cow_box frame = c->frame;
 	if (!c->persistent && !c->frame_view &&
 	    c->root->layout.axis == COW_CONTAINER_LEAF && pane->active)
@@ -1415,13 +1435,9 @@ cow_container_split_empty(struct cow_container *c,
 	    &pane->layout;
 	struct cow_container_pane   *leaf	 = container_pane_create(),
 				  *branch	 = container_pane_create();
-	leaf->name				 = xstrdup(name);
-	branch->layout.axis			 = axis;
-	branch->layout.share			 = 5000;
-	pane_replace(c, destination, &branch->layout);
-	branch->layout.child[before ? 0 : 1] = &leaf->layout;
-	branch->layout.child[before ? 1 : 0] = destination;
-	destination->parent = leaf->layout.parent = &branch->layout;
+	leaf->name				 = xstrdup0(name);
+	pane_branch_insert(c, destination, &branch->layout, &leaf->layout, axis,
+	    before);
 	if ((frame.width == 0 && c->n_members == 0) ||
 	    cow_container_arrange(c, frame)) {
 		c->persistent = true;
@@ -1775,7 +1791,7 @@ cow_container_split(struct cow_view *target, struct cow_view *source,
 		return false;
 
 	if (!container_can_split(tm->container))
-		return container_split_outer_tab(target, source, axis, before);
+		return container_split_outer_tab(target, source, axis, before, NULL);
 
 	struct cow_container	    *c		     = tm->container;
 	struct cow_container_pane   *old	     = tm->pane;

@@ -53,7 +53,7 @@ struct cmd_entry cmd_container_entry = {
 	0,
 	0,
 	"[-t target | -G name] [-b pane] [-s source] "
-	"[-E -N name -B pane | -E -e direction -B pane | -D | "
+	"[-E -N name [-B pane] | -E -e direction [-B pane] | -D | "
 	"-N name | -B pane-name | -a | -e direction | -f direction | "
 	"-z column|container|off | -o clockwise|anticlockwise|180 | "
 	"-T [-A] | -rcqnpRPHU]",
@@ -83,12 +83,12 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		return CMD_RETURN_ERROR;
 	}
 	if (args_has(args, 'E') && args_has(args, 'N')) {
-		if (!args_has(args, 'B') || args_has(args, 'G') ||
+		if (args_has(args, 'G') ||
 		    args_has(args, 't') || args_has(args, 'e') ||
 		    cow_container_create_empty(args_get(args, 'N'),
 			args_get(args, 'B')) == NULL) {
 			cmdq_error(cmdq,
-			    "container: use -E -N unique-name -B pane-name");
+			    "container: use -E -N unique-name [-B pane-name]");
 			return CMD_RETURN_ERROR;
 		}
 		return CMD_RETURN_NORMAL;
@@ -169,13 +169,25 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (args_has(args, 'E')) {
 		enum cow_container_axis axis;
 		bool			before;
+		if ((args_has(args, 'B') && *args_get(args, 'B') == '\0') ||
+		    !container_direction(args_get(args, 'e'), &axis, &before)) {
+			cmdq_error(cmdq, "container: use -E -e direction [-B name]");
+			return CMD_RETURN_ERROR;
+		}
+		bool created = false;
+		if (container == NULL && target != NULL && !target->parent &&
+		    !target->fullscreen && target->sd == COW_SHADE_NONE) {
+			container = cow_container_create(target, NULL);
+			selected = cow_view_pane(target);
+			created = true;
+		}
 		if (container == NULL || selected == NULL ||
-		    !args_has(args, 'B') ||
-		    !container_direction(args_get(args, 'e'), &axis, &before) ||
 		    !cow_container_split_empty(container, selected,
 			args_get(args, 'B'), axis, before)) {
+			if (created)
+				cow_container_destroy(container);
 			cmdq_error(cmdq,
-			    "container: cannot add empty pane; select a container with room to split and use -E -e direction -B name");
+			    "container: cannot add empty pane; select an unshaded, non-fullscreen window or a container with room to split");
 			return CMD_RETURN_ERROR;
 		}
 		return CMD_RETURN_NORMAL;
