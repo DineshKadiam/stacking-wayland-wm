@@ -17,6 +17,8 @@
 /* A transient, FVWM-style numbered window list. */
 
 #include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 
@@ -333,6 +335,197 @@ select_window(const char *id, bool warp, struct cmd_q *cmdq)
 	return (true);
 }
 
+/* Index a filtered, sorted list without changing its presentation order.
+ * The root groups by container; submenus group by pane. Resolve ancestry
+ * once per entry, rather than again for every pane in the layout.
+ */
+struct window_list_group_entry {
+	const void	*group;
+	struct cow_view *member;
+	size_t		 index;
+};
+
+static int
+compare_group_entries(const void *a, const void *b)
+{
+	const struct window_list_group_entry *ea = a, *eb = b;
+	uintptr_t ga = (uintptr_t)ea->group, gb = (uintptr_t)eb->group;
+	if (ga != gb)
+		return ga < gb ? -1 : 1;
+	return (ea->index > eb->index) - (ea->index < eb->index);
+}
+
+static struct window_list_group_entry *
+group_entries(struct window_list_entry *entries, size_t count,
+    struct cow_container *c)
+{
+	struct window_list_group_entry *groups = xcalloc(count,
+	    sizeof(*groups));
+	for (size_t i = 0; i < count; i++) {
+		struct cow_view *member = entries[i].view;
+		if (c == NULL) {
+			groups[i].group = cow_container_top_group(member);
+		} else {
+			while (member && cow_view_container(member) != c) {
+				struct cow_container *owner =
+				    cow_container_group(member);
+				struct cow_view *parent = owner ?
+				    owner->frame_view :
+				    NULL;
+				member = parent != member ? parent : NULL;
+			}
+			groups[i].group = member ? cow_view_pane(member) : NULL;
+		}
+		groups[i].member = member;
+		groups[i].index	 = i;
+	}
+	qsort(groups, count, sizeof(*groups), compare_group_entries);
+	return groups;
+}
+
+static size_t
+group_start(const struct window_list_group_entry *groups, size_t count,
+    const void *group)
+{
+	size_t lo = 0, hi = count;
+	while (lo < hi) {
+		size_t mid = lo + (hi - lo) / 2;
+		if ((uintptr_t)groups[mid].group < (uintptr_t)group)
+			lo = mid + 1;
+		else
+			hi = mid;
+	}
+	return lo;
+}
+
+static struct window_list_entry *
+group_windows(const struct window_list_entry *entries,
+    const struct window_list_group_entry *groups, size_t count, size_t first,
+    const struct cow_view *member, size_t *length)
+{
+	size_t end = first;
+	while (end < count && groups[end].group == groups[first].group)
+		end++;
+	struct window_list_entry *subset = xcalloc(end - first,
+	    sizeof(*subset));
+	*length				 = 0;
+	for (size_t i = first; i < end; i++) {
+		if (member == NULL || groups[i].member == member)
+			subset[(*length)++] = entries[groups[i].index];
+	}
+	return subset;
+}
+
+static struct cow_menu_item *
+add_window(struct cow_menu *menu, const struct cow_view *view,
+    const char *format, int number, bool icons, bool warp, const char *path)
+{
+	char *label = format_label(format, view, number);
+	if (path != NULL) {
+		struct window_list_format_ctx ctx = { 0 };
+		label_append_string(&ctx, path, true);
+		label_append_string(&ctx, " / ", true);
+		label_append_string(&ctx, label, false);
+		xfree(label);
+		label = ctx.buf;
+	}
+	char *action;
+	xasprintf(&action, "window-list -s %s%s", view->identifier,
+	    warp ? " -w" : "");
+	struct cow_menu_item *item = cow_menu_item_add(menu,
+	    COW_MENU_ITEM_NORMAL, label, action, false, false,
+	    icons ? cow_view_icon_image(view) : NULL);
+	xfree(action);
+	xfree(label);
+	return item;
+}
+
+static struct cow_menu *
+container_menu(struct cow_container *c, struct window_list_entry *entries,
+    size_t count, const char *format, bool icons, bool typeahead, bool warp,
+    unsigned depth)
+{
+	if (depth > 64)
+		return NULL;
+	char name[80];
+	snprintf(name, sizeof(name), WINDOW_LIST_MENU ":%d", c->id);
+	struct cow_menu *menu = cow_menu_find(name);
+	if (menu != NULL)
+		return menu;
+	menu = cow_menu_generated_begin(name, c->name ? c->name : "Container",
+	    true, typeahead);
+	int number = 0;
+	/* Keep the outer frame selectable, but only if it passed the filter.
+	 */
+	for (size_t i = 0; i < count; i++) {
+		if (entries[i].view == c->frame_view)
+			add_window(menu, c->frame_view, format, ++number, icons,
+			    warp, "Container");
+	}
+	struct cow_container_pane *pane = NULL;
+	struct window_list_group_entry *groups = group_entries(entries, count,
+	    c);
+	while ((pane = cow_container_pane_next(c, pane)) != NULL) {
+		bool heading = false;
+		for (size_t i = group_start(groups, count, pane);
+		    i < count && groups[i].group == pane; i++) {
+			struct cow_view *view	= entries[groups[i].index].view;
+			struct cow_view *member = groups[i].member;
+			if (!heading) {
+				char *title;
+				xasprintf(&title, "Pane %d", pane->id);
+				struct window_list_format_ctx label = { 0 };
+				label_append_string(&label,
+				    pane->name ? pane->name : title, true);
+				cow_menu_item_add(menu, COW_MENU_ITEM_TITLE,
+				    label.buf, NULL, false, false, NULL);
+				xfree(label.buf);
+				xfree(title);
+				heading = true;
+			}
+			struct cow_container *nested =
+			    cow_container_window_owner(member);
+			if (nested != NULL) {
+				char child_name[80];
+				snprintf(child_name, sizeof(child_name),
+				    WINDOW_LIST_MENU ":%d", nested->id);
+				/* Filtered descendants can introduce the same
+				 * branch.
+				 */
+				if (cow_menu_find(child_name))
+					continue;
+				size_t			  length;
+				struct window_list_entry *subset =
+				    group_windows(entries, groups, count, i,
+					member, &length);
+				struct cow_menu *child = container_menu(nested,
+				    subset, length, format, icons, typeahead,
+				    warp, depth + 1);
+				xfree(subset);
+				if (child) {
+					struct window_list_format_ctx label = {
+						0
+					};
+					label_append_string(&label,
+					    nested->name ? nested->name :
+							   "Container",
+					    true);
+					cow_menu_item_add(menu,
+					    COW_MENU_ITEM_NORMAL, label.buf,
+					    child->name, true, false, NULL);
+					xfree(label.buf);
+					number++;
+				}
+			} else {
+				add_window(menu, view, format, ++number, icons,
+				    warp, NULL);
+			}
+		}
+	}
+	xfree(groups);
+	return menu;
+}
+
 static enum cmd_retval
 show_window_list(const char *filter_expr, const char *format,
     const char *sort_value, bool icons, bool typeahead, bool at_pointer,
@@ -386,6 +579,14 @@ show_window_list(const char *filter_expr, const char *format,
 	}
 
 	sort_entries(entries, count, sort);
+	struct cow_menu *old, *next;
+	wl_list_for_each_safe(old, next, &cow_wm.menus, link)
+	{
+		if (strcmp(old->name, WINDOW_LIST_MENU) == 0 ||
+		    strncmp(old->name, WINDOW_LIST_MENU ":",
+			strlen(WINDOW_LIST_MENU ":")) == 0)
+			cow_menu_destroy(old);
+	}
 
 	struct cow_menu *menu = cow_menu_generated_begin(WINDOW_LIST_MENU,
 	    typeahead ? "Window List (type to search)" : "Window List", true,
@@ -395,17 +596,71 @@ show_window_list(const char *filter_expr, const char *format,
 		cmdq_error(cmdq, "window-list: cannot create menu");
 		return (CMD_RETURN_ERROR);
 	}
+	struct window_list_group_entry *groups = group_entries(entries, count,
+	    NULL);
 	for (size_t i = 0; i < count; i++) {
-		view	    = entries[i].view;
-		char *label = format_label(format, view, (int)i + 1);
-		char *action;
-		xasprintf(&action, "window-list -s %s%s", view->identifier,
-		    warp ? " -w" : "");
-		cow_menu_item_add(menu, COW_MENU_ITEM_NORMAL, label, action,
-		    false, false, icons ? cow_view_icon_image(view) : NULL);
-		xfree(action);
-		xfree(label);
+		view			= entries[i].view;
+		struct cow_container *c = cow_container_top_group(view);
+		if (c == NULL) {
+			add_window(menu, view, format, (int)i + 1, icons, warp,
+			    NULL);
+			continue;
+		}
+		size_t	    first = group_start(groups, count, c);
+		const char *title = c->name ? c->name :
+		    c->frame_view && c->frame_view->title ?
+					      c->frame_view->title :
+					      "Container";
+		if (groups[first].index == i) {
+			size_t			  length;
+			struct window_list_entry *subset = group_windows(
+			    entries, groups, count, first, NULL, &length);
+			struct cow_menu *child = container_menu(c, subset,
+			    length, format, icons, typeahead, warp, 0);
+			xfree(subset);
+			if (child == NULL)
+				continue;
+			struct window_list_format_ctx label = { 0 };
+			label_append_string(&label, title, true);
+			int windows = 0, panes = 0;
+			for (size_t j = first;
+			    j < count && groups[j].group == c; j++) {
+				if (!cow_container_window_view(
+					groups[j].member))
+					windows++;
+			}
+			struct cow_container_pane *pane = NULL;
+			while (
+			    (pane = cow_container_pane_next(c, pane)) != NULL)
+				panes++;
+			char *summary;
+			xasprintf(&summary, " (%d panes, %d windows)", panes,
+			    windows);
+			label_append_string(&label, summary, true);
+			struct cow_menu_item *item = cow_menu_item_add(menu,
+			    COW_MENU_ITEM_NORMAL, label.buf, child->name, true,
+			    false, NULL);
+			item->browse_only	   = true;
+			xfree(summary);
+			xfree(label.buf);
+		}
+		if (typeahead) {
+			struct cow_container_pane *pane = cow_view_pane(view);
+			char			  *path;
+			if (cow_container_window_owner(view))
+				path = xstrdup(title);
+			else if (pane && pane->name)
+				xasprintf(&path, "%s / %s", title, pane->name);
+			else
+				xasprintf(&path, "%s / Pane %d", title,
+				    pane ? pane->id : -1);
+			struct cow_menu_item *item = add_window(menu, view,
+			    format, (int)i + 1, icons, warp, path);
+			item->search_only	   = true;
+			xfree(path);
+		}
 	}
+	xfree(groups);
 	xfree(entries);
 
 	if (at_pointer) {

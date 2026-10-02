@@ -949,6 +949,12 @@ item_selectable(const struct cow_menu_item *it)
 static bool
 menu_item_visible(const struct cow_menu *menu, const struct cow_menu_item *it)
 {
+	if (menu != NULL && it != NULL) {
+		bool searching = menu->typeahead && menu->typeahead_query[0];
+		if ((it->search_only && !searching) ||
+		    (it->browse_only && searching))
+			return false;
+	}
 	if (menu == NULL || it == NULL || !menu->typeahead ||
 	    menu->typeahead_query[0] == '\0')
 		return (true);

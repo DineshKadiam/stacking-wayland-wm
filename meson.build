@@ -379,104 +379,51 @@ foreach source : srcs
         wm_test_sources += source
     endif
 endforeach
-pan_test = executable('test-pan-frames',
-    ['tests/pan-frames.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
-    objects: cow.extract_objects(wm_test_sources),
+wm_test_protocols = static_library('wm-test-protocols',
+    generated + [dsl_parser_gen, dsl_lexer_gen],
     include_directories: include_dirs,
     dependencies: all_deps,
 )
-test('pan-frames', pan_test)
-
-alias_args_test = executable('test-alias-args',
-    ['tests/alias-args.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
-    objects: cow.extract_objects(wm_test_sources),
-    include_directories: include_dirs,
-    dependencies: all_deps,
-)
-test('alias-args', alias_args_test)
-
-container_test = executable('test-container',
-    ['tests/container.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
-    objects: cow.extract_objects(wm_test_sources),
-    include_directories: include_dirs,
-    dependencies: all_deps,
-)
-test('container', container_test)
-
-container_state_test = executable('test-container-state',
-    ['tests/container-state.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
-    objects: cow.extract_objects(wm_test_sources),
-    include_directories: include_dirs,
-    dependencies: all_deps,
-)
-test('container-state', container_state_test)
-
-style_state_test = executable('test-style-state',
-    ['tests/style-state.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
-    objects: cow.extract_objects(wm_test_sources),
-    include_directories: include_dirs,
-    dependencies: all_deps,
-)
-test('style-state', style_state_test)
-
-arguments_test_sources = []
-foreach source : wm_test_sources
-    if source != 'src/arguments.c'
-        arguments_test_sources += source
+# Linking the protocol library does not order test compilation after header
+# generation. Add headers as sources without compiling protocol code twice.
+wm_test_headers = [dsl_parser_gen[1], dsl_lexer_gen[1]]
+foreach source : generated
+    if source.full_path().endswith('.h')
+        wm_test_headers += source
     endif
 endforeach
-arguments_test = executable('test-arguments',
-    ['tests/arguments.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
-    objects: cow.extract_objects(arguments_test_sources),
-    include_directories: include_dirs,
-    dependencies: all_deps,
-)
-test('arguments', arguments_test)
-
-config_layers_test = executable('test-config-layers',
-    ['tests/config-layers.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
-    objects: cow.extract_objects(wm_test_sources),
-    include_directories: include_dirs,
-    dependencies: all_deps,
-)
-test('config-layers', config_layers_test,
-    args: files('config/cow/cow-defaults.conf'))
-
-view_test_sources = []
-foreach source : wm_test_sources
-    if source != 'src/view.c'
-        view_test_sources += source
-    endif
+# Private-helper tests include one implementation directly; omit its object.
+foreach name, replacement : {
+    'pan-frames': '',
+    'alias-args': '',
+    'container': '',
+    'container-state': '',
+    'style-state': '',
+    'arguments': 'src/arguments.c',
+    'config-layers': '',
+    'icon-hover': 'src/view.c',
+    'maximize-page': 'src/view.c',
+    'resize-direction': 'src/cmd-resize.c',
+    'window-list': 'src/cmd-window-list.c',
+}
+    test_sources = []
+    foreach source : wm_test_sources
+        if source != replacement
+            test_sources += source
+        endif
+    endforeach
+    runner = executable('test-' + name,
+        'tests/' + name + '.c',
+        wm_test_headers,
+        objects: cow.extract_objects(test_sources),
+        link_with: wm_test_protocols,
+        include_directories: include_dirs,
+        dependencies: all_deps,
+    )
+    test(name, runner,
+        args: name == 'config-layers' ? files('config/cow/cow-defaults.conf') : [],
+    )
 endforeach
-icon_hover_test = executable('test-icon-hover',
-    ['tests/icon-hover.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
-    objects: cow.extract_objects(view_test_sources),
-    include_directories: include_dirs,
-    dependencies: all_deps,
-)
-test('icon-hover', icon_hover_test)
-
-maximize_page_test = executable('test-maximize-page',
-    ['tests/maximize-page.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
-    objects: cow.extract_objects(view_test_sources),
-    include_directories: include_dirs,
-    dependencies: all_deps,
-)
-test('maximize-page', maximize_page_test)
-
-resize_test_sources = []
-foreach source : wm_test_sources
-    if source != 'src/cmd-resize.c'
-        resize_test_sources += source
-    endif
-endforeach
-resize_direction_test = executable('test-resize-direction',
-    ['tests/resize-direction.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
-    objects: cow.extract_objects(resize_test_sources),
-    include_directories: include_dirs,
-    dependencies: all_deps,
-)
-test('resize-direction', resize_direction_test)
 
 xpm_test = executable('test-xpm',
     'tests/test_xpm.c',

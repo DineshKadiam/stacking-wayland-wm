@@ -110,6 +110,8 @@ struct cow_menu_item {
 	uint32_t	       *icon_pixels; /* cached rendered icon */
 	int			icon_cache_size;
 	bool	       is_popup;		 /* action is a sub-menu name */
+	bool search_only; /* generated search result, hidden without a query */
+	bool browse_only; /* generated hierarchy entry, hidden during search */
 	bool	       popup_pick_context; /* pick target before child actions */
 	struct wl_list link;		/* in cow_menu.items */
 };

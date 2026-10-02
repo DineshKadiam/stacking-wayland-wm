@@ -1753,6 +1753,12 @@ letters performs an incremental, case-insensitive filter over the displayed
 labels; only matching windows remain visible and the first match is selected.
 Backspace removes the last search character and expands the list again.
 
+Containers appear once in the main list, with their pane and window counts.
+Open a container's submenu to choose a window, grouped by pane, or browse a
+nested container. Typing in the main list searches inside containers too;
+matches include their container and pane names. **-F** still limits which
+windows can be selected, and **-f** formats the individual window entries.
+
 Selecting an entry closes the list, switches to its output, desk, and page,
 restores it if iconified, activates its container tab if necessary, and focuses
 it.
