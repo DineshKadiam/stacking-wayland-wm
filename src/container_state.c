@@ -420,15 +420,15 @@ invalid:
 }
 
 static bool
-pane_columns_valid(const struct cow_container_layout *node, bool rows)
+pane_collapse_valid(const struct cow_container_layout *node)
 {
 	if (node->axis == COW_CONTAINER_LEAF)
 		return node->collapsed != COW_CONTAINER_HORIZONTAL;
-	if (rows && node->axis == COW_CONTAINER_HORIZONTAL)
-		return false;
-	rows = rows || node->axis == COW_CONTAINER_VERTICAL;
-	return pane_columns_valid(node->child[0], rows) &&
-	    pane_columns_valid(node->child[1], rows);
+	/* Rotation can put columns beneath rows. The decoder validates the
+	 * split topology; only unsupported collapse states are rejected here.
+	 */
+	return pane_collapse_valid(node->child[0]) &&
+	    pane_collapse_valid(node->child[1]);
 }
 
 struct cow_container *
@@ -517,7 +517,7 @@ cow_container_restore(const cJSON *record)
 	if (!state.valid || c->root == NULL ||
 	    (c->n_members < 2 && c->name == NULL && !c->persistent &&
 		!(c->framed && c->n_members == 1)) ||
-	    !pane_columns_valid(&c->root->layout, false) ||
+	    !pane_collapse_valid(&c->root->layout) ||
 	    (active != NULL && !cJSON_IsString(active)))
 		goto fail;
 	struct cow_container_pane *pane = NULL;

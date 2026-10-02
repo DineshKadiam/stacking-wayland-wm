@@ -588,6 +588,19 @@ main(void)
 	CHECK(b.dec.title_thickness == 20);
 	CHECK(cow_container_titles_restore(&a));
 	CHECK(a.dec.title_thickness == 20);
+	CHECK(cow_container_title_hide(&b));
+	struct cow_box hidden_frame = cow_view_frame_box(&b);
+	CHECK(cow_container_shared_edges(&b) & COW_EDGE_LEFT);
+	CHECK(cow_container_border_title_target(&a, hidden_frame.x,
+		  hidden_frame.y + hidden_frame.height / 2) == &b);
+	CHECK(cow_container_border_title_target(&b, hidden_frame.x,
+		  hidden_frame.y + hidden_frame.height / 2) == &b);
+	CHECK(cow_container_border_title_target(&a,
+		  hidden_frame.x + hidden_frame.width / 2,
+		  hidden_frame.y + hidden_frame.height / 2) == &a);
+	CHECK(cow_container_border_title_target(&a, hidden_frame.x - 1,
+		  hidden_frame.y + hidden_frame.height / 2) == &a);
+	CHECK(cow_container_titles_restore(&a));
 	CHECK(cow_container_titles_toggle(&a, false));
 	CHECK(a.dec.title_thickness == 0 && b.dec.title_thickness == 20);
 	CHECK(cow_container_titles_toggle(&a, false));
@@ -609,7 +622,8 @@ main(void)
 	cow_titlebar_effective_config(&b, &tb);
 	int left_buttons, right_buttons;
 	cow_titlebar_button_counts(&tb, &left_buttons, &right_buttons);
-	CHECK(left_buttons == 0 && right_buttons == 3);
+	CHECK(left_buttons == 1 && right_buttons == 5);
+	CHECK(tb.buttons[1].vector.num_points == 8);
 	CHECK(tb.buttons[0].vector.num_points == 4);
 	/* Leave another tab so closing the handle does not dissolve the group. */
 	d.cfg.titlebar.enabled = false;
@@ -621,7 +635,7 @@ main(void)
 	CHECK(!cow_container_title_hide(&d));
 	cow_titlebar_effective_config(&a, &tb);
 	cow_titlebar_button_counts(&tb, &left_buttons, &right_buttons);
-	CHECK(left_buttons == 0 && right_buttons == 2);
+	CHECK(left_buttons == 1 && right_buttons == 4);
 	CHECK(tb.buttons[4].vector.num_points == 0);
 	/* Collections contain one record per group/pane, not per tab. */
 	a.identifier		       = "pane-a";
@@ -824,6 +838,12 @@ main(void)
 	c->desk	  = &desk;
 	CHECK(cow_container_arrange(c, output.usable_area));
 	CHECK(c->output == &output && c->desk == &desk && c->frame.y == 30);
+	check_command("window-container -G drop-test -o clockwise");
+	CHECK(c->root->layout.axis == COW_CONTAINER_VERTICAL);
+	check_command("window-container -G drop-test -o anticlockwise");
+	CHECK(c->root->layout.axis == COW_CONTAINER_HORIZONTAL);
+	check_command("window-container -G drop-test -o 180");
+	check_command("window-container -G drop-test -o 180");
 	/* A backing window is managed normally, but must never become a member.
 	 */
 	cow_container_set_frame(c, &a);
@@ -889,6 +909,67 @@ main(void)
 	CHECK(!cow_container_title_visible(&b));
 	CHECK(cow_container_titles_restore(&a));
 	CHECK(cow_container_title_visible(&b));
+	/* Pane-border bindings leave ordinary edges and the frame alone.
+	 */
+	cow_config = cow_config_create();
+	wl_list_init(&b.selections);
+	CHECK(cow_dec_region_parse("pane-titlebar") ==
+	    COW_DEC_REGION_PANE_TITLEBAR);
+	CHECK(strcmp(cow_dec_region_name(COW_DEC_REGION_PANE_TITLEBAR),
+	    "pane-titlebar") == 0);
+	cow_decoration_register_default_bindings();
+	/* Loading old user bindings must not replace pane defaults. */
+	check_command("bind-decoration titlebar menu-show WindowOps");
+	check_command("bind-decoration -2 titlebar window-shade -d titlebar");
+	CHECK(strcmp(cow_dec_binding_for_view(&b, COW_DEC_REGION_TITLEBAR, 1),
+	    "window-move") == 0);
+	CHECK(strcmp(cow_dec_binding_for_view(&b, COW_DEC_REGION_TITLEBAR, 2),
+	    "window-container -c") == 0);
+	CHECK(strcmp(cow_dec_binding_for_view(&a, COW_DEC_REGION_TITLEBAR, 2),
+	    "window-shade -d titlebar") == 0);
+	check_command("bind-decoration -2 pane-titlebar window-container -T");
+	CHECK(cow_dec_binding_fire(&b, COW_DEC_REGION_TITLEBAR, 2));
+	CHECK(!cow_container_title_visible(&b));
+	CHECK(cow_dec_binding_fire(&b, COW_DEC_REGION_TITLEBAR, 2));
+	CHECK(cow_container_title_visible(&b));
+	check_command("bind-decoration 1 menu-show WindowOps");
+	check_command("bind-decoration -2 1 winops -c");
+	CHECK(cow_dec_binding_for_view(&b, COW_DEC_REGION_BUTTON_1, 1) == NULL);
+	CHECK(cow_dec_binding_for_view(&b, COW_DEC_REGION_BUTTON_1, 2) == NULL);
+	check_command("bind-decoration pane:1 window-container -T");
+	check_command("bind-decoration -2 pane:1 window-container -U");
+	CHECK(strcmp(cow_dec_binding_for_view(&a, COW_DEC_REGION_BUTTON_1, 1),
+		  "menu-show WindowOps") == 0);
+	CHECK(strcmp(cow_dec_binding_for_view(&a, COW_DEC_REGION_BUTTON_1, 2),
+		  "winops -c") == 0);
+	CHECK(strcmp(cow_dec_binding_for_view(&b, COW_DEC_REGION_BUTTON_1, 2),
+		  "window-container -U") == 0);
+	CHECK(cow_dec_binding_fire(&b, COW_DEC_REGION_BUTTON_1, 1));
+	CHECK(!cow_container_title_visible(&b));
+	CHECK(cow_dec_binding_fire(&b, COW_DEC_REGION_BUTTON_1, 2));
+	CHECK(cow_container_title_visible(&b));
+	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++) {
+		enum cow_dec_region pane_region = COW_DEC_REGION_PANE_BUTTON_0 +
+		    i;
+		CHECK(cow_dec_region_parse(cow_dec_region_name(pane_region)) ==
+		    pane_region);
+	}
+	check_command("bind-decoration -2 pane-border script { "
+		      "if self.pane_title_hidden { window-container -T } }");
+	CHECK(cow_container_title_hide(&b));
+	CHECK(!cow_dec_binding_fire(&a, COW_DEC_REGION_N, 2));
+	CHECK(!cow_container_title_visible(&b));
+	CHECK(cow_dec_binding_fire(&b, COW_DEC_REGION_N, 2));
+	CHECK(cow_container_title_visible(&b));
+	CHECK(cow_dec_binding_fire(&b, COW_DEC_REGION_SW, 2));
+	CHECK(cow_container_title_visible(&b));
+	check_command("bind-decoration N script { window-container -T }");
+	CHECK(cow_dec_binding_fire(&b, COW_DEC_REGION_N, 1));
+	CHECK(!cow_container_title_visible(&b));
+	CHECK(cow_dec_binding_fire(&b, COW_DEC_REGION_N, 2));
+	CHECK(cow_container_title_visible(&b));
+	cow_config_destroy(cow_config);
+	cow_config = NULL;
 	CHECK(cow_container_titles_toggle(&a, false));
 	CHECK(!cow_container_title_visible(&b));
 	CHECK(cow_container_titles_toggle(&a, true));
@@ -1227,17 +1308,59 @@ main(void)
 		CHECK(memcmp(&original, &c->frame, sizeof(original)) == 0);
 		int row_height	 = panes[0].pending_height;
 		int column_width = panes[0].pending_width;
+		struct cow_container_pane *rotate_root	= c->root;
+		struct cow_container_layout *rotate_first =
+		    c->root->layout.child[0];
+		unsigned rotate_share = c->root->layout.share;
+		CHECK(cow_container_rotate(c, 1));
+		CHECK(memcmp(&original, &c->frame, sizeof(original)) == 0);
+		CHECK(cow_container_rotate(c, 3));
+		CHECK(c->root == rotate_root &&
+		    c->root->layout.child[0] == rotate_first &&
+		    c->root->layout.share == rotate_share);
+		CHECK(panes[0].pending_height == row_height);
+		CHECK(panes[0].pending_width == column_width);
+		panes[0].min_width = original.width + 1;
+		CHECK(!cow_container_rotate(c, 1));
+		CHECK(c->root == rotate_root &&
+		    c->root->layout.child[0] == rotate_first &&
+		    c->root->layout.share == rotate_share);
+		CHECK(memcmp(&original, &c->frame, sizeof(original)) == 0);
+		CHECK(panes[0].pending_height == row_height);
+		panes[0].min_width = 0;
+		cow_view_pane(&panes[0])->layout.collapsed =
+		    COW_CONTAINER_VERTICAL;
+		CHECK(!cow_container_rotate(c, 1));
+		cow_view_pane(&panes[0])->layout.collapsed = COW_CONTAINER_LEAF;
 		CHECK(cow_container_zoom(&panes[0], COW_CONTAINER_ZOOM_COLUMN));
+		CHECK(!cow_container_rotate(c, 1));
 		CHECK(panes[0].pending_height > row_height);
+		cow_titlebar_effective_config(&panes[0], &tb);
+		CHECK(tb.buttons[6].vector.num_points == 5);
+		CHECK(tb.buttons[8].vector.num_points == 5);
+		CHECK(tb.buttons[6].active_relief == COW_RELIEF_SUNKEN);
+		CHECK(tb.buttons[6].inactive_relief == COW_RELIEF_SUNKEN);
+		CHECK(tb.buttons[8].active_relief ==
+		    panes[0].cfg.titlebar.buttons[8].active_relief);
 		CHECK(panes[0].pending_width == column_width);
 		CHECK(cow_container_hides_view(&panes[1]));
 		CHECK(!cow_container_hides_view(&panes[2]));
 		CHECK(cow_container_zoom(&panes[0], COW_CONTAINER_ZOOM_ALL));
 		CHECK(panes[0].pending_width > column_width);
+		cow_titlebar_effective_config(&panes[0], &tb);
+		CHECK(tb.buttons[8].active_relief == COW_RELIEF_SUNKEN);
+		CHECK(tb.buttons[8].inactive_relief == COW_RELIEF_SUNKEN);
+		CHECK(tb.buttons[6].active_relief ==
+		    panes[0].cfg.titlebar.buttons[6].active_relief);
 		CHECK(cow_container_hides_view(&panes[2]));
 		CHECK(memcmp(&original, &c->frame, sizeof(original)) == 0);
 		CHECK(cow_container_zoom(&panes[0], COW_CONTAINER_ZOOM_ALL));
 		CHECK(panes[0].pending_height == row_height);
+		cow_titlebar_effective_config(&panes[0], &tb);
+		CHECK(tb.buttons[8].active_relief ==
+		    panes[0].cfg.titlebar.buttons[8].active_relief);
+		CHECK(tb.buttons[6].active_relief ==
+		    panes[0].cfg.titlebar.buttons[6].active_relief);
 		CHECK(panes[0].pending_width == column_width);
 		CHECK(!cow_container_hides_view(&panes[1]));
 		CHECK(cow_container_zoom(&panes[0], COW_CONTAINER_ZOOM_COLUMN));

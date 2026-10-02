@@ -49,13 +49,14 @@ container_direction(const char *edge, enum cow_container_axis *axis,
 
 struct cmd_entry cmd_container_entry = {
 	"window-container",
-	"t:s:e:f:N:G:B:b:z:arcqnpRSPHUEDTA",
+	"t:s:e:f:N:G:B:b:z:o:arcqnpRPHUEDTA",
 	0,
 	0,
 	"[-t target | -G name] [-b pane] [-s source] "
 	"[-E -N name -B pane | -E -e direction -B pane | -D | "
 	"-N name | -B pane-name | -a | -e direction | -f direction | "
-	"-z column|container|off | -T [-A] | -rcqnpRPHU]",
+	"-z column|container|off | -o clockwise|anticlockwise|180 | "
+	"-T [-A] | -rcqnpRPHU]",
 	cmd_container_exec,
 	0,
 };
@@ -133,6 +134,28 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		}
 		selected = pane;
 		target	 = pane->active ? pane->active->view : NULL;
+	}
+	if (args_has(args, 'o')) {
+		if (!named && cow_container_window_owner(target))
+			container = cow_container_window_owner(target);
+		const char *direction = args_get(args, 'o');
+		unsigned    turns = strcmp(direction, "clockwise") == 0 ? 1 :
+		       strcmp(direction, "anticlockwise") == 0		? 3 :
+		       strcmp(direction, "180") == 0			? 2 :
+									  0;
+		if (turns == 0) {
+			cmdq_error(cmdq,
+			    "container: expected rotation clockwise, anticlockwise or 180");
+			return CMD_RETURN_ERROR;
+		}
+		if (!cow_container_rotate(container, turns)) {
+			cmdq_error(cmdq,
+			    "container: cannot rotate layout; "
+			    "use an expanded, unzoomed split container with room for client minimum sizes");
+			return CMD_RETURN_ERROR;
+		}
+		cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
+		return CMD_RETURN_NORMAL;
 	}
 	if (args_has(args, 'D')) {
 		if (container == NULL) {

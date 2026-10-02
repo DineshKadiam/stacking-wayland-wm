@@ -24,6 +24,27 @@ maximum(int a, int b)
 	return a > b ? a : b;
 }
 
+void
+cow_container_layout_rotate(struct cow_container_layout *node, unsigned turns)
+{
+	if (node->axis == COW_CONTAINER_LEAF)
+		return;
+	turns %= 4;
+	for (unsigned i = 0; i < turns; i++) {
+		if (node->axis == COW_CONTAINER_VERTICAL) {
+			struct cow_container_layout *first = node->child[0];
+			node->child[0]			   = node->child[1];
+			node->child[1]			   = first;
+			node->share = 10000 - node->share;
+			node->axis  = COW_CONTAINER_HORIZONTAL;
+		} else {
+			node->axis = COW_CONTAINER_VERTICAL;
+		}
+	}
+	cow_container_layout_rotate(node->child[0], turns);
+	cow_container_layout_rotate(node->child[1], turns);
+}
+
 bool
 cow_container_layout_minimum(struct cow_container_layout *node, int gap,
     int *width, int *height)

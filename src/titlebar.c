@@ -62,19 +62,9 @@ cow_titlebar_button_counts(const struct cow_titlebar_config *tb, int *left,
 	}
 }
 
-void
-cow_titlebar_effective_config(const struct cow_view *view,
-    struct cow_titlebar_config			    *tb)
-{
-	*tb = view->cfg.titlebar;
-	if (!cow_container_is_split(view))
-		return;
-	/* Pane controls retain the theme's button colours and relief. */
-	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++) {
-		tb->buttons[i].image		 = NULL;
-		tb->buttons[i].vector.num_points = 0;
-	}
-	tb->buttons[0].vector = (struct cow_vector_button) {
+/* Pane glyphs are fixed; colours and relief still come from the decor. */
+static const struct cow_vector_button pane_vectors[COW_TITLEBAR_NUM_BUTTONS] = {
+	[0] = {
 		.num_points = 4,
 		.points = {
 			{ .x = 30, .y = 30, .colour = COW_VECTOR_INVISIBLE },
@@ -82,8 +72,8 @@ cow_titlebar_effective_config(const struct cow_view *view,
 			{ .x = 70, .y = 30, .colour = COW_VECTOR_INVISIBLE },
 			{ .x = 30, .y = 70, .colour = COW_VECTOR_FG },
 		},
-	};
-	tb->buttons[2].vector = (struct cow_vector_button) {
+	},
+	[2] = {
 		.num_points = 5,
 		.points = {
 			{ .x = 30, .y = 70, .colour = COW_VECTOR_INVISIBLE },
@@ -92,16 +82,72 @@ cow_titlebar_effective_config(const struct cow_view *view,
 			{ .x = 70, .y = 30, .colour = COW_VECTOR_INVISIBLE },
 			{ .x = 70, .y = 60, .colour = COW_VECTOR_FG },
 		},
-	};
-	tb->buttons[4].vector = (struct cow_vector_button) {
+	},
+	[1] = {
+		.num_points = 8,
+		.points = {
+			{ .x = 70, .y = 65, .colour = COW_VECTOR_INVISIBLE },
+			{ .x = 70, .y = 75, .colour = COW_VECTOR_FG },
+			{ .x = 25, .y = 75, .colour = COW_VECTOR_FG },
+			{ .x = 25, .y = 30, .colour = COW_VECTOR_FG },
+			{ .x = 75, .y = 30, .colour = COW_VECTOR_FG },
+			{ .x = 60, .y = 15, .colour = COW_VECTOR_FG },
+			{ .x = 75, .y = 30, .colour = COW_VECTOR_INVISIBLE },
+			{ .x = 60, .y = 45, .colour = COW_VECTOR_FG },
+		},
+	},
+	[4] = {
 		.num_points = 2,
 		.points = {
 			{ .x = 30, .y = 50, .colour = COW_VECTOR_INVISIBLE },
 			{ .x = 70, .y = 50, .colour = COW_VECTOR_FG },
 		},
-	};
-	if (cow_view_pane(view)->n_tabs > 1)
+	},
+	[6] = {
+		.num_points = 5,
+		.points = {
+			{ .x = 40, .y = 25, .colour = COW_VECTOR_INVISIBLE },
+			{ .x = 60, .y = 25, .colour = COW_VECTOR_FG },
+			{ .x = 60, .y = 75, .colour = COW_VECTOR_FG },
+			{ .x = 40, .y = 75, .colour = COW_VECTOR_FG },
+			{ .x = 40, .y = 25, .colour = COW_VECTOR_FG },
+		},
+	},
+	[8] = {
+		.num_points = 5,
+		.points = {
+			{ .x = 25, .y = 25, .colour = COW_VECTOR_INVISIBLE },
+			{ .x = 75, .y = 25, .colour = COW_VECTOR_FG },
+			{ .x = 75, .y = 75, .colour = COW_VECTOR_FG },
+			{ .x = 25, .y = 75, .colour = COW_VECTOR_FG },
+			{ .x = 25, .y = 25, .colour = COW_VECTOR_FG },
+		},
+	},
+};
+
+void
+cow_titlebar_effective_config(const struct cow_view *view,
+    struct cow_titlebar_config			    *tb)
+{
+	*tb = view->cfg.titlebar;
+	if (!cow_container_is_split(view))
+		return;
+	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++) {
+		tb->buttons[i].image  = NULL;
+		tb->buttons[i].vector = pane_vectors[i];
+	}
+	struct cow_container_pane *pane = cow_view_pane(view);
+	if (pane->n_tabs > 1)
 		tb->buttons[4].vector.num_points = 0;
+	for (int i = 6; i <= 8; i += 2) {
+		enum cow_container_zoom scope = i == 6 ?
+		    COW_CONTAINER_ZOOM_COLUMN :
+		    COW_CONTAINER_ZOOM_ALL;
+		if (pane->zoom == scope) {
+			tb->buttons[i].active_relief   = COW_RELIEF_SUNKEN;
+			tb->buttons[i].inactive_relief = COW_RELIEF_SUNKEN;
+		}
+	}
 }
 
 bool

@@ -50,6 +50,28 @@ main(void)
 		.height		  = 104 };
 	int	       w, h;
 
+	/* Clockwise turns move the right column below A, with C before B.
+	 * Unequal shares and node identities survive a full rotation.
+	 */
+	root.share  = 3000;
+	right.share = 6000;
+	cow_container_layout_rotate(&root, 1);
+	CHECK(root.axis == COW_CONTAINER_VERTICAL && root.child[0] == &a);
+	CHECK(right.axis == COW_CONTAINER_HORIZONTAL);
+	CHECK(right.child[0] == &c && right.share == 4000);
+	CHECK(root.share == 3000);
+	cow_container_layout_rotate(&root, 3);
+	CHECK(root.axis == COW_CONTAINER_HORIZONTAL && root.child[0] == &a);
+	CHECK(right.axis == COW_CONTAINER_VERTICAL);
+	CHECK(right.child[0] == &b && right.share == 6000);
+	cow_container_layout_rotate(&root, 2);
+	CHECK(root.child[0] == &right && root.share == 7000);
+	CHECK(right.child[0] == &c && right.share == 4000);
+	cow_container_layout_rotate(&root, 2);
+	CHECK(root.child[0] == &a && root.share == 3000);
+	CHECK(right.child[0] == &b && right.share == 6000);
+	root.share = right.share = 5000;
+
 	CHECK(cow_container_layout_minimum(&root, 4, &w, &h));
 	CHECK(w == 104 && h == 49);
 	CHECK(cow_container_layout_arrange(&root, box, 4));

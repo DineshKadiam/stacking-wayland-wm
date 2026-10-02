@@ -42,6 +42,7 @@ struct cow_container_layout {
 
 bool cow_container_layout_minimum(struct cow_container_layout *, int, int *,
     int *);
+void cow_container_layout_rotate(struct cow_container_layout *, unsigned);
 bool cow_container_layout_arrange(struct cow_container_layout *, struct cow_box,
     int);
 

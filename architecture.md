@@ -356,7 +356,8 @@ decoration resources remain owned by the view.
 
 Containers use a binary tree to represent columns and rows: horizontal nodes
 divide columns, and vertical nodes within each column divide rows. Horizontal
-nodes never occur below vertical nodes. Leaves are `cow_container_pane`s. A
+nodes may occur below vertical nodes after rotation. Leaves are
+`cow_container_pane`s. A
 pane owns tab order and selection; the container retains its full membership
 list for group operations and restart state. Visibility and titlebar rendering
 use the pane's selected tab, not the container's last activated member.

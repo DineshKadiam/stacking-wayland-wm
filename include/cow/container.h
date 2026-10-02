@@ -186,6 +186,7 @@ bool cow_container_zoom(struct cow_view *, enum cow_container_zoom);
 bool cow_container_shade(struct cow_view *, bool);
 bool cow_container_shaded_size(const struct cow_view *, int *, int *);
 bool cow_container_equalize(struct cow_view *);
+bool cow_container_rotate(struct cow_container *, unsigned);
 struct cow_view *cow_container_neighbor(struct cow_view *, uint32_t);
 void		 cow_container_sync_flags(struct cow_view *, uint32_t);
 void		 cow_container_remove_view(struct cow_view *);
@@ -210,6 +211,7 @@ bool			   cow_view_is_active_tab(const struct cow_view *);
 bool cow_container_hides_view(const struct cow_view *);
 /* Borders supplied by the neighbouring pane to the left or above. */
 uint32_t cow_container_shared_edges(const struct cow_view *);
+struct cow_view *cow_container_border_title_target(struct cow_view *, int, int);
 uint32_t cow_container_outer_edges(const struct cow_view *);
 
 /* Destroy a container and detach its members. */

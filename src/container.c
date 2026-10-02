@@ -234,6 +234,37 @@ cow_container_shared_edges(const struct cow_view *view)
 	    (COW_EDGE_LEFT | COW_EDGE_TOP);
 }
 
+struct cow_view *
+cow_container_border_title_target(struct cow_view *view, int x, int y)
+{
+	struct cow_container_pane *pane = cow_view_pane(view);
+	if (pane == NULL || pane->title_hidden ||
+	    cow_container_window_owner(view) != NULL)
+		return view;
+	struct cow_container	  *c	 = cow_view_container(view);
+	struct cow_container_pane *other = NULL;
+	while ((other = cow_container_pane_next(c, other)) != NULL) {
+		if (!other->title_hidden || other->active == NULL)
+			continue;
+		struct cow_view *candidate = other->active->view;
+		if (candidate->closed || cow_container_hides_view(candidate))
+			continue;
+		struct cow_box box = cow_view_frame_box(candidate);
+		int	       bw  = candidate->dec.border_width;
+		if (x < box.x || y < box.y || x >= box.x + box.width ||
+		    y >= box.y + box.height)
+			continue;
+		/* These transparent strips receive input through the neighbour
+		 * which draws the shared divider.
+		 */
+		uint32_t shared = cow_container_shared_edges(candidate);
+		if (((shared & COW_EDGE_LEFT) && x < box.x + bw) ||
+		    ((shared & COW_EDGE_TOP) && y < box.y + bw))
+			return candidate;
+	}
+	return view;
+}
+
 static void
 pane_frame_metrics(const struct cow_container_member *m, int *fw, int *fh,
     int *cx, int *cy, bool display)
@@ -875,6 +906,37 @@ cow_container_equalize(struct cow_view *view)
 	if (cow_container_arrange(c, c->frame))
 		return true;
 	parent->share = old;
+	return false;
+}
+
+bool
+cow_container_rotate(struct cow_container *c, unsigned turns)
+{
+	if (c == NULL || c->root->layout.axis == COW_CONTAINER_LEAF ||
+	    turns < 1 || turns > 3 || c->shaded || zoomed_pane(c))
+		return false;
+	if (c->frame_view &&
+	    (c->frame_view->fullscreen || c->frame_view->sd != COW_SHADE_NONE))
+		return false;
+	struct cow_container_pane *pane = NULL;
+	while ((pane = cow_container_pane_next(c, pane)) != NULL) {
+		if (pane->layout.collapsed != COW_CONTAINER_LEAF)
+			return false;
+	}
+	struct cow_container_member *m;
+	wl_list_for_each(m, &c->members, link)
+	{
+		if (m->view->fullscreen)
+			return false;
+	}
+	cow_container_layout_rotate(&c->root->layout, turns);
+	if (cow_container_arrange(c, c->frame))
+		return true;
+	/* Arrange validates minima before changing any boxes. Undo the tree
+	 * transformation and refresh the orientation-dependent frame minima.
+	 */
+	cow_container_layout_rotate(&c->root->layout, 4 - turns);
+	container_pane_minimum(c->root, true);
 	return false;
 }
 

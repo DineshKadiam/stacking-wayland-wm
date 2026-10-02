@@ -848,6 +848,21 @@ shorthands and the long form:
 | **SW**         | *south-west*            |
 | **titlebar**   | *title*                 |
 | **0** to **9** | titlebar buttons 0 to 9 |
+| **pane:0** to **pane:9** | inner pane titlebar buttons |
+| **pane-border** | any edge or corner of a split pane |
+| **pane-titlebar** | inner pane titlebar (excluding buttons) |
+
+A **pane-border** binding takes precedence over the corresponding edge or
+corner binding for the same click count. It does not match the outer container
+frame or ordinary windows. Without one, normal edge bindings apply. On a shared
+divider, a double-click targets the adjoining pane with a hidden title if the
+pane drawing the divider has its title visible.
+
+Pane titlebar and button bindings are separate from ordinary titlebar and
+button bindings, with no fallback between them. Outer container frames and
+plain tab groups use ordinary bindings; tabs within split panes use
+**pane-titlebar** and **pane:** bindings. Single- and double-click actions are
+independent in each set.
 
 The default bindings are:
 
@@ -857,11 +872,14 @@ The default bindings are:
 | NE / NW / SE / SW | single | window-resize -e *dir* (interactive diagonal resize) |
 | titlebar | single | window-move (interactive title-drag move) |
 | titlebar | double | window-shade -d titlebar (shade / unshade toward the titlebar) |
+| pane-titlebar | single | window-move (rearrange panes or detach outside the container) |
+| pane-titlebar | double | window-container -c (collapse / restore a row) |
 | 0 | single | window-maximize -T (toggle vertical maximisation) |
 | 1 | single | winops -c (close) |
 | 2 | single | winops -i (iconify) |
 
-Double-clicks on edges and corners have no defaults.
+The installed defaults restore a hidden pane title on a **pane-border**
+double-click. Other edges and corners have no double-click defaults.
 
 If a button has both single- and double-click bindings, CoW waits until the
 double-click interval has elapsed before running the single-click action. A
@@ -2389,18 +2407,12 @@ when necessary. Lowering those minima does not automatically shrink it.
   rows. All panes must use horizontal titlebars. Hidden pane titles are
   temporarily shown while the container is shaded.
 
-  Use `self.container_split` to give titlebar double-clicks a row-collapse
-  action while retaining shade/unshade for ordinary windows and plain tab
-  groups. A shaded container is unshaded first:
+  Separate pane-titlebar bindings collapse rows without changing shade/unshade
+  for ordinary windows and outer container frames. These are the defaults:
 
   ```text
-  bind-decoration -2 titlebar script {
-      if self.container_split and not self.shaded {
-          window-container -c
-      } else {
-          window-shade -d titlebar
-      }
-  }
+  bind-decoration -2 titlebar window-shade -d titlebar
+  bind-decoration -2 pane-titlebar window-container -c
   ```
 
 **window-container -z** *column|container|off* \[-t *target*\]
@@ -2446,18 +2458,36 @@ when necessary. Lowering those minima does not automatically shrink it.
   bind LCAS+t window-container -TA
   ```
 
+  The defaults also bind Super+Shift+middle-click over a pane to toggle its
+  title, and double-clicking its border restores a hidden title. Border
+  dragging still resizes. The latter binding uses **self.pane_title_hidden**,
+  which reports whether the pane title was explicitly hidden:
+
+  ```text
+  bind-decoration -2 pane-border script {
+      if self.pane_title_hidden {
+          window-container -T
+      }
+  }
+  ```
+
 **window-container -U** \[-t *target*\]
 
 : Restore the hidden pane titles in the target's container. Windows whose
   decoration profile disables titles retain that setting, except for the
   protected container handle.
 
-  The default configuration uses three pane buttons on the right:
+  The default configuration uses five pane buttons on the right:
 
   ```text
-  [ - ]  [ ↗ ]  [ × ]
-   hide  detach close
+  [ □ ]       [ ▯ ]    [ - ]  [ ↗ ]  [ × ]
+  container   column   hide   detach  close
+     zoom      zoom
   ```
+
+  Buttons 8 and 6 toggle container and column zoom respectively. Their
+  vectors show a square and a narrow rectangle; the active zoom button is
+  sunken. Click it again to restore the layout.
 
   Buttons 4, 2 and 0 respectively hide the pane title, detach the active tab,
   and close the active window. They retain the theme's button colours and
@@ -2465,8 +2495,8 @@ when necessary. Lowering those minima does not automatically shrink it.
   remains visible, even if the decoration profile disables titlebars.
   Ordinary windows and plain tabbed groups keep their normal buttons.
   Tabs within a split container use the pane buttons. Button actions remain
-  configurable with **bind-decoration**; the default bindings test
-  `self.container_split` to distinguish the two cases.
+  configurable with **bind-decoration pane:** bindings, independently of
+  ordinary window buttons.
 
   Double-click a pane title to collapse or restore its row. Middle-click a
   title to shade or unshade the whole container. **Super+Ctrl+Alt+t** restores
@@ -2475,27 +2505,49 @@ when necessary. Lowering those minima does not automatically shrink it.
   ```text
   mouse T:0+middle window-shade -d titlebar
   bind LCA+t window-container -U
-  bind-decoration 4 window-container -H
-  bind-decoration 2 script {
-      if self.container_split {
-          window-container -r
-      } else {
-          winops -i
-      }
-  }
-  bind-decoration 0 script {
-      if self.container_split {
-          winops -c
-      } else {
-          window-maximize -T
-      }
-  }
+  bind-decoration pane:4 window-container -H
+  bind-decoration pane:6 window-container -z column
+  bind-decoration pane:8 window-container -z container
+  bind-decoration pane:2 window-container -r
+  bind-decoration pane:0 winops -c
   ```
 
 **window-container -q** \[-t *target*\]
 
 : Equalise the split immediately containing the target pane, subject to
   application minimum sizes.
+
+**window-container -o** *clockwise|anticlockwise|180* \[-t *target* | -G *name*\]
+
+: Rotate the whole pane layout inside a container. The outer window keeps
+  its position and size; panes retain their names, tabs and title settings.
+  Split proportions rotate with the layout, subject to application minimum
+  sizes. Applications and titlebar text are not rotated.
+
+  Pane titlebars have a clockwise-arrow button on the left (button 1).
+  Single-click rotates clockwise; double-click rotates anticlockwise.
+  These defaults are independent of ordinary window button 1:
+
+  ```text
+  bind-decoration pane:1 window-container -o clockwise
+  bind-decoration -2 pane:1 window-container -o anticlockwise
+  ```
+
+  Unzoom, expand collapsed rows and leave fullscreen or shaded mode first.
+  If the rotated layout cannot fit, nothing moves. Plain tab groups have no
+  split layout to rotate. Named empty layouts can also be rotated.
+
+  ```text
+  window-container -o clockwise
+  window-container -G work -o anticlockwise
+
+  Before           Clockwise
+  +-----+-----+    +-----------+
+  |     |  B  |    |     A     |
+  |  A  +-----+    +-----+-----+
+  |     |  C  |    |  C  |  B  |
+  +-----+-----+    +-----+-----+
+  ```
 
 **window-container -n** \[-t *target*\]
 
@@ -2515,11 +2567,11 @@ when necessary. Lowering those minima does not automatically shrink it.
 : Move the tab containing *target* one position to the left in the tab
   strip. The tab remains active. No-op if it is already the first tab.
 
-With **bind-decoration titlebar window-move**, dragging an embedded pane's
-titlebar rearranges that pane and its tabs inside the container. Drop on another
-pane's edge to place it alongside, or in its centre to join its tabs. Releasing
-outside the layout or pressing Escape cancels. The outer titlebar still moves
-the whole container; use the detach button to remove a window.
+With **bind-decoration pane-titlebar window-move**, dragging an embedded pane's
+titlebar rearranges that pane and its tabs inside the container. Drop on
+another pane's edge to place it alongside, or in its centre to join its tabs.
+Releasing outside the container detaches the active window at the pointer.
+Pressing Escape cancels. The outer titlebar still moves the whole container.
 
 See also **window-move -C**, which allows containers to be formed interactively
 by dragging an uncontained window onto another. The titlebar or central area

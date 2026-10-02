@@ -197,6 +197,18 @@ enum cow_dec_region {
 	COW_DEC_REGION_BUTTON_7,
 	COW_DEC_REGION_BUTTON_8,
 	COW_DEC_REGION_BUTTON_9,
+	COW_DEC_REGION_PANE_BORDER,
+	COW_DEC_REGION_PANE_TITLEBAR,
+	COW_DEC_REGION_PANE_BUTTON_0,
+	COW_DEC_REGION_PANE_BUTTON_1,
+	COW_DEC_REGION_PANE_BUTTON_2,
+	COW_DEC_REGION_PANE_BUTTON_3,
+	COW_DEC_REGION_PANE_BUTTON_4,
+	COW_DEC_REGION_PANE_BUTTON_5,
+	COW_DEC_REGION_PANE_BUTTON_6,
+	COW_DEC_REGION_PANE_BUTTON_7,
+	COW_DEC_REGION_PANE_BUTTON_8,
+	COW_DEC_REGION_PANE_BUTTON_9,
 	COW_DEC_REGION_COUNT,
 };
 
@@ -562,6 +574,8 @@ const char *cow_dec_region_name(enum cow_dec_region);
  */
 const char *cow_dec_binding_lookup(enum cow_dec_region, int clicks);
 bool cow_dec_binding_can_maximize(const char *);
+const char *cow_dec_binding_for_view(struct cow_view *, enum cow_dec_region,
+    int clicks);
 
 struct cow_view;
 bool cow_dec_binding_fire(struct cow_view *, enum cow_dec_region, int clicks);

@@ -334,5 +334,25 @@ main(void)
 	cow_container_destroy(c);
 	cJSON_Delete(record);
 	CHECK(rmdir(directory) == 0);
+	/* Every rotation of a mixed-axis layout must survive restart.
+	 */
+	c = cow_container_create_empty("rotated", "a");
+	CHECK(cow_container_split_empty(c, c->root, "b",
+	    COW_CONTAINER_HORIZONTAL, false));
+	CHECK(cow_container_split_empty(c, cow_container_pane_find(c, "b"),
+	    "c", COW_CONTAINER_VERTICAL, false));
+	CHECK(cow_container_arrange(c, (struct cow_box) { 0, 0, 800, 600 }));
+	for (int turn = 0; turn < 4; turn++) {
+		CHECK(cow_container_rotate(c, 1));
+		record = cow_container_save(c);
+		cow_container_destroy(c);
+		c = cow_container_restore(record);
+		CHECK(c != NULL);
+		roundtrip = cow_container_save(c);
+		CHECK(cJSON_Compare(record, roundtrip, true));
+		cJSON_Delete(record);
+		cJSON_Delete(roundtrip);
+	}
+	cow_container_destroy(c);
 	return 0;
 }

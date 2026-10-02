@@ -607,7 +607,7 @@ manage_titlebar_button_click(struct cow_seat *seat, struct cow_view *view,
 			manage_titlebar_button_single(seat, pending, pending_idx);
 	}
 
-	if (cow_dec_binding_lookup(region, 2) != NULL) {
+	if (cow_dec_binding_for_view(view, region, 2) != NULL) {
 		seat->pending_button_click_view = view;
 		seat->pending_button_click_idx = idx;
 		seat->pending_button_click_deadline_ms = now + DOUBLE_CLICK_MS;
@@ -904,7 +904,13 @@ manage_decoration_click(struct cow_seat *seat, struct cow_view *view)
 
 	struct timespec now;
 	int clicks = manage_click_count(seat, view, region, &now);
-	cow_dec_binding_dispatch(seat, view, region, clicks);
+	struct cow_view *target = view;
+	if (clicks == 2 && region >= COW_DEC_REGION_N &&
+	    region <= COW_DEC_REGION_SW &&
+	    cow_dec_binding_lookup(COW_DEC_REGION_PANE_BORDER, 2) != NULL)
+		target = cow_container_border_title_target(view,
+		    seat->pointer_x, seat->pointer_y);
+	cow_dec_binding_dispatch(seat, target, region, clicks);
 	if (region == COW_DEC_REGION_TITLEBAR && cow_container_is_split(view) &&
 	    !view->container_placeholder && seat->op_in_progress &&
 	    seat->op.type == COW_POINTER_OP_MOVE && seat->op.view == view &&

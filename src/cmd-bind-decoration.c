@@ -22,6 +22,7 @@
 #include "cow/dsl.h"
 #include "cow/log.h"
 #include "cow/config.h"
+#include "cow/container.h"
 #include "cow/memory.h"
 #include "cow/pointer_op.h"
 #include "cow/seat.h"
@@ -158,7 +159,8 @@ refresh_maximize_buttons(void)
  * Accepted shapes:
  *   bind-decoration REGION cmd [args...]
  *   bind-decoration -2 REGION cmd [args...]
- * REGION may also be a titlebar button number from 0 through 9.
+ * REGION may also be a titlebar button number from 0 through 9,
+ * or pane:0 through pane:9 for inner pane buttons.
  */
 struct cmd_entry cmd_bind_decoration_entry = { "bind-decoration", "", 2, -1,
 	"bind-decoration [-2] REGION command [args ...]",
@@ -186,7 +188,7 @@ cmd_bind_decoration_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (region == COW_DEC_REGION_NONE) {
 		cmdq_error(cmdq,
 		    "bind-decoration: unknown region '%s' "
-		    "(expected N|S|E|W|NE|NW|SE|SW|titlebar|0..9)",
+		    "(expected N|S|E|W|NE|NW|SE|SW|pane-border|pane-titlebar|titlebar|0..9|pane:0..9)",
 		    args->argv[idx]);
 		return (CMD_RETURN_ERROR);
 	}
@@ -260,6 +262,8 @@ cow_decoration_register_default_bindings(void)
 	register_default(COW_DEC_REGION_TITLEBAR, 1, "window-move");
 	register_default(COW_DEC_REGION_TITLEBAR, 2,
 	    "window-shade -d titlebar");
+	register_default(COW_DEC_REGION_PANE_TITLEBAR, 1, "window-move");
+	register_default(COW_DEC_REGION_PANE_TITLEBAR, 2, "window-container -c");
 	register_default(COW_DEC_REGION_BUTTON_0, 1, "window-maximize -T");
 	register_default(COW_DEC_REGION_BUTTON_1, 1, "winops -c");
 	register_default(COW_DEC_REGION_BUTTON_2, 1, "winops -i");
@@ -289,13 +293,40 @@ run_cmd_string(struct cow_view *view, const char *cmd_str)
 	return true;
 }
 
+const char *
+cow_dec_binding_for_view(struct cow_view *view, enum cow_dec_region region,
+    int clicks)
+{
+	if (region == COW_DEC_REGION_TITLEBAR && cow_container_is_split(view) &&
+	    !cow_container_window_owner(view))
+		return cow_dec_binding_lookup(COW_DEC_REGION_PANE_TITLEBAR,
+		    clicks);
+	if (region >= COW_DEC_REGION_BUTTON_0 &&
+	    region <= COW_DEC_REGION_BUTTON_9 && cow_container_is_split(view) &&
+	    !cow_container_window_owner(view))
+		return cow_dec_binding_lookup(COW_DEC_REGION_PANE_BUTTON_0 +
+			region - COW_DEC_REGION_BUTTON_0,
+		    clicks);
+	/* Pane bindings override physical edges without changing hit testing.
+	 * The enclosing container frame keeps its ordinary border bindings.
+	 */
+	if (region >= COW_DEC_REGION_N && region <= COW_DEC_REGION_SW &&
+	    cow_container_is_split(view) && !cow_container_window_owner(view)) {
+		const char *action =
+		    cow_dec_binding_lookup(COW_DEC_REGION_PANE_BORDER, clicks);
+		if (action != NULL)
+			return action;
+	}
+	return cow_dec_binding_lookup(region, clicks);
+}
+
 bool
 cow_dec_binding_fire(struct cow_view *view, enum cow_dec_region region,
     int clicks)
 {
 	if (view == NULL || view->closed)
 		return false;
-	const char *cmd_str = cow_dec_binding_lookup(region, clicks);
+	const char *cmd_str = cow_dec_binding_for_view(view, region, clicks);
 	if (cmd_str == NULL)
 		return false;
 	return run_cmd_string(view, cmd_str);
@@ -348,14 +379,14 @@ cow_dec_binding_dispatch(struct cow_seat *seat, struct cow_view *view,
 
 	if (clicks == 2) {
 		cancel_first_press_op(seat);
-		const char *cmd_str = cow_dec_binding_lookup(region, 2);
+		const char *cmd_str = cow_dec_binding_for_view(view, region, 2);
 		if (cmd_str != NULL)
 			return run_cmd_string(view, cmd_str);
-		const char *one = cow_dec_binding_lookup(region, 1);
+		const char *one = cow_dec_binding_for_view(view, region, 1);
 		return one != NULL ? run_cmd_string(view, one) : false;
 	}
 
-	const char *cmd_str = cow_dec_binding_lookup(region, 1);
+	const char *cmd_str = cow_dec_binding_for_view(view, region, 1);
 	if (cmd_str == NULL)
 		return false;
 	return run_cmd_string(view, cmd_str);

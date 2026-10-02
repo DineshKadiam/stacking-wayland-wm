@@ -266,6 +266,7 @@ state_snapshot_view(const struct cow_view *view)
 	rec_set_bool(r, "container_active", false);
 	rec_set_number(r, "pane_id", -1);
 	rec_set_bool(r, "pane_collapsed", false);
+	rec_set_bool(r, "pane_title_hidden", false);
 	rec_set_string(r, "pane_zoom", "off");
 	rec_set_bool(r, "pane_active", cow_view_is_active_tab(view));
 	rec_set_bool(r, "container_hidden",
@@ -276,6 +277,8 @@ state_snapshot_view(const struct cow_view *view)
 		struct cow_container *ctr = view->container_member->container;
 		rec_set_container_id(r, "container_id", ctr);
 		rec_set_number(r, "pane_id", view->container_member->pane->id);
+		rec_set_bool(r, "pane_title_hidden",
+		    view->container_member->pane->title_hidden);
 		enum cow_container_zoom zoom =
 		    view->container_member->pane->zoom;
 		rec_set_string(r, "pane_zoom",
