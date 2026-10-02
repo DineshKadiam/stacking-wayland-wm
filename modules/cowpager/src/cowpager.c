@@ -2942,12 +2942,38 @@ cp_host_output(void)
 	return NULL;
 }
 
+/* A container is one thumbnail and one click target, even with nested panes.
+ * Preserve pane focus on that thumbnail without changing the shared snapshot
+ * parser's view of individual windows for other modules.
+ */
+static void
+fold_container_windows(state_t *st)
+{
+	for (size_t i = 0; i < st->n_wins; i++) {
+		pwin_t *w = &st->wins[i];
+		if (w->container_window_id[0] == '\0' ||
+		    strcmp(w->id, w->container_window_id) == 0)
+			continue;
+		w->container_hidden = true;
+		if (!w->focused)
+			continue;
+		for (size_t j = 0; j < st->n_wins; j++) {
+			if (strcmp(st->wins[j].id, w->container_window_id) == 0) {
+				st->wins[j].focused = true;
+				break;
+			}
+		}
+		w->focused = false;
+	}
+}
+
 static void
 handle_status_line(const char *line, __unused void *data)
 {
 	state_t next = { 0 };
 	if (!cow_module_snapshot_parse(&next, line))
 		return;
+	fold_container_windows(&next);
 
 	/* Keep the last user-focused output when cowpager itself receives
 	 * focus, so pager actions still target the user's workspace. */

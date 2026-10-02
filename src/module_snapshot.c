@@ -116,6 +116,8 @@ parse_windows(struct cow_module_snapshot *snapshot, cJSON *array)
 	{
 		struct cow_module_window_state *window = &snapshot->wins[index++];
 		cow_json_copy_string(item, "id", window->id, sizeof(window->id));
+		cow_json_copy_string(item, "container_window_id",
+		    window->container_window_id, sizeof(window->container_window_id));
 		cow_json_copy_string(item, "app_id", window->app_id,
 		    sizeof(window->app_id));
 		cow_json_copy_string(item, "title", window->title,

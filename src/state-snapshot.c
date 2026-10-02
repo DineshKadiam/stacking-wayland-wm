@@ -262,6 +262,11 @@ state_snapshot_view(const struct cow_view *view)
 	    (view->flags & COW_VIEW_STICKY_PAGE_FLAG) != 0);
 
 	rec_set_string(r, "container_id", "");
+	struct cow_container *top = cow_container_top_group(view);
+	struct cow_view *outer = top ? top->frame_view : NULL;
+	if (top && outer == NULL && top->active)
+		outer = top->active->view;
+	rec_set_string(r, "container_window_id", outer ? outer->identifier : "");
 	rec_set_bool(r, "container_split", cow_container_is_split(view));
 	rec_set_bool(r, "container_active", false);
 	rec_set_number(r, "pane_id", -1);

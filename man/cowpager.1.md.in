@@ -23,6 +23,9 @@ not tracking a specific monitor.
 Without any options, **cowpager** will show all desks and windows across all
 outputs.
 
+Containers appear as one window, without their internal pane layout. The
+container is highlighted when its outer window or any pane inside has focus.
+
 On startup, **cowpager** reads *cowpager.conf* from
 *\$XDG\_CONFIG\_HOME/cow/cowpager.conf* or *~/.config/cow/cowpager.conf* when
 that file exists. Command-line options override settings loaded from the config

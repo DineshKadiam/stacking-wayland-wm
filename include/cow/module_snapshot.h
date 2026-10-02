@@ -48,6 +48,7 @@ struct cow_module_output_state {
 
 struct cow_module_window_state {
 	char id[128];
+	char container_window_id[128];
 	char app_id[128];
 	char title[256];
 	char output[128];

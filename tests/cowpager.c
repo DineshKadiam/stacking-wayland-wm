@@ -29,6 +29,22 @@
 int
 main(void)
 {
+	state_t containers = { 0 };
+	CHECK(cow_module_snapshot_parse(&containers,
+	    "{\"outputs\":[],\"windows\":["
+	    "{\"id\":\"pane\",\"container_window_id\":\"outer\",\"focused\":true},"
+	    "{\"id\":\"nested\",\"container_window_id\":\"outer\"},"
+	    "{\"id\":\"outer\",\"container_window_id\":\"outer\"},"
+	    "{\"id\":\"ordinary\"}]}"));
+	fold_container_windows(&containers);
+	CHECK(containers.wins[0].container_hidden);
+	CHECK(!containers.wins[0].focused);
+	CHECK(containers.wins[1].container_hidden);
+	CHECK(!containers.wins[2].container_hidden);
+	CHECK(containers.wins[2].focused);
+	CHECK(!containers.wins[3].container_hidden);
+	CHECK(!containers.wins[3].focused);
+	cow_module_snapshot_fini(&containers);
 	pout_t outputs[] = {
 		{ .name = "HDMI-A-1", .number = 1, .current = true,
 		  .output_w = 1920, .output_h = 1080 },

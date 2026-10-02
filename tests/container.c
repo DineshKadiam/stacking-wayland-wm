@@ -897,6 +897,11 @@ main(void)
 	b.output		= &output;
 	b.desk			= &desk;
 	CHECK(cow_container_add_placeholder(c, c->root, &b));
+	wl_list_init(&b.selections);
+	struct state_value *window_record = state_snapshot_view(&b);
+	CHECK(strcmp(state_record_get(window_record, "container_window_id")->u.s,
+	    a.identifier) == 0);
+	state_value_unref(window_record);
 	CHECK(cow_container_window_count(c) == 0);
 	CHECK(cow_container_pane_window_count(c->root) == 0);
 	CHECK(cow_container_is_split(&b));
@@ -1227,6 +1232,7 @@ main(void)
 		.content_width				   = 800,
 		.content_height				   = 600 };
 	cow_container_set_frame(promoted, &promoted_frame);
+	promoted_frame.identifier = "nested-frame";
 	CHECK(cow_container_complete_tab_split(promoted));
 	CHECK(promoted_frame.container_member == slot && tabs->n_members == 2);
 	CHECK(cow_view_container(&obstacle) == promoted);
@@ -1234,6 +1240,11 @@ main(void)
 	CHECK(cow_view_pane(&obstacle) != cow_view_pane(&d));
 	CHECK(cow_view_container(&a) == tabs && cow_view_container(&b) == c);
 	CHECK(tabs->active == slot && cow_wm.pending_focus == &d);
+	wl_list_init(&d.selections);
+	window_record = state_snapshot_view(&d);
+	CHECK(strcmp(state_record_get(window_record, "container_window_id")->u.s,
+	    promoted_frame.identifier) == 0);
+	state_value_unref(window_record);
 	cow_container_destroy(tabs);
 	cow_container_destroy(promoted);
 	/* Cancelling before the new frame maps leaves the original tabs. */
