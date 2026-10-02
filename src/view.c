@@ -203,6 +203,7 @@ view_cfg_copy_from_global(struct cow_view_cfg *dst)
 	dst->icon_image		= xstrdup0(cow_config->icon_image);
 	dst->icon_format	= xstrdup0(cow_config->icon_format);
 	dst->title_format	= xstrdup0(cow_config->title_format);
+	dst->pane_title_format = xstrdup0(cow_config->pane_title_format);
 	dst->icon_background = cow_config->icon_background;
 	dst->icon_foreground = cow_config->icon_foreground;
 	dst->icon_active_background = cow_config->icon_active_background;
@@ -684,6 +685,7 @@ cow_view_cfg_fini(struct cow_view_cfg *cfg)
 {
 	xfree(cfg->font_name);
 	xfree(cfg->title_format);
+	xfree(cfg->pane_title_format);
 	xfree(cfg->icon_image);
 	xfree(cfg->icon_format);
 	cow_titlebar_config_fini(&cfg->titlebar);
@@ -692,6 +694,7 @@ cow_view_cfg_fini(struct cow_view_cfg *cfg)
 	cow_border_colour_fini(&cfg->border_inactive);
 	cfg->font_name		= NULL;
 	cfg->title_format	= NULL;
+	cfg->pane_title_format = NULL;
 	cfg->icon_image		= NULL;
 	cfg->icon_format	= NULL;
 }
@@ -742,6 +745,7 @@ struct title_format_ctx {
 	const char	 *short_id;
 	const char	 *id;
 	const char	 *app_id;
+	const char	 *pane_name;
 };
 
 static void
@@ -793,6 +797,9 @@ title_format_conversion(void *data, char conversion)
 	case 'c':
 		value = ctx->app_id;
 		break;
+	case 'p':
+		value = ctx->pane_name;
+		break;
 	}
 	append_str(ctx->buf, ctx->cap, ctx->len, value);
 }
@@ -805,6 +812,7 @@ cow_view_make_display_title(const struct cow_view *view, const char *fmt)
 	const char *title = view->title != NULL ? view->title : "";
 	const char *id = view->identifier != NULL ? view->identifier : "";
 	const char *app_id = view->app_id != NULL ? view->app_id : "";
+	struct cow_container_pane *pane = cow_view_pane(view);
 	char	   *sid = short_identifier(view);
 	char	   *out = NULL;
 	size_t	    cap = 0, len = 0;
@@ -816,9 +824,10 @@ cow_view_make_display_title(const struct cow_view *view, const char *fmt)
 		.short_id = sid,
 		.id = id,
 		.app_id = app_id,
+		.pane_name = pane && pane->name ? pane->name : "",
 	};
 
-	cow_format_parse(fmt, "ntIc", false, title_format_text,
+	cow_format_parse(fmt, "ntIcp", false, title_format_text,
 	    title_format_conversion, &ctx, NULL);
 	if (out == NULL)
 		out = xstrdup("");

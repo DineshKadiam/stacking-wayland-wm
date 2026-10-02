@@ -79,6 +79,7 @@ static const char *show_config_keys[] = {
 	"edge_scroll_modifiers",
 	"titlebar.font",
 	"title_format",
+	"pane.title_format",
 	"cursor.theme",
 	"cursor.size",
 	"cursor.hide_timeout",
@@ -753,6 +754,9 @@ show_config_value(const char *ckey, struct cmd_q *cmdq)
 	else if (strcmp(ckey, "title_format") == 0)
 		val = cJSON_CreateString(
 		    cow_config->title_format ? cow_config->title_format : "");
+	else if (strcmp(ckey, "pane.title_format") == 0)
+		val = cJSON_CreateString(cow_config->pane_title_format ?
+		    cow_config->pane_title_format : "auto");
 	else if (strcmp(ckey, "cursor.theme") == 0)
 		val = cJSON_CreateString(cow_config->cursor_theme != NULL ?
 		    cow_config->cursor_theme : "");

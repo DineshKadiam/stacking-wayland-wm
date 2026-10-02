@@ -103,6 +103,24 @@ get_titlebar_font(void)
 	return &titlebar_font;
 }
 
+static char *
+make_display_title(const struct cow_view *view)
+{
+	const char *fmt = view->cfg.title_format;
+	struct cow_container_pane *pane = cow_view_pane(view);
+	const char *pane_name = pane && pane->name ? pane->name : "";
+	if (cow_container_is_split(view) && !cow_container_window_owner(view)) {
+		const char *pane_fmt = view->cfg.pane_title_format;
+		if (pane_fmt && strcmp(pane_fmt, "auto") != 0)
+			fmt = pane_fmt;
+		else if (*pane_name)
+			fmt = view->container_placeholder ? "%p" : "[%p] %n";
+		else if (view->container_placeholder)
+			fmt = "%n";
+	}
+	return cow_view_make_display_title(view, fmt);
+}
+
 static void
 restore_shaded_side_borders(uint32_t *pixels, int stride_px, int frame_w,
     int frame_h, const struct cow_border_colour *bc, int bw, int style)
@@ -138,7 +156,7 @@ cow_decoration_titlebar_font(void)
 char *
 cow_decoration_display_title(const struct cow_view *view)
 {
-	return cow_view_make_display_title(view, view->cfg.title_format);
+	return make_display_title(view);
 }
 
 struct squeeze_paint_ctx {
@@ -871,15 +889,14 @@ cow_decoration_update(struct cow_view *view, bool active)
 				wl_list_for_each(mem, &pane->tabs, pane_link)
 				{
 					tab_titles[idx] =
-					    cow_view_make_display_title(mem->view,
-					        mem->view->cfg.title_format);
+					    make_display_title(mem->view);
 					if (mem == pane->active)
 						active_tab = idx;
 					idx++;
 				}
 			}
 
-			char *display_title = cow_view_make_display_title(view, view->cfg.title_format);
+			char *display_title = make_display_title(view);
 			/*
 			 * For unsqueezed views this is the full-width strip;
 			 * for squeezed ones it is the cow_titlebar_squeezed

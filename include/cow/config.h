@@ -465,6 +465,7 @@ struct cow_config {
 	/* Font */
 	char *font_name;
 	char *title_format;
+	char *pane_title_format;
 
 	/* Icon size for iconified (minimized) windows */
 	bool icon_enabled;

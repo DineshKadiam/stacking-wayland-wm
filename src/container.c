@@ -1502,6 +1502,11 @@ cow_container_pane_rename(struct cow_container *c,
 	char *copy = *name != '\0' ? xstrdup(name) : NULL;
 	xfree(pane->name);
 	pane->name = copy;
+	struct cow_container_member *member;
+	wl_list_for_each(member, &pane->tabs, pane_link)
+	{
+		member->view->dec.dirty = true;
+	}
 	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 	return true;
 }

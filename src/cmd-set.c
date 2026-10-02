@@ -700,6 +700,7 @@ set_option_is_decor(const struct cow_option_entry *opt, const char *key)
 	    strcmp(key, "icon.format") == 0 ||
 	    strcmp(key, "border.style") == 0 ||
 	    strcmp(key, "title_format") == 0 ||
+	    strcmp(key, "pane.title_format") == 0 ||
 	    strcmp(key, "titlebar.font") == 0 ||
 	    strcmp(key, "titlebar.enabled") == 0 ||
 	    strcmp(key, "border.handles") == 0 ||

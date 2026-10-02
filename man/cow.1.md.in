@@ -2126,15 +2126,25 @@ maximizing, iconifying or changing the desk affects the whole group. Closing
 still affects the targeted application. Fullscreen temporarily shows one
 application, retaining the layout for restoration.
 
-Each pane's titlebar shows clickable tab labels. Each label uses that window's
-**title\_format**, so substitutions such as **%n** track application title
-changes and decor profiles can customise individual labels. Clicking a label
-activates that tab.
+Each pane's titlebar shows clickable tab labels. Clicking a label activates
+that tab. **pane.title_format** controls labels inside split containers and
+accepts the same substitutions as **title_format**, plus **%p** for the pane
+name (empty for unnamed panes). It can be set globally or in a decor profile.
 
-For example, use the raw application title for all window and container-tab
-titles:
+The default, **auto**, shows named panes as `[name] application title`, or just
+the name for an empty pane. Unnamed occupied panes use **title_format**;
+unnamed empty panes show “Empty pane”. Ordinary windows and outer container
+titles continue to use **title_format**.
 
-    set title_format "%n"
+    decor -d default pane.title_format "%p: %n"
+    decor -a default
+    decor -d editor-tab pane.title_format "%n"
+
+For example, use the raw application title for all window and pane titles:
+
+    decor -d default title_format "%n"
+    decor -d default pane.title_format "%n"
+    decor -a default
 
 Static text is also valid. It can be applied to a particular window using a
 decoration profile:

@@ -116,6 +116,7 @@ serialize_setting(struct config_buf *buf, const char *key,
 		"border.style",
 		"titlebar.font",
 		"title_format",
+		"pane.title_format",
 		NULL,
 	};
 	for (const char **name = decor_only; *name != NULL; name++) {
