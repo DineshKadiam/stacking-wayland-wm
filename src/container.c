@@ -931,6 +931,13 @@ cow_container_is_split(const struct cow_view *view)
 	    (c->frame_view || c->root->layout.axis != COW_CONTAINER_LEAF);
 }
 
+bool
+cow_container_is_attached_client(const struct cow_view *view)
+{
+	return view && view->container_member &&
+	    view->container_member->container->attached;
+}
+
 static bool
 pane_can_expand(const struct cow_container_layout *node,
     const struct cow_container_layout		  *except)
@@ -1750,7 +1757,7 @@ cow_container_attachment_sync(struct cow_container *c)
 
 bool
 cow_container_attach(struct cow_view *host, struct cow_view *view,
-    const char *name, struct cow_box slot, bool visible)
+    const char *name, struct cow_box slot, bool visible, bool close_with_host)
 {
 	struct cow_container *c = cow_container_window_owner(host);
 	if (!host || host->closed || !host->output || !host->desk ||
@@ -1769,6 +1776,7 @@ cow_container_attach(struct cow_view *host, struct cow_view *view,
 		(pane && pane->active && pane->active->view != view)))
 		return false;
 	if (pane && pane->active && pane->layout.hidden == !visible &&
+	    pane->close_with_host == close_with_host &&
 	    memcmp(&pane->attachment, &slot, sizeof(slot)) == 0) {
 		cow_container_attachment_sync(c);
 		return true;
@@ -1797,6 +1805,7 @@ cow_container_attach(struct cow_view *host, struct cow_view *view,
 		pane->name = xstrdup(name);
 	}
 	pane->attachment    = slot;
+	pane->close_with_host = close_with_host;
 	pane->layout.hidden = !visible;
 	if (view && !view->container_member && !container_add(c, pane, view))
 		return false;
@@ -2211,6 +2220,8 @@ container_became_empty(struct cow_container *c)
 void
 cow_container_remove_view(struct cow_view *view)
 {
+	if (cow_container_is_attached_client(view))
+		return;
 	struct cow_container_member *m = view->container_member;
 	if (m == NULL)
 		return;

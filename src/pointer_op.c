@@ -397,7 +397,8 @@ pointer_op_save_container(struct cow_pointer_op *op, struct cow_view *view)
 void
 cow_pointer_op_start_move(struct cow_seat *seat, struct cow_view *view)
 {
-	if (view == NULL || view->closed || seat->op_in_progress)
+	if (view == NULL || view->closed || seat->op_in_progress ||
+	    cow_container_is_attached_client(view))
 		return;
 	pointer_op_group_clear(&seat->op);
 	seat->op.cancelled = false;
@@ -467,7 +468,8 @@ cow_pointer_op_start_group_move(struct cow_seat *seat, struct cow_view *view,
 	for (size_t i = 0; i < count; i++) {
 		struct cow_view *member = views[i];
 		if (member == view || member == NULL || member->closed ||
-		    !member->has_dimensions || cow_view_is_iconified(member))
+		    !member->has_dimensions || cow_view_is_iconified(member) ||
+		    cow_container_is_attached_client(member))
 			continue;
 		cow_style_cancel_pending_initial(member);
 		seat->op.group = xrealloc(seat->op.group,
@@ -631,6 +633,8 @@ pointer_op_start_resize(struct cow_seat *seat, struct cow_view *view,
     uint32_t edges, bool indicate, bool warp, int warp_x, int warp_y)
 {
 	if (seat == NULL || view == NULL || view->closed || seat->op_in_progress)
+		return false;
+	if (cow_container_is_attached_client(view))
 		return false;
 	bool wants_w = (edges & (COW_EDGE_LEFT | COW_EDGE_RIGHT)) != 0;
 	bool wants_h = (edges & (COW_EDGE_TOP | COW_EDGE_BOTTOM)) != 0;

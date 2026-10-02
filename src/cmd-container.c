@@ -62,6 +62,13 @@ cmd_attach_exec(struct cmd *self, struct cmd_q *cmdq)
 		}
 	}
 	const char *visibility = args_get(args, 'v');
+	const char *close_policy = args_get(args, 'c');
+	if (close_policy && strcmp(close_policy, "on") &&
+	    strcmp(close_policy, "off")) {
+		cmdq_error(cmdq,
+		    "window-attach: expected close policy on or off");
+		return CMD_RETURN_ERROR;
+	}
 	if (visibility && strcmp(visibility, "on") &&
 	    strcmp(visibility, "off")) {
 		cmdq_error(cmdq,
@@ -71,7 +78,8 @@ cmd_attach_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (!cow_container_attach(host,
 		args_has(args, 's') ? cmdq->source.window : NULL,
 		args_get(args, 'n'), slot,
-		!visibility || !strcmp(visibility, "on"))) {
+		!visibility || !strcmp(visibility, "on"),
+		close_policy && !strcmp(close_policy, "on"))) {
 		cmdq_error(cmdq,
 		    "window-attach: cannot attach this window or slot");
 		return CMD_RETURN_ERROR;
@@ -81,10 +89,10 @@ cmd_attach_exec(struct cmd *self, struct cmd_q *cmdq)
 
 struct cmd_entry cmd_attach_entry = {
 	"window-attach",
-	"t:s:n:x:y:w:h:v:D",
+	"t:s:n:x:y:w:h:v:c:D",
 	0,
 	0,
-	"-t host [-D | [-s client] -n slot -x X -y Y -w width -h height [-v on|off]]",
+	"-t host [-D | [-s client] -n slot -x X -y Y -w width -h height [-v on|off] [-c on|off]]",
 	cmd_attach_exec,
 	CMD_MODULE,
 };

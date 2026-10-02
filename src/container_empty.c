@@ -166,7 +166,16 @@ cow_container_window_forget(struct cow_view *view)
 	wl_list_for_each_safe(c, next, &cow_wm.containers, wm_link)
 	{
 		if (c->attached && c->frame_view == view) {
+			struct cow_container_member *m;
+			wl_list_for_each(m, &c->members, link)
+			{
+				if (m->pane->close_with_host &&
+				    !m->view->closed)
+					m->view->pending_close = true;
+			}
 			cow_container_destroy(c);
+			cow_update_request(
+			    COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 			continue;
 		}
 		if (c->split_target == view)

@@ -59,6 +59,10 @@ cmd_resize_exec(struct cmd *self, struct cmd_q *cmdq)
 
 	if (view == NULL)
 		return (CMD_RETURN_ERROR);
+	if (cow_container_is_attached_client(view)) {
+		cmdq_error(cmdq, "resize: window belongs to a module panel");
+		return CMD_RETURN_ERROR;
+	}
 
 	const char *dir_val = args_get(args, 'd');
 	const char *w_val   = args_get(args, 'w');

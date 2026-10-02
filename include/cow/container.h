@@ -53,6 +53,7 @@ struct cow_container_pane {
 	bool			     title_hidden;
 	/* Module-owned slot, relative to the host's content origin. */
 	struct cow_box attachment;
+	bool	       close_with_host;
 };
 
 /* Tabbed container membership. */
@@ -66,6 +67,8 @@ struct cow_container_member {
 	int pre_x, pre_y;
 	int pre_width, pre_height;
 };
+
+bool cow_container_is_attached_client(const struct cow_view *);
 
 struct cow_container {
 	char *name;
@@ -191,7 +194,7 @@ bool cow_container_zoom(struct cow_view *, enum cow_container_zoom);
 bool cow_container_pane_visible(struct cow_container *,
     struct cow_container_pane *, bool);
 bool cow_container_attach(struct cow_view *, struct cow_view *, const char *,
-    struct cow_box, bool);
+    struct cow_box, bool, bool);
 void cow_container_attachment_sync(struct cow_container *);
 bool cow_container_shade(struct cow_view *, bool);
 bool cow_container_shaded_size(const struct cow_view *, int *, int *);

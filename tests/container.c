@@ -1704,7 +1704,7 @@ main(void)
 		}
 		struct cow_box slot = { 120, 0, 200, 150 };
 		CHECK(cow_container_attach(&windows[0], &windows[1], "first",
-		    slot, true));
+		    slot, true, true));
 		c = cow_container_window_owner(&windows[0]);
 		CHECK(c && c->attached && !c->frame_window);
 		CHECK(
@@ -1712,16 +1712,26 @@ main(void)
 		CHECK(windows[1].pending_width == 200 &&
 		    windows[1].pending_height == 150);
 		CHECK(!windows[1].use_ssd);
+		CHECK(cow_container_is_attached_client(&windows[1]));
+		CHECK(!cow_container_is_attached_client(&windows[0]));
+		cow_container_remove_view(&windows[1]);
+		CHECK(windows[1].container_member != NULL);
+		struct cow_seat attached_seat = { 0 };
+		cow_pointer_op_start_move(&attached_seat, &windows[1]);
+		CHECK(!attached_seat.op_in_progress);
+		CHECK(!cow_pointer_op_start_resize(&attached_seat, &windows[1],
+		    COW_EDGE_RIGHT, false));
 		cow_wm.pending_focus = &windows[1];
 		CHECK(cow_container_attach(&windows[0], NULL, "first", slot,
-		    false));
+		    false, true));
+		CHECK(!windows[1].pending_close);
 		CHECK(cow_container_hides_view(&windows[1]));
 		CHECK(cow_wm.pending_focus == &windows[0]);
 		slot = (struct cow_box) { 0, -100, 120, 100 };
 		CHECK(cow_container_attach(&windows[0], &windows[2], "second",
-		    slot, true));
+		    slot, true, false));
 		CHECK(!cow_container_attach(&windows[0], &windows[1], "second",
-		    slot, true));
+		    slot, true, false));
 		cow_container_activate(c, windows[2].container_member);
 		CHECK(!windows[2].use_ssd);
 		windows[0].x += 50;
@@ -1734,8 +1744,11 @@ main(void)
 		CHECK(c && c->attached && c->frame_view == &windows[0]);
 		CHECK(cow_container_hides_view(&windows[1]));
 		CHECK(!windows[2].use_ssd);
+		CHECK(!windows[1].pending_close);
 		cJSON_Delete(saved);
 		cow_container_window_forget(&windows[0]);
+		CHECK(windows[1].pending_close);
+		CHECK(!windows[2].pending_close);
 		CHECK(!windows[0].container_owner &&
 		    !windows[1].container_member);
 		CHECK(windows[1].use_ssd && windows[1].clip_w == 0);

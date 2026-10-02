@@ -80,6 +80,11 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 	struct cow_view *view = cmd_ctx_target_window(cmdq);
 	const char	*group_name = args->argc == 1 ? args->argv[0] : NULL;
 
+	if (cow_container_is_attached_client(view)) {
+		cmdq_error(cmdq, "move: window belongs to a module panel");
+		return CMD_RETURN_ERROR;
+	}
+
 	if (args_has(args, 'G')) {
 		if (args->argc > 1 || args_get(args, 'd') != NULL ||
 		    args_get(args, 'o') != NULL || args_get(args, 'a') != NULL ||
@@ -266,13 +271,15 @@ move_group(struct cow_view *view, const char *name, struct cmd_q *cmdq)
 	if (!cow_selection_has(view, name))
 		view = NULL;
 	if (view == NULL || view->closed || !view->has_dimensions ||
-	    view->output == NULL || cow_view_is_iconified(view)) {
+	    view->output == NULL || cow_view_is_iconified(view) ||
+	    cow_container_is_attached_client(view)) {
 		view = NULL;
 		for (size_t i = 0; i < count; i++) {
 			if (selected[i] != NULL && !selected[i]->closed &&
 			    selected[i]->has_dimensions &&
 			    selected[i]->output != NULL &&
-			    !cow_view_is_iconified(selected[i])) {
+			    !cow_view_is_iconified(selected[i]) &&
+			    !cow_container_is_attached_client(selected[i])) {
 				view = selected[i];
 				break;
 			}

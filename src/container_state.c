@@ -51,6 +51,8 @@ pane_save(const struct cow_container_pane *pane)
 	cJSON_AddNumberToObject(node, "collapsed", pane->layout.collapsed);
 	cJSON_AddBoolToObject(node, "title_hidden", pane->title_hidden);
 	cJSON_AddBoolToObject(node, "hidden", pane->layout.hidden);
+	if (pane->close_with_host)
+		cJSON_AddBoolToObject(node, "close_with_host", true);
 	if (pane->attachment.width > 0)
 		cow_box_json_add(cJSON_AddObjectToObject(node, "attachment"),
 		    &pane->attachment);
@@ -290,6 +292,11 @@ pane_restore(struct container_restore *state, const cJSON *node, unsigned depth)
 	if (pane_hidden != NULL && !cJSON_IsBool(pane_hidden))
 		goto invalid;
 	pane->layout.hidden = cJSON_IsTrue(pane_hidden);
+	const cJSON *close_with_host = cJSON_GetObjectItemCaseSensitive(node,
+	    "close_with_host");
+	if (close_with_host != NULL && !cJSON_IsBool(close_with_host))
+		goto invalid;
+	pane->close_with_host = cJSON_IsTrue(close_with_host);
 	const cJSON *zoom  = cJSON_GetObjectItemCaseSensitive(node, "zoom");
 	if (zoom != NULL) {
 		int value;

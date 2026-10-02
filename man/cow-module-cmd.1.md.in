@@ -16,7 +16,7 @@ general configuration commands.
 
 # COMMANDS
 
-## window-attach -t host [-s client] -n slot -x X -y Y -w width -h height [-v on|off]
+## window-attach -t host [-s client] -n slot -x X -y Y -w width -h height [-v on|off] [-c on|off]
 
 Attach a client to a named slot owned by a host window. Coordinates are
 relative to the host's content origin and may be negative for an external
@@ -29,8 +29,11 @@ position, desk, layer and iconified state. Repeating an unchanged request does
 not schedule another layout.
 
 **window-attach -t host -D** releases all attachments. Closing the host also
-releases its clients. Ordinary container editing commands do not modify
-module-owned layouts.
+releases its clients, except those attached with **-c on**, which receive a
+normal close request. The default is **-c off**. This policy survives CoW
+restart and applies even if the host process is killed. Explicit **-D**
+releases clients without closing them. Ordinary container editing commands do
+not modify module-owned layouts.
 
 ## show diagnostics
 
