@@ -100,7 +100,7 @@ struct cmd_entry cmd_show_entry = {
 	"DaF:f:t:",
 	1,
 	2,
-	"show [-D] [-f json|config] [-t target] TOPIC [name] | "
+	"[-D] [-f json|config] [-t target] TOPIC [name] | "
 	"show -a [-f json|config] [-F expr] TOPIC",
 	cmd_show_exec,
 	0,

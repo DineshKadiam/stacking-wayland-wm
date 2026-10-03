@@ -57,7 +57,7 @@ The package-owned baseline is installed under `datadir/cow`. Startup and
 baseline. Menus inherited from defaults are replaced on their first user
 `menu-add`. That implicit clear is recorded alongside configuration commands so
 exported configs can be replayed without accumulating duplicate entries.
-`show config -D` reads the installed baseline without executing it.
+`show -D config` reads the installed baseline without executing it.
 
 CoW does not need a CoW-specific file descriptor from River. It connects like
 any other Wayland client by calling `wl_display_connect(NULL)`. libwayland then

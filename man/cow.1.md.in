@@ -516,9 +516,9 @@ missing, CoW warns and continues with built-in fallback values.
 Inspect the defaults and override just what you need:
 
 ```sh
-moocow show config -D -f config | less
+moocow show -D -f config config | less
 moocow show config step
-moocow show -a binding -f config
+moocow show -a -f config binding
 ```
 
 For example, a user **cow.conf** can contain:
@@ -1140,7 +1140,7 @@ uses **exec**:
 If the command is a brace-delimited script block, the surrounding braces are
 removed before the block is evaluated.
 
-## show \[-f json\|config\] \[-t target\] topic \[name\]
+## show \[-D\] \[-f json\|config\] \[-t target\] topic \[name\]
 
 ## show -a \[-f json\|config\] \[-F expr\] topic
 
@@ -1148,6 +1148,8 @@ Query window manager state and configured objects. Without **-a**, a topic
 returns one current or named record. With **-a**, it returns an array
 containing all records for that topic. When used via **moocow**(1), JSON is
 printed to standard output.
+
+Place options before the topic.
 
 **-a**
 
@@ -1353,7 +1355,7 @@ printed to standard output.
 
       moocow show -f config config > cow.generated.conf
 
-**show config -D**
+**show -D config**
 
 : Inspect the installed defaults without executing them. JSON contains
   *path*, *enabled* (whether loading defaults is enabled), and *config* (the
@@ -3391,7 +3393,7 @@ snapshot followed by a snapshot after each state change.
 *<PREFIX>/share/cow/cow-defaults.conf*
 
 : Package-owned defaults, loaded before the selected user configuration
-  unless **-n** is given. Inspect with **show config -D**.
+  unless **-n** is given. Inspect with **show -D config**.
 
 *~/cow.conf*
 
