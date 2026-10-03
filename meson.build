@@ -400,19 +400,27 @@ config_layers_test = executable('test-config-layers',
 test('config-layers', config_layers_test,
     args: files('config/cow/cow-defaults.conf'))
 
-icon_hover_sources = []
+view_test_sources = []
 foreach source : wm_test_sources
     if source != 'src/view.c'
-        icon_hover_sources += source
+        view_test_sources += source
     endif
 endforeach
 icon_hover_test = executable('test-icon-hover',
     ['tests/icon-hover.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
-    objects: cow.extract_objects(icon_hover_sources),
+    objects: cow.extract_objects(view_test_sources),
     include_directories: include_dirs,
     dependencies: all_deps,
 )
 test('icon-hover', icon_hover_test)
+
+maximize_page_test = executable('test-maximize-page',
+    ['tests/maximize-page.c'] + generated + [dsl_parser_gen, dsl_lexer_gen],
+    objects: cow.extract_objects(view_test_sources),
+    include_directories: include_dirs,
+    dependencies: all_deps,
+)
+test('maximize-page', maximize_page_test)
 
 resize_test_sources = []
 foreach source : wm_test_sources

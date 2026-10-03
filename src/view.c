@@ -2224,21 +2224,40 @@ cow_view_frame_box_at(const struct cow_view *v, int x, int y)
 }
 
 static void
-view_refit_maximized(struct cow_view *view)
+view_maximized_areas(const struct cow_view *view, struct cow_box *ha,
+    struct cow_box *va)
 {
-	if (view == NULL || !view->maximized || view->output == NULL)
-		return;
-
 	struct cow_box full = {
 	    .x = view->output->x,
 	    .y = view->output->y,
 	    .width = view->output->width,
 	    .height = view->output->height,
 	};
-	const struct cow_box *ha = view->maximized_h_ignore_reserved ? &full :
-	    &view->output->usable_area;
-	const struct cow_box *va = view->maximized_v_ignore_reserved ? &full :
-	    &view->output->usable_area;
+	*ha = view->maximized_h_ignore_reserved ? full : view->output->usable_area;
+	*va = view->maximized_v_ignore_reserved ? full : view->output->usable_area;
+	/* Work areas describe the current viewport. Both refitting and reflow
+	 * must use the window's own page, including after state restoration.
+	 */
+	if (view->desk != NULL && !(view->flags & COW_VIEW_STICKY_PAGE_FLAG)) {
+		int dx = cow_view_page_col(view) * cow_page_width(view->output) -
+		    view->desk->page_vx;
+		int dy = cow_view_page_row(view) * cow_page_height(view->output) -
+		    view->desk->page_vy;
+		ha->x += dx;
+		ha->y += dy;
+		va->x += dx;
+		va->y += dy;
+	}
+}
+
+static void
+view_refit_maximized(struct cow_view *view)
+{
+	if (view == NULL || !view->maximized || view->output == NULL)
+		return;
+
+	struct cow_box ha, va;
+	view_maximized_areas(view, &ha, &va);
 	int frame_w, frame_h, content_x, content_y;
 	cow_titlebar_frame_geometry(view, view->content_width,
 	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
@@ -2246,23 +2265,23 @@ view_refit_maximized(struct cow_view *view)
 	int new_x = view->x;
 	int new_y = view->y;
 	if (view->maximized_h && !view->maximized_h_keep_geometry)
-		new_x = ha->x + content_x;
+		new_x = ha.x + content_x;
 	if (view->maximized_v && !view->maximized_v_keep_geometry)
-		new_y = va->y + content_y;
+		new_y = va.y + content_y;
 
 	if (view->maximized_h && !view->maximized_h_keep_geometry &&
-	    frame_w <= ha->width) {
-		int min_x = ha->x + content_x;
-		int max_x = ha->x + ha->width - frame_w + content_x;
+	    frame_w <= ha.width) {
+		int min_x = ha.x + content_x;
+		int max_x = ha.x + ha.width - frame_w + content_x;
 		if (new_x < min_x)
 			new_x = min_x;
 		else if (new_x > max_x)
 			new_x = max_x;
 	}
 	if (view->maximized_v && !view->maximized_v_keep_geometry &&
-	    frame_h <= va->height) {
-		int min_y = va->y + content_y;
-		int max_y = va->y + va->height - frame_h + content_y;
+	    frame_h <= va.height) {
+		int min_y = va.y + content_y;
+		int max_y = va.y + va.height - frame_h + content_y;
 		if (new_y < min_y)
 			new_y = min_y;
 		else if (new_y > max_y)
@@ -2357,16 +2376,8 @@ cow_view_reflow_maximized(struct cow_view *view)
 	    view->output == NULL)
 		return;
 
-	struct cow_box full = {
-	    .x = view->output->x,
-	    .y = view->output->y,
-	    .width = view->output->width,
-	    .height = view->output->height,
-	};
-	const struct cow_box *ha = view->maximized_h_ignore_reserved ? &full :
-	    &view->output->usable_area;
-	const struct cow_box *va = view->maximized_v_ignore_reserved ? &full :
-	    &view->output->usable_area;
+	struct cow_box ha, va;
+	view_maximized_areas(view, &ha, &va);
 	int frame_w, frame_h, content_x, content_y;
 	cow_titlebar_frame_geometry(view, view->content_width,
 	    view->content_height, &frame_w, &frame_h, &content_x, &content_y);
@@ -2376,12 +2387,12 @@ cow_view_reflow_maximized(struct cow_view *view)
 	int w = view->content_width;
 	int h = view->content_height;
 	if (view->maximized_h && !view->maximized_h_keep_geometry) {
-		x = ha->x + content_x;
-		w = ha->width - (frame_w - view->content_width);
+		x = ha.x + content_x;
+		w = ha.width - (frame_w - view->content_width);
 	}
 	if (view->maximized_v && !view->maximized_v_keep_geometry) {
-		y = va->y + content_y;
-		h = va->height - (frame_h - view->content_height);
+		y = va.y + content_y;
+		h = va.height - (frame_h - view->content_height);
 	}
 	cow_clamp_dimensions(&w, &h);
 
