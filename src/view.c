@@ -2288,11 +2288,12 @@ int
 cow_view_maximize_button_index(void)
 {
 	for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++) {
-		const char *action = cow_dec_binding_lookup(
-		    cow_dec_region_button(i), 1);
-		if (action != NULL &&
-		    strncmp(action, "window-maximize", 15) == 0)
-			return i;
+		for (int clicks = 1; clicks <= 2; clicks++) {
+			const char *action = cow_dec_binding_lookup(
+			    cow_dec_region_button(i), clicks);
+			if (cow_dec_binding_can_maximize(action))
+				return i;
+		}
 	}
 	return -1;
 }

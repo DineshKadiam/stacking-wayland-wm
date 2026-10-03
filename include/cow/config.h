@@ -561,6 +561,7 @@ const char *cow_dec_region_name(enum cow_dec_region);
  * cow_config binding list.
  */
 const char *cow_dec_binding_lookup(enum cow_dec_region, int clicks);
+bool cow_dec_binding_can_maximize(const char *);
 
 struct cow_view;
 bool cow_dec_binding_fire(struct cow_view *, enum cow_dec_region, int clicks);

@@ -18,6 +18,8 @@
 #include <time.h>
 
 #include "cow/cmd.h"
+#include "cow/alias.h"
+#include "cow/dsl.h"
 #include "cow/log.h"
 #include "cow/config.h"
 #include "cow/memory.h"
@@ -25,10 +27,126 @@
 #include "cow/seat.h"
 #include "cow/view.h"
 #include "cow/wm.h"
+#include "dsl-ast.h"
 
 #include "river-window-management-v1-client-protocol.h"
 
 static enum cmd_retval cmd_bind_decoration_exec(struct cmd *, struct cmd_q *);
+
+/* Only inspect command positions: mentioning a command in a comment,
+ * message, or a newly defined binding must not give this button its role.
+ * A depth limit also bounds recursive aliases and nested script blocks.
+ */
+#define BUTTON_ACTION_DEPTH 32
+static bool action_can_maximize(const char *, unsigned int);
+
+static bool
+script_can_maximize(const struct dsl_node *node, unsigned int depth)
+{
+	if (node == NULL || depth >= BUTTON_ACTION_DEPTH)
+		return false;
+	switch (node->kind) {
+	case DSL_N_BLOCK:
+		for (size_t i = 0; i < node->u.block.n; i++) {
+			if (script_can_maximize(node->u.block.stmts[i], depth + 1))
+				return true;
+		}
+		return false;
+	case DSL_N_IF:
+		return script_can_maximize(node->u.ifstmt.body, depth + 1) ||
+		    script_can_maximize(node->u.ifstmt.otherwise, depth + 1);
+	case DSL_N_FOR:
+		return script_can_maximize(node->u.forstmt.body, depth + 1);
+	case DSL_N_CMD:
+		if (strcmp(node->u.cmd.verb, "window-maximize") == 0)
+			return true;
+		if (strcmp(node->u.cmd.verb, "script") == 0 && node->u.cmd.n == 1) {
+			const struct dsl_cmd_arg *arg = &node->u.cmd.args[0];
+			size_t size = 1;
+			for (size_t i = 0; i < arg->n; i++) {
+				if (!arg->pieces[i].is_raw)
+					return false;
+				size += strlen(arg->pieces[i].u.raw);
+			}
+			char *body = xcalloc(size, 1), *next = body;
+			for (size_t i = 0; i < arg->n; i++) {
+				size_t len = strlen(arg->pieces[i].u.raw);
+				memcpy(next, arg->pieces[i].u.raw, len);
+				next += len;
+			}
+			struct dsl_error error = { 0 };
+			struct dsl_ast *ast = dsl_parse(body, NULL, &error);
+			bool found = ast != NULL &&
+			    script_can_maximize(ast->root, depth + 1);
+			dsl_free(ast);
+			dsl_error_fini(&error);
+			xfree(body);
+			return found;
+		}
+		struct cow_alias *alias = cow_alias_find(node->u.cmd.verb);
+		return alias != NULL &&
+		    action_can_maximize(alias->command, depth + 1);
+	default:
+		return false;
+	}
+}
+
+static bool
+action_can_maximize(const char *action, unsigned int depth)
+{
+	if (action == NULL || depth >= BUTTON_ACTION_DEPTH)
+		return false;
+	struct cmd_list *list = NULL;
+	char *cause = NULL;
+	bool found = false;
+	if (cmd_string_parse(action, &list, NULL, 0, &cause) == 0 && list != NULL) {
+		struct cmd *cmd;
+		TAILQ_FOREACH(cmd, &list->list, qentry) {
+			if (strcmp(cmd->entry->name, "window-maximize") == 0)
+				found = true;
+			else if (strcmp(cmd->entry->name, "script") == 0) {
+				char *body = cmd_argv_to_string(cmd->args->argc,
+				    cmd->args->argv, 0);
+				struct dsl_error error = { 0 };
+				struct dsl_ast *ast = dsl_parse(body, NULL, &error);
+				found = ast != NULL &&
+				    script_can_maximize(ast->root, depth + 1);
+				dsl_free(ast);
+				dsl_error_fini(&error);
+				xfree(body);
+			} else if (cmd->invoked_name != NULL) {
+				struct cow_alias *alias = cow_alias_find(cmd->invoked_name);
+				found = alias != NULL &&
+				    action_can_maximize(alias->command, depth + 1);
+			}
+			if (found)
+				break;
+		}
+	}
+	if (list != NULL)
+		cmd_list_free(list);
+	xfree(cause);
+	return found;
+}
+
+bool
+cow_dec_binding_can_maximize(const char *action)
+{
+	return action_can_maximize(action, 0);
+}
+
+static void
+refresh_maximize_buttons(void)
+{
+	int button = cow_view_maximize_button_index();
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link) {
+		if (view->maximized && view->icon_inverted_button != button) {
+			view->icon_inverted_button = button;
+			view->dec.dirty = true;
+		}
+	}
+}
 
 /*
  * bind-decoration uses an empty getopt template because the bound
@@ -95,6 +213,7 @@ cmd_bind_decoration_exec(struct cmd *self, struct cmd_q *cmdq)
 	    args->argv, idx + 1);
 
 	wl_list_insert(&cow_config->decoration_bindings, &entry->link);
+	refresh_maximize_buttons();
 
 	return (CMD_RETURN_NORMAL);
 }

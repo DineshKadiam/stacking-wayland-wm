@@ -26,6 +26,10 @@
 #include "cow/rule.h"
 #include "cow/style.h"
 #include "cow/wm.h"
+#include "cow/view.h"
+#include "cow/titlebar.h"
+#include "cow/colour.h"
+#include "cow/alias.h"
 
 #define CHECK(x)                                                   \
 	do {                                                       \
@@ -180,6 +184,76 @@ main(int argc, char **argv)
 	    COW_MENU_STYLE_BG_GRADIENT);
 	CHECK(cow_config->titlebar.active_gradient.mode != COW_GRADIENT_NONE);
 	reset();
+	/* Recognize wrapped actions before use and after reloading config. */
+	write_config(user,
+	    "alias maximize-window window-maximize -k\n"
+	    "bind-decoration 0 script {\n"
+	    "    if false { nop } else { maximize-window }\n"
+	    "}\n");
+	CHECK(cow_ipc_load_config(argv[1], user));
+	CHECK(cow_view_maximize_button_index() == 0);
+	struct cow_view view = { .icon_inverted_button = -1 };
+	cow_view_set_maximized(&view, true);
+	CHECK(view.icon_inverted_button == 0);
+	reset();
+	CHECK(cow_ipc_load_config(argv[1], user));
+	CHECK(cow_view_maximize_button_index() == 0);
+	CHECK(cow_alias_set("maximize-window", "nop"));
+	CHECK(cow_view_maximize_button_index() == -1);
+	CHECK(cow_alias_set("maximize-window", "window-maximize -T"));
+	cow_view_set_maximized(&view, true);
+	CHECK(view.icon_inverted_button == 0);
+	wl_list_insert(&cow_wm.views, &view.wm_link);
+	write_config(user, "bind-decoration 0 nop\n");
+	CHECK(cow_ipc_load_config(argv[1], user));
+	CHECK(cow_view_maximize_button_index() == -1);
+	CHECK(view.icon_inverted_button == -1 && view.dec.dirty);
+	wl_list_remove(&view.wm_link);
+	CHECK(cow_dec_binding_can_maximize("script {\n"
+	    "if self.container_split { winops -c } else { window-maximize -T }\n"
+	    "}"));
+	CHECK(cow_dec_binding_can_maximize("script {\nscript { window-maximize }\n}"));
+	CHECK(!cow_dec_binding_can_maximize("script {\n"
+	    "# window-maximize\nexec echo window-maximize\n}"));
+	CHECK(!cow_dec_binding_can_maximize("bind L+m window-maximize"));
+	CHECK(!cow_dec_binding_can_maximize("window-maximize-other"));
+	CHECK(!cow_dec_binding_can_maximize("script {"));
+	CHECK(cow_alias_set("recursive-button", "recursive-button"));
+	CHECK(!cow_dec_binding_can_maximize("recursive-button"));
+	CHECK(cow_alias_remove("recursive-button"));
+
+	/* Maximization inverts the vector; only a pointer press sinks the bevel. */
+	uint32_t pixels[100 * 24] = { 0 };
+	uint32_t normal_pixels[100 * 24];
+	struct cow_titlebar_config titlebar = cow_config->titlebar;
+	titlebar.button_style = COW_TITLEBAR_BUTTON_STYLE_FVWM;
+	titlebar.buttons[0].active_relief = COW_RELIEF_RAISED;
+	titlebar.buttons[0].inactive_relief = COW_RELIEF_RAISED;
+	struct cow_titlebar_render_ctx render = {
+	    .pixels = pixels, .stride_px = 100, .frame_w = 100, .frame_h = 24,
+	    .tb_rect = { 0, 0, 100, 24 }, .title = "", .tb_cfg = &titlebar,
+	    .pressed_button = -1, .icon_inverted_button = -1,
+	};
+	for (int active = 0; active <= 1; active++) {
+		render.active = active;
+		const float *base = active ? titlebar.active_colour :
+		    titlebar.inactive_colour;
+		float light[4], dark[4];
+		cow_colour_lighten(light, base);
+		cow_colour_darken(dark, base);
+		render.pressed_button = -1;
+		render.icon_inverted_button = -1;
+		cow_titlebar_render(&render);
+		CHECK(pixels[80] == cow_colour_to_pixel(light));
+		memcpy(normal_pixels, pixels, sizeof pixels);
+		render.icon_inverted_button = 0;
+		cow_titlebar_render(&render);
+		CHECK(pixels[80] == cow_colour_to_pixel(light));
+		CHECK(memcmp(normal_pixels, pixels, sizeof pixels) != 0);
+		render.pressed_button = 0;
+		cow_titlebar_render(&render);
+		CHECK(pixels[80] == cow_colour_to_pixel(dark));
+	}
 	cow_config_destroy(cow_config);
 	cow_config = NULL;
 	xfree(cow_ipc.config_path);
