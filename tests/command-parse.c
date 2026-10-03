@@ -112,8 +112,8 @@ main(void)
 	};
 	static const char *const style[] = {
 		"style", "-g", "-n", "foot", "-s", "%foot",
-		"{\n    decor {\n        border.width 4\n    }\n"
-		"    layer top\n}",
+		("{\n    decor {\n        border.width 4\n    }\n"
+		 "    layer top\n}"),
 	};
 	static const char *const script_style[] = {
 		"script",
