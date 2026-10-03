@@ -763,10 +763,11 @@ Example:
     mouse I:0+left winops -i
     mouse R:0+left menu-show RootMenu
 
-The **R** context applies to cow's output background surface and does not
-capture clicks on client windows. It supports the same buttons and modifiers as
-other mouse contexts and is useful for root-window style menus. See the *MENU*
-section for more information.
+The **R** context applies to cow's output background surface, even when no
+background colour or image is configured, and does not capture clicks on client
+windows. It supports the same buttons and modifiers as other mouse contexts and
+is useful for root-window style menus. See the *MENU* section for more
+information.
 
 ## bind-decoration \[-2\] region command ...
 

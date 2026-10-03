@@ -279,22 +279,6 @@ static void output_adopt_orphan_views(struct cow_output *);
 static void output_adopt_unnamed_orphans(struct cow_output *);
 static void output_apply_configured_background(struct cow_output *);
 
-static bool
-output_has_background(const struct cow_output *output)
-{
-	if (output == NULL)
-		return false;
-	if (output->has_bg_colour ||
-	    (cow_config != NULL && cow_config->has_output_bg_colour))
-		return true;
-	if (output->has_bg_image)
-		return output->bg_image != NULL;
-	if (cow_config == NULL)
-		return false;
-	return cow_config->has_output_bg_image &&
-	    cow_config->output_bg_image != NULL;
-}
-
 struct cow_output *
 cow_output_create(struct river_output_v1 *river_output)
 {
@@ -599,10 +583,6 @@ output_apply_configured_background(struct cow_output *output)
 	xstrset(&output->bg_image,
 	    output->has_bg_image ? image : NULL);
 
-	if (!output_has_background(output)) {
-		output_background_destroy_resources(output);
-		return;
-	}
 	output->bg_dirty = true;
 }
 
@@ -648,10 +628,9 @@ cow_output_destroy(struct cow_output *output)
 void
 cow_output_prepare_background(struct cow_output *output)
 {
-	if (!output_has_background(output)) {
-		output_background_destroy_resources(output);
-		return;
-	}
+	/* Keep a root input surface even without a configured background.
+	 * Transparent pixels preserve the appearance beneath this layer.
+	 */
 	if (cow_wm.compositor == NULL || cow_wm.wl_layer_shell == NULL)
 		return;
 	if (output->width <= 0 || output->height <= 0)
@@ -701,8 +680,6 @@ cow_output_prepare_background(struct cow_output *output)
 void
 cow_output_render_background(struct cow_output *output)
 {
-	if (!output_has_background(output))
-		return;
 	if (output->bg_surface == NULL || output->bg_layer_surface == NULL ||
 	    !output->bg_configured)
 		return;
