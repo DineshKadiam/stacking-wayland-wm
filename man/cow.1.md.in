@@ -164,6 +164,53 @@ All eight parts of the window border (including corners) can be styled via the
 The titlebar can also be styled or disabled completely via the **decor**
 command.
 
+# CONTAINERS
+
+Any window can become a container.
+
+A container groups windows within one outer frame. It can hold tabs, split
+panes, or panes with their own tabs. The outer titlebar and border operate on
+the whole container; each pane has its own titlebar and controls.
+
+This example has two columns: one tall pane on the left and two stacked panes
+on the right. The inner titlebars show the default pane-button symbols; outer
+buttons are numbered as in *ANATOMY OF A WINDOW*.
+
+    +++───────────────────────────────────────────────────────────────+++
+    + [1] Container title                                         [2][0]+
+    +─────────────────────────────────┬─────────────────────────────────+
+    │[↻] Pane 1 [□][▯][-][↗][×]       │[↻] Pane 2 [□][▯][-][↗][×]       │
+    ├─────────────────────────────────┼─────────────────────────────────┤
+    │                                 │                                 │
+    │                                 │    Application B                │
+    │    Application A                │                                 │
+    │                                 ├─────────────────────────────────┤
+    │                                 │[↻] Pane 3 [□][▯][-][↗][×]       │
+    │                                 ├─────────────────────────────────┤
+    │                                 │                                 │
+    │                                 │    Application C                │
+    +                                 │                                 +
+    +++───────────────────────────────┴───────────────────────────────+++
+
+The outer titlebar keeps the normal window buttons. Inner titlebars use
+separate **bind-decoration pane:** bindings, with these default actions:
+
+- **↻** (button **1**): rotate clockwise; double-click for anticlockwise.
+- **□** (button **8**): toggle zoom to fill the container.
+- **▯** (button **6**): toggle zoom to fill the pane's column.
+- **-** (button **4**): hide this pane's titlebar.
+- **↗** (button **2**): detach the active window from the container.
+- **×** (button **0**): close the active window in the pane.
+
+Pane buttons use the decoration's colours and relief. A pane containing
+multiple tabs keeps its titlebar visible and omits button **4**.
+
+Drag a pane titlebar to rearrange it within the container, or outside to detach
+its active window. Double-click a pane titlebar to collapse or restore its row.
+Drag the outer titlebar to move the whole container.
+
+See the **WINDOW CONTAINERS** section for more information,
+
 # THE VIRTUAL DESKTOP
 
 **cow** provides up to ten virtual desktops. The screen is a viewport onto a
