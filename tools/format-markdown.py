@@ -70,7 +70,7 @@ def format_markdown(source: str) -> str:
                 in_metadata = False
             continue
 
-        if line.startswith(("```", "~~~")):
+        if line.lstrip().startswith(("```", "~~~")):
             in_fence = not in_fence
             result.append(line)
             i += 1

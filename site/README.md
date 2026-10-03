@@ -41,6 +41,11 @@ The installed roff manuals are generated from the same Markdown sources by
 Meson using `lowdown -s -t man`. The `@VERSION@` and `@DATE@` metadata
 placeholders are filled during each build.
 
+`tools/lowdown-man.sh` keeps examples aligned with their surrounding
+definitions and tables compact. Use four-space nesting for fenced examples
+inside definitions: Lowdown can otherwise strip meaningful code indentation in
+both HTML and man output. `tools/format-markdown.py` normalises these fences.
+
 Release tags made before the Markdown migration still contain scdoc sources.
 The Pages build retains a compatibility path through `scdoc` and `mandoc` for
 those archived manuals; this does not affect the installed manuals or new

@@ -1162,27 +1162,27 @@ printed to standard output.
 
   Iconify each container on the focused window's output once:
 
-  ```text
-  script {
-      for c in (containers where c.output == self.output) {
-          winops -t "##{c.active_window_id}" -i
-      }
-  }
-  ```
+    ```text
+    script {
+        for c in (containers where c.output == self.output) {
+            winops -t "##{c.active_window_id}" -i
+        }
+    }
+    ```
 
   Build a menu with one entry per pane in the focused container:
 
-  ```text
-  script {
-      menu-clear Panes
-      for p in (panes where p.container_id == self.container_id) {
-          for w in (windows where w.id == p.active_window_id) {
-              menu-add Panes "#{w.title} (#{p.tab_count} tabs)" "focus -i #{w.id}"
-          }
-      }
-      menu-show Panes
-  }
-  ```
+    ```text
+    script {
+        menu-clear Panes
+        for p in (panes where p.container_id == self.container_id) {
+            for w in (windows where w.id == p.active_window_id) {
+                menu-add Panes "#{w.title} (#{p.tab_count} tabs)" "focus -i #{w.id}"
+            }
+        }
+        menu-show Panes
+    }
+    ```
 
 **show window**, **show -a window**
 
@@ -2209,16 +2209,16 @@ when necessary. Lowering those minima does not automatically shrink it.
 
   For example, using three distinct application IDs:
 
-  ```text
-  window-container -t %editor -s %terminal -e right
-  window-container -t %terminal -s %monitor -e down
+    ```text
+    window-container -t %editor -s %terminal -e right
+    window-container -t %terminal -s %monitor -e down
 
-  +-------------------+-------------------+
-  | editor            | terminal          |
-  |                   +-------------------+
-  |                   | monitor           |
-  +-------------------+-------------------+
-  ```
+    +-------------------+-------------------+
+    | editor            | terminal          |
+    |                   +-------------------+
+    |                   | monitor           |
+    +-------------------+-------------------+
+    ```
 
 **window-container -a**
 
@@ -2242,11 +2242,11 @@ when necessary. Lowering those minima does not automatically shrink it.
 
   For a layout named `work` and an uncontained browser window:
 
-  ```text
-  window-container -G work -s %firefox -a
-  window-container -G work -n
-  window-container -G work -r
-  ```
+    ```text
+    window-container -G work -s %firefox -a
+    window-container -G work -n
+    window-container -G work -r
+    ```
 
   These commands join the layout and browser as outer tabs, switch tabs,
   then detach the complete layout. Titlebar dragging with
@@ -2282,36 +2282,31 @@ when necessary. Lowering those minima does not automatically shrink it.
 
 **window-container -G** *name* \[**-b** *pane-name*\] *action*
 
-: Target a named container instead of using **-t**. Without **-b**, its
-  outer window is used for adding, detaching, cycling and reordering tabs.
-  Other actions use its active pane, or its first pane if empty.
-  **-b** selects a named
-  pane, independent of focus;
-  it can also be used with **-t** to select a pane in that window's container.
-  Unknown names produce an error. Source selection with **-s** is unchanged.
+: For example, name an editor's container and pane, then add other windows
+  using those names:
 
-  ```text
-  window-container -t %editor -N work
-  window-container -G work -B editor
-  window-container -G work -b editor -s %terminal -e down
-  window-container -t %terminal -B terminal
-  window-container -G work -b terminal -s %monitor -a
-  ```
+    ```text
+    window-container -t %editor -N work
+    window-container -G work -B editor
+    window-container -G work -b editor -s %terminal -e down
+    window-container -t %terminal -B terminal
+    window-container -G work -b terminal -s %monitor -a
+    ```
 
   Rules can create a group on its first matching window, then split later
   windows into rows. Use an explicit source so pointer focus does not select
   the wrong application. This example gives matching foot windows the
   application ID `work-terminal` (for example, `foot -a work-terminal`):
 
-  ```text
-  rule -g -T on-map -n work-terminals -s %work-terminal script {
-      for c in (containers where c.name == "work") {
-          window-container -G work -s "##{self.id}" -e down
-          break
-      }
-      window-container -t "##{self.id}" -N work
-  }
-  ```
+    ```text
+    rule -g -T on-map -n work-terminals -s %work-terminal script {
+        for c in (containers where c.name == "work") {
+            window-container -G work -s "##{self.id}" -e down
+            break
+        }
+        window-container -t "##{self.id}" -N work
+    }
+    ```
 
   The first window establishes the name; subsequent windows join before
   the idempotent naming command runs. To target a fixed pane instead of the
@@ -2336,9 +2331,9 @@ when necessary. Lowering those minima does not automatically shrink it.
   a new unnamed pane.
   Omit **-G** and **-b** to split beside the focused pane, for example:
 
-  ```text
-  window-container -E -e left -B spare
-  ```
+    ```text
+    window-container -E -e left -B spare
+    ```
 
   If the target is an ordinary window, it becomes a container with the
   existing window beside the new empty pane, keeping its position and size.
@@ -2357,15 +2352,15 @@ when necessary. Lowering those minima does not automatically shrink it.
   Drag an independent window into a placeholder using **window-move -C**
   (the default Alt+Super+left-drag binding), or insert it explicitly:
 
-  ```text
-  window-container -G work -b terminal -s %foot -a
-  ```
+    ```text
+    window-container -G work -b terminal -s %foot -a
+    ```
 
   Or select the source with the pointer:
 
-  ```text
-  pick-window window-container -G work -b terminal -a
-  ```
+    ```text
+    pick-window window-container -G work -b terminal -a
+    ```
 
   Dropping into a placeholder highlights and fills that pane, without
   creating another split. Further insertions with **-a** add tabs. Normal
@@ -2374,26 +2369,26 @@ when necessary. Lowering those minima does not automatically shrink it.
 
   For example, define a workspace before launching any programs:
 
-  ```text
-  window-container -E -N work -B editor
-  window-container -G work -b editor -E -e right -B terminal
-  window-container -G work -b terminal -E -e down -B monitor
+    ```text
+    window-container -E -N work -B editor
+    window-container -G work -b editor -E -e right -B terminal
+    window-container -G work -b terminal -E -e down -B monitor
 
-  +------------------+------------------+
-  |                  | terminal         |
-  | editor           +------------------+
-  |                  | monitor          |
-  +------------------+------------------+
-  ```
+    +------------------+------------------+
+    |                  | terminal         |
+    | editor           +------------------+
+    |                  | monitor          |
+    +------------------+------------------+
+    ```
 
   Use an on-map rule to fill a pane when a matching application opens:
 
-  ```text
-  rule -g -T on-map -n work-terminal -s %work-terminal script {
-      window-container -G work -b terminal -s "##{self.id}" -a
-  }
-  bind L+Return exec foot -a work-terminal
-  ```
+    ```text
+    rule -g -T on-map -n work-terminal -s %work-terminal script {
+        window-container -G work -b terminal -s "##{self.id}" -a
+    }
+    bind L+Return exec foot -a work-terminal
+    ```
 
   The rule matches the application ID, not the next window to appear.
   Launching the same application from a terminal works too. Choose distinct
@@ -2433,10 +2428,10 @@ when necessary. Lowering those minima does not automatically shrink it.
   Separate pane-titlebar bindings collapse rows without changing shade/unshade
   for ordinary windows and outer container frames. These are the defaults:
 
-  ```text
-  bind-decoration -2 titlebar window-shade -d titlebar
-  bind-decoration -2 pane-titlebar window-container -c
-  ```
+    ```text
+    bind-decoration -2 titlebar window-shade -d titlebar
+    bind-decoration -2 pane-titlebar window-container -c
+    ```
 
 **window-container -z** *column|container|off* \[-t *target*\]
 
@@ -2451,10 +2446,10 @@ when necessary. Lowering those minima does not automatically shrink it.
   internal dividers, rearranging panes or collapsing rows. A collapsed row
   must be expanded before zooming. Windows can still be detached or closed.
 
-  ```text
-  bind LA+z window-container -z column
-  bind LAS+z window-container -z container
-  ```
+    ```text
+    bind LA+z window-container -z column
+    bind LAS+z window-container -z container
+    ```
 
   Window records expose **pane_zoom** as *off*, *column* or *container*;
   pane records expose the same value as **zoom**.
@@ -2476,23 +2471,23 @@ when necessary. Lowering those minima does not automatically shrink it.
   strips and collapsed-row titles remain visible. Decoration profiles are
   unchanged.
 
-  ```text
-  bind LCA+t window-container -T
-  bind LCAS+t window-container -TA
-  ```
+    ```text
+    bind LCA+t window-container -T
+    bind LCAS+t window-container -TA
+    ```
 
   The defaults also bind Super+Shift+middle-click over a pane to toggle its
   title, and double-clicking its border restores a hidden title. Border
   dragging still resizes. The latter binding uses **self.pane_title_hidden**,
   which reports whether the pane title was explicitly hidden:
 
-  ```text
-  bind-decoration -2 pane-border script {
-      if self.pane_title_hidden {
-          window-container -T
-      }
-  }
-  ```
+    ```text
+    bind-decoration -2 pane-border script {
+        if self.pane_title_hidden {
+            window-container -T
+        }
+    }
+    ```
 
 **window-container -U** \[-t *target*\]
 
@@ -2502,11 +2497,11 @@ when necessary. Lowering those minima does not automatically shrink it.
 
   The default configuration uses five pane buttons on the right:
 
-  ```text
-  [ □ ]       [ ▯ ]    [ - ]  [ ↗ ]  [ × ]
-  container   column   hide   detach  close
-     zoom      zoom
-  ```
+    ```text
+    [ □ ]       [ ▯ ]    [ - ]  [ ↗ ]  [ × ]
+    container   column   hide   detach  close
+       zoom      zoom
+    ```
 
   Buttons 8 and 6 toggle container and column zoom respectively. Their
   vectors show a square and a narrow rectangle; the active zoom button is
@@ -2525,15 +2520,15 @@ when necessary. Lowering those minima does not automatically shrink it.
   title to shade or unshade the whole container. **Super+Ctrl+Alt+t** restores
   hidden pane titles. With an existing configuration, add:
 
-  ```text
-  mouse T:0+middle window-shade -d titlebar
-  bind LCA+t window-container -U
-  bind-decoration pane:4 window-container -H
-  bind-decoration pane:6 window-container -z column
-  bind-decoration pane:8 window-container -z container
-  bind-decoration pane:2 window-container -r
-  bind-decoration pane:0 winops -c
-  ```
+    ```text
+    mouse T:0+middle window-shade -d titlebar
+    bind LCA+t window-container -U
+    bind-decoration pane:4 window-container -H
+    bind-decoration pane:6 window-container -z column
+    bind-decoration pane:8 window-container -z container
+    bind-decoration pane:2 window-container -r
+    bind-decoration pane:0 winops -c
+    ```
 
 **window-container -q** \[-t *target*\]
 
@@ -2551,26 +2546,26 @@ when necessary. Lowering those minima does not automatically shrink it.
   Single-click rotates clockwise; double-click rotates anticlockwise.
   These defaults are independent of ordinary window button 1:
 
-  ```text
-  bind-decoration pane:1 window-container -o clockwise
-  bind-decoration -2 pane:1 window-container -o anticlockwise
-  ```
+    ```text
+    bind-decoration pane:1 window-container -o clockwise
+    bind-decoration -2 pane:1 window-container -o anticlockwise
+    ```
 
   Unzoom, expand collapsed rows and leave fullscreen or shaded mode first.
   If the rotated layout cannot fit, nothing moves. Plain tab groups have no
   split layout to rotate. Named empty layouts can also be rotated.
 
-  ```text
-  window-container -o clockwise
-  window-container -G work -o anticlockwise
+    ```text
+    window-container -o clockwise
+    window-container -G work -o anticlockwise
 
-  Before           Clockwise
-  +-----+-----+    +-----------+
-  |     |  B  |    |     A     |
-  |  A  +-----+    +-----+-----+
-  |     |  C  |    |  C  |  B  |
-  +-----+-----+    +-----+-----+
-  ```
+    Before           Clockwise
+    +-----+-----+    +-----------+
+    |     |  B  |    |     A     |
+    |  A  +-----+    +-----+-----+
+    |     |  C  |    |  C  |  B  |
+    +-----+-----+    +-----+-----+
+    ```
 
 **window-container -n** \[-t *target*\]
 
