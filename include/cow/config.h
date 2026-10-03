@@ -297,6 +297,8 @@ struct cow_titlebar_button_config {
  * overridden via decor profiles.
  */
 struct cow_container_config {
+	float hidden_border[4];
+	bool  has_hidden_border;
 	float tab_active[4];	  /* background of the active tab label   */
 	float tab_inactive[4];	  /* background of inactive tab labels    */
 	float tab_fg_active[4];	  /* foreground (text) of the active tab  */

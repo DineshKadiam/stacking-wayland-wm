@@ -63,6 +63,21 @@ cow_titlebar_button_counts(const struct cow_titlebar_config *tb, int *left,
 }
 
 /* Pane glyphs are fixed; colours and relief still come from the decor. */
+static const struct cow_vector_button hidden_panes_vector = {
+	.num_points = 9,
+	.points = {
+		{ .x = 25, .y = 40, .colour = COW_VECTOR_INVISIBLE },
+		{ .x = 60, .y = 40, .colour = COW_VECTOR_HIGHLIGHT },
+		{ .x = 60, .y = 75, .colour = COW_VECTOR_SHADOW },
+		{ .x = 25, .y = 75, .colour = COW_VECTOR_SHADOW },
+		{ .x = 25, .y = 40, .colour = COW_VECTOR_HIGHLIGHT },
+		{ .x = 40, .y = 35, .colour = COW_VECTOR_INVISIBLE },
+		{ .x = 40, .y = 25, .colour = COW_VECTOR_HIGHLIGHT },
+		{ .x = 75, .y = 25, .colour = COW_VECTOR_HIGHLIGHT },
+		{ .x = 75, .y = 60, .colour = COW_VECTOR_SHADOW },
+	},
+};
+
 static const struct cow_vector_button pane_vectors[COW_TITLEBAR_NUM_BUTTONS] = {
 	[0] = {
 		.num_points = 4,
@@ -94,6 +109,16 @@ static const struct cow_vector_button pane_vectors[COW_TITLEBAR_NUM_BUTTONS] = {
 			{ .x = 60, .y = 15, .colour = COW_VECTOR_FG },
 			{ .x = 75, .y = 30, .colour = COW_VECTOR_INVISIBLE },
 			{ .x = 60, .y = 45, .colour = COW_VECTOR_FG },
+		},
+	},
+	[3] = {
+		.num_points = 5,
+		.points = {
+			{ .x = 50, .y = 25, .colour = COW_VECTOR_INVISIBLE },
+			{ .x = 50, .y = 75, .colour = COW_VECTOR_FG },
+			{ .x = 30, .y = 55, .colour = COW_VECTOR_FG },
+			{ .x = 50, .y = 75, .colour = COW_VECTOR_INVISIBLE },
+			{ .x = 70, .y = 55, .colour = COW_VECTOR_FG },
 		},
 	},
 	[4] = {
@@ -420,6 +445,14 @@ cow_titlebar_button_at(const struct cow_view *view, int lx, int ly)
 		if (pos_coord >= x && pos_coord < x + tt)
 			return (idx);
 	}
+	if (cow_container_hidden_count(cow_container_window_owner(view)) > 0) {
+		int left, right;
+		cow_titlebar_button_counts(&tb, &left, &right);
+		int badge = r - (right + 1) * tt;
+		if (badge >= l + left * tt && pos_coord >= badge &&
+		    pos_coord < badge + tt)
+			return COW_TITLEBAR_HIDDEN_PANES;
+	}
 	return (-1);
 }
 
@@ -544,15 +577,13 @@ draw_titlebar_relief(uint32_t *pixels, int stride, int rx, int ry, int rw,
 
 static void
 draw_titlebar_button(uint32_t *pixels, int stride_px,
-    struct cow_pixbuf *strip, const struct cow_titlebar_config *tb_cfg,
+    struct cow_pixbuf *strip, const struct cow_titlebar_button_config *button,
     int btn_idx, int bx, int by, int btn_s, bool active, int pressed_button,
     int icon_inverted_button, const struct cow_gradient *tb_gradient,
     const char *tb_image, uint32_t px_base, uint32_t px_lt, uint32_t px_dk,
     uint32_t px_fg, enum cow_border_style border_style,
     enum cow_titlebar_position position)
 {
-	const struct cow_titlebar_button_config *button =
-	    &tb_cfg->buttons[btn_idx];
 	const float *custom_colour = active ? button->active_colour :
 	    button->inactive_colour;
 	bool has_custom_colour = active ? button->has_active_colour :
@@ -748,8 +779,8 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 			break;
 		pos++;
 
-		draw_titlebar_button(pixels, stride_px, &strip_p, tb_cfg,
-		    btn_idx, bx, by, btn_s, active, pressed_button,
+		draw_titlebar_button(pixels, stride_px, &strip_p,
+		    &tb_cfg->buttons[btn_idx], btn_idx, bx, by, btn_s, active, pressed_button,
 		    icon_inverted_button, tb_gradient, tb_image, px_base, px_lt,
 		    px_dk, px_fg, border_style, position);
 	}
@@ -765,8 +796,8 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 		if (bx < tb_x)
 			break;
 
-		draw_titlebar_button(pixels, stride_px, &strip_p, tb_cfg,
-		    btn_idx, bx, by, btn_s, active, pressed_button,
+		draw_titlebar_button(pixels, stride_px, &strip_p,
+		    &tb_cfg->buttons[btn_idx], btn_idx, bx, by, btn_s, active, pressed_button,
 		    icon_inverted_button, tb_gradient, tb_image, px_base, px_lt,
 		    px_dk, px_fg, border_style, position);
 	}
@@ -775,6 +806,22 @@ cow_titlebar_render_horizontal(const struct cow_titlebar_render_ctx *ctx)
 	int title_x	    = tb_x + left_btns * btn_s;
 	int title_w	    = tb_w - (left_btns + right_btns) * btn_s;
 	int rendered_text_w = 0; /* actual rendered text width */
+	if (ctx->hidden_panes > 0 && title_w >= btn_s) {
+		/* Match the neighbouring button's decor without borrowing its icon.
+		 */
+		int neighbour = 0;
+		for (size_t i = 0; i < sizeof right_order / sizeof right_order[0]; i++)
+			if (titlebar_button_visible(tb_cfg, right_order[i]))
+				neighbour = right_order[i];
+		struct cow_titlebar_button_config button = tb_cfg->buttons[neighbour];
+		button.vector = hidden_panes_vector;
+		button.image = NULL;
+		title_w -= btn_s;
+		draw_titlebar_button(pixels, stride_px, &strip_p, &button,
+		    COW_TITLEBAR_HIDDEN_PANES, title_x + title_w, tb_y, btn_s,
+		    active, pressed_button, -1, tb_gradient, tb_image,
+		    px_base, px_lt, px_dk, px_fg, border_style, position);
+	}
 
 	/* Render title text with cairo/pango */
 	if (title != NULL && title_w > 4 && font != NULL) {

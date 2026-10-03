@@ -597,6 +597,10 @@ static void
 manage_titlebar_button_click(struct cow_seat *seat, struct cow_view *view,
     int idx)
 {
+	if (idx == COW_TITLEBAR_HIDDEN_PANES) {
+		cow_container_hidden_menu(cow_container_window_owner(view));
+		return;
+	}
 	enum cow_dec_region region = cow_dec_region_button(idx);
 	long now = cow_mono_ms();
 

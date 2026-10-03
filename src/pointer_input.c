@@ -138,8 +138,9 @@ decoration_binding_context_at(struct cow_view *view, int x, int y, int cw,
 	int ly = y - content_y;
 	if (cow_titlebar_hit_for(view, cw, ch, lx, ly)) {
 		int button = cow_titlebar_button_at(view, lx, ly);
-		return (button >= 0 ? COW_BIND_CONTEXT_BUTTON(button) :
-				      COW_BIND_CONTEXT_TITLE);
+		return (button >= 0 && button < 10 ?
+			COW_BIND_CONTEXT_BUTTON(button) :
+			COW_BIND_CONTEXT_TITLE);
 	}
 	return (COW_BIND_CONTEXT_WINDOW);
 }

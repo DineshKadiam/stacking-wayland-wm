@@ -69,6 +69,9 @@ struct cow_container_member {
 };
 
 bool cow_container_is_attached_client(const struct cow_view *);
+int	 cow_container_hidden_count(const struct cow_container *);
+uint32_t cow_container_hidden_border_edges(const struct cow_view *);
+bool	 cow_container_hidden_menu(struct cow_container *);
 
 struct cow_container {
 	char *name;

@@ -2655,7 +2655,9 @@ when necessary. Lowering those minima does not automatically shrink it.
     bind-decoration -2 pane:1 window-container -o anticlockwise
     ```
 
-  Unzoom, expand collapsed rows and leave fullscreen or shaded mode first.
+  Unzoom, expand visible collapsed rows and leave fullscreen or shaded mode
+  first. Hidden panes do not prevent rotation; after rotating, they restore
+  expanded rather than collapsed.
   If the rotated layout cannot fit, nothing moves. Plain tab groups have no
   split layout to rotate. Named empty layouts can also be rotated.
 

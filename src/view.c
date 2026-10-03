@@ -642,6 +642,12 @@ cow_view_cfg_apply_global_option(struct cow_view_cfg *cfg,
 		cfg->container.has_tab_fg_inactive =
 		    cow_config->container.has_tab_fg_inactive;
 		break;
+	case COW_VIEW_CFG_CONTAINER_HIDDEN_BORDER:
+		memcpy(cfg->container.hidden_border,
+		    cow_config->container.hidden_border, sizeof(float) * 4);
+		cfg->container.has_hidden_border =
+		    cow_config->container.has_hidden_border;
+		break;
 	case COW_VIEW_CFG_FONT:
 		xstrset(&cfg->font_name, cow_config->font_name);
 		break;

@@ -695,9 +695,10 @@ main(void)
 	cow_titlebar_effective_config(&b, &tb);
 	int left_buttons, right_buttons;
 	cow_titlebar_button_counts(&tb, &left_buttons, &right_buttons);
-	CHECK(left_buttons == 1 && right_buttons == 5);
+	CHECK(left_buttons == 2 && right_buttons == 5);
 	CHECK(tb.buttons[1].vector.num_points == 8);
 	CHECK(tb.buttons[0].vector.num_points == 4);
+	CHECK(tb.buttons[3].vector.num_points == 5);
 	/* Leave another tab so closing the handle does not dissolve the group. */
 	d.cfg.titlebar.enabled = false;
 	d.dec.title_thickness = 0;
@@ -708,7 +709,7 @@ main(void)
 	CHECK(!cow_container_title_hide(&d));
 	cow_titlebar_effective_config(&a, &tb);
 	cow_titlebar_button_counts(&tb, &left_buttons, &right_buttons);
-	CHECK(left_buttons == 1 && right_buttons == 4);
+	CHECK(left_buttons == 2 && right_buttons == 4);
 	CHECK(tb.buttons[4].vector.num_points == 0);
 	/* Collections contain one record per group/pane, not per tab. */
 	a.identifier		       = "pane-a";
@@ -1511,12 +1512,79 @@ main(void)
 		CHECK(cow_container_pane_visible(c, cow_view_pane(&panes[0]),
 		    false));
 		CHECK(cow_container_hides_view(&panes[0]));
+		CHECK(cow_container_hidden_count(c) == 1);
+		CHECK(cow_container_hidden_border_edges(&panes[0]) == 0);
+		CHECK(cow_container_hidden_border_edges(&panes[1]) != 0);
+		cow_view_pane(&panes[0])->layout.collapsed =
+		    COW_CONTAINER_VERTICAL;
+		panes[1].min_width = original.width + 1;
+		CHECK(!cow_container_rotate(c, 1));
+		CHECK(cow_view_pane(&panes[0])->layout.collapsed ==
+		    COW_CONTAINER_VERTICAL);
+		panes[1].min_width = 0;
+		/* Hidden-pane indicators follow the split through every rotation.
+		 */
+		for (int turn = 0; turn < 4; turn++) {
+			CHECK(cow_container_rotate(c, 1));
+			CHECK(cow_view_pane(&panes[0])->layout.hidden);
+			CHECK(cow_view_pane(&panes[0])->layout.collapsed ==
+			    COW_CONTAINER_LEAF);
+			uint32_t edges = cow_container_hidden_border_edges(&panes[1]) |
+			    cow_container_hidden_border_edges(&panes[2]);
+			CHECK(edges != 0);
+			CHECK((edges & (COW_EDGE_TOP | COW_EDGE_BOTTOM)) != 0 ||
+			    turn % 2 != 0);
+		}
+		/* The restore button works on all titlebar orientations.
+		 */
+		struct cow_view badge = { .container_owner = c,
+			.content_width = 800, .content_height = 400 };
+		badge.dec.border_width = 4;
+		badge.dec.title_thickness = 20;
+		badge.cfg.titlebar.enabled = true;
+		/* All ten user positions can coexist with the extra restore button.
+		 */
+		for (int i = 0; i < COW_TITLEBAR_NUM_BUTTONS; i++)
+			badge.cfg.titlebar.buttons[i].vector.num_points = 1;
+		for (int position = COW_TITLEBAR_TOP;
+		    position <= COW_TITLEBAR_RIGHT; position++) {
+			badge.cfg.titlebar.position = position;
+			struct cow_titlebar_config titlebar;
+			cow_titlebar_effective_config(&badge, &titlebar);
+			int left, right, fw, fh, cx, cy;
+			cow_titlebar_button_counts(&titlebar, &left, &right);
+			cow_titlebar_frame_geometry(&badge, 800, 400,
+			    &fw, &fh, &cx, &cy);
+			struct cow_box rect = cow_titlebar_squeezed_rect(&badge);
+			bool vertical = cow_titlebar_is_vertical(position);
+			int along = (vertical ? rect.height : rect.width) -
+			    right * 20 - 10;
+			if (position == COW_TITLEBAR_LEFT)
+				along = rect.height - 1 - along;
+			int x = rect.x + (vertical ? 10 : along) - cx;
+			int y = rect.y + (vertical ? along : 10) - cy;
+			CHECK(cow_titlebar_button_at(&badge, x, y) ==
+			    COW_TITLEBAR_HIDDEN_PANES);
+		}
+		badge.cfg.titlebar.position = COW_TITLEBAR_TOP;
+		badge.content_width = 200;
+		struct cow_box tight = cow_titlebar_squeezed_rect(&badge);
+		for (int x = 0; x < tight.width; x++)
+			CHECK(cow_titlebar_button_at(&badge, x, -10) !=
+			    COW_TITLEBAR_HIDDEN_PANES);
 		CHECK(cow_wm.pending_focus != &panes[0]);
 		CHECK(!cow_container_hides_view(cow_wm.pending_focus));
 		CHECK(panes[1].pending_height > row_height);
 		CHECK(cow_container_pane_visible(c, cow_view_pane(&panes[0]),
 		    true));
 		CHECK(panes[0].pending_height == row_height);
+		CHECK(cow_container_pane_visible(c, cow_view_pane(&panes[1]),
+		    false));
+		CHECK(cow_container_hidden_count(c) == 1);
+		CHECK(cow_container_pane_visible(c, cow_view_pane(&panes[1]),
+		    true));
+		CHECK(cow_container_hidden_count(c) == 0);
+		CHECK(cow_container_hidden_border_edges(&panes[1]) == 0);
 		CHECK(cow_container_pane_visible(c, cow_view_pane(&panes[1]),
 		    false));
 		CHECK(cow_container_pane_visible(c, cow_view_pane(&panes[2]),

@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include <stdio.h>
+#include <limits.h>
 #include <string.h>
 
 #include "cow/cmd.h"
@@ -21,8 +22,48 @@
 #include "cow/view.h"
 #include "cow/wm.h"
 #include "cow/update.h"
+#include "cow/menu.h"
+#include "cow/seat.h"
 
 static enum cmd_retval cmd_container_exec(struct cmd *, struct cmd_q *);
+
+bool
+cow_container_hidden_menu(struct cow_container *container)
+{
+	if (!cow_container_hidden_count(container))
+		return false;
+	struct cow_view *host = container->frame_view ? container->frame_view :
+	    container->active ? container->active->view : NULL;
+	if (!host || host->closed || !host->identifier)
+		return false;
+	struct cow_menu *menu = cow_menu_generated_begin("\037cow-hidden-panes",
+	    "Restore hidden pane", true, true);
+	if (!menu)
+		return false;
+	struct cow_container_pane *pane = NULL;
+	while ((pane = cow_container_pane_next(container, pane))) {
+		if (!pane->layout.hidden)
+			continue;
+		struct cow_view *view = pane->active ? pane->active->view : NULL;
+		char		*label, *action;
+		const char *title = view && view->title ? view->title : "Empty";
+		if (pane->name)
+			xasprintf(&label, "%s — %s", pane->name, title);
+		else
+			xasprintf(&label, "Pane %d — %s", pane->id, title);
+		xasprintf(&action, "window-container -t '#%s' -b '#%d' -v on",
+		    host->identifier, pane->id);
+		cow_menu_item_add(menu, COW_MENU_ITEM_NORMAL, label, action,
+		    false, false, NULL);
+		xfree(action);
+		xfree(label);
+	}
+	int x = 0, y = 0;
+	cow_seat_get_pointer(&x, &y);
+	cow_menu_popup_open(menu, x, y, container->frame_view, NULL, true);
+	cow_update_request(COW_UPDATE_MANAGE);
+	return true;
+}
 
 static enum cmd_retval
 cmd_attach_exec(struct cmd *self, struct cmd_q *cmdq)
@@ -129,7 +170,7 @@ struct cmd_entry cmd_container_entry = {
 	"[-E -N name [-B pane] | -E -e direction [-B pane] | -D | "
 	"-N name | -B pane-name | -a | -e direction | -f direction | "
 	"-z column|container|off | -o clockwise|anticlockwise|180 | "
-	"-v on|off|toggle | -T [-A] | -rcqnpRPHU]",
+	"-v on|off|toggle|menu | -T [-A] | -rcqnpRPHU]",
 	cmd_container_exec,
 	0,
 };
@@ -190,6 +231,13 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_ERROR);
 	struct cow_container	  *container = named ? named :
 						       cow_view_container(target);
+	/* A nested frame's restore menu refers to its own layout, not the
+	 * outer pane in which the frame is tabbed.
+	 */
+	if (!named && args_has(args, 'v') &&
+	    (args_has(args, 'b') || !strcmp(args_get(args, 'v'), "menu")) &&
+	    cow_container_window_owner(target))
+		container = cow_container_window_owner(target);
 	if (container == NULL)
 		container = cow_container_window_owner(target);
 	if (container && container->attached) {
@@ -202,8 +250,19 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (selected == NULL && container != NULL)
 		selected = cow_container_pane_next(container, NULL);
 	if (args_has(args, 'b')) {
+		const char *name = args_get(args, 'b');
 		struct cow_container_pane *pane =
-		    cow_container_pane_find(container, args_get(args, 'b'));
+		    cow_container_pane_find(container, name);
+		/* Names take precedence over the stable numeric pane selector.
+		 */
+		if (!pane && container && name[0] == '#') {
+			const char *error;
+			int id = strtonum(name + 1, 0, INT_MAX, &error);
+			if (!error)
+				while ((pane = cow_container_pane_next(container, pane)))
+					if (pane->id == id)
+						break;
+		}
 		if (pane == NULL) {
 			cmdq_error(cmdq, "container: unknown pane: %s",
 			    args_get(args, 'b'));
@@ -214,6 +273,12 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 	if (args_has(args, 'v')) {
 		const char *value = args_get(args, 'v');
+		if (!strcmp(value, "menu")) {
+			if (cow_container_hidden_menu(container))
+				return CMD_RETURN_NORMAL;
+			cmdq_error(cmdq, "container: no hidden panes");
+			return CMD_RETURN_ERROR;
+		}
 		bool visible;
 		if (!strcmp(value, "on"))
 			visible = true;
@@ -222,7 +287,8 @@ cmd_container_exec(struct cmd *self, struct cmd_q *cmdq)
 		else if (!strcmp(value, "toggle") && selected != NULL)
 			visible = selected->layout.hidden;
 		else {
-			cmdq_error(cmdq, "container: expected visibility on, off or toggle");
+			cmdq_error(cmdq,
+			    "container: expected visibility on, off, toggle or menu");
 			return CMD_RETURN_ERROR;
 		}
 		if (!cow_container_pane_visible(container, selected, visible)) {

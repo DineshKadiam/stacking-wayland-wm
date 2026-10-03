@@ -30,6 +30,7 @@
 #include "cow/pointer_op.h"
 #include "cow/shm.h"
 #include "cow/titlebar.h"
+#include "cow/draw.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
@@ -39,6 +40,45 @@
  * Rebuilt whenever the font name changes (tracked via last_font_name). */
 static struct cow_font titlebar_font;
 static char	      *last_font_name = NULL;
+
+/* Override only marked regions, before the normal relief is drawn. Expand
+ * shared backgrounds first so unmarked edges retain their original style.
+ */
+static void
+hidden_border_colour(struct cow_border_colour *bc, uint32_t edges,
+    const float *colour)
+{
+	float *colours[] = { bc->n, bc->s, bc->w, bc->e,
+		bc->nw, bc->ne, bc->sw, bc->se };
+	struct cow_gradient *gradients[] = { &bc->gradient_n, &bc->gradient_s,
+		&bc->gradient_w, &bc->gradient_e, &bc->gradient_nw,
+		&bc->gradient_ne, &bc->gradient_sw, &bc->gradient_se };
+	char **images[] = { &bc->image_n, &bc->image_s, &bc->image_w,
+		&bc->image_e, &bc->image_nw, &bc->image_ne,
+		&bc->image_sw, &bc->image_se };
+	const uint32_t masks[] = { COW_EDGE_TOP, COW_EDGE_BOTTOM,
+		COW_EDGE_LEFT, COW_EDGE_RIGHT,
+		COW_EDGE_TOP | COW_EDGE_LEFT, COW_EDGE_TOP | COW_EDGE_RIGHT,
+		COW_EDGE_BOTTOM | COW_EDGE_LEFT, COW_EDGE_BOTTOM | COW_EDGE_RIGHT };
+	bool *corners[] = { &bc->has_nw, &bc->has_ne, &bc->has_sw, &bc->has_se };
+	for (size_t i = 0; i < 8; i++) {
+		if (gradients[i]->mode == COW_GRADIENT_NONE)
+			*gradients[i] = bc->gradient;
+		if (*images[i] == NULL)
+			*images[i] = bc->image;
+		if (!(edges & masks[i]))
+			continue;
+		memcpy(colours[i], colour, sizeof(bc->n));
+		gradients[i]->mode = COW_GRADIENT_NONE;
+		*images[i] = NULL;
+		if (i >= 4) {
+			*corners[i - 4] = true;
+			bc->has_corners = true;
+		}
+	}
+	bc->gradient.mode = COW_GRADIENT_NONE;
+	bc->image = NULL;
+}
 
 static void
 render_resize_indicator(uint32_t *pixels, int stride_px, int frame_w,
@@ -803,6 +843,14 @@ cow_decoration_update(struct cow_view *view, bool active)
 		const struct cow_border_colour *bc;
 		bc = active ? &view->cfg.border_active :
 			      &view->cfg.border_inactive;
+		struct cow_border_colour hidden_bc;
+		uint32_t hidden_edges = cow_container_hidden_border_edges(view);
+		if (hidden_edges && view->cfg.container.has_hidden_border) {
+			hidden_bc = *bc;
+			hidden_border_colour(&hidden_bc, hidden_edges,
+			    view->cfg.container.hidden_border);
+			bc = &hidden_bc;
+		}
 
 		/* Render border: fill_border_base always runs for
 		 * per-edge active/inactive colors; FVWM/MWM add 3D
@@ -906,6 +954,8 @@ cow_decoration_update(struct cow_view *view, bool active)
 				.icon_inverted_button =
 				    view->icon_inverted_button,
 				.title_pressed = view->title_pressed,
+				.hidden_panes  = cow_container_hidden_count(
+				     cow_container_window_owner(view)),
 				.tb_cfg	       = &tb,
 				.container_cfg = &view->cfg.container,
 				.style_colour  = tb_colour,

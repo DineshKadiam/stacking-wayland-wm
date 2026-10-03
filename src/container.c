@@ -597,6 +597,8 @@ cow_container_zoom(struct cow_view *view, enum cow_container_zoom scope)
 void
 container_apply_layout(struct cow_container *c)
 {
+	if (c->frame_view)
+		c->frame_view->dec.dirty = true;
 	container_title_metrics(c);
 	struct cow_container_pane   *zoom = c->shaded ? NULL : zoomed_pane(c);
 	struct cow_container_member *m;
@@ -711,8 +713,67 @@ cow_container_pane_visible(struct cow_container *c,
 			cow_wm.pending_focus = c->frame_view;
 	}
 	cow_stack_mark_dirty();
+	if (c->frame_view)
+		c->frame_view->dec.dirty = true;
 	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
 	return true;
+}
+
+int
+cow_container_hidden_count(const struct cow_container *c)
+{
+	if (!c || c->attached)
+		return 0;
+	int			   count = 0;
+	struct cow_container_pane *pane	 = NULL;
+	while ((pane = cow_container_pane_next(c, pane)))
+		count += pane->layout.hidden;
+	return count;
+}
+
+uint32_t
+cow_container_hidden_border_edges(const struct cow_view *view)
+{
+	struct cow_container_pane *pane = cow_view_pane(view);
+	struct cow_container	  *c	= cow_view_container(view);
+	if (!pane || !c || c->attached || pane->layout.hidden)
+		return 0;
+	uint32_t		   edges  = 0;
+	struct cow_box		   box	  = pane->layout.box;
+	struct cow_container_pane *hidden = NULL;
+	while ((hidden = cow_container_pane_next(c, hidden))) {
+		if (!hidden->layout.hidden)
+			continue;
+		/* Hidden leaves have empty boxes. Find their surviving split,
+		 * following its axis so the indication rotates with the layout.
+		 */
+		struct cow_container_layout *region = hidden->layout.parent;
+		while (region && cow_container_layout_hidden(region))
+			region = region->parent;
+		if (!region)
+			continue;
+		struct cow_box column = region->box;
+		/* Include neighbours which own the shared left/top dividers.
+		 */
+		if (region->axis == COW_CONTAINER_VERTICAL &&
+		    box.y < column.y + column.height &&
+		    box.y + box.height > column.y) {
+			if (box.x == column.x || box.x == column.x + column.width)
+				edges |= COW_EDGE_LEFT;
+			if (box.x + box.width == column.x ||
+			    box.x + box.width == column.x + column.width)
+				edges |= COW_EDGE_RIGHT;
+		} else if (region->axis == COW_CONTAINER_HORIZONTAL &&
+		    box.x < column.x + column.width &&
+		    box.x + box.width > column.x) {
+			if (box.y == column.y || box.y == column.y + column.height)
+				edges |= COW_EDGE_TOP;
+			if (box.y + box.height == column.y ||
+			    box.y + box.height == column.y + column.height)
+				edges |= COW_EDGE_BOTTOM;
+		}
+	}
+	return edges;
 }
 
 bool
@@ -1008,7 +1069,8 @@ cow_container_rotate(struct cow_container *c, unsigned turns)
 		return false;
 	struct cow_container_pane *pane = NULL;
 	while ((pane = cow_container_pane_next(c, pane)) != NULL) {
-		if (pane->layout.collapsed != COW_CONTAINER_LEAF)
+		if (!pane->layout.hidden &&
+		    pane->layout.collapsed != COW_CONTAINER_LEAF)
 			return false;
 	}
 	struct cow_container_member *m;
@@ -1018,8 +1080,16 @@ cow_container_rotate(struct cow_container *c, unsigned turns)
 			return false;
 	}
 	cow_container_layout_rotate(&c->root->layout, turns);
-	if (cow_container_arrange(c, c->frame))
+	if (cow_container_arrange(c, c->frame)) {
+		/* Hidden panes occupy no space. Discard their old row-collapse
+		 * direction so they can be restored in the rotated layout.
+		 */
+		pane = NULL;
+		while ((pane = cow_container_pane_next(c, pane)) != NULL)
+			if (pane->layout.hidden)
+				pane->layout.collapsed = COW_CONTAINER_LEAF;
 		return true;
+	}
 	/* Arrange validates minima before changing any boxes. Undo the tree
 	 * transformation and refresh the orientation-dependent frame minima.
 	 */

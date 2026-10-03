@@ -252,6 +252,14 @@ static const struct set_titlebar_colour_option set_titlebar_colour_options[] = {
 static const struct set_container_colour_option
     set_container_colour_options[] = {
 	{
+		.name = "container.hidden_border",
+		.id = COW_VIEW_CFG_CONTAINER_HIDDEN_BORDER,
+		.colour_offset = offsetof(struct cow_container_config,
+		    hidden_border),
+		.has_offset = offsetof(struct cow_container_config,
+		    has_hidden_border),
+	},
+	{
 		.name = "container.tab.active_colour",
 		.id = COW_VIEW_CFG_CONTAINER_TAB_ACTIVE_COLOUR,
 		.colour_offset = offsetof(struct cow_container_config,
@@ -686,6 +694,7 @@ set_option_is_decor(const struct cow_option_entry *opt, const char *key)
 	if (opt->scope != COW_OPTION_MIXED)
 		return (false);
 	if (strcmp(key, "border.corner_length") == 0 ||
+	    strcmp(key, "container.hidden_border") == 0 ||
 	    strcmp(key, "border.width") == 0 ||
 	    strcmp(key, "border.resize") == 0 ||
 	    strcmp(key, "icon.enabled") == 0 ||
@@ -1788,6 +1797,12 @@ set_container_tab_colour(const char *key, const char *val, struct cmd_q *cmdq)
 		struct cow_container_config *cc = target_container(cmdq, &cfg);
 		float *ptr = (float *)((char *)cc + opt->colour_offset);
 		bool  *has = (bool *)((char *)cc + opt->has_offset);
+		if (opt->id == COW_VIEW_CFG_CONTAINER_HIDDEN_BORDER &&
+		    strcmp(val, "none") == 0) {
+			*has = false;
+			finish_visual_update(opt->id, cfg, cmdq);
+			return true;
+		}
 		if (!cow_colour_parse(val, ptr)) {
 			cmdq_error(cmdq, "set: invalid colour value");
 			return (true);

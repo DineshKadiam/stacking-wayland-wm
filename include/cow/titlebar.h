@@ -29,6 +29,8 @@ struct cow_view;
  * Titlebar constants.
  */
 #define COW_TITLEBAR_PADDING 4
+/* Synthetic button, outside the configurable 0..9 button range. */
+#define COW_TITLEBAR_HIDDEN_PANES 10
 
 /*
  * Compute titlebar thickness from a font.
@@ -100,6 +102,7 @@ struct cow_titlebar_render_ctx {
 	int  pressed_button;
 	int  icon_inverted_button;
 	bool title_pressed;
+	int  hidden_panes;
 
 	const struct cow_titlebar_config	 *tb_cfg;
 	const struct cow_container_config *container_cfg;

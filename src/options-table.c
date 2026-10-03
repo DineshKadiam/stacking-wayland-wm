@@ -305,6 +305,12 @@ const struct cow_option_entry cow_options_table[] = {
 		.action = COW_OPTION_COLOUR,
 	},
 	{
+		.name = "container.hidden_border",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_MIXED,
+		.action = COW_OPTION_COLOUR,
+	},
+	{
 		.name = "container.tab.",
 		.match = COW_OPTION_PREFIX,
 		.scope = COW_OPTION_MIXED,
