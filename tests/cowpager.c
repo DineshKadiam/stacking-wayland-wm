@@ -78,6 +78,44 @@ main(void)
 	draw_desk_pages(cr, &st, &layout, &outputs[0], &canvas, &desk,
 	    0, 0, 100, 100);
 	CHECK(cairo_status(cr) == CAIRO_STATUS_SUCCESS);
+
+	pager_config_init(&cfg);
+	CHECK(!cfg.page_separator_set);
+	const char *why = NULL;
+	char *separator[] = { "style", "page.separator", "invalid" };
+	CHECK(!load_pager_style(separator, 3, &why));
+	CHECK(!cfg.page_separator_set);
+	separator[2] = "0xFF0000";
+	CHECK(load_pager_style(separator, 3, &why));
+	CHECK(cfg.page_separator_set);
+	CHECK(cfg.page_separator[0] == 1 && cfg.page_separator[1] == 0 &&
+	    cfg.page_separator[2] == 0 && cfg.page_separator[3] == 1);
+	outputs[0].page_cols = 2;
+	outputs[0].page_rows = 2;
+	canvas.page_cols = canvas.page_rows = 2;
+	canvas.w = 3840;
+	canvas.h = 2160;
+	for (int visible = 1; visible >= 0; visible--) {
+		if (!visible) {
+			separator[2] = "0x00000000";
+			CHECK(load_pager_style(separator, 3, &why));
+			CHECK(cfg.page_separator[3] == 0);
+		}
+		draw_desk_pages(cr, &st, &layout, &outputs[0], &canvas,
+		    &desk, 0, 0, 100, 100);
+		cairo_surface_flush(image);
+		unsigned char *pixels = cairo_image_surface_get_data(image);
+		int stride = cairo_image_surface_get_stride(image);
+		int red_vertical = 0, red_horizontal = 0;
+		for (int i = 60; i < 90; i++) {
+			red_vertical += ((uint32_t *)(pixels + i * stride))[50]
+			    == 0xFFFF0000;
+			red_horizontal += ((uint32_t *)(pixels + 50 * stride))[i]
+			    == 0xFFFF0000;
+		}
+		CHECK((red_vertical > 0) == visible);
+		CHECK((red_horizontal > 0) == visible);
+	}
 	cairo_destroy(cr);
 	cairo_surface_destroy(image);
 	free(overlay_handles);

@@ -99,6 +99,7 @@ struct pager_config {
 	float desk_active_border[4];
 	float page_bg[4];
 	float page_active_bg[4];
+	float page_separator[4];
 	float label_bg[4];
 	float label_active_bg[4];
 	float label_fg[4];
@@ -112,6 +113,7 @@ struct pager_config {
 	int   desk_bg_set;
 	int   page_bg_set;
 	int   page_active_bg_set;
+	int   page_separator_set;
 	int   label_bg_set;
 	int   label_active_bg_set;
 	int   label_fg_set;
@@ -1608,14 +1610,18 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		double dashes[2] = { 2.0, 2.0 };
 		cairo_set_dash(cr, dashes, 2, 0);
 
-		/* Contrast against both the light page fill and the
-		 * coloured monitor-target outlines. */
-		cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.72);
-		cairo_set_line_width(cr, 2.0);
-		stroke_page_grid_lines(cr, sx, sy, sw, sh, pcols, prows, cw,
-		    ch);
-
-		cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.92);
+		if (cfg.page_separator_set) {
+			cow_module_cairo_set_source(cr, cfg.page_separator);
+		} else {
+			/* Keep the default contrast against page fills and
+			 * coloured monitor-target outlines.
+			 */
+			cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.72);
+			cairo_set_line_width(cr, 2.0);
+			stroke_page_grid_lines(cr, sx, sy, sw, sh, pcols, prows,
+			    cw, ch);
+			cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.92);
+		}
 		cairo_set_line_width(cr, 1.0);
 		stroke_page_grid_lines(cr, sx, sy, sw, sh, pcols, prows, cw,
 		    ch);
@@ -3016,6 +3022,8 @@ load_pager_style(char **fields, int n, const char **why)
 	} else if (strcmp(fields[1], "page.active.bg") == 0) {
 		slot = cfg.page_active_bg;
 		cfg.page_active_bg_set = 1;
+	} else if (strcmp(fields[1], "page.separator") == 0) {
+		slot = cfg.page_separator;
 	} else if (strcmp(fields[1], "label.bg") == 0) {
 		slot = cfg.label_bg;
 		cfg.label_bg_set = 1;
@@ -3051,6 +3059,8 @@ load_pager_style(char **fields, int n, const char **why)
 		*why = "bad colour";
 		return false;
 	}
+	if (slot == cfg.page_separator)
+		cfg.page_separator_set = 1;
 	if (strcmp(fields[1], "background") == 0) {
 		if (!cfg.desk_bg_set)
 			memcpy(cfg.desk_bg, cfg.background, sizeof(cfg.desk_bg));

@@ -149,6 +149,7 @@ Supported colour roles:
     style desk.active.border 0x4d9ef2
     style page.bg 0xffffff
     style page.active.bg 0x3366b3
+    style page.separator 0x000000
     style label.bg 0xd8d8d8
     style label.active.bg 0x3366b3
     style label.fg 0x000000
@@ -185,6 +186,9 @@ is needed in **cowpager.conf**.
 desk and page backgrounds. **desk.bg**, **page.bg**, and **page.active.bg** may
 be set when those areas should differ. **desk.active.border** controls the
 frame around the active desk.
+
+**page.separator** sets the colour of the dashed lines between pages. Set it to
+**0x00000000**.
 
 **window.bg** gives every unfocused window miniature the same colour. When it
 is not set, cowpager retains its default behaviour of deriving a stable colour
