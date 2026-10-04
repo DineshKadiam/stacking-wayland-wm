@@ -139,21 +139,23 @@ Because `cow` is a window manager reliant on `river`, then the binary for
 
 ## How do I run CoW?
 
-There's a command called `cow-start` which you can run thus:
+Start CoW through River:
 
 ```
-river -c 'cow-start'
+river -c cow
 ```
 
 It's recommended that you copy the [river init file](config/river/init) to
-`~/.config/river` so that you can just run:
+`~/.config/river/init`, make it executable, and customise it so that you can
+just run:
 
 ```
 river
 ```
 
-This will set up the environment before river starts to enable screen-sharing,
-etc. The [river init file](config/river/init) can be customised as needed.
+River runs this file after starting. Use it for session setup and output
+configuration before launching CoW. Environment variables needed by River
+itself, such as `XKB_DEFAULT_LAYOUT`, must be set before launching River.
 
 Alternatively, a globally-installed `cow.desktop` file is installed allowing
 cow to be used with wayland login managers.
@@ -233,12 +235,12 @@ cow", so `moocow` as an external command seemed appropriate.
 
 ## Are multi-monitors supported?
 
-Yes. For now, one will need to edit [the start script](./tools/start.sh) to run
-`wlr-randr` with the appropriate values.
+Yes. Use one `wlr-randr` invocation in [River's init](config/river/init) to
+configure a fixed layout before starting CoW, or use
+[kanshi profiles](config/kanshi/config) for better management.
 
-Note that this is controlled via river(1) and `cow` has no means of being able
-to set monitors directly. To get a more visual overview of things, the
-`wdisplays` command is helpful, and is similar to `arandr` from xrandr.
+To get a more visual overview of things, the `wdisplays` command is helpful,
+and is similar to `arandr` from xrandr.
 
 ## Is AI used in this project?
 

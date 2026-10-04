@@ -693,13 +693,6 @@ install_data(
     install_dir: datadir / 'cow/icons',
 )
 
-install_data(
-    'tools/start.sh',
-    install_dir: get_option('bindir'),
-    install_mode: 'rwxr-xr-x',
-    rename: 'cow-start',
-)
-
 man_conf = configuration_data()
 man_conf.set('VERSION', meson.project_version())
 man_conf.set('DATE', run_command(

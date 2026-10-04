@@ -107,17 +107,10 @@ reveals the compositor's background below CoW's background surface.
 
 # OUTPUT MANAGEMENT
 
-Neither **cow** nor **River** manages outputs (screens/monitors) directly.
-Instead, applications such as **wlr-randr(1)**, and **wdisplays** (for
-something similar to **xrandr**) can be used instead.
+**CoW** does not manage outputs directly, this is the job of river(1).
 
-Because **cow** needs to know information about outputs after it has started,
-it is recommended that the dedicated file *~/.config/cow/after-start.sh* --
-which is a shell-script, contains the relevant commands to set the output
-layout.
-
-**NOTE:** in this example, it is assumed that **\$XDG\_CONFIG\_HOME** is set to
-*~/.config*.
+Tools such as **wlr-randr**, **wdisplays**, or **kanshi** can be used
+to manage this.
 
 **cow** will assign all outputs a number to a tree with a defined order. That
 order is top-down, left-to-right, so far example, the following diagram

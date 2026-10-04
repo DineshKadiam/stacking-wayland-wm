@@ -33,12 +33,6 @@ clients which consume CoW's command and status sockets.
 
 ## Process Model
 
-`cow` is normally started by River, for example through:
-
-```
-river -c 'cow-start'
-```
-
 At startup CoW:
 
 1. Loads the installed `cow-defaults.conf`, then user commands from `cow.conf`;

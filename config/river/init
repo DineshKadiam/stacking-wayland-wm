@@ -6,7 +6,15 @@ set -eu
 
 export XDG_CURRENT_DESKTOP
 
-# Put here things which should happen before river runs CoW.
-# This might include things such as xdg-portal activation, etc.
+# River is already running when it invokes this file. Set keyboard layout
+# variables in the environment which launches River, not here.
+#
+# Session setup such as portal activation may go here.
 
-cow-start
+# Choose an output configuration method.  This can be done with `wlr-randr`,
+# or more persistently with kanshi.
+#
+# kanshi &
+
+# Keep this last; replace the init shell with CoW.
+exec cow
