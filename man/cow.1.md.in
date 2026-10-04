@@ -172,13 +172,13 @@ buttons are numbered as in *ANATOMY OF A WINDOW*.
     +++───────────────────────────────────────────────────────────────+++
     + [1] Container title                                         [2][0]+
     +─────────────────────────────────┬─────────────────────────────────+
-    │[↻] Pane 1 [□][▯][-][↗][×]       │[↻] Pane 2 [□][▯][-][↗][×]       │
+    │[↻][↓] Pane 1 [□][▯][-][↗][×]    │[↻][↓] Pane 2 [□][▯][-][↗][×]    │
     ├─────────────────────────────────┼─────────────────────────────────┤
     │                                 │                                 │
     │                                 │    Application B                │
     │    Application A                │                                 │
     │                                 ├─────────────────────────────────┤
-    │                                 │[↻] Pane 3 [□][▯][-][↗][×]       │
+    │                                 │[↻][↓] Pane 3 [□][▯][-][↗][×]    │
     │                                 ├─────────────────────────────────┤
     │                                 │                                 │
     │                                 │    Application C                │
@@ -189,6 +189,7 @@ The outer titlebar keeps the normal window buttons. Inner titlebars use
 separate **bind-decoration pane:** bindings, with these default actions:
 
 - **↻** (button **1**): rotate clockwise; double-click for anticlockwise.
+- **↓** (button **3**): hide the pane, leaving its applications running.
 - **□** (button **8**): toggle zoom to fill the container.
 - **▯** (button **6**): toggle zoom to fill the pane's column.
 - **-** (button **4**): hide this pane's titlebar.
@@ -2381,7 +2382,9 @@ when necessary. Lowering those minima does not automatically shrink it.
 
 **window-container -G** *name* \[**-b** *pane-name*\] *action*
 
-: For example, name an editor's container and pane, then add other windows
+: **-b** selects a pane by name, or by **\#id** using its numeric pane ID.
+  Quote numeric selectors so **\#** is not treated as a comment.
+  For example, name an editor's container and pane, then add other windows
   using those names:
 
     ```text
@@ -2532,10 +2535,33 @@ when necessary. Lowering those minima does not automatically shrink it.
     bind-decoration -2 pane-titlebar window-container -c
     ```
 
-**window-container -v** *on|off|toggle* \[-G *container*\] \[-b *pane*\]
+**window-container -v** *on|off|toggle|menu* \[-G *container*\] \[-b *pane*\]
 
 : Show or hide a pane without closing its windows. Hidden panes reallocate
   space to the remaining panes.  At least one pane must remain visible.
+
+  The outer titlebar shows a stacked-pane vector button while panes are
+  hidden. Click it to choose a pane to restore, or use **-v menu** to open
+  the same searchable
+  menu from a binding. Adding panes while another is hidden preserves
+  both: restoring it redistributes space within the updated layout.
+
+  The restore button is additional to the ten configurable button positions;
+  it never replaces a user button. If there is insufficient titlebar space,
+  it is omitted. Use **Restore hidden pane...** in the default Window Ops
+  menu, or bind **window-container -v menu**, instead.
+
+  The system defaults mark borders violet where panes are hidden, preserving
+  their relief. The indication follows layout rotation. Override the colour
+  through the active decor:
+
+    ```text
+    decor -d default container.hidden_border 0xb090d0
+    decor -a default
+    ```
+
+  **container.hidden_border none** disables the colour.
+  Neither indicator applies to module-owned panels.
 
 **window-container -z** *column|container|off* \[-t *target*\]
 
@@ -2607,6 +2633,10 @@ when necessary. Lowering those minima does not automatically shrink it.
        zoom      zoom
     ```
 
+  On the left, button 1 rotates the layout and button 3 (a downward arrow)
+  hides the entire pane. This is separate from button 4, which only hides
+  its titlebar.
+
   Buttons 8 and 6 toggle container and column zoom respectively. Their
   vectors show a square and a narrow rectangle; the active zoom button is
   sunken. Click it again to restore the layout.
@@ -2628,6 +2658,7 @@ when necessary. Lowering those minima does not automatically shrink it.
     mouse T:0+middle window-shade -d titlebar
     bind LCA+t window-container -U
     bind-decoration pane:4 window-container -H
+    bind-decoration pane:3 window-container -v off
     bind-decoration pane:6 window-container -z column
     bind-decoration pane:8 window-container -z container
     bind-decoration pane:2 window-container -r
