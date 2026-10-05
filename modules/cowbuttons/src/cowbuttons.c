@@ -79,6 +79,7 @@ enum cell_type {
 	CELL_PANEL_HANDLE,
 	CELL_EXTERNAL,
 	CELL_STATUS,
+	CELL_DESKS,
 	CELL_SPACER,
 };
 
@@ -114,12 +115,17 @@ enum click_button {
 	CLICK_LEFT,
 	CLICK_MIDDLE,
 	CLICK_RIGHT,
+	CLICK_UP,
+	CLICK_DOWN,
+	CLICK_WEST,
+	CLICK_EAST,
 	CLICK_BUTTON_COUNT,
 };
 
 enum click_count {
 	CLICK_SINGLE,
 	CLICK_DOUBLE,
+	CLICK_PRESS,
 	CLICK_COUNT,
 };
 
@@ -186,6 +192,8 @@ struct cell_style {
 };
 
 struct panel_selection {
+	char *command[CLICK_BUTTON_COUNT][CLICK_COUNT];
+	int		      column;
 	int		      parent;
 	char		     *name;
 	bool		      seen;
@@ -204,6 +212,7 @@ struct panel_selection {
 };
 
 struct external_client {
+	int			     drawer_width;
 	int			     handle_size;
 	int			     padding;
 	bool			     collapsed;
@@ -254,15 +263,22 @@ struct win_info {
 };
 
 struct cell {
+	bool		  drag;
 	bool		       fill_width;
 	enum cell_type	  type;
 	enum status_type  status;
 	int		  row;
 	int		  col;
+	int		  desk_rows;
+	int		  desk_gap;
+	float		(*desk_colours)[4];
+	size_t		  n_desk_colours;
 	char		  label[256];
-	char		  command[CLICK_BUTTON_COUNT][CLICK_COUNT][512];
+	char		 *command[CLICK_BUTTON_COUNT][CLICK_COUNT];
 	char		  script[512];
 	int		  script_interval;
+	int		  script_lines;
+	int		  script_lines_read;
 	pid_t		  script_pid;
 	int		  script_fd;
 	char		  script_output[256];
@@ -312,6 +328,13 @@ static int	   win_w;
 static int	   win_h;
 static int			    expanded_w, expanded_h;
 static int	   pressed_cell = -1;
+static cJSON *desk_output;
+static int pressed_desk = -1;
+static char pressed_output[128];
+static char *pending_single_command;
+static char *pending_double_command;
+static double axis_remainder[2];
+static int axis_cell = -1;
 static int	   pressed_button = -1;
 static double	   ptr_x;
 static double	   ptr_y;
@@ -342,6 +365,7 @@ static int		 pending_click_button = -1;
 static uint32_t		 pending_click_time;
 
 static void render(void);
+static bool click_property(const char *, enum click_button *, enum click_count *);
 static int  cell_colspan(const struct cell *);
 static int  cell_rowspan(const struct cell *);
 static int  col_width(int);
@@ -364,7 +388,7 @@ static void script_cells_stop(void);
 static void
 usage(void)
 {
-	fprintf(stderr, "usage: cowbuttons [-c path] [-h]\n");
+	fprintf(stderr, "usage: cowbuttons [-c path] [-p panel] [-h]\n");
 }
 
 static void
@@ -726,6 +750,25 @@ load_panel_properties(int idx, char **fields, int start, int end,
 		}
 	}
 	for (int i = start; i < end; i += 2) {
+		enum click_button button;
+		enum click_count count;
+		if (click_property(fields[i], &button, &count)) {
+			xstrset(&selected_panels[idx].command[button][count],
+			    fields[i + 1]);
+			continue;
+		}
+		if (strcmp(fields[i], "position") == 0) {
+			unsigned col, row;
+			char extra;
+			if (sscanf(fields[i + 1], "%u,%u%c", &col, &row,
+				&extra) != 2 || col >= MAX_GRID || row >= MAX_GRID) {
+				*why = "position expects column,row within the grid";
+				return false;
+			}
+			selected_panels[idx].column = (int)col;
+			current_row = (int)row - 1;
+			continue;
+		}
 		if (strcmp(fields[i], "direction") == 0) {
 			if (!panel_direction_parse(fields[i + 1],
 			    &selected_panels[idx].direction)) {
@@ -1045,7 +1088,7 @@ static void
 row_begin(void)
 {
 	current_row++;
-	current_col = 0;
+	current_col = current_panel >= 0 ? selected_panels[current_panel].column : 0;
 	in_row = true;
 	if (current_row + 1 > cfg.rows)
 		cfg.rows = current_row + 1;
@@ -1070,10 +1113,10 @@ cell_append_block(void)
 	struct cell *c;
 
 	current_row++;
-	current_col = 0;
+	current_col = current_panel >= 0 ? selected_panels[current_panel].column : 0;
 	if (current_row + 1 > cfg.rows)
 		cfg.rows = current_row + 1;
-	c = cell_get(current_row, 0);
+	c = cell_get(current_row, current_col);
 	if (c != NULL)
 		current_col = c->col + cell_colspan(c);
 	return c;
@@ -1158,7 +1201,14 @@ load_external(char **fields, int n, const char **why)
 			*why = "missing external property value";
 			return false;
 		}
-		if (!strcmp(fields[i], "handle.size")) {
+		if (!strcmp(fields[i], "drawer.width")) {
+			if (!external->drawer ||
+			    !parse_int(fields[i + 1], &external->drawer_width) ||
+			    external->drawer_width < 1 || external->drawer_width > 32768) {
+				*why = "drawer.width expects a positive drawer width";
+				return false;
+			}
+		} else if (!strcmp(fields[i], "handle.size")) {
 			if (!in_row ||
 			    !parse_int(fields[i + 1], &external->handle_size) ||
 			    external->handle_size < 1) {
@@ -1226,6 +1276,22 @@ static bool
 click_property(const char *prop, enum click_button *button,
     enum click_count *count)
 {
+	static const char *press[] = { "leftpress", "middlepress", "rightpress" };
+	static const char *wheel[] = { "wheelup", "wheeldown", "wheelleft", "wheelright" };
+	for (int i = 0; i < 3; i++) {
+		if (strcmp(prop, press[i]) == 0) {
+			*button = i;
+			*count = CLICK_PRESS;
+			return true;
+		}
+	}
+	for (int i = 0; i < 4; i++) {
+		if (strcmp(prop, wheel[i]) == 0) {
+			*button = CLICK_UP + i;
+			*count = CLICK_SINGLE;
+			return true;
+		}
+	}
 	if (strcmp(prop, "click") == 0 || strcmp(prop, "leftclick") == 0) {
 		*button = CLICK_LEFT;
 		*count = CLICK_SINGLE;
@@ -1268,13 +1334,46 @@ load_cell_props(struct cell *c, char **fields, int start, int n,
 		enum click_button button;
 		enum click_count count;
 
-		if (click_property(prop, &button, &count)) {
-			if (c->type != CELL_BUTTON && c->type != CELL_SCRIPT) {
+		if (strcmp(prop, "drag") == 0 && c->type == CELL_BUTTON) {
+			if (!parse_bool(val, &c->drag)) {
+				*why = "bad drag value";
+				return false;
+			}
+		} else if (click_property(prop, &button, &count)) {
+			if (c->type != CELL_BUTTON && c->type != CELL_SCRIPT &&
+			    c->type != CELL_DESKS) {
 				*why = "click action on non-clickable cell";
 				return false;
 			}
-			strlcpy(c->command[button][count], val,
-			    sizeof(c->command[button][count]));
+			xstrset(&c->command[button][count], val);
+		} else if (strcmp(prop, "colours") == 0 && c->type == CELL_DESKS) {
+			char *list = xstrdup(val), *rest = list, *item;
+			c->n_desk_colours = 0;
+			while ((item = strsep(&rest, ",")) != NULL) {
+				float colour[4];
+				if (!cow_colour_parse(item, colour)) {
+					free(list);
+					*why = "bad desk colour";
+					return false;
+				}
+				c->desk_colours = xrealloc(c->desk_colours,
+				    c->n_desk_colours + 1, sizeof(*c->desk_colours));
+				memcpy(c->desk_colours[c->n_desk_colours++],
+				    colour, sizeof(colour));
+			}
+			free(list);
+		} else if (strcmp(prop, "gap") == 0 && c->type == CELL_DESKS) {
+			if (!parse_int(val, &v) || v < 0 || v > MAX_GRID) {
+				*why = "bad desk gap";
+				return false;
+			}
+			c->desk_gap = v;
+		} else if (strcmp(prop, "rows") == 0 && c->type == CELL_DESKS) {
+			if (!parse_int(val, &v) || v < 1 || v > MAX_GRID) {
+				*why = "bad desk rows";
+				return false;
+			}
+			c->desk_rows = v;
 		} else if (strcmp(prop, "fill.width") == 0) {
 			if (!parse_bool(val, &c->fill_width)) {
 				*why = "fill.width expects true or false";
@@ -1321,6 +1420,7 @@ load_script(char **fields, int n, const char **why)
 		return false;
 	}
 	c->type = CELL_SCRIPT;
+	c->script_lines = 1;
 	strlcpy(c->script, fields[1], sizeof(c->script));
 
 	for (int i = 2; i < n; i += 2) {
@@ -1333,6 +1433,12 @@ load_script(char **fields, int n, const char **why)
 			}
 			c->script_interval = interval;
 			interval_set = true;
+		} else if (strcmp(fields[i], "lines") == 0) {
+			if (!parse_int(fields[i + 1], &c->script_lines) ||
+			    c->script_lines < 1 || c->script_lines > 16) {
+				*why = "script lines must be between 1 and 16";
+				return false;
+			}
 		} else if (!load_cell_props(c, fields, i, i + 2, why))
 			return false;
 	}
@@ -1435,6 +1541,10 @@ panel_handle_add(int row, int col, int rowspan, int colspan, int panel)
 	c->col = col;
 	c->panel = panel;
 	c->target_panel = panel;
+	for (int b = 0; b < CLICK_BUTTON_COUNT; b++)
+		for (int n = 0; n < CLICK_COUNT; n++)
+			c->command[b][n] =
+			    xstrdup0(selected_panels[panel].command[b][n]);
 	c->panel_dir = selected_panels[panel].direction;
 	c->style = selected_panels[panel].handle_style;
 	c->style.rowspan = rowspan;
@@ -1584,6 +1694,11 @@ load_row(char **fields, int n, const char **why)
 static int
 scan_selected_panels(const char *path)
 {
+	/* Explicit selections do not spawn the file's other show lines. */
+	if (n_selected_panels != 0) {
+		config_instances.child = true;
+		return 1;
+	}
 	struct cow_module_config_reader reader = { .prog = PROG };
 	FILE *f;
 	char *line = NULL;
@@ -1780,8 +1895,7 @@ load_config(const char *path)
 			}
 			c->type = CELL_BUTTON;
 			strlcpy(c->label, fields[1], sizeof(c->label));
-			strlcpy(c->command[CLICK_LEFT][CLICK_SINGLE], fields[2],
-			    sizeof(c->command[CLICK_LEFT][CLICK_SINGLE]));
+			xstrset(&c->command[CLICK_LEFT][CLICK_SINGLE], fields[2]);
 			if (!load_cell_props(c, fields, 3, n, &why))
 				goto line_error;
 			current_col = c->col + cell_colspan(c);
@@ -1806,6 +1920,17 @@ load_config(const char *path)
 			c->type = CELL_STATUS;
 			c->status = type;
 			if (!load_cell_props(c, fields, 2, n, &why))
+				goto line_error;
+			current_col = c->col + cell_colspan(c);
+		} else if (strcmp(fields[0], "desks") == 0) {
+			struct cell *c = cell_append();
+			if (c == NULL) {
+				why = "desks outside row or too many cells";
+				goto line_error;
+			}
+			c->type = CELL_DESKS;
+			c->desk_rows = 2;
+			if (!load_cell_props(c, fields, 1, n, &why))
 				goto line_error;
 			current_col = c->col + cell_colspan(c);
 		} else if (strcmp(fields[0], "spacer") == 0) {
@@ -2617,6 +2742,85 @@ draw_panel_indicator(struct cow_pixbuf *pixbuf, const struct cell *c, int x,
 	}
 }
 
+/* Use identical rectangles for painting and hit testing. Keep equal-width
+ * columns in a partially filled row; integer boundaries avoid seams.
+ */
+static void
+desk_rect(const struct cell *c, int index, int count,
+    int *x, int *y, int *w, int *h)
+{
+	int rows = count < c->desk_rows ? count : c->desk_rows;
+	int cols = (count + rows - 1) / rows;
+	int row = index / cols, col = index % cols;
+	int width = cols_width(c->col, cell_colspan(c));
+	int height = rows_height(c->row, cell_rowspan(c));
+
+	rows = (count + cols - 1) / cols;
+	*x = col_offset(c->col) + width * col / cols;
+	*y = row_offset(c->row) + height * row / rows;
+	*w = width * (col + 1) / cols - width * col / cols;
+	*h = height * (row + 1) / rows - height * row / rows;
+	int gap_x = c->desk_gap < *w / 2 ? c->desk_gap : *w / 2;
+	int gap_y = c->desk_gap < *h / 2 ? c->desk_gap : *h / 2;
+	*x += gap_x;
+	*y += gap_y;
+	*w -= 2 * gap_x;
+	*h -= 2 * gap_y;
+}
+
+static int
+desk_at_point(const struct cell *c)
+{
+	cJSON *desks = cJSON_GetObjectItem(desk_output, "desks");
+	int count = cJSON_GetArraySize(desks);
+
+	for (int i = 0; i < count; i++) {
+		int x, y, w, h;
+		desk_rect(c, i, count, &x, &y, &w, &h);
+		if (ptr_x >= x && ptr_x < x + w &&
+		    ptr_y >= y && ptr_y < y + h) {
+			cJSON *nr = cJSON_GetObjectItem(
+			    cJSON_GetArrayItem(desks, i), "nr");
+			return cJSON_IsNumber(nr) ? nr->valueint : -1;
+		}
+	}
+	return -1;
+}
+
+static void
+desks_draw(cairo_t *cr, PangoFontDescription *font, const struct cell *c)
+{
+	cJSON *desks = cJSON_GetObjectItem(desk_output, "desks");
+	cJSON *active = cJSON_GetObjectItem(desk_output, "current_desk");
+	int count = cJSON_GetArraySize(desks);
+
+	for (int i = 0; i < count; i++) {
+		cJSON *desk = cJSON_GetArrayItem(desks, i);
+		cJSON *nr = cJSON_GetObjectItem(desk, "nr");
+		cJSON *name = cJSON_GetObjectItem(desk, "name");
+		char fallback[32];
+		int x, y, w, h;
+		if (!cJSON_IsNumber(nr))
+			continue;
+		desk_rect(c, i, count, &x, &y, &w, &h);
+		bool selected = cJSON_IsNumber(active) &&
+		    nr->valueint == active->valueint;
+		const float *bg = cell_bg_colour(c, selected);
+		if (c->n_desk_colours > 0)
+			bg = c->desk_colours[i % c->n_desk_colours];
+		cow_module_cairo_fill(cr, bg, x, y, w, h);
+		cow_module_cairo_frame(cr, x, y, w, h,
+		    cell_frame(c), selected, bg);
+		cow_module_cairo_set_source(cr, cell_fg_colour(c, selected));
+		snprintf(fallback, sizeof(fallback), "%d", nr->valueint);
+		cow_text_render(cr, font, x + TEXT_PAD, y,
+		    w > 2 * TEXT_PAD ? w - 2 * TEXT_PAD : 0, h,
+		    cJSON_IsString(name) && name->valuestring[0] ?
+		    name->valuestring : fallback,
+		    text_alignment(cell_justify(c)), NULL);
+	}
+}
+
 static void
 render(void)
 {
@@ -2682,6 +2886,10 @@ render(void)
 
 			if (c != NULL && c->type == CELL_SPACER)
 				continue;
+			if (c != NULL && c->type == CELL_DESKS) {
+				desks_draw(cr, font, c);
+				continue;
+			}
 			if (c != NULL && (c->type == CELL_BUTTON ||
 			    c->type == CELL_SCRIPT ||
 			    c->type == CELL_PANEL_HANDLE)) {
@@ -2717,7 +2925,25 @@ render(void)
 			}
 			cow_module_cairo_set_source(cr, c == NULL ? style.fg :
 			    cell_fg_colour(c, sunken));
-			cow_text_render(cr, font, tx, y, tw, cell_h, label,
+			if (c != NULL && c->type == CELL_SCRIPT &&
+			    c->script_lines > 1) {
+				char text[sizeof(c->label)], *next = text, *line;
+				int line_height;
+
+				cow_text_measure(cr, font, "Mg", NULL, &line_height);
+				line_height = MIN(line_height,
+				    cell_h / c->script_lines);
+				int line_y = y +
+				    (cell_h - line_height * c->script_lines) / 2;
+				strlcpy(text, label, sizeof(text));
+				while ((line = strsep(&next, "\n")) != NULL) {
+					cow_text_render(cr, font, tx, line_y, tw,
+					    line_height, line,
+					    text_alignment(cell_justify(c)), NULL);
+					line_y += line_height;
+				}
+			} else
+				cow_text_render(cr, font, tx, y, tw, cell_h, label,
 			    text_alignment(c == NULL ? style.justify :
 				cell_justify(c)), NULL);
 		}
@@ -2797,7 +3023,8 @@ script_read_output(struct cell *c)
 
 			if (c->script_output_done)
 				continue;
-			if (ch == '\n') {
+			if (ch == '\n' &&
+			    ++c->script_lines_read >= c->script_lines) {
 				c->script_output_done = true;
 				continue;
 			}
@@ -2861,6 +3088,7 @@ script_timer_cb(__unused evutil_socket_t fd, __unused short events, void *data)
 	c->script_fd = pipefd[0];
 	c->script_output[0] = '\0';
 	c->script_output_len = 0;
+	c->script_lines_read = 0;
 	c->script_output_done = false;
 	c->script_read_event = event_new(script_event_base, c->script_fd,
 	    EV_READ | EV_PERSIST, script_read_cb, c);
@@ -3228,6 +3456,9 @@ external_attach(int index, const struct win_info *host)
 			y = b - host->y;
 			break;
 		}
+		if (p->drawer_width && (panel->direction == PANEL_UP ||
+			panel->direction == PANEL_DOWN))
+			width = p->drawer_width;
 	} else {
 		const struct cell *cell = &cells[index];
 		x			= col_offset(cell->col);
@@ -3582,6 +3813,8 @@ static void
 state_from_json(struct state *st, cJSON *root)
 {
 	state_clear(st);
+	cJSON_Delete(desk_output);
+	desk_output = NULL;
 
 	cJSON *focused = cJSON_GetObjectItem(root, "focused");
 	if (cJSON_IsObject(focused)) {
@@ -3605,6 +3838,7 @@ state_from_json(struct state *st, cJSON *root)
 		cJSON *current = cJSON_GetObjectItem(out, "current");
 		if (!cJSON_IsTrue(current))
 			continue;
+		desk_output = cJSON_Duplicate(out, true);
 		cJSON *name = cJSON_GetObjectItem(out, "name");
 		if (cJSON_IsString(name) && name->valuestring != NULL)
 			strlcpy(st->current_output, name->valuestring,
@@ -3761,6 +3995,10 @@ pointer_leave(__unused void *data, __unused struct wl_pointer *p,
     __unused uint32_t serial, __unused struct wl_surface *s)
 {
 	ptr_x = ptr_y = -1;
+	pressed_cell = pressed_button = pressed_desk = -1;
+	axis_cell = -1;
+	axis_remainder[0] = axis_remainder[1] = 0;
+	render();
 }
 
 static void
@@ -3789,25 +4027,49 @@ click_button_index(uint32_t button)
 static bool
 cell_has_click_action(const struct cell *c, int button)
 {
-	return c->command[button][CLICK_SINGLE][0] != '\0' ||
-	    c->command[button][CLICK_DOUBLE][0] != '\0';
+	return c->command[button][CLICK_SINGLE] != NULL ||
+	    c->command[button][CLICK_DOUBLE] != NULL;
+}
+
+/* Capture desk context now: a delayed click must not use a later snapshot
+ * or whichever desk happens to be under the pointer when its timer fires.
+ */
+static char *
+cell_command(const struct cell *c, const char *action)
+{
+	char *command;
+	if (action == NULL || *action == '\0')
+		return NULL;
+	if (c->type != CELL_DESKS)
+		return xstrdup(action);
+	int desk = desk_at_point(c);
+	cJSON *output = cJSON_GetObjectItem(desk_output, "number");
+	if (desk < 0 || !cJSON_IsNumber(output))
+		return NULL;
+	xasprintf(&command,
+	    "script {\nlet desk_nr = %d\nlet output_selector = \"@%d\"\n%s\n}",
+	    desk, output->valueint, action);
+	return command;
+}
+
+static void
+pending_click_clear(void)
+{
+	pending_click_cell = -1;
+	pending_click_button = -1;
+	pending_click_time = 0;
+	xstrset(&pending_single_command, NULL);
+	xstrset(&pending_double_command, NULL);
+	if (click_timer != NULL)
+		event_del(click_timer);
 }
 
 static void
 pending_click_run_single(void)
 {
-	int cell = pending_click_cell;
-	int button = pending_click_button;
-
-	pending_click_cell = -1;
-	pending_click_button = -1;
-	pending_click_time = 0;
-	if (click_timer != NULL)
-		event_del(click_timer);
-	if (cell >= 0 && cell < n_cells && button >= 0 &&
-	    button < CLICK_BUTTON_COUNT &&
-	    cells[cell].command[button][CLICK_SINGLE][0] != '\0')
-		ipc_send(cells[cell].command[button][CLICK_SINGLE]);
+	if (pending_single_command != NULL)
+		ipc_send(pending_single_command);
+	pending_click_clear();
 }
 
 static void
@@ -3821,24 +4083,29 @@ static void
 cell_click(int cell, int button, uint32_t time)
 {
 	struct cell *c = &cells[cell];
-	const char *single = c->command[button][CLICK_SINGLE];
-	const char *double_click = c->command[button][CLICK_DOUBLE];
+	const char *action = c->command[button][CLICK_SINGLE];
+	if (action == NULL && c->type == CELL_DESKS && button == CLICK_LEFT)
+		action = "desk -t #{output_selector} -d #{desk_nr}";
+	char *single = cell_command(c, action);
+	char *double_click = cell_command(c, c->command[button][CLICK_DOUBLE]);
 
-	if (double_click[0] == '\0') {
+	if (double_click == NULL) {
 		if (pending_click_cell >= 0)
 			pending_click_run_single();
-		if (single[0] != '\0')
+		if (single != NULL)
 			ipc_send(single);
+		free(single);
 		return;
 	}
 
 	if (pending_click_cell == cell && pending_click_button == button &&
-	    time - pending_click_time < DOUBLE_CLICK_MS) {
-		pending_click_cell = -1;
-		pending_click_button = -1;
-		pending_click_time = 0;
-		event_del(click_timer);
+	    time - pending_click_time < DOUBLE_CLICK_MS &&
+	    pending_double_command != NULL &&
+	    strcmp(pending_double_command, double_click) == 0) {
+		pending_click_clear();
 		ipc_send(double_click);
+		free(single);
+		free(double_click);
 		return;
 	}
 
@@ -3847,6 +4114,8 @@ cell_click(int cell, int button, uint32_t time)
 	pending_click_cell = cell;
 	pending_click_button = button;
 	pending_click_time = time;
+	pending_single_command = single;
+	pending_double_command = double_click;
 	struct timeval delay = {
 	    .tv_sec = 0,
 	    .tv_usec = DOUBLE_CLICK_MS * 1000,
@@ -3878,7 +4147,7 @@ external_handle_at(int index)
 
 static void
 pointer_button(__unused void *data, __unused struct wl_pointer *p,
-    __unused uint32_t serial, uint32_t time, uint32_t button,
+    uint32_t serial, uint32_t time, uint32_t button,
     uint32_t state)
 {
 	int click_button = click_button_index(button);
@@ -3887,9 +4156,36 @@ pointer_button(__unused void *data, __unused struct wl_pointer *p,
 
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
 		int idx = cell_at_point(ptr_x, ptr_y);
-		if (idx >= 0 && (cells[idx].type == CELL_BUTTON ||
-		    cells[idx].type == CELL_SCRIPT) &&
-		    cell_has_click_action(&cells[idx], click_button)) {
+		if (idx < 0)
+			return;
+		struct cell *c = &cells[idx];
+		if (c->drag && click_button == CLICK_LEFT) {
+			pending_click_clear();
+			pressed_cell = pressed_button = pressed_desk = -1;
+			xdg_toplevel_move(xdg_toplevel, seat, serial);
+			return;
+		}
+		if (c->command[click_button][CLICK_PRESS] != NULL) {
+			char *command = cell_command(c,
+			    c->command[click_button][CLICK_PRESS]);
+			pending_click_run_single();
+			pressed_cell = pressed_button = pressed_desk = -1;
+			if (command != NULL)
+				ipc_send(command);
+			free(command);
+			return;
+		}
+		if (c->type == CELL_DESKS) {
+			pressed_desk = desk_at_point(&cells[idx]);
+			if (pressed_desk < 0)
+				return;
+			strlcpy(pressed_output, current_state.current_output,
+			    sizeof(pressed_output));
+			pressed_cell = idx;
+			pressed_button = click_button;
+			return;
+		}
+		if (cell_has_click_action(c, click_button)) {
 			pressed_cell = idx;
 			pressed_button = click_button;
 			render();
@@ -3912,11 +4208,20 @@ pointer_button(__unused void *data, __unused struct wl_pointer *p,
 	pressed_cell = -1;
 	pressed_button = -1;
 	render();
+	if (pressed >= 0 && cells[pressed].type == CELL_DESKS) {
+		if (idx == pressed && pressed_desk >= 0 &&
+		    desk_at_point(&cells[pressed]) == pressed_desk &&
+		    strcmp(pressed_output, current_state.current_output) == 0)
+			cell_click(pressed, click_button, time);
+		pressed_desk = -1;
+		return;
+	}
+	pressed_desk = -1;
 	if (pressed >= 0 && idx == pressed &&
-	    (cells[pressed].type == CELL_BUTTON ||
-	    cells[pressed].type == CELL_SCRIPT))
+	    cell_has_click_action(&cells[pressed], click_button))
 		cell_click(pressed, click_button, time);
-	else if (pressed >= 0 && cells[pressed].type == CELL_PANEL_HANDLE)
+	else if (pressed >= 0 && idx == pressed &&
+	    cells[pressed].type == CELL_PANEL_HANDLE && click_button == CLICK_LEFT)
 		panel_toggle(pressed);
 	else if (pressed >= 0 && idx == pressed &&
 	    cells[pressed].type == CELL_EXTERNAL) {
@@ -3932,8 +4237,32 @@ pointer_button(__unused void *data, __unused struct wl_pointer *p,
 
 static void
 pointer_axis(__unused void *data, __unused struct wl_pointer *p,
-    __unused uint32_t time, __unused uint32_t axis, __unused wl_fixed_t value)
+    uint32_t time, uint32_t axis, wl_fixed_t value)
 {
+	if (axis > WL_POINTER_AXIS_HORIZONTAL_SCROLL)
+		return;
+	int idx = cell_at_point(ptr_x, ptr_y);
+	if (idx != axis_cell) {
+		axis_remainder[0] = axis_remainder[1] = 0;
+		axis_cell = idx;
+	}
+	if (idx < 0 || cells[idx].type == CELL_EXTERNAL)
+		return;
+	double delta = wl_fixed_to_double(value);
+	if (delta * axis_remainder[axis] < 0)
+		axis_remainder[axis] = 0;
+	axis_remainder[axis] += delta;
+	/* Version 4 seats expose continuous axes only. Ten surface units
+	 * correspond to a conventional wheel step; accumulate smaller deltas.
+	 */
+	while (axis_remainder[axis] >= 10 || axis_remainder[axis] <= -10) {
+		bool positive = axis_remainder[axis] > 0;
+		int button = axis == WL_POINTER_AXIS_VERTICAL_SCROLL ?
+		    (positive ? CLICK_DOWN : CLICK_UP) :
+		    (positive ? CLICK_EAST : CLICK_WEST);
+		axis_remainder[axis] += positive ? -10 : 10;
+		cell_click(idx, button, time);
+	}
 }
 
 static const struct wl_pointer_listener pointer_listener = {
@@ -4011,12 +4340,16 @@ parse_args(int argc, char **argv, char **config_path)
 {
 	int ch;
 
-	while ((ch = getopt(argc, argv, "c:h")) != -1) {
+	while ((ch = getopt(argc, argv, "c:p:h")) != -1) {
 		switch (ch) {
 		case 'c':
 			free(*config_path);
 			*config_path = strdup(optarg);
 			if (*config_path == NULL)
+				return 0;
+			break;
+		case 'p':
+			if (!panel_selection_add(optarg))
 				return 0;
 			break;
 		case 'h':
@@ -4177,6 +4510,7 @@ main(int argc, char **argv)
 	if (external_ev != NULL)
 		event_free(external_ev);
 	if (click_timer != NULL) {
+		pending_click_clear();
 		event_free(click_timer);
 		click_timer = NULL;
 	}
@@ -4212,9 +4546,16 @@ main(int argc, char **argv)
 	for (int i = 0; i < n_cells; i++) {
 		free(cells[i].style.image);
 		free(cells[i].style.image_pressed);
+		free(cells[i].desk_colours);
+		for (int b = 0; b < CLICK_BUTTON_COUNT; b++)
+			for (int n = 0; n < CLICK_COUNT; n++)
+				free(cells[i].command[b][n]);
 	}
 	for (int i = 0; i < n_selected_panels; i++) {
 		free(selected_panels[i].name);
+		for (int b = 0; b < CLICK_BUTTON_COUNT; b++)
+			for (int n = 0; n < CLICK_COUNT; n++)
+				free(selected_panels[i].command[b][n]);
 		free(selected_panels[i].handle_style.image);
 		free(selected_panels[i].handle_style.image_pressed);
 	}
@@ -4228,6 +4569,7 @@ main(int argc, char **argv)
 	}
 	cJSON_Delete(external_windows);
 	xfree(blocks);
+	cJSON_Delete(desk_output);
 	free(style.image);
 	free(style.image_pressed);
 	free(config_dir);

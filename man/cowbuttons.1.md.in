@@ -10,7 +10,7 @@ cowbuttons - Button panel for the cow window manager
 
 # SYNOPSIS
 
-**cowbuttons** \[**-c** *config*\] \[**-h**\]
+**cowbuttons** \[**-c** *config*\] \[**-p** *panel*\]... \[**-h**\]
 
 # DESCRIPTION
 
@@ -37,7 +37,19 @@ or iconified. This uses CoW's container machinery.
 The format is line-oriented. Blank lines and lines starting with **\#** are
 ignored. Labels and commands containing whitespace must be quoted.
 
+End a line with a single backslash to continue it on the next line.
+The backslash and newline become a space. A backslash in a comment does
+not continue that comment; a doubled trailing backslash stays literal.
+
+    button "Terminal" "exec foot" \
+        image terminal.svg width 64 height 64 \
+        rightclick "menu-show Applications"
+
 ## Self-contained panels
+
+Use **-p** *panel* to select a named panel instead of the file's **show**
+lines. Repeat **-p** to combine panels in one window. This does not start
+other instances and can be used to launch a drawer from the same file.
 
 A cowbuttons setup may keep its embedded modules' configuration in the same
 file. Wrap each program's settings in **module** *program* **{ ... }**.
@@ -76,6 +88,8 @@ they do not exchange configuration or communicate with one another.
 
 See **examples/cowbuttons/application-row.conf** for a complete panel in one
 file, including its CoW style, pager, and icon manager.
+**examples/cowbuttons/cde-panel.conf** demonstrates a bottom-centred front
+panel with a clock, desk switcher, and independent upward launcher drawers.
 
 Colours may be opaque **0xRRGGBB** values or **0xRRGGBBAA** values carrying an
 alpha component. In the latter form, **00** is fully transparent and **FF** is
@@ -132,6 +146,10 @@ opaque dark grey.
   **show panel** line; parent relationships must not form a cycle.
   **open** *true*\|*false* chooses the initial expanded state. External
   drawers default to closed; other panels default to open.
+
+  **position** *column,row* starts a panel at a zero-based grid position.
+  This lets separate drawer handles share a row above their launchers.
+  Leave it unset to place panels consecutively. Panels must not overlap.
 
   Write panel properties on separate lines inside the panel block, before
   its contents. **direction** selects the opening direction. These
@@ -258,6 +276,42 @@ opaque dark grey.
   **leftdoubleclick**. When both single- and double-click actions exist
   for the same button, the single-click action is delayed for 300 ms.
 
+**leftpress** *command* **middlepress** *command* **rightpress** *command*
+
+: Run on button press, rather than release. This takes precedence over
+  single- and double-click actions for that mouse button and does not
+  run another action on release.
+
+**drag** *true|false*
+
+: Make a button a drag grip for the cowbuttons window (default false).
+  Holding the left mouse button moves the window until release. This
+  replaces its left-click, double-click and press actions; other mouse
+  buttons keep their configured actions. Use this rather than sending
+  **window-move** from a press action.
+
+**wheelup** *command* **wheeldown** *command* **wheelleft** *command* **wheelright** *command*
+
+: Run on scrolling over the cell. Small continuous deltas accumulate
+  before firing an action. Scrolling over an embedded application remains
+  with that application.
+
+Click, press and wheel properties also work inside **panel** blocks to
+configure their handles, and on **desks** cells. A handle without a custom
+left-click binding still toggles its panel. An explicit binding replaces
+that default; use **nop** to disable it.
+
+Desk actions run in a script scope with **desk_nr** set to the clicked desk
+number and **output_selector** to its output selector. For example:
+
+    desks rows 2 rightclick "desk -t #{output_selector}" \
+        wheelup "desk -t #{output_selector} -p" \
+        wheeldown "desk -t #{output_selector} -n"
+
+Without an explicit left-click action, desk buttons switch to the clicked
+desk. Double-click matching and delayed actions retain the original desk
+and output context.
+
 **script** *command* **interval** *seconds* \[*property* *value* ...\]
 
 : Create a cell whose label is supplied by an external command. The
@@ -269,6 +323,11 @@ opaque dark grey.
   replaces the cell's label when the command exits successfully. Empty
   output clears the label. If the command fails, the previous successful
   label is retained and an error is written to standard error.
+
+  **lines** *count* displays up to *count* output lines, centred as a
+  block (1–16; default 1). The 255-byte limit applies to the whole label.
+  For example, `script "date '+%b%n%d'" interval 60 lines 2` puts the
+  month above the day.
 
   Script cells support the same click actions, styling, and geometry
   properties as **button** cells.
@@ -290,6 +349,8 @@ opaque dark grey.
   Upward and downward drawers follow the width of their grid span while
   retaining their configured height. Use **span** to extend the handle
   and application across neighbouring columns.
+  **drawer.width** *pixels* overrides an upward or downward drawer's width
+  without widening its handle; the drawer remains left-aligned with it.
   Applications are inset inside their slot's **frame**, including external
   drawers. The frame is drawn by cowbuttons, not by a window decoration
   rule. **padding** *pixels* adds space between the frame and application,
@@ -381,6 +442,20 @@ opaque dark grey.
 **spacer** \[*property* *value* ...\]
 
 : Create an empty cell.
+
+**desks** \[*property* *value* ...\]
+
+: Show one button per desk on the current output, using its name (or
+  number when unnamed). Left-click switches to that desk. The list updates
+  when desks are added, removed or renamed, or the current output changes.
+  **rows** sets the maximum number of rows (default 2). Buttons share the
+  cell's width and height, keeping equal-width columns in a shorter final
+  row. **gap** insets each button by that many pixels (default 0).
+  Normal button colours, **frame**, and **justify** apply; **bg_pressed**
+  and **fg_pressed** identify the active desk.
+  Optional **colours** takes a comma-separated palette, repeated in desk
+  order. This replaces the button background colours; the active desk
+  remains distinguished by its relief.
 
 # EXAMPLES
 
