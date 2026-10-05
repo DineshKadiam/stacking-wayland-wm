@@ -20,6 +20,7 @@
 #include <stddef.h>
 
 bool cow_shm_argb8888_size(int, int, int *, size_t *);
+/* The backing file is page-aligned; callers retain their logical size. */
 int  cow_shm_file_create(const char *, size_t);
 
 #endif /* COW_SHM_UTIL_H */

@@ -260,11 +260,12 @@ foreach sym : [
     conf.set10(sym[1], found)
 endforeach
 
-# memfd_create is Linux-only; shm_open is POSIX.  shm.c picks the
-# memfd path when available and falls back to shm_open+unlink otherwise.
-conf.set10('HAVE_MEMFD_CREATE',
-    cc.has_function('memfd_create',
-        prefix: '#define _GNU_SOURCE\n#include <sys/mman.h>'))
+# memfd_create is available on Linux and some BSDs; shm_open is POSIX.
+# The shared memory helper uses memfd when available and falls back to
+# shm_open+unlink otherwise.
+have_memfd_create = cc.has_function('memfd_create',
+    prefix: '#define _GNU_SOURCE\n#include <sys/mman.h>')
+conf.set10('HAVE_MEMFD_CREATE', have_memfd_create)
 
 # fparseln is declared in <libutil.h> (BSDs) or <bsd/libutil.h>
 # (Linux with libbsd).  On FreeBSD it lives in /usr/lib/libutil.so

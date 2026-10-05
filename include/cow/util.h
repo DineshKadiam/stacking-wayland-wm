@@ -19,6 +19,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+/* Positive alignment; callers must check addition overflow first. */
+#define ALIGN_UP(value, alignment) \
+	(((value) + (alignment) - 1) / (alignment) * (alignment))
+
 struct cow_string_choice {
 	const char *name;
 	int         value;

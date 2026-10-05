@@ -15,6 +15,7 @@
  */
 #include "cow/shm_util.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdint.h>
@@ -23,6 +24,7 @@
 #include <unistd.h>
 
 #include "cow/compat.h"
+#include "cow/util.h"
 
 bool
 cow_shm_argb8888_size(int width, int height, int *stride, size_t *size)
@@ -42,9 +44,30 @@ cow_shm_argb8888_size(int width, int height, int *stride, size_t *size)
 int
 cow_shm_file_create(const char *name, size_t size)
 {
-	if (name == NULL || *name == '\0' || size == 0 ||
-	    (size_t)(off_t)size != size)
+	if (name == NULL || *name == '\0' || size == 0) {
+		errno = EINVAL;
 		return -1;
+	}
+
+	/*
+	 * Some NetBSD memfd implementations compare the page-rounded mmap
+	 * length against the file size. Pad the backing file, not the image
+	 * stride or the size advertised to Wayland.
+	 */
+	long page_size = sysconf(_SC_PAGESIZE);
+	if (page_size <= 0) {
+		errno = EINVAL;
+		return -1;
+	}
+	if (size > SIZE_MAX - ((size_t)page_size - 1)) {
+		errno = EOVERFLOW;
+		return -1;
+	}
+	size = ALIGN_UP(size, (size_t)page_size);
+	if ((off_t)size < 0 || (size_t)(off_t)size != size) {
+		errno = EOVERFLOW;
+		return -1;
+	}
 
 #if HAVE_MEMFD_CREATE
 	int fd = memfd_create(name, MFD_CLOEXEC);
@@ -60,7 +83,9 @@ cow_shm_file_create(const char *name, size_t size)
 	if (fd < 0)
 		return -1;
 	if (ftruncate(fd, (off_t)size) < 0) {
+		int saved_errno = errno;
 		close(fd);
+		errno = saved_errno;
 		return -1;
 	}
 	return fd;
