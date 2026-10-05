@@ -81,6 +81,7 @@ srcs = [
     'src/config_types.c',
     'src/cow_box.c',
     'src/decoration.c',
+    'src/decoration-tiles.c',
     'src/decoration_hit.c',
     'src/desk.c',
     'src/desk_ops.c',
@@ -344,6 +345,7 @@ generated = wl_mod.scan_xml(
     'protocol/river-xkb-config-v1.xml',
     'protocol/river-layer-shell-v1.xml',
     wl_proto_dir / 'stable/xdg-shell/xdg-shell.xml',
+    wl_proto_dir / 'stable/viewporter/viewporter.xml',
     'protocol/wlr-layer-shell-unstable-v1.xml',
     'protocol/pointer-constraints-unstable-v1.xml',
     'protocol/tablet-unstable-v2.xml',
@@ -395,6 +397,7 @@ endforeach
 # Private-helper tests include one implementation directly; omit its object.
 foreach name, replacement : {
     'pan-frames': '',
+    'decoration-tiles': 'src/decoration-tiles.c',
     'alias-args': '',
     'container': '',
     'container-state': '',

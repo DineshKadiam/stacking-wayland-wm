@@ -71,6 +71,7 @@
 #include "river-window-management-v1-client-protocol.h"
 #include "river-xkb-bindings-v1-client-protocol.h"
 #include "river-xkb-config-v1-client-protocol.h"
+#include "viewporter-client-protocol.h"
 
 #define GHOST_RADIUS 24
 
@@ -330,6 +331,9 @@ registry_global(__unused void *data, struct wl_registry *registry,
 	} else if (strcmp(interface, "wl_compositor") == 0) {
 		cow_wm.compositor = wl_registry_bind(registry, name,
 		    &wl_compositor_interface, 6);
+	} else if (strcmp(interface, wp_viewporter_interface.name) == 0) {
+		cow_wm.viewporter = wl_registry_bind(registry, name,
+		    &wp_viewporter_interface, 1);
 	} else if (strcmp(interface, "wl_shm") == 0) {
 		cow_wm.shm = wl_registry_bind(registry, name, &wl_shm_interface,
 		    1);
@@ -1758,6 +1762,8 @@ cow_wm_fini(void)
 		zwlr_layer_shell_v1_destroy(cow_wm.wl_layer_shell);
 	if (cow_wm.compositor != NULL)
 		wl_compositor_destroy(cow_wm.compositor);
+	if (cow_wm.viewporter != NULL)
+		wp_viewporter_destroy(cow_wm.viewporter);
 	if (cow_wm.shm != NULL)
 		wl_shm_destroy(cow_wm.shm);
 	if (cow_wm.registry != NULL)

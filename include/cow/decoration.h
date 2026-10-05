@@ -22,6 +22,8 @@
 struct cow_view;
 struct cow_shm_buffer;
 struct cow_font;
+struct cow_decoration_tiles;
+struct wl_surface;
 
 /*
  * Per-view decoration state.
@@ -30,8 +32,8 @@ struct cow_font;
  * contains the FVWM/MWM border frame ring.  The frame is rendered
  * into a wl_shm buffer and committed to the decoration wl_surface.
  *
- * The frame has a transparent center so the window content shows
- * through from behind.
+ * The fallback frame has a transparent center. The border tiles path
+ * instead owns eight border surfaces and a cropped titlebar buffer.
  */
 struct cow_view_decoration {
 	/* Total frame dimensions (including border + titlebar) */
@@ -45,6 +47,7 @@ struct cow_view_decoration {
 
 	/* Frame buffer (currently committed or being rendered into) */
 	struct cow_shm_buffer *buffer;
+	struct cow_decoration_tiles *tiles;
 
 	/* Cached generation state */
 	bool dirty;
@@ -81,6 +84,14 @@ void cow_decoration_update(struct cow_view *, bool);
  * Unmap the decoration surface while its window is hidden.
  */
 void cow_decoration_hide(struct cow_view *);
+
+/* Compact decoration rendering; unsupported styles use the full frame. */
+bool cow_decoration_tiles_prepare(struct cow_view *, bool, int, int);
+void cow_decoration_tiles_commit(struct cow_view *, int, int);
+void cow_decoration_tiles_hide(struct cow_view *);
+void cow_decoration_tiles_fini(struct cow_view_decoration *);
+bool cow_decoration_surface_point(struct cow_view *, struct wl_surface *,
+    int *, int *);
 
 /*
  * Return the shared titlebar font (lazily initialised from

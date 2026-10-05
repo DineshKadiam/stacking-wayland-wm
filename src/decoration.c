@@ -751,6 +751,7 @@ cow_decoration_init(struct cow_view *view)
 void
 cow_decoration_fini(struct cow_view_decoration *dec)
 {
+	cow_decoration_tiles_fini(dec);
 	if (dec->buffer != NULL) {
 		cow_shm_buffer_destroy(dec->buffer);
 		dec->buffer = NULL;
@@ -791,16 +792,26 @@ cow_decoration_update(struct cow_view *view, bool active)
 	if (frame_w <= 0 || frame_h <= 0)
 		return;
 
+	bool was_compact = dec->tiles != NULL;
+	bool compact = cow_decoration_tiles_prepare(view, active, frame_w,
+	    frame_h);
+	/* Keep the original titlebar coordinates, cropping its strip at commit. */
+	int buffer_h = compact ? bw + tt : frame_h;
+
 	/* Check if we need to regenerate */
-	bool needs_regen = dec->dirty || active != dec->last_active ||
-	    cw != dec->last_content_width || ch != dec->last_content_height;
+	bool needs_regen = dec->dirty || compact != was_compact ||
+	    active != dec->last_active ||
+	    cw != dec->last_content_width ||
+	    (!compact && ch != dec->last_content_height);
+	dec->frame_width = frame_w;
+	dec->frame_height = frame_h;
 
 	if (!needs_regen && dec->buffer != NULL)
 		goto commit;
 
 	/* Free old buffer if dimensions changed or it's busy */
 	if (dec->buffer != NULL &&
-	    (dec->buffer->width != frame_w || dec->buffer->height != frame_h ||
+	    (dec->buffer->width != frame_w || dec->buffer->height != buffer_h ||
 		dec->buffer->busy)) {
 		cow_shm_buffer_destroy(dec->buffer);
 		dec->buffer = NULL;
@@ -808,7 +819,7 @@ cow_decoration_update(struct cow_view *view, bool active)
 
 	/* Allocate buffer if needed */
 	if (dec->buffer == NULL) {
-		dec->buffer = cow_shm_buffer_create(frame_w, frame_h);
+		dec->buffer = cow_shm_buffer_create(frame_w, buffer_h);
 		if (dec->buffer == NULL) {
 			cow_log_error("failed to create decoration buffer");
 			return;
@@ -854,9 +865,12 @@ cow_decoration_update(struct cow_view *view, bool active)
 			bc				= &drop_bc;
 		}
 
-		cow_border_style_render_pane(dec->buffer->data, stride_px,
-		    frame_w, frame_h, bc, bw, cl, view->cfg.border_style,
-		    cow_container_outer_edges(view));
+		if (compact)
+			memset(dec->buffer->data, 0, dec->buffer->size);
+		else
+			cow_border_style_render_pane(dec->buffer->data, stride_px,
+			    frame_w, frame_h, bc, bw, cl, view->cfg.border_style,
+			    cow_container_outer_edges(view));
 
 		/* Render titlebar if enabled */
 		if (tt > 0) {
@@ -912,7 +926,7 @@ cow_decoration_update(struct cow_view *view, bool active)
 				.pixels		= dec->buffer->data,
 				.stride_px	= stride_px,
 				.frame_w	= frame_w,
-				.frame_h	= frame_h,
+				.frame_h	= buffer_h,
 				.border_width	= bw,
 				.border_style	= view->cfg.border_style,
 				.tb_rect	= tb_rect,
@@ -1217,10 +1231,12 @@ commit:
 
 	/* Attach buffer and commit */
 	if (dec->buffer != NULL) {
+		if (compact)
+			cow_decoration_tiles_commit(view, content_x, content_y);
 		wl_surface_attach(view->decoration_surface, dec->buffer->buffer,
 		    0, 0);
 		wl_surface_damage_buffer(view->decoration_surface, 0, 0,
-		    frame_w, frame_h);
+		    frame_w, buffer_h);
 		river_decoration_v1_sync_next_commit(view->decoration);
 		wl_surface_commit(view->decoration_surface);
 		dec->buffer->busy = true;
@@ -1236,6 +1252,7 @@ cow_decoration_hide(struct cow_view *view)
 		return;
 
 	wl_surface_attach(view->decoration_surface, NULL, 0, 0);
+	cow_decoration_tiles_hide(view);
 	if (view->decoration != NULL)
 		river_decoration_v1_sync_next_commit(view->decoration);
 	wl_surface_commit(view->decoration_surface);

@@ -78,6 +78,7 @@ struct cow_wm {
 	struct wl_registry   *registry;
 	struct wl_compositor *compositor;
 	struct wl_shm	     *shm;
+	struct wp_viewporter *viewporter;
 
 	/*
 	 * Raw Wayland input used by CoW-owned surfaces.

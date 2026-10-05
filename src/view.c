@@ -65,6 +65,7 @@
 void
 cow_view_drop_decoration(struct cow_view *view)
 {
+	cow_decoration_fini(&view->dec);
 	if (view->decoration != NULL) {
 		river_decoration_v1_destroy(view->decoration);
 		view->decoration = NULL;
@@ -73,7 +74,6 @@ cow_view_drop_decoration(struct cow_view *view)
 		wl_surface_destroy(view->decoration_surface);
 		view->decoration_surface = NULL;
 	}
-	cow_decoration_fini(&view->dec);
 	cow_decoration_init(view);
 }
 

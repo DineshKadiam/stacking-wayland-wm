@@ -58,13 +58,14 @@ decoration_context_leave(void)
 }
 
 static struct cow_view *
-view_for_decoration_surface(struct wl_surface *surface)
+view_for_decoration_surface(struct wl_surface *surface, int *x, int *y)
 {
 	struct cow_view *view;
 
 	wl_list_for_each(view, &cow_wm.views, wm_link)
 	{
-		if (!view->closed && view->decoration_surface == surface)
+		if (!view->closed &&
+		    cow_decoration_surface_point(view, surface, x, y))
 			return (view);
 	}
 	return (NULL);
@@ -156,15 +157,15 @@ static bool
 decoration_cursor_update(struct wl_surface *surface, uint32_t serial,
     wl_fixed_t sx, wl_fixed_t sy)
 {
-	struct cow_view *view = view_for_decoration_surface(surface);
+	int x = wl_fixed_to_int(sx);
+	int y = wl_fixed_to_int(sy);
+	struct cow_view *view = view_for_decoration_surface(surface, &x, &y);
 	if (view == NULL)
 		return (false);
 
 	if (serial != 0)
 		decoration_cursor_serial = serial;
 
-	int x  = wl_fixed_to_int(sx);
-	int y  = wl_fixed_to_int(sy);
 	int cw, ch;
 	cow_view_effective_content_size(view, &cw, &ch);
 	cow_keybinding_set_context(cow_seat_primary(),
@@ -339,7 +340,11 @@ cow_pointer_cursor_reconcile_position(int x, int y)
 		return;
 	}
 
-	decoration_cursor_surface = view->decoration_surface;
+	/* Keep the entered border tile: raw motion is relative to that surface. */
+	int sx = 0, sy = 0;
+	if (!cow_decoration_surface_point(view, decoration_cursor_surface,
+		&sx, &sy))
+		decoration_cursor_surface = view->decoration_surface;
 	decoration_cursor_view = view;
 	decoration_cursor_x = dx;
 	decoration_cursor_y = dy;
