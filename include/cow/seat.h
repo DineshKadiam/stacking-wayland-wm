@@ -189,6 +189,9 @@ bool cow_seat_get_pointer(int *, int *);
  */
 struct cow_seat *cow_seat_first_with_pointer(void);
 
+/* Clear decoration feedback before discarding or replacing an interaction. */
+void cow_seat_clear_decoration_press(struct cow_seat *);
+
 /*
  * Clear all back-references to 'view' on this seat (focused, pressed,
  * interacted, sloppy_focus, last_click, pointer_entered, op view).

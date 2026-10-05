@@ -650,8 +650,6 @@ manage_titlebar_button_release(struct cow_seat *seat)
 			int ly = seat->pointer_y - view->y;
 			click = cow_titlebar_button_at(view, lx, ly) == idx;
 		}
-		view->pressed_button = -1;
-		view->dec.dirty	     = true;
 	}
 
 	if (seat->op_in_progress) {
@@ -659,8 +657,7 @@ manage_titlebar_button_release(struct cow_seat *seat)
 		seat->op_in_progress = false;
 	}
 	seat->op_released    = false;
-	seat->titlebar_press = COW_TITLEBAR_PRESS_NONE;
-	seat->pressed_view   = NULL;
+	cow_seat_clear_decoration_press(seat);
 	cow_pointer_cursor_hold_end();
 
 	/*
@@ -831,6 +828,7 @@ manage_titlebar_button_press(struct cow_seat *seat, struct cow_view *view,
 	if (hit_btn < 0)
 		return (false);
 
+	cow_seat_clear_decoration_press(seat);
 	view->pressed_button	    = hit_btn;
 	view->dec.dirty		    = true;
 	seat->titlebar_press	    = COW_TITLEBAR_PRESS_BUTTON;
@@ -857,6 +855,7 @@ manage_titlebar_button_raw_press(struct cow_seat *seat)
 	if (view->closed)
 		return;
 
+	cow_seat_clear_decoration_press(seat);
 	view->pressed_button = idx;
 	view->dec.dirty = true;
 	seat->titlebar_press = COW_TITLEBAR_PRESS_BUTTON;

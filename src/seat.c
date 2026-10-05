@@ -421,6 +421,20 @@ cow_seat_first_with_pointer(void)
 }
 
 void
+cow_seat_clear_decoration_press(struct cow_seat *seat)
+{
+	struct cow_view *view = seat->pressed_view;
+	if (view != NULL && !view->closed) {
+		view->pressed_button = -1;
+		view->title_pressed = false;
+		view->dec.dirty = true;
+	}
+	seat->titlebar_press = COW_TITLEBAR_PRESS_NONE;
+	seat->pressed_button_idx = -1;
+	seat->pressed_view = NULL;
+}
+
+void
 cow_seat_forget_view(struct cow_seat *seat, struct cow_view *view)
 {
 	if (seat == NULL || view == NULL)
@@ -455,7 +469,7 @@ cow_seat_forget_view(struct cow_seat *seat, struct cow_view *view)
 		seat->pending_button_click_deadline_ms = -1;
 	}
 	if (seat->pressed_view == view)
-		seat->pressed_view = NULL;
+		cow_seat_clear_decoration_press(seat);
 	if (seat->op.view == view) {
 		if (seat->op_in_progress)
 			cow_pan_cancel();

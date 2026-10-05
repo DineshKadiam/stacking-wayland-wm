@@ -443,6 +443,7 @@ cow_pointer_op_start_move(struct cow_seat *seat, struct cow_view *view)
 	 * command fired from a bind-decoration, ...) gets the same
 	 * visual behaviour without duplicating the bookkeeping.
 	 */
+	cow_seat_clear_decoration_press(seat);
 	view->title_pressed  = true;
 	view->dec.dirty	     = true;
 	seat->titlebar_press = COW_TITLEBAR_PRESS_TITLE;
@@ -1080,14 +1081,7 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 		    view->y, view->content_width, view->content_height);
 	}
 
-	/* Restore titlebar visuals if this was a title drag */
-	if (seat->titlebar_press == COW_TITLEBAR_PRESS_TITLE &&
-	    seat->pressed_view != NULL && !seat->pressed_view->closed) {
-		seat->pressed_view->title_pressed = false;
-		seat->pressed_view->dec.dirty	  = true;
-	}
-	seat->titlebar_press = COW_TITLEBAR_PRESS_NONE;
-	seat->pressed_view   = NULL;
+	cow_seat_clear_decoration_press(seat);
 
 	cow_pointer_op_disarm_attached(seat);
 	river_seat_v1_op_end(seat->river_seat);

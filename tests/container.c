@@ -1718,11 +1718,20 @@ main(void)
 			 * as does Escape even when the pointer is outside.
 			 */
 			struct cow_seat cancelled = drag;
+			/* An interrupted button press must not survive operation cleanup.
+			 */
+			windows[0].pressed_button = 4;
+			cancelled.pressed_view = &windows[0];
+			cancelled.pressed_button_idx = 4;
+			cancelled.titlebar_press = COW_TITLEBAR_PRESS_BUTTON;
 			cancelled.pointer_x = c->frame.x + c->frame.width / 2;
 			cancelled.pointer_y = c->frame.y + c->frame.height / 2;
 			cow_pointer_op_process(&cancelled);
 			CHECK(windows[0].container_member != NULL);
 			CHECK(cancelled.op.cancelled);
+			CHECK(windows[0].pressed_button == -1);
+			CHECK(cancelled.pressed_view == NULL);
+			CHECK(cancelled.pressed_button_idx == -1);
 			cancelled = drag;
 			cancelled.op.cancelled = true;
 			cow_pointer_op_process(&cancelled);
