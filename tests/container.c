@@ -79,9 +79,48 @@ check_command(const char *text)
 	check_command_result(text, true);
 }
 
+static void
+check_return_joins(void)
+{
+	uint32_t straight[24 * 24] = {0}, joined[24 * 24];
+	/* A north-east inside elbow, mirrored for the other orientations. */
+	const bool horizontal[4][4] = {
+		{false, false, false, true},
+		{false, false, true, true},
+		{false, true, true, true},
+		{true, true, true, true},
+	};
+	for (int i = 4; i < 20; i++) {
+		for (int d = 0; d < 4; d++) {
+			straight[d * 24 + i] = 1;
+			straight[(20 + d) * 24 + i] = 2;
+			straight[i * 24 + d] = 3;
+			straight[i * 24 + 20 + d] = 4;
+		}
+	}
+	for (int right = 0; right < 2; right++) {
+		for (int bottom = 0; bottom < 2; bottom++) {
+			memset(joined, 0xff, sizeof(joined));
+			cow_border_join_return(joined, straight, 24, 24, 24,
+			    8, 8, 4, right, bottom);
+			for (int y = 0; y < 4; y++) {
+				for (int x = 0; x < 4; x++) {
+					bool h = horizontal[bottom ? 3 - y : y]
+					    [right ? x : 3 - x];
+					CHECK(joined[(8 + y) * 24 + 8 + x] ==
+					    (uint32_t)(h ? (bottom ? 2 : 1) :
+					    (right ? 4 : 3)));
+				}
+			}
+			CHECK(joined[0] == UINT32_MAX);
+		}
+	}
+}
+
 int
 main(void)
 {
+	check_return_joins();
 	/* Internal joins are straight, with handles only at outer corners. */
 	uint32_t framed[80 * 60], plain[80 * 60], pane_pixels[80 * 60];
 	struct cow_border_colour colours = { 0 };
@@ -148,6 +187,34 @@ main(void)
 		CHECK(cow_view_contains_point(&a, -cx, -cy));
 		CHECK(!cow_view_contains_point(&a, -cx - 1, -cy));
 	}
+	/* Squeezed body borders no longer own diagonal resize handles. */
+	a.cfg.corner_length = 24;
+	const uint32_t corner_edges[] = {
+		COW_EDGE_TOP,
+		COW_EDGE_BOTTOM,
+		COW_EDGE_BOTTOM,
+		COW_EDGE_BOTTOM,
+	};
+	for (size_t i = 0; i < sizeof(positions) / sizeof(positions[0]); i++) {
+		a.cfg.titlebar.position = positions[i];
+		struct cow_box body, title;
+		cow_decoration_frame_rects(&a, 800, 600, &body, &title);
+		int x = positions[i] == COW_TITLEBAR_LEFT ? body.x + 2 :
+		    body.x + body.width - 2;
+		int y = positions[i] == COW_TITLEBAR_TOP ? body.y + 2 :
+		    body.y + body.height - 2;
+		CHECK(cow_decoration_edges_at(&a, x, y, 800, 600) ==
+		    corner_edges[i]);
+	}
+	a.cfg.titlebar.position = COW_TITLEBAR_TOP;
+	/* The relocated titlebar end is the new NE handle, including
+	 * its vertical return. Transparent space above the body stays inert.
+	 */
+	struct cow_box title = cow_titlebar_squeezed_rect(&a);
+	CHECK(cow_decoration_edges_at(&a, title.x + title.width + 2,
+	    title.y + 10, 800, 600) == (COW_EDGE_TOP | COW_EDGE_RIGHT));
+	CHECK(cow_decoration_edges_at(&a, 500, 2, 800, 600) == 0);
+	a.cfg.corner_length = 0;
 	a.cfg.titlebar.position = COW_TITLEBAR_TOP;
 	wl_list_init(&cow_wm.containers);
 	wl_list_init(&cow_wm.views);

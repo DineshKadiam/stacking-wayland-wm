@@ -2211,6 +2211,10 @@ feel of a window. All of these can be used with **decor -d**.
 | **titlebar.squeeze.min\_width** | integer (pixels) | Minimum width for *natural* mode (floor applied after measurement). Default: *80*. |
 | **title\_format** | string | Controls the display title used in the titlebar. Default is: '\[%t\] %n' Supported escapes are **%n** for the raw window title, **%t** for **cow**'s unique short window id, **%I** for the full window id, **%c** for app\_id, and **%%** for a literal percent. The default is **\[%t\] %n**. |
 
+The default decoration's button 3 (inward chevrons beside Close) toggles
+the clicked window's titlebar between full width and *natural* squeeze.
+Other decoration settings and pane buttons are unchanged.
+
 **Button vector format:** *N* *x1***X***y1***@***c1* *x2***X***y2***@***c2*
 **...** where *N* is the number of points, coordinates are 0-100 (percentages
 of the button area), and **@***c* is a colour index from 0 to 4. Coordinates

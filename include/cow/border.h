@@ -39,4 +39,10 @@ void cow_border_style_render(uint32_t *, int, int, int, const struct cow_border_
 void cow_border_style_render_pane(uint32_t *, int, int, int,
     const struct cow_border_colour *, int, int, int, uint32_t);
 
+/* Join straight border strips at an inside corner. The booleans identify
+ * the empty quadrant (right/left and bottom/top) outside the frame.
+ */
+void cow_border_join_return(uint32_t *, const uint32_t *, int, int, int,
+    int, int, int, bool, bool);
+
 #endif

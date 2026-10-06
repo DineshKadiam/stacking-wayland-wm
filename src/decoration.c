@@ -322,17 +322,25 @@ squeeze_paint_side(const struct squeeze_paint_ctx *ctx)
 	int	  mw	   = marker_w;
 	int	  mh	   = top_band;
 	int	  mini_w   = mw * 4;
-	int	  mini_h   = mh * 4;
+	int	  mini_h   = (mh > mw ? mh : mw) * 4;
 	int	  mini_str = mini_w;
 	uint32_t *mini = xcalloc((size_t)mini_str * mini_h, sizeof(uint32_t));
-	cow_border_style_render(mini, mini_str, mini_w, mini_h, &cm_bc, bw, cl,
-	    border_style);
+	cow_border_style_render(mini, mini_str, mini_w, mini_h,
+	    &cm_bc, bw, cl, border_style);
 
 	int src_x0 = !left_side ? (mini_w - mw) : 0;
+	/* Marks straddle the corner boundary: one relief pixel in MWM,
+	 * two in FVWM. Include the neighbouring edge's half as well.
+	 */
+	int bevel = cl > bw ?
+	    (border_style == COW_BORDER_STYLE_MWM ? 1 :
+	    border_style == COW_BORDER_STYLE_FVWM ? 2 : 0) : 0;
+	int col_start = left_side ? 0 : -bevel;
+	int col_end = mw + (left_side ? bevel : 0);
 
 	/* Top arm: bw rows along the top. */
 	for (int row = 0; row < bw && row < mh; row++) {
-		for (int col = 0; col < mw; col++) {
+		for (int col = col_start; col < col_end; col++) {
 			int dx = mx + col;
 			if (dx < 0 || dx >= frame_w)
 				continue;
@@ -342,7 +350,12 @@ squeeze_paint_side(const struct squeeze_paint_ctx *ctx)
 			buf[row * stride_px + dx] = src;
 		}
 	}
-	/* Side arm: bw cols at the apex side. */
+	/* Fit the side mark and both halves of its relief before the client
+	 * starts, even when the configured corner is taller than the title.
+	 */
+	int side_offset = bevel > 0 ? cl - mh + bevel : 0;
+	if (side_offset < 0)
+		side_offset = 0;
 	int arm_col = !left_side ? (mw - bw) : 0;
 	for (int col = arm_col; col < arm_col + bw; col++) {
 		for (int row = bw; row < mh; row++) {
@@ -351,58 +364,14 @@ squeeze_paint_side(const struct squeeze_paint_ctx *ctx)
 				continue;
 			if (row >= frame_h)
 				break;
-			uint32_t src = mini[row * mini_str + (src_x0 + col)];
+			uint32_t src = mini[(row + side_offset) * mini_str +
+			    (src_x0 + col)];
 			if ((src >> 24) == 0)
 				continue;
 			buf[row * stride_px + dx] = src;
 		}
 	}
 	xfree(mini);
-
-	/*
-	 * draw_handle_marks() draws the NE corner's ym mark at the
-	 * corner's top-left in a *lightened* shade (ym_shadow=false
-	 * on the NE row of the cm[] table) WHEN has_explicit is true.
-	 * On a saturated explicit colour like magenta the lightened
-	 * variant is nearly invisible, so the handle looks missing
-	 * compared to the shadow-coloured marks on NW/SW/SE.  For
-	 * that case only, repaint the mark in the shadow (darkened)
-	 * variant so the handle reads cleanly.
-	 *
-	 * When bc->has_ne is false the mini-frame already drew the
-	 * default mark (ec->n[1]) which is the right shade for the
-	 * border's base colour, and overriding it here would change
-	 * the handle's appearance on inactive windows where the user
-	 * hasn't set border.inactive.ne (the corner falls back to the
-	 * N-edge colour and should use the matching default handle).
-	 */
-	if (!left_side && bc->has_ne) {
-		int w_dout = (border_style == COW_BORDER_STYLE_MWM) ? 0 : 1;
-		/* inset = (w[5]>0 || w[6]>0) ? 1 : 0 -- is 1 for both
-		 * FVWM (w[5]=w[6]=1) and MWM (w[5]=1) with default bws. */
-		int inset    = 1;
-		int mark_len = bw - w_dout - inset;
-		int mark_thk = (border_style == COW_BORDER_STYLE_MWM) ? 1 : 2;
-		if (mark_len > 0) {
-			float dk[4];
-			cow_colour_darken(dk, corner_colour);
-			uint32_t px_dk = cow_colour_to_pixel(dk);
-			for (int k = 0; k < mark_thk; k++) {
-				int len = mark_len - k;
-				if (len <= 0)
-					break;
-				int x1 = mx + k;
-				int y1 = w_dout;
-				for (int y = y1; y < y1 + len; y++) {
-					if (y < 0 || y >= frame_h)
-						continue;
-					if (x1 < 0 || x1 >= frame_w)
-						continue;
-					buf[y * stride_px + x1] = px_dk;
-				}
-			}
-		}
-	}
 
 	/*
 	 * Stepped-down N border: copy y=[0, bw) of the scratch render
@@ -977,19 +946,15 @@ cow_decoration_update(struct cow_view *view, bool active)
 		 *     border colour.
 		 *   - Past the corner, the north border continues one
 		 *     titlebar-height lower (y ∈ [tt, tt+bw)) and meets
-		 *     the east border using the *unconfigured* default
-		 *     corner join (no explicit NE swatch).
+		 *     the east border without another corner handle.
 		 *
 		 * The continued segment's relief is borrowed from a
-		 * scratch render that has no explicit NW/NE colours, so
-		 * the highlight/shadow pattern at the frame's top-right
-		 * corner matches what an un-squeezed frame would produce.
+		 * scratch render with the same edge colours, but no handles.
 		 *
 		 *   LEFT justify  -- relocated NE at tbr.x + tbr.width.
 		 *   RIGHT justify -- mirror (NW marker): relocated at
 		 *                    tbr.x - cl.
-		 *   CENTRE        -- not stepped: titlebar sits centred
-		 *                    beneath an unbroken north border.
+		 *   CENTRE        -- step down on both sides.
 		 */
 		if (tt > 0 && bw > 0 && !shaded &&
 		    (view->cfg.titlebar.position == COW_TITLEBAR_TOP ||
@@ -1020,38 +985,15 @@ cow_decoration_update(struct cow_view *view, bool active)
 				int	  marker_w = cl > 0 ? cl : bw;
 				int	  top_band = bw + tt;
 
-				/*
-				 * Scratch render with no explicit NW/NE and
-				 * corner_length=0 -- gives default 3D relief
-				 * without drawing handle-mark dashes at the
-				 * relocated corner positions (confusing,
-				 * since the corners have moved).
+				/* The stepped body border has no corner handles;
+				 * those stay at the ends of the titlebar.
 				 */
-				struct cow_border_colour plain = *bc;
-				if (bottom) {
-					plain.has_sw = false;
-					plain.has_se = false;
-				} else if (vertical) {
-					if (east) {
-						plain.has_ne = false;
-						plain.has_se = false;
-					} else {
-						plain.has_nw = false;
-						plain.has_sw = false;
-					}
-				} else {
-					plain.has_nw = false;
-					plain.has_ne = false;
-				}
-				plain.has_corners = plain.has_nw ||
-				    plain.has_ne || plain.has_sw ||
-				    plain.has_se;
 				size_t nbytes = (size_t)stride_px *
 				    (size_t)frame_h * 4;
 				uint32_t *scratch = xmalloc(nbytes);
 				cow_border_style_render(scratch, stride_px,
-				    frame_w, frame_h, &plain, bw,
-				    /* cl = */ 0, view->cfg.border_style);
+				    frame_w, frame_h, bc, bw, 0,
+				    view->cfg.border_style);
 
 				/* Corner colours (fall back to plain N/S if
 				 * not explicitly configured). */
@@ -1143,6 +1085,27 @@ cow_decoration_update(struct cow_view *view, bool active)
 					}
 				}
 
+				/* Finish both title-to-body elbows after all corner
+				 * blits, using clean strips rather than handle pixels.
+				 * The same miter works for every titlebar orientation.
+				 */
+				for (int end = 0; end < 2; end++) {
+					int start = vertical ? tbr.y : tbr.x;
+					int length = vertical ? tbr.height : tbr.width;
+					int extent = vertical ? frame_h : frame_w;
+					if ((!end && start <= bw) ||
+					    (end && start + length >= extent - bw))
+						continue;
+					int along = end ? start + length : start - bw;
+					int across = (vertical ? east : bottom) ?
+					    (vertical ? frame_w : frame_h) - tt - bw : tt;
+					cow_border_join_return(dec->buffer->data, scratch,
+					    stride_px, frame_w, frame_h,
+					    vertical ? across : along,
+					    vertical ? along : across, bw,
+					    vertical ? east : end != 0,
+					    vertical ? end != 0 : bottom);
+				}
 				xfree(scratch);
 			}
 		}
@@ -1206,20 +1169,13 @@ commit:
 	struct wl_region *region = wl_compositor_create_region(
 	    cow_wm.compositor);
 	if (region != NULL) {
-		if (bw > 0) {
-			wl_region_add(region, 0, 0, frame_w, bw);
-			wl_region_add(region, 0, frame_h - bw, frame_w, bw);
-			wl_region_add(region, 0, 0, bw, frame_h);
-			wl_region_add(region, frame_w - bw, 0, bw, frame_h);
-		}
-		/* Titlebar: the (possibly squeezed) rectangle only. */
-		if (tt > 0) {
-			struct cow_box tbr = cow_titlebar_squeezed_rect_for(view,
-			    cw, ch);
-			if (tbr.width > 0 && tbr.height > 0)
-				wl_region_add(region, tbr.x, tbr.y, tbr.width,
-				    tbr.height);
-		}
+		struct cow_box body, title;
+		cow_decoration_frame_rects(view, cw, ch, &body, &title);
+		wl_region_add(region, body.x, body.y, body.width, body.height);
+		if (title.width > 0 && title.height > 0)
+			wl_region_add(region, title.x, title.y, title.width,
+			    title.height);
+		wl_region_subtract(region, content_x, content_y, cw, ch);
 
 		if (shared_edges & COW_EDGE_TOP)
 			wl_region_subtract(region, 0, 0, frame_w, bw);

@@ -24,6 +24,7 @@ struct cow_shm_buffer;
 struct cow_font;
 struct cow_decoration_tiles;
 struct wl_surface;
+struct cow_box;
 
 /*
  * Per-view decoration state.
@@ -120,6 +121,10 @@ int cow_decoration_corner_length(const struct cow_view *);
  * resize regions, including over the titlebar.
  */
 uint32_t cow_decoration_edges_at(struct cow_view *, int, int, int, int);
+
+/* Outer body and title rectangles forming the visible frame silhouette. */
+void cow_decoration_frame_rects(struct cow_view *, int, int,
+    struct cow_box *, struct cow_box *);
 
 /* Hit test content and decoration, using coordinates relative to content. */
 bool cow_view_contains_point(struct cow_view *, int, int);

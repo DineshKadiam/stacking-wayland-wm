@@ -1134,3 +1134,32 @@ cow_border_style_render(uint32_t *pixels, int stride_px, int frame_w,
 	cow_border_style_render_pane(pixels, stride_px, frame_w, frame_h,
 	    colors, border_width, corner_length, style, COW_EDGE_ALL);
 }
+
+void
+cow_border_join_return(uint32_t *pixels, const uint32_t *straight,
+    int stride, int width, int height, int x, int y, int bw,
+    bool right, bool bottom)
+{
+	if (bw <= 0 || width <= 2 * bw || height <= 2 * bw)
+		return;
+	for (int row = 0; row < bw; row++) {
+		for (int col = 0; col < bw; col++) {
+			int dx = x + col, dy = y + row;
+			if (dx < 0 || dx >= width || dy < 0 || dy >= height)
+				continue;
+			int horizontal = bottom ? bw - 1 - row : row;
+			int vertical = right ? bw - 1 - col : col;
+			int sx, sy;
+			if (horizontal >= vertical) {
+				sx = dx < bw ? bw : dx >= width - bw ?
+				    width - bw - 1 : dx;
+				sy = bottom ? height - bw + row : row;
+			} else {
+				sx = right ? width - bw + col : col;
+				sy = dy < bw ? bw : dy >= height - bw ?
+				    height - bw - 1 : dy;
+			}
+			pixels[dy * stride + dx] = straight[sy * stride + sx];
+		}
+	}
+}

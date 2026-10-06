@@ -67,28 +67,54 @@ cow_view_contains_point(struct cow_view *view, int x, int y)
 	return cow_decoration_edges_at(view, x + cx, y + cy, width, height) != 0;
 }
 
-static uint32_t
-decoration_edges_at(struct cow_view *view, int fx, int fy, int cw, int ch)
+void
+cow_decoration_frame_rects(struct cow_view *view, int cw, int ch,
+    struct cow_box *body, struct cow_box *title)
 {
-	struct dec_frame_hit hit = {
-		.bw = view->dec.border_width,
-		.cl = normalized_corner_length(view),
-		.fx = fx,
-		.fy = fy,
-	};
-
 	int content_x, content_y;
-	cow_titlebar_frame_geometry(view, cw, ch, &hit.frame_w,
-	    &hit.frame_h, &content_x, &content_y);
+	*body = (struct cow_box){0};
+	*title = (struct cow_box){0};
+	cow_titlebar_frame_geometry(view, cw, ch, &body->width,
+	    &body->height, &content_x, &content_y);
+	struct cow_titlebar_squeeze sq;
+	cow_titlebar_effective_squeeze(view, &sq);
+	int tt = view->dec.title_thickness;
+	if (sq.mode == COW_SQUEEZE_NONE || tt <= 0 ||
+	    view->sd != COW_SHADE_NONE)
+		return;
 
+	int bw = view->dec.border_width;
+	*title = cow_titlebar_squeezed_rect_for(view, cw, ch);
+	title->x -= bw;
+	title->y -= bw;
+	title->width += 2 * bw;
+	title->height += 2 * bw;
+	switch (view->cfg.titlebar.position) {
+	case COW_TITLEBAR_TOP:
+		body->y += tt;
+		body->height -= tt;
+		break;
+	case COW_TITLEBAR_BOTTOM:
+		body->height -= tt;
+		break;
+	case COW_TITLEBAR_LEFT:
+		body->x += tt;
+		body->width -= tt;
+		break;
+	case COW_TITLEBAR_RIGHT:
+		body->width -= tt;
+		break;
+	}
+}
+
+static uint32_t
+frame_edges_at(struct dec_frame_hit hit)
+{
 	if (hit.fx < 0 || hit.fx >= hit.frame_w ||
 	    hit.fy < 0 || hit.fy >= hit.frame_h)
 		return (0);
 	if (hit.fx >= hit.bw && hit.fx < hit.frame_w - hit.bw &&
 	    hit.fy >= hit.bw && hit.fy < hit.frame_h - hit.bw)
-		return (0);
-	if (cow_titlebar_hit_for(view, cw, ch, fx - content_x,
-		fy - content_y))
 		return (0);
 
 	bool near_top	= hit.fy < hit.cl;
@@ -113,6 +139,70 @@ decoration_edges_at(struct cow_view *view, int fx, int fy, int cw, int ch)
 	if (hit.fx >= hit.frame_w - hit.bw)
 		return (COW_EDGE_RIGHT);
 	return (0);
+}
+
+static uint32_t
+decoration_edges_at(struct cow_view *view, int fx, int fy, int cw, int ch)
+{
+	int fw, fh, cx, cy;
+	cow_titlebar_frame_geometry(view, cw, ch, &fw, &fh, &cx, &cy);
+	if ((fx >= cx && fx < cx + cw && fy >= cy && fy < cy + ch) ||
+	    cow_titlebar_hit_for(view, cw, ch, fx - cx, fy - cy))
+		return 0;
+
+	struct cow_box body, title;
+	cow_decoration_frame_rects(view, cw, ch, &body, &title);
+	struct cow_box boxes[] = {title, body};
+	for (size_t i = 0; i < sizeof(boxes) / sizeof(boxes[0]); i++) {
+		struct dec_frame_hit hit = {
+			.bw = view->dec.border_width,
+			.cl = normalized_corner_length(view),
+			.fx = fx - boxes[i].x,
+			.fy = fy - boxes[i].y,
+			.frame_w = boxes[i].width,
+			.frame_h = boxes[i].height,
+		};
+		/* On the squeezed side, the body is an ordinary straight
+		 * border. Only the title rectangle owns corner handles.
+		 */
+		if (i == 1 && title.width > 0 && title.height > 0) {
+			bool title_side = false;
+			switch (view->cfg.titlebar.position) {
+			case COW_TITLEBAR_TOP:
+				title_side = hit.fy < hit.cl;
+				break;
+			case COW_TITLEBAR_BOTTOM:
+				title_side = hit.fy >= hit.frame_h - hit.cl;
+				break;
+			case COW_TITLEBAR_LEFT:
+				title_side = hit.fx < hit.cl;
+				break;
+			case COW_TITLEBAR_RIGHT:
+				title_side = hit.fx >= hit.frame_w - hit.cl;
+				break;
+			}
+			if (title_side)
+				hit.cl = 0;
+		}
+		uint32_t edges = frame_edges_at(hit);
+		/* The protruding title's corners resize the titlebar side of
+		 * the window, not the opposite edge of its small rectangle.
+		 */
+		if (i == 0 && edges != 0) {
+			if (cow_titlebar_is_vertical(view->cfg.titlebar.position)) {
+				edges &= ~(COW_EDGE_LEFT | COW_EDGE_RIGHT);
+				edges |= view->cfg.titlebar.position == COW_TITLEBAR_LEFT ?
+				    COW_EDGE_LEFT : COW_EDGE_RIGHT;
+			} else {
+				edges &= ~(COW_EDGE_TOP | COW_EDGE_BOTTOM);
+				edges |= view->cfg.titlebar.position == COW_TITLEBAR_TOP ?
+				    COW_EDGE_TOP : COW_EDGE_BOTTOM;
+			}
+		}
+		if (edges != 0)
+			return edges;
+	}
+	return 0;
 }
 
 uint32_t
