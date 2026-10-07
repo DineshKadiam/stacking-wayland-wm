@@ -1,0 +1,31 @@
+Artwork from https://github.com/NsCDE/NsCDE
+Revision: cbad197534dd357a15856f08140f16cacd87803b
+
+Local file     Upstream file in data/icons/NsCDE/
+terminal.xpm   Fpterm.l.pm
+home.xpm       Fphome.l.pm
+apps.xpm       Fpapps.l.pm
+style.xpm      Fpstyle.l.pm
+lock.xpm       FpLock.xpm
+handle.xpm     FpHandle.xpm
+menu.xpm       FpMenu.xpm
+iconify.xpm    FpIconify.xpm
+pages.xpm     Wsm.xpm
+exit.xpm      FpExit.xpm
+load.xpm      FpliteY.s.pm
+print.xpm     Fpprnt.l.pm
+media.xpm     Multimedia.l.pm
+help.xpm      Fphelp.l.pm
+mail.xpm      DtMail.l.pm
+calendar.xpm  FpCM.l.pm
+
+The menu and iconify glyphs are centred on transparent 20x16 canvases;
+the other files retain their original image data. Original CDE
+copyright notices and XConsortium identifiers remain in the files.
+NsCDE distributes these under its COPYING (GPLv3), included here. This
+notice applies to this artwork directory, not to CoW's source code.
+
+The example's layout is inspired by NsCDE's
+data/fvwm/FrontPanel.fvwm3.fvwmconf: 63-pixel launchers, a 16-pixel
+subpanel strip, large 48-pixel icons and a central workspace switcher.
+The CoW configuration is independently written; it does not use FVWM code.
