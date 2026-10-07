@@ -199,9 +199,11 @@ bool cow_resolve_action(const char *, cow_action_fn *, void **);
 void cow_seat_destroy_bindings(struct cow_seat *);
 
 /*
- * Teardown and re-register bindings on all seats from config.
+ * Request one rebuild of all seats from config after the current event batch.
  */
 void cow_rebind_all_seats(void);
+/* Called after command/rule dispatch, before consuming pending WM updates. */
+void cow_flush_binding_updates(void);
 
 /*
  * Return ms-from-now until the next held repeatable binding is due

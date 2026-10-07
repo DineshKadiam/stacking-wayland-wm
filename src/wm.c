@@ -2020,6 +2020,7 @@ cow_wm_after_event(void)
 {
 	cow_wm_fire_outputs_changed();
 	cow_wm_dispatch_focus_change();
+	cow_flush_binding_updates();
 
 	uint32_t updates = cow_update_take();
 	if ((updates & COW_UPDATE_STATUS) != 0)

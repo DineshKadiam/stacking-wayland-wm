@@ -1350,11 +1350,29 @@ cow_seat_destroy_bindings(struct cow_seat *seat)
 	seat->modifier_watch_dirty = true;
 }
 
+static bool bindings_dirty;
+
 void
 cow_rebind_all_seats(void)
 {
 	if (cow_ipc.startup_mode)
 		return;
+
+	/* Commands in a script change config immediately, but only the final
+	 * binding set needs to be sent to River.
+	 *
+	 * This reduces overhead on the socket, not filling the buffer up.
+	 */
+	cow_update_request(COW_UPDATE_MANAGE);
+}
+
+void
+cow_flush_binding_updates(void)
+{
+	if (!bindings_dirty)
+		return;
+	bindings_dirty = false;
+	cow_log_debug("rebuilding bindings after command batch");
 
 	struct cow_seat *seat;
 	wl_list_for_each(seat, &cow_wm.seats, wm_link)

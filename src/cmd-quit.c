@@ -103,12 +103,7 @@ do_reload(struct cmd_q *cmdq)
 	}
 	cow_wm_cursor_hide_configure();
 
-	struct cow_seat *seat;
-	wl_list_for_each(seat, &cow_wm.seats, wm_link)
-	{
-		cow_seat_destroy_bindings(seat);
-		cow_seat_register_default_bindings(seat);
-	}
+	cow_rebind_all_seats();
 
 	cow_decoration_register_default_bindings();
 
