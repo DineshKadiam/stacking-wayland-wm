@@ -1811,6 +1811,19 @@ main(void)
 		    slot, true, false));
 		cow_container_activate(c, windows[2].container_member);
 		CHECK(!windows[2].use_ssd);
+		uint32_t sticky = COW_VIEW_STICKY_DESK_FLAG |
+		    COW_VIEW_STICKY_PAGE_FLAG;
+		for (unsigned state = 0; state < 4; state++) {
+			windows[0].flags &= ~sticky;
+			if (state & 1)
+				windows[0].flags |= COW_VIEW_STICKY_DESK_FLAG;
+			if (state & 2)
+				windows[0].flags |= COW_VIEW_STICKY_PAGE_FLAG;
+			cow_container_attachment_sync(c);
+			for (int i = 1; i < 3; i++)
+				CHECK((windows[i].flags & sticky) ==
+				    (windows[0].flags & sticky));
+		}
 		windows[0].x += 50;
 		cow_container_attachment_sync(c);
 		CHECK(

@@ -1813,7 +1813,8 @@ cow_container_attachment_sync(struct cow_container *c)
 			    &v->output_views);
 			changed = true;
 		}
-		uint32_t mask  = COW_VIEW_STICKY_FLAG | COW_VIEW_ICONIFIED_FLAG;
+		uint32_t mask  = COW_VIEW_STICKY_DESK_FLAG |
+		    COW_VIEW_STICKY_PAGE_FLAG | COW_VIEW_ICONIFIED_FLAG;
 		uint32_t flags = (v->flags & ~mask) | (host->flags & mask);
 		changed |= flags != v->flags || v->layer != host->layer;
 		v->flags = flags;
