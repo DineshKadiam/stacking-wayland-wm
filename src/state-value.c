@@ -248,6 +248,32 @@ state_value_to_argv_string(const struct state_value *v)
 	return (NULL);
 }
 
+struct state_value *
+state_value_from_json(const cJSON *json)
+{
+	if (cJSON_IsString(json))
+		return state_value_string(json->valuestring);
+	if (cJSON_IsBool(json))
+		return state_value_bool(cJSON_IsTrue(json));
+	if (cJSON_IsNumber(json))
+		return state_value_number(json->valuedouble);
+	if (!cJSON_IsArray(json) && !cJSON_IsObject(json))
+		return state_value_nil();
+
+	bool array = cJSON_IsArray(json);
+	struct state_value *value = array ? state_value_list() : state_value_record();
+	const cJSON *child;
+	cJSON_ArrayForEach(child, json) {
+		struct state_value *item = state_value_from_json(child);
+		if (array)
+			state_list_append(value, item);
+		else
+			state_record_set(value, child->string, item);
+		state_value_unref(item);
+	}
+	return value;
+}
+
 struct cJSON *
 state_value_to_json(const struct state_value *v)
 {

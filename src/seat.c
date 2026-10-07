@@ -126,7 +126,7 @@ seat_handle_window_interaction(void *data,
 	if (view != NULL && view != seat->focused_view) {
 		seat->previous_focused_view = seat->focused_view;
 		seat->focused_view  = view;
-		cow_wm.focused_view = view;
+		cow_wm_set_focused_view(view);
 		if (view->output != NULL)
 			cow_output_set_current(view->output);
 	}
@@ -337,7 +337,7 @@ cow_seat_focus_view(struct cow_seat *seat, struct cow_view *view)
 	if (seat->focused_view != view)
 		seat->previous_focused_view = seat->focused_view;
 	seat->focused_view  = view;
-	cow_wm.focused_view = view;
+	cow_wm_set_focused_view(view);
 	view->needs_raise   = cow_config->raise_on_focus;
 
 	/* Update current output to follow focus */
@@ -363,7 +363,7 @@ cow_seat_focus_view_no_raise(struct cow_seat *seat, struct cow_view *view)
 	if (seat->focused_view != view)
 		seat->previous_focused_view = seat->focused_view;
 	seat->focused_view  = view;
-	cow_wm.focused_view = view;
+	cow_wm_set_focused_view(view);
 	view->needs_raise   = false;
 
 	if (view->output != NULL)

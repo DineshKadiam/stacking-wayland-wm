@@ -979,6 +979,7 @@ The following table shows which events are available:
 | **on-iconify** | Fired when a window is iconified. |
 | **on-deiconify** | Fired when a window is deiconified. |
 | **on-layer-change** | Fired when a window's layer changes (see **LAYERS**). Fires per-window for container members. No-op assignments do not fire. |
+| **on-focus-change** | Fired when the focused window changes. |
 | **on-new-desk** | Fired a new desk is switched to. |
 | **on-new-page** | Fired when a new page is switched to. |
 | **on-start** | Fired once after **cow** has completed startup. Use with **-g**. |
@@ -988,6 +989,29 @@ The following table shows which events are available:
 | **on-desks-changed** | Fired after **set desks.count** successfully resizes the live desk sets. Fires once per command. Use with **-g** to rebuild menus, bindings, or other configuration derived from the available desks. |
 | **on-desk** | Used to change window styles on a particular desk. |
 | **on-edgedrop-DIR** | Fired when a window is held at an output edge, then dropped. DIR is n, s, e, or w. |
+
+### Focus changes
+
+**on-focus-change** supplies **previous** and **current**, containing window
+IDs or JSON *null* when no window was focused. Re-focusing the
+same window and opening a CoW menu do not fire this rule.
+
+The target (**self**), selectors and output/desk scope refer to the newly
+focused window.
+
+    rule -g -T on-focus-change -n focus-log exec sh -c 'echo "$COW_EVENT"'
+
+Scripts can be used.  For example, tint the focused window without changing
+other decoration settings:
+
+    decor -d focus-tint titlebar.active_colour 0x406080
+    rule -g -T on-focus-change -n focus-tint script {
+        if event.current {
+            decor -a focus-tint
+        }
+    }
+
+### Edge drops
 
 While dragging a window, hold the pointer at an output edge until it
 highlights, then release to run the rule. Move away to cancel.

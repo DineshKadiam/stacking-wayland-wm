@@ -190,7 +190,7 @@ switch_output_desk(struct cow_output *output, uint8_t desk_nr)
 	/* Clear focused view if it is no longer visible on this output. */
 	if (cow_wm.focused_view != NULL &&
 	    !cow_view_visible(cow_wm.focused_view, output)) {
-		cow_wm.focused_view = NULL;
+		cow_wm_set_focused_view(NULL);
 		struct cow_seat *seat;
 		wl_list_for_each(seat, &cow_wm.seats, wm_link)
 		{

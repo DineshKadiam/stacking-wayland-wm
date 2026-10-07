@@ -17,6 +17,7 @@
 /* DSL parser entry points and tree-walking evaluator. */
 
 #include <fnmatch.h>
+#include <cJSON.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -721,6 +722,12 @@ dsl_eval_args(struct dsl_ast *ast, struct cmd_q *cmdq,
 	ctx.err			= err;
 
 	struct dsl_env *env = env_new(NULL);
+	cJSON *json = cmdq != NULL && cmdq->event_json != NULL ?
+	    cJSON_Parse(cmdq->event_json) : NULL;
+	struct state_value *event = state_value_from_json(json);
+	env_set(env, "event", event);
+	state_value_unref(event);
+	cJSON_Delete(json);
 	if (parameters != NULL) {
 		char *names = xstrdup(parameters), *cursor = names;
 		for (int i = 0; i < argc; i++) {

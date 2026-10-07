@@ -45,6 +45,7 @@ static const struct {
 	{ COW_RULE_ON_ICONIFY,      "on-iconify"	    },
 	{ COW_RULE_ON_DEICONIFY,	 "on-deiconify"	},
 	{ COW_RULE_ON_LAYER_CHANGE, "on-layer-change" },
+	{ COW_RULE_ON_FOCUS_CHANGE, "on-focus-change" },
 	{ COW_RULE_ON_NEW_DESK,	"on-new-desk"     },
 	{ COW_RULE_ON_NEW_PAGE,	"on-new-page"     },
 	{ COW_RULE_ON_START,	      "on-start"	    },
@@ -268,6 +269,7 @@ event_carries_view(enum cow_rule_type type)
 	case COW_RULE_ON_ICONIFY:
 	case COW_RULE_ON_DEICONIFY:
 	case COW_RULE_ON_LAYER_CHANGE:
+	case COW_RULE_ON_FOCUS_CHANGE:
 	case COW_RULE_ON_TITLE_CHANGE:
 	case COW_RULE_ON_EDGEDROP_N:
 	case COW_RULE_ON_EDGEDROP_E:

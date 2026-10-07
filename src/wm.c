@@ -21,6 +21,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <cairo.h>
+#include <cJSON.h>
 #include <math.h>
 #include <event2/event.h>
 
@@ -953,7 +954,7 @@ manage_sloppy_focus(struct cow_seat *seat)
 		    view->river_window);
 		seat->previous_focused_view = seat->focused_view;
 		seat->focused_view = view;
-		cow_wm.focused_view = view;
+		cow_wm_set_focused_view(view);
 		if (view->output != NULL)
 			cow_output_set_current(view->output);
 		cow_update_request(COW_UPDATE_STATUS);
@@ -1509,7 +1510,7 @@ handle_wm_session_unlocked(__unused void    *data,
 			if (seat->focused_view != target)
 				seat->previous_focused_view = seat->focused_view;
 			seat->focused_view  = target;
-			cow_wm.focused_view = target;
+			cow_wm_set_focused_view(target);
 			if (target->output != NULL)
 				cow_output_set_current(target->output);
 		}
@@ -1694,6 +1695,8 @@ fail:
 void
 cow_wm_fini(void)
 {
+	xfree(cow_wm.reported_focus_id);
+	cow_wm.reported_focus_id = NULL;
 	cow_menu_destroy_all();
 	cow_state_save();
 	cow_draw_exec_cancel();
@@ -1958,10 +1961,55 @@ cow_wm_fire_outputs_changed(void)
 	cow_update_request(COW_UPDATE_STATUS);
 }
 
+void
+cow_wm_set_focused_view(struct cow_view *view)
+{
+	if (cow_wm.focused_view == view)
+		return;
+	cow_wm.focused_view = view;
+	cow_update_request(COW_UPDATE_STATUS);
+}
+
+void
+cow_wm_dispatch_focus_change(void)
+{
+	/* Wait for a requested replacement so event.current and the DSL's
+	 * effective focus describe the same window.
+	 */
+	if (cow_wm.pending_focus != NULL && !cow_wm.pending_focus->closed)
+		return;
+	struct cow_view *view = cow_wm.focused_view;
+	if (view != NULL && view->closed)
+		view = NULL;
+	const char *current = view != NULL ? view->identifier : NULL;
+	const char *previous = cow_wm.reported_focus_id;
+	if ((previous == NULL && current == NULL) ||
+	    (previous != NULL && current != NULL && !strcmp(previous, current)))
+		return;
+
+	cJSON *event = cJSON_CreateObject();
+	cJSON_AddItemToObject(event, "previous", previous != NULL ?
+	    cJSON_CreateString(previous) : cJSON_CreateNull());
+	cJSON_AddItemToObject(event, "current", current != NULL ?
+	    cJSON_CreateString(current) : cJSON_CreateNull());
+	char *json = cJSON_PrintUnformatted(event);
+	cJSON_Delete(event);
+	/* Retain an ID, not a view: the old window may already be destroyed.
+	 * Advance before running rules so a new focus request is deferred
+	 * until the next event-loop turn rather than dispatched recursively.
+	 */
+	xstrset(&cow_wm.reported_focus_id, current);
+	cow_rule_fire_json(COW_RULE_ON_FOCUS_CHANGE, view,
+	    view != NULL ? view->desk : NULL,
+	    view != NULL ? view->output : NULL, json);
+	xfree(json);
+}
+
 static void
 cow_wm_after_event(void)
 {
 	cow_wm_fire_outputs_changed();
+	cow_wm_dispatch_focus_change();
 
 	uint32_t updates = cow_update_take();
 	if ((updates & COW_UPDATE_STATUS) != 0)

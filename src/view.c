@@ -1216,7 +1216,7 @@ view_clear_wm_refs(struct cow_view *view)
 	if (cow_wm.pending_focus == view)
 		cow_wm.pending_focus = NULL;
 	if (cow_wm.focused_view == view)
-		cow_wm.focused_view = NULL;
+		cow_wm_set_focused_view(NULL);
 }
 
 /*
@@ -3364,7 +3364,7 @@ cow_view_iconify(struct cow_view *view)
 
 			cow_wm.pending_focus = NULL;
 			if (focused != NULL && cow_view_is_iconified(focused)) {
-				cow_wm.focused_view = NULL;
+				cow_wm_set_focused_view(NULL);
 				wl_list_for_each(seat, &cow_wm.seats, wm_link)
 				{
 					cow_seat_forget_view(seat, focused);

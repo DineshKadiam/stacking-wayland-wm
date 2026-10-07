@@ -124,5 +124,6 @@ char *state_value_to_argv_string(const struct state_value *);
 
 /* Convert a state value recursively to an owned cJSON value. */
 struct cJSON *state_value_to_json(const struct state_value *);
+struct state_value *state_value_from_json(const struct cJSON *);
 
 #endif /* COW_STATE_VALUE_H */

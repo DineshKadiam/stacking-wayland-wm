@@ -40,6 +40,7 @@ enum cow_rule_type {
 	COW_RULE_ON_ICONIFY,
 	COW_RULE_ON_DEICONIFY,
 	COW_RULE_ON_LAYER_CHANGE,
+	COW_RULE_ON_FOCUS_CHANGE,
 	COW_RULE_ON_NEW_DESK,
 	COW_RULE_ON_NEW_PAGE,
 	COW_RULE_ON_START,
@@ -85,7 +86,7 @@ bool cow_rule_remove_by_name(const char *);
 /*
  * Fire all rules of 'type' whose scope matches the supplied context.
  * Context pointers may be NULL.  event_json is copied into each
- * matching rule queue and exposed to exec as $COW_EVENT.
+ * matching rule queue and exposed to exec as $COW_EVENT and scripts as event.
  */
 void cow_rule_fire(enum cow_rule_type, struct cow_view *, struct cow_desk *,
     struct cow_output *);

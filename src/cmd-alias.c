@@ -69,7 +69,7 @@ alias_name_reserved(const char *name)
 	static const char *reserved[] = {
 		"let", "for", "in", "if", "else", "break", "continue",
 		"where", "and", "or", "not", "matches", "true", "false",
-		"nil", "self", "windows", "desks", "outputs", "screens",
+		"nil", "self", "event", "windows", "desks", "outputs", "screens",
 		"rules", "selections", NULL,
 	};
 	for (const char **word = reserved; *word != NULL; word++) {

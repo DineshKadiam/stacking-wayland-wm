@@ -150,6 +150,7 @@ struct cow_wm {
 	/* The "current" output and focused view */
 	struct cow_output *current_output;
 	struct cow_view	  *focused_view;
+	char		  *reported_focus_id;
 
 	/*
 	 * Seat whose pointer interaction is currently being dispatched
@@ -267,6 +268,8 @@ void cow_wm_run(void);
  * Clean up and disconnect.
  */
 void cow_wm_fini(void);
+void cow_wm_set_focused_view(struct cow_view *);
+void cow_wm_dispatch_focus_change(void);
 
 void cow_drag_ghost_destroy(void);
 
