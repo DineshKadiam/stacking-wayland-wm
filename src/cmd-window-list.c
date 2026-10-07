@@ -314,15 +314,7 @@ select_window(const char *id, bool warp, struct cmd_q *cmdq)
 		return (false);
 	}
 
-	if (view->output != NULL) {
-		cow_output_set_current(view->output);
-		if (view->desk != NULL &&
-		    !(view->flags & COW_VIEW_STICKY_DESK_FLAG))
-			cow_desk_switch(view->output, view->desk->nr);
-		if (!(view->flags & COW_VIEW_STICKY_PAGE_FLAG))
-			cow_page_switch(view->output, cow_view_page_col(view),
-			    cow_view_page_row(view));
-	}
+	cow_view_reveal_location(view);
 	if (cow_view_is_iconified(view))
 		cow_view_deiconify(view);
 	if (view->container_member != NULL)

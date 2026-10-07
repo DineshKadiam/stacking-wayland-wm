@@ -1704,7 +1704,7 @@ The first example also warps the pointer to the chosen border:
     bind L+r       window-resize -e automatic -W
     mouse L+right  window-resize -e automatic
 
-## focus \[-npwL\] \[-F expr\] \[-l N\] \[-t target\] \[-d dir\] \[-o output\] \[-A app\_id\] \[-T title\] \[-i id\]
+## focus \[-npfwL\] \[-F expr\] \[-l N\] \[-t target\] \[-d dir\] \[-o output\] \[-A app\_id\] \[-T title\] \[-i id\]
 
 Move keyboard focus.
 
@@ -1715,6 +1715,16 @@ Move keyboard focus.
 **-p**
 
 : Focus the previous window in stacking order.
+
+**-f**
+
+: Switch to the desk/page which the window to be focused is on, before
+  focusing the window.  If the window is iconified, it's deiconified
+  before the focus is applied.
+  This option cannot be used with **-o**.
+
+      bind A+Tab focus -nf
+      bind AS+Tab focus -pf
 
 **-F** *expr*
 

@@ -28,6 +28,7 @@ t*
 #include "cow/cmd-filter.h"
 #include "cow/compat.h"
 #include "cow/config.h"
+#include "cow/desk_ops.h"
 #include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/seat.h"
@@ -89,10 +90,10 @@ filter:
 
 struct cmd_entry cmd_focus_entry = {
 	"focus",
-	"t:npwF:d:o:Ll:i:",
+	"t:npfwF:d:o:Ll:i:",
 	0,
 	0,
-	"focus [-npwL] [-F expr] [-l N] [-d dir] [-o output] [-i id]"
+	"focus [-npfwL] [-F expr] [-l N] [-d dir] [-o output] [-i id] "
 	"[-t %app|/title/|#id]",
 	cmd_focus_exec,
 	0,
@@ -153,6 +154,13 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 	bool	    do_warp    = args_has(args, 'w');
 	bool	    same_layer = args_has(args, 'L');
 	const char *id         = args_get(args, 'i');
+	bool follow = args_has(args, 'f');
+	u_int causes = ARRAY_LENGTH(&cmdq->causes);
+
+	if (follow && scr_val != NULL) {
+		cmdq_error(cmdq, "focus: -f cannot be combined with -o");
+		return CMD_RETURN_ERROR;
+	}
 
 	if (args->argc > 0) {
 		cmdq_error(cmdq, "focus: unexpected argument: %s",
@@ -246,6 +254,18 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 		cmd_filter_free(&filter);
 	}
 
+	if (ARRAY_LENGTH(&cmdq->causes) != causes)
+		return CMD_RETURN_ERROR;
+	if (follow) {
+		struct cow_view *view = cow_wm_effective_focus();
+		if (view != NULL && !view->closed) {
+			cow_view_reveal_location(view);
+			if (cow_view_is_iconified(view))
+				cow_view_deiconify(view);
+			cow_wm.pending_focus = view;
+			cow_update_request(COW_UPDATE_MANAGE);
+		}
+	}
 	if (do_warp) {
 		cow_view_warp_to_focused();
 	}

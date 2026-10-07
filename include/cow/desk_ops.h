@@ -26,6 +26,9 @@ struct cow_view;
 /* Switch the output to a desk. */
 void cow_desk_switch(struct cow_output *, uint8_t);
 
+/* Select a window's output, desk and page, respecting stickiness. */
+void cow_view_reveal_location(struct cow_view *);
+
 /* Assign a view to a desk. */
 void cow_view_assign_desk(struct cow_view *, uint8_t);
 

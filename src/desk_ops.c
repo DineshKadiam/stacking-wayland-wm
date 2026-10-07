@@ -129,6 +129,20 @@ cow_view_visible(const struct cow_view *view, const struct cow_output *output)
 	return false;
 }
 
+void
+cow_view_reveal_location(struct cow_view *view)
+{
+	if (view == NULL || view->closed || view->output == NULL)
+		return;
+	cow_output_set_current(view->output);
+	if (view->desk != NULL &&
+	    !(view->flags & COW_VIEW_STICKY_DESK_FLAG))
+		cow_desk_switch(view->output, view->desk->nr);
+	if (!(view->flags & COW_VIEW_STICKY_PAGE_FLAG))
+		cow_page_switch(view->output, cow_view_page_col(view),
+		    cow_view_page_row(view));
+}
+
 /* Switch one output to a new desk. */
 static void
 switch_output_desk(struct cow_output *output, uint8_t desk_nr)
