@@ -149,6 +149,25 @@ pan_modifiers_active(const struct cow_seat *seat)
 
 static bool edge_is_scrollable(struct cow_output *, int);
 
+static void
+pan_frame_update_input(struct cow_output *output, int edge)
+{
+	struct wl_surface *surf = output->pan_surf[edge];
+	if (surf == NULL)
+		return;
+	if (edge_is_scrollable(output, edge) &&
+	    pan_modifiers_active(cow_seat_primary())) {
+		wl_surface_set_input_region(surf, NULL);
+	} else {
+		/* Drop feedback remains visible without intercepting input.
+		 */
+		struct wl_region *empty = wl_compositor_create_region(
+		    cow_wm.compositor);
+		wl_surface_set_input_region(surf, empty);
+		wl_region_destroy(empty);
+	}
+}
+
 static enum cow_rule_type
 match_edge_to_rule(int edge)
 {
@@ -555,13 +574,7 @@ pan_frame_create(struct cow_output *output, int edge)
 	}
 
 	output->pan_surf[edge]	     = surf;
-	/* Drop-only strips are visual feedback, not pointer input targets. */
-	if (!edge_is_scrollable(output, edge)) {
-		struct wl_region *empty = wl_compositor_create_region(
-		    cow_wm.compositor);
-		wl_surface_set_input_region(surf, empty);
-		wl_region_destroy(empty);
-	}
+	pan_frame_update_input(output, edge);
 	output->pan_lsurf[edge]	     = lsurf;
 	output->pan_buf_clear[edge]  = buf_clear;
 	output->pan_buf_orange[edge] = buf_orange;
@@ -632,6 +645,8 @@ pan_frames_update_output(struct cow_output *output)
 		} else if (!needed && exists) {
 			pan_frame_destroy(output, e);
 		} else if (exists) {
+			pan_frame_update_input(output, e);
+			wl_surface_commit(output->pan_surf[e]);
 			/* Clear any stale fill from the previous accumulation
 			 * (a page just switched, or the page grid changed). */
 			output->pan_fill_level[e] = -1; /* force repaint */
@@ -1049,6 +1064,15 @@ cow_pan_frames_modifiers_changed(struct cow_seat *seat)
 {
 	if (seat == NULL || seat != cow_seat_primary())
 		return;
+	struct cow_output *o;
+	wl_list_for_each(o, &cow_wm.outputs, wm_link) {
+		for (int edge = 0; edge < 4; edge++) {
+			if (o->pan_surf[edge] == NULL)
+				continue;
+			pan_frame_update_input(o, edge);
+			wl_surface_commit(o->pan_surf[edge]);
+		}
+	}
 	if (!pan_modifiers_active(seat)) {
 		cow_pan_cancel();
 		struct cow_output *output;

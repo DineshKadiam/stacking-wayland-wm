@@ -3357,6 +3357,8 @@ For example, require Alt while dwelling at an edge:
 The modifier applies both while moving a window and during ordinary pointer
 movement. Pressing it while the pointer is already at an edge starts the dwell,
 while releasing it cancels a pending page switch immediately.
+Without the required modifier, edge strips pass pointer input through to
+the windows beneath them.
 
 **NOT£:** The *reserved.* settings are akin to X11's concept of a working-area.
 That is to say, these settings will reserve parts of the screen to be able to
