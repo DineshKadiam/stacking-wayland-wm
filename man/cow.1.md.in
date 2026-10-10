@@ -1754,6 +1754,14 @@ The first example also warps the pointer to the chosen border:
 
 Move keyboard focus.
 
+With **-n** or **-p**, no eligible matching window is an error; **moocow**
+exits with status 1. If the current window is the only match, focus stays
+there and the command succeeds. This supports run-or-focus shell commands:
+
+```sh
+moocow focus -nf -F 'self.app_id == "emacs"' || emacs
+```
+
 **-n**
 
 : Focus the next window in stacking order.

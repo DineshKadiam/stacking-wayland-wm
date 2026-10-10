@@ -37,8 +37,7 @@ t*
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_focus_exec(struct cmd *, struct cmd_q *);
-static enum cmd_retval do_next(int, struct cmd_filter *, struct cmd_q *);
-static enum cmd_retval do_prev(int, struct cmd_filter *, struct cmd_q *);
+static enum cmd_retval do_circulate(bool, int, struct cmd_filter *, struct cmd_q *);
 static void	       do_app_id(const char *, struct cmd_q *);
 static void	       do_title(const char *, struct cmd_q *);
 static void	       do_id(const char *, struct cmd_q *);
@@ -216,13 +215,9 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 		target_layer = (int)v;
 	}
 
-	if (args_has(args, 'n')) {
-		enum cmd_retval r = do_next(target_layer, &filter, cmdq);
-		cmd_filter_free(&filter);
-		if (r != CMD_RETURN_NORMAL)
-			return (r);
-	} else if (args_has(args, 'p')) {
-		enum cmd_retval r = do_prev(target_layer, &filter, cmdq);
+	if (args_has(args, 'n') || args_has(args, 'p')) {
+		enum cmd_retval r = do_circulate(args_has(args, 'n'),
+		    target_layer, &filter, cmdq);
 		cmd_filter_free(&filter);
 		if (r != CMD_RETURN_NORMAL)
 			return (r);
@@ -326,6 +321,9 @@ find_matching(struct cow_view *focused, bool forward, int target_layer,
 		}
 	} else {
 		result = cow_view_walk(focused, forward, pred);
+		/* A matching current window is a successful wrap, not a miss. */
+		if (result == NULL && pred(focused))
+			result = focused;
 	}
 
 	g_layer_filter = -1;
@@ -338,41 +336,25 @@ find_focusable(struct cow_view *focused, bool forward, int target_layer)
 	return find_matching(focused, forward, target_layer, focusable_layered);
 }
 
-static struct cow_view *
-find_circulatable(struct cow_view *focused, bool forward, int target_layer)
-{
-	return find_matching(focused, forward, target_layer, circulatable_layered);
-}
-
-/* focus -n [-F expr] [-L | -l N] */
+/* focus -n/-p [-F expr] [-L | -l N] */
 static enum cmd_retval
-do_next(int target_layer, struct cmd_filter *filter, struct cmd_q *cmdq)
+do_circulate(bool forward, int target_layer, struct cmd_filter *filter,
+    struct cmd_q *cmdq)
 {
 	struct cow_view *focused = cow_wm_effective_focus();
 	g_filter = filter;
-	struct cow_view *next = find_circulatable(focused, true, target_layer);
+	struct cow_view *next = find_matching(focused, forward, target_layer,
+	    circulatable_layered);
 	g_filter = NULL;
 	if (!cmd_filter_finish(filter, cmdq))
 		return (CMD_RETURN_ERROR);
 
-	if (next != NULL && next != focused)
+	if (next == NULL) {
+		cmdq_error(cmdq, "focus: no matching window");
+		return CMD_RETURN_ERROR;
+	}
+	if (next != focused)
 		defer_focus(next);
-	return (CMD_RETURN_NORMAL);
-}
-
-/* focus -p [-F expr] [-L | -l N] */
-static enum cmd_retval
-do_prev(int target_layer, struct cmd_filter *filter, struct cmd_q *cmdq)
-{
-	struct cow_view *focused = cow_wm_effective_focus();
-	g_filter = filter;
-	struct cow_view *prev = find_circulatable(focused, false, target_layer);
-	g_filter = NULL;
-	if (!cmd_filter_finish(filter, cmdq))
-		return (CMD_RETURN_ERROR);
-
-	if (prev != NULL && prev != focused)
-		defer_focus(prev);
 	return (CMD_RETURN_NORMAL);
 }
 
