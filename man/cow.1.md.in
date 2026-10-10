@@ -1745,7 +1745,7 @@ The first example also warps the pointer to the chosen border:
     bind L+r       window-resize -e automatic -W
     mouse L+right  window-resize -e automatic
 
-## focus \[-npfwL\] \[-F expr\] \[-l N\] \[-t target\] \[-d dir\] \[-o output\] \[-A app\_id\] \[-T title\] \[-i id\]
+## focus \[-npfwL\] \[-F expr\] \[-l N\] \[-t target\] \[-d dir\] \[-o output\] \[-i id\]
 
 Move keyboard focus.
 
@@ -1810,13 +1810,15 @@ Move keyboard focus.
 : Warp the pointer to the named output. The **-w** flag is ignored when
   **-o** is given, as **-o** performs its own pointer movement.
 
-**-A** *app\_id*
+**-t** *selector*
 
-: Focus the window with the exact app\_id *app\_id*.
+: Select a window across all outputs and desks: **%app_id** matches an
+  exact app ID, **/text/** matches a title substring, and **#id** matches
+  a River identifier. Add **-f** to follow it to its desk and page.
+  Cannot be combined with **-n** or **-p**; use **-F** for filtered cycling.
 
-**-T** *pattern*
-
-: Focus the window whose title contains *pattern*.
+      moocow focus -f -t %foot
+      moocow focus -nf -F 'self.app_id == "foot"'
 
 **-i** *id*
 

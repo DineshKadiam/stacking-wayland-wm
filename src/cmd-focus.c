@@ -96,7 +96,8 @@ struct cmd_entry cmd_focus_entry = {
 	"focus [-npfwL] [-F expr] [-l N] [-d dir] [-o output] [-i id] "
 	"[-t %app|/title/|#id]",
 	cmd_focus_exec,
-	0,
+	/* Focus resolves selectors globally, not within the current desk. */
+	CMD_OWN_TS,
 };
 
 /*
@@ -156,6 +157,12 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 	const char *id         = args_get(args, 'i');
 	bool follow = args_has(args, 'f');
 	u_int causes = ARRAY_LENGTH(&cmdq->causes);
+
+	if (t_val != NULL && (args_has(args, 'n') || args_has(args, 'p'))) {
+		cmdq_error(cmdq, "focus: -t cannot be combined with -n or -p; "
+		    "use -F to filter circulation");
+		return CMD_RETURN_ERROR;
+	}
 
 	if (follow && scr_val != NULL) {
 		cmdq_error(cmdq, "focus: -f cannot be combined with -o");
