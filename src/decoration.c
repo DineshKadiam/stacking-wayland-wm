@@ -211,7 +211,6 @@ struct squeeze_paint_ctx {
 	int	  marker_w;
 	int	  tbr_near_x;
 	bool	  left_side;
-	const float *corner_colour;
 	const struct cow_border_colour *bc;
 	const uint32_t			*scratch;
 	enum cow_border_style		 border_style;
@@ -239,7 +238,6 @@ squeeze_paint_side(const struct squeeze_paint_ctx *ctx)
 	int			     marker_w = ctx->marker_w;
 	int			     tbr_near_x = ctx->tbr_near_x;
 	bool			     left_side = ctx->left_side;
-	const float		    *corner_colour = ctx->corner_colour;
 	const struct cow_border_colour *bc = ctx->bc;
 	const uint32_t		    *scratch = ctx->scratch;
 	enum cow_border_style	     border_style = ctx->border_style;
@@ -328,37 +326,9 @@ squeeze_paint_side(const struct squeeze_paint_ctx *ctx)
 		}
 	}
 
-	/*
-	 * Render a mini scratch frame with the corner colour stuffed
-	 * into NE (right-side) or NW (left-side) slot, then blit just
-	 * the L-shape (top arm + side arm).
+	/* Use the complete resolved border style for the relocated handle,
+	 * including gradients and images rather than only fallback colours.
 	 */
-	/*
-	 * Mirror the caller's has_nw / has_ne.  When the user has NOT
-	 * set an explicit corner colour, we leave has_* false so the
-	 * mini-frame renders the corner with edge gradients (matching
-	 * the rest of the border).  Otherwise fill the slot with the
-	 * user's explicit colour and set has_* so the mini paints a
-	 * solid corner swatch matching the frame's fixed corners.
-	 */
-	struct cow_border_colour cm_bc;
-	memset(&cm_bc, 0, sizeof(cm_bc));
-	memcpy(cm_bc.n, bc->n, sizeof(cm_bc.n));
-	memcpy(cm_bc.s, bc->s, sizeof(cm_bc.s));
-	memcpy(cm_bc.e, bc->e, sizeof(cm_bc.e));
-	memcpy(cm_bc.w, bc->w, sizeof(cm_bc.w));
-	if (!left_side) {
-		if (bc->has_ne) {
-			memcpy(cm_bc.ne, corner_colour, sizeof(cm_bc.ne));
-			cm_bc.has_ne = true;
-		}
-	} else {
-		if (bc->has_nw) {
-			memcpy(cm_bc.nw, corner_colour, sizeof(cm_bc.nw));
-			cm_bc.has_nw = true;
-		}
-	}
-
 	int	  mw	   = marker_w;
 	int	  mh	   = top_band;
 	int	  mini_w   = mw * 4;
@@ -366,7 +336,7 @@ squeeze_paint_side(const struct squeeze_paint_ctx *ctx)
 	int	  mini_str = mini_w;
 	uint32_t *mini = xcalloc((size_t)mini_str * mini_h, sizeof(uint32_t));
 	cow_border_style_render(mini, mini_str, mini_w, mini_h,
-	    &cm_bc, bw, cl, border_style);
+	    bc, bw, cl, border_style);
 
 	int src_x0 = !left_side ? (mini_w - mw) : 0;
 	/* Marks straddle the corner boundary: one relief pixel in MWM,
@@ -485,7 +455,6 @@ squeeze_paint_south_side(const struct squeeze_paint_ctx *ctx)
 	int			     marker_w = ctx->marker_w;
 	int			     tbr_near_x = ctx->tbr_near_x;
 	bool			     left_side = ctx->left_side;
-	const float		    *corner_colour = ctx->corner_colour;
 	const struct cow_border_colour *bc = ctx->bc;
 	const uint32_t		    *scratch = ctx->scratch;
 	enum cow_border_style	     border_style = ctx->border_style;
@@ -525,31 +494,13 @@ squeeze_paint_south_side(const struct squeeze_paint_ctx *ctx)
 		    step_y, bw, bw + tt);
 	}
 
-	struct cow_border_colour cm_bc;
-	memset(&cm_bc, 0, sizeof(cm_bc));
-	memcpy(cm_bc.n, bc->n, sizeof(cm_bc.n));
-	memcpy(cm_bc.s, bc->s, sizeof(cm_bc.s));
-	memcpy(cm_bc.e, bc->e, sizeof(cm_bc.e));
-	memcpy(cm_bc.w, bc->w, sizeof(cm_bc.w));
-	if (!left_side) {
-		if (bc->has_se) {
-			memcpy(cm_bc.se, corner_colour, sizeof(cm_bc.se));
-			cm_bc.has_se = true;
-		}
-	} else {
-		if (bc->has_sw) {
-			memcpy(cm_bc.sw, corner_colour, sizeof(cm_bc.sw));
-			cm_bc.has_sw = true;
-		}
-	}
-
 	int	  mw	   = marker_w;
 	int	  mh	   = bottom_band;
 	int	  mini_w   = mw * 4;
 	int	  mini_h   = mh * 4;
 	int	  mini_str = mini_w;
 	uint32_t *mini = xcalloc((size_t)mini_str * mini_h, sizeof(uint32_t));
-	cow_border_style_render(mini, mini_str, mini_w, mini_h, &cm_bc, bw, cl,
+	cow_border_style_render(mini, mini_str, mini_w, mini_h, bc, bw, cl,
 	    border_style);
 
 	int src_x0 = !left_side ? (mini_w - mw) : 0;
@@ -643,31 +594,11 @@ squeeze_paint_vertical_corner(uint32_t *buf, int stride_px, int frame_w,
     const struct cow_border_colour *bc, enum cow_border_style border_style,
     bool east, bool bottom)
 {
-	struct cow_border_colour cm_bc;
-	memset(&cm_bc, 0, sizeof(cm_bc));
-	memcpy(cm_bc.n, bc->n, sizeof(cm_bc.n));
-	memcpy(cm_bc.s, bc->s, sizeof(cm_bc.s));
-	memcpy(cm_bc.e, bc->e, sizeof(cm_bc.e));
-	memcpy(cm_bc.w, bc->w, sizeof(cm_bc.w));
-	if (east && bottom && bc->has_se) {
-		memcpy(cm_bc.se, bc->se, sizeof(cm_bc.se));
-		cm_bc.has_se = true;
-	} else if (east && !bottom && bc->has_ne) {
-		memcpy(cm_bc.ne, bc->ne, sizeof(cm_bc.ne));
-		cm_bc.has_ne = true;
-	} else if (!east && bottom && bc->has_sw) {
-		memcpy(cm_bc.sw, bc->sw, sizeof(cm_bc.sw));
-		cm_bc.has_sw = true;
-	} else if (!east && !bottom && bc->has_nw) {
-		memcpy(cm_bc.nw, bc->nw, sizeof(cm_bc.nw));
-		cm_bc.has_nw = true;
-	}
-
 	int	  mini_w = side_w * 4;
 	int	  mini_h = side_w * 4;
 	int	  mini_s = mini_w;
 	uint32_t *mini = xcalloc((size_t)mini_s * mini_h, sizeof(uint32_t));
-	cow_border_style_render(mini, mini_s, mini_w, mini_h, &cm_bc, bw,
+	cow_border_style_render(mini, mini_s, mini_w, mini_h, bc, bw,
 	    side_w, border_style);
 
 	int src_x = east ? mini_w - side_w : 0;
@@ -1045,20 +976,6 @@ cow_decoration_update(struct cow_view *view, bool active)
 				    frame_w, frame_h, bc, bw, 0,
 				    view->cfg.border_style);
 
-				/* Corner colours (fall back to plain N/S if
-				 * not explicitly configured). */
-				/* bc was resolved above from the view's
-				 * snapshot. */
-				const float *edge_colour = bottom ? bc->s : bc->n;
-				const float *ne_colour = bc->has_ne ? bc->ne :
-								      edge_colour;
-				const float *nw_colour = bc->has_nw ? bc->nw :
-								      edge_colour;
-				const float *se_colour = bc->has_se ? bc->se :
-								      edge_colour;
-				const float *sw_colour = bc->has_sw ? bc->sw :
-								      edge_colour;
-
 				if (vertical) {
 					squeeze_paint_vertical_side(
 					    dec->buffer->data, scratch,
@@ -1089,9 +1006,6 @@ cow_decoration_update(struct cow_view *view, bool active)
 							.tbr_near_x =
 							    tbr.x + tbr.width,
 							.left_side = false,
-							.corner_colour =
-							    bottom ? se_colour :
-								     ne_colour,
 							.bc = bc,
 							.scratch = scratch,
 							.border_style =
@@ -1118,9 +1032,6 @@ cow_decoration_update(struct cow_view *view, bool active)
 							.marker_w = marker_w,
 							.tbr_near_x = tbr.x,
 							.left_side = true,
-							.corner_colour =
-							    bottom ? sw_colour :
-								     nw_colour,
 							.bc = bc,
 							.scratch = scratch,
 							.border_style =
