@@ -2127,10 +2127,10 @@ The resulting selection can then be acted upon as a group, for example:
     window-move -G work
     winops -F '"work" in self.selections' -i
 
-## window-shade \[-t target\] -d dir
+## window-shade \[-t target\] \[-d dir\]
 
-Shade (roll up) a window in a given direction, hiding its content but leaving
-its border visible.
+Shade (roll up) a window toward its titlebar, or unshade it if already shaded.
+Use **-d** to choose another direction.
 
 **-t** *target*
 
@@ -2138,8 +2138,8 @@ its border visible.
 
 **-d** *dir*
 
-: Shade direction: *north*, *south*, *east*, *west*, *nw*, *ne*, *sw*,
-  *se*. Required.
+: Shade direction: *titlebar* (default), *north*, *south*, *east*, *west*,
+  *nw*, *ne*, *sw*, *se*.
 
 # WINDOW DECORATION SETTINGS
 

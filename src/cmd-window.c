@@ -383,12 +383,7 @@ cmd_window_shade_exec(struct cmd *self, struct cmd_q *cmdq)
 	if (view == NULL)
 		return (CMD_RETURN_ERROR);
 
-	if (!args_has(args, 'd')) {
-		cmdq_error(cmdq, "No direction given");
-		return (CMD_RETURN_ERROR);
-	}
-
-	do_shade(view, args_get(args, 'd'));
+	do_shade(view, args_has(args, 'd') ? args_get(args, 'd') : "titlebar");
 
 	return (CMD_RETURN_NORMAL);
 }

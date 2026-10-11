@@ -1056,6 +1056,25 @@ main(void)
 	/* Pane-border bindings leave ordinary edges and the frame alone.
 	 */
 	cow_config = cow_config_create();
+	/* Omitting -d must behave exactly like -d titlebar on every edge. */
+	struct cow_view *saved_focus = cow_wm.focused_view;
+	for (size_t i = 0; i < 4; i++) {
+		struct cow_view shaded = { .use_ssd = true, .cfg = a.cfg,
+			.dec = a.dec, .content_width = 800, .content_height = 600 };
+		shaded.cfg.titlebar.position = positions[i];
+		cow_wm.focused_view = &shaded;
+		check_command("window-shade -d titlebar");
+		enum shade_direction direction = shaded.sd;
+		struct cow_box frame = cow_view_frame_box(&shaded);
+		check_command("window-shade");
+		CHECK(shaded.sd == COW_SHADE_NONE);
+		check_command("window-shade");
+		struct cow_box actual = cow_view_frame_box(&shaded);
+		CHECK(shaded.sd == direction);
+		CHECK(memcmp(&frame, &actual, sizeof(frame)) == 0);
+		check_command("window-shade");
+	}
+	cow_wm.focused_view = saved_focus;
 	wl_list_init(&b.selections);
 	CHECK(cow_dec_region_parse("pane-titlebar") ==
 	    COW_DEC_REGION_PANE_TITLEBAR);
