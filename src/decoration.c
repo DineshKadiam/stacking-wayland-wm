@@ -221,8 +221,8 @@ struct squeeze_paint_ctx {
  *
  * 'left_side' is true when we're painting the titlebar's LEFT edge
  * (the relocated NW) and false for the titlebar's RIGHT edge (the
- * relocated NE).  LEFT-justify calls this once with left_side=false,
- * RIGHT-justify once with left_side=true, and CENTRE calls both.
+ * relocated NE).  Paint each end that is inset from the frame edge,
+ * regardless of the titlebar's justification.
  */
 static void
 squeeze_paint_side(const struct squeeze_paint_ctx *ctx)
@@ -622,7 +622,7 @@ squeeze_paint_vertical_corner(uint32_t *buf, int stride_px, int frame_w,
 static void
 squeeze_paint_vertical_side(uint32_t *buf, const uint32_t *scratch,
     int stride_px, int frame_w, int frame_h, int bw, int tt,
-    struct cow_box tbr, enum cow_squeeze_just justify, bool east,
+    struct cow_box tbr, bool east,
     const struct cow_border_colour *bc, enum cow_border_style border_style)
 {
 	int src_x = east ? frame_w - bw : 0;
@@ -630,7 +630,7 @@ squeeze_paint_vertical_side(uint32_t *buf, const uint32_t *scratch,
 	int clr_x = east ? dst_x : 0;
 	int side_w = bw + tt;
 
-	if (justify == COW_JUST_LEFT || justify == COW_JUST_CENTRE) {
+	if (tbr.y + tbr.height < frame_h - bw) {
 		int apex = tbr.y + tbr.height;
 		int corner_y = apex - tt;
 
@@ -642,7 +642,7 @@ squeeze_paint_vertical_side(uint32_t *buf, const uint32_t *scratch,
 		    frame_h, clr_x, corner_y, bw, side_w, bc, border_style,
 		    east, true);
 	}
-	if (justify == COW_JUST_RIGHT || justify == COW_JUST_CENTRE) {
+	if (tbr.y > bw) {
 		int apex = tbr.y;
 		int corner_y = apex - bw;
 
@@ -980,19 +980,13 @@ cow_decoration_update(struct cow_view *view, bool active)
 					squeeze_paint_vertical_side(
 					    dec->buffer->data, scratch,
 					    stride_px, frame_w, frame_h, bw,
-					    tt, tbr, sq.justify, east, bc,
+					    tt, tbr, east, bc,
 					    view->cfg.border_style);
 				} else {
-					/*
-					 * LEFT  -- paint right side only (NE at
-					 *          tbr's right edge).
-					 * RIGHT -- paint left side only (NW at
-					 *          tbr's left edge).
-					 * CENTRE -- paint both (NW at left edge,
-					 *          NE at right edge).
+					/* Offsets can inset either end, even with left
+					 * or right justification. Follow the final rect.
 					 */
-					if (sq.justify == COW_JUST_LEFT ||
-					    sq.justify == COW_JUST_CENTRE) {
+					if (tbr.x + tbr.width < frame_w - bw) {
 						struct squeeze_paint_ctx sctx = {
 							.buf = dec->buffer->data,
 							.stride_px = stride_px,
@@ -1018,8 +1012,7 @@ cow_decoration_update(struct cow_view *view, bool active)
 						else
 							squeeze_paint_side(&sctx);
 					}
-					if (sq.justify == COW_JUST_RIGHT ||
-					    sq.justify == COW_JUST_CENTRE) {
+					if (tbr.x > bw) {
 						struct squeeze_paint_ctx sctx = {
 							.buf = dec->buffer->data,
 							.stride_px = stride_px,
