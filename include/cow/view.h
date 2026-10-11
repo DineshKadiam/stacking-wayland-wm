@@ -383,6 +383,7 @@ struct cow_view {
 
 	/* Monotonic intra-layer z-order. */
 	uint64_t raise_seq;
+	uint64_t focus_seq;
 
 	/* Stack layer. */
 	uint8_t layer;

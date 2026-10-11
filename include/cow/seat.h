@@ -51,6 +51,7 @@ struct cow_seat {
 	uint32_t	binding_context;
 	struct cow_view *binding_context_view;
 	struct cow_view *binding_action_view;
+	uint32_t binding_action_modifiers;
 	bool		binding_context_dirty;
 	bool		binding_context_suspended;
 	bool		binding_context_deferred;

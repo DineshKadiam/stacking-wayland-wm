@@ -1764,7 +1764,7 @@ The first example also warps the pointer to the chosen border:
     bind L+r       window-resize -e automatic -W
     mouse L+right  window-resize -e automatic
 
-## focus \[-npfwL\] \[-F expr\] \[-l N\] \[-t target\] \[-d dir\] \[-o output\] \[-i id\]
+## focus \[-npfwL\] \[-O normal|mru\] \[-F expr\] \[-l N\] \[-t target\] \[-d dir\] \[-o output\] \[-i id\]
 
 Move keyboard focus.
 
@@ -1778,11 +1778,18 @@ moocow focus -nf -F 'self.app_id == "emacs"' || emacs
 
 **-n**
 
-: Focus the next window in stacking order.
+: Focus the next window in the selected order.
 
 **-p**
 
-: Focus the previous window in stacking order.
+: Focus the previous window in the selected order.
+
+**-O** *normal|mru*
+
+: Choose the order for **-n** and **-p**. **normal**, the default, uses
+  window-list order. **mru** uses most recently focused first; **-n** moves
+  towards older entries and **-p** reverses that order. Filtering with **-F**,
+  layer restrictions, and CirculateSkip still apply.
 
 **-f**
 

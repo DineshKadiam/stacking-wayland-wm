@@ -29,6 +29,7 @@ t*
 #include "cow/compat.h"
 #include "cow/config.h"
 #include "cow/desk_ops.h"
+#include "cow/focus-history.h"
 #include "cow/memory.h"
 #include "cow/output.h"
 #include "cow/seat.h"
@@ -37,7 +38,7 @@ t*
 #include "cow/wm.h"
 
 static enum cmd_retval cmd_focus_exec(struct cmd *, struct cmd_q *);
-static enum cmd_retval do_circulate(bool, int, struct cmd_filter *, struct cmd_q *);
+static enum cmd_retval do_circulate(bool, bool, int, struct cmd_filter *, struct cmd_q *);
 static void	       do_app_id(const char *, struct cmd_q *);
 static void	       do_title(const char *, struct cmd_q *);
 static void	       do_id(const char *, struct cmd_q *);
@@ -89,10 +90,10 @@ filter:
 
 struct cmd_entry cmd_focus_entry = {
 	"focus",
-	"t:npfwF:d:o:Ll:i:",
+	"t:npfwF:d:o:Ll:i:O:",
 	0,
 	0,
-	"focus [-npfwL] [-F expr] [-l N] [-d dir] [-o output] [-i id] "
+	"focus [-npfwL] [-O normal|mru] [-F expr] [-l N] [-d dir] [-o output] [-i id] "
 	"[-t %app|/title/|#id]",
 	cmd_focus_exec,
 	/* Focus resolves selectors globally, not within the current desk. */
@@ -156,6 +157,18 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 	const char *id         = args_get(args, 'i');
 	bool follow = args_has(args, 'f');
 	u_int causes = ARRAY_LENGTH(&cmdq->causes);
+	const char *order = args_get(args, 'O');
+	bool mru = order != NULL && strcmp(order, "mru") == 0;
+	if (order != NULL && !mru && strcmp(order, "normal") != 0) {
+		cmdq_error(cmdq, "focus: unknown order: %s", order);
+		return CMD_RETURN_ERROR;
+	}
+	if (order != NULL && (!args_has(args, 'n') && !args_has(args, 'p'))) {
+		cmdq_error(cmdq, "focus: -O requires -n or -p");
+		return CMD_RETURN_ERROR;
+	}
+	if (!mru)
+		cow_focus_cycle_end();
 
 	if (t_val != NULL && (args_has(args, 'n') || args_has(args, 'p'))) {
 		cmdq_error(cmdq, "focus: -t cannot be combined with -n or -p; "
@@ -216,7 +229,7 @@ cmd_focus_exec(struct cmd *self, struct cmd_q *cmdq)
 	}
 
 	if (args_has(args, 'n') || args_has(args, 'p')) {
-		enum cmd_retval r = do_circulate(args_has(args, 'n'),
+		enum cmd_retval r = do_circulate(args_has(args, 'n'), mru,
 		    target_layer, &filter, cmdq);
 		cmd_filter_free(&filter);
 		if (r != CMD_RETURN_NORMAL)
@@ -338,16 +351,21 @@ find_focusable(struct cow_view *focused, bool forward, int target_layer)
 
 /* focus -n/-p [-F expr] [-L | -l N] */
 static enum cmd_retval
-do_circulate(bool forward, int target_layer, struct cmd_filter *filter,
+do_circulate(bool forward, bool mru, int target_layer, struct cmd_filter *filter,
     struct cmd_q *cmdq)
 {
 	struct cow_view *focused = cow_wm_effective_focus();
 	g_filter = filter;
-	struct cow_view *next = find_matching(focused, forward, target_layer,
-	    circulatable_layered);
+	g_layer_filter = target_layer;
+	struct cow_view *next = mru ?
+	    cow_focus_mru_next(forward, circulatable_layered) :
+	    find_matching(focused, forward, target_layer, circulatable_layered);
+	g_layer_filter = -1;
 	g_filter = NULL;
-	if (!cmd_filter_finish(filter, cmdq))
+	if (!cmd_filter_finish(filter, cmdq)) {
+		cow_focus_cycle_end();
 		return (CMD_RETURN_ERROR);
+	}
 
 	if (next == NULL) {
 		cmdq_error(cmdq, "focus: no matching window");

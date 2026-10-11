@@ -36,6 +36,7 @@
 #include "cow/view.h"
 #include "cow/update.h"
 #include "cow/wm.h"
+#include "cow/focus-history.h"
 
 #include "river-window-management-v1-client-protocol.h"
 #include "river-xkb-bindings-v1-client-protocol.h"
@@ -486,8 +487,8 @@ cow_seat_update_modifier_watch(struct cow_seat *seat)
 	struct cow_keybinding *kb;
 	wl_list_for_each(kb, &seat->keybindings, link)
 	{
-		if (kb->repeatable || kb->release_action != NULL)
-			modifiers |= kb->modifiers;
+		/* Commands inside scripts may start an MRU focus cycle. */
+		modifiers |= kb->modifiers;
 	}
 	struct cow_pointer_binding *pb;
 	wl_list_for_each(pb, &seat->pointer_bindings, link)
@@ -510,6 +511,7 @@ cow_seat_handle_modifiers_update(struct cow_seat *seat, uint32_t old,
 	if (seat == NULL)
 		return;
 	seat->active_modifiers = new;
+	cow_focus_cycle_modifiers(seat, new);
 	cow_pan_frames_modifiers_changed(seat);
 
 	bool release_due = false;
@@ -646,8 +648,10 @@ cow_seat_process_bindings(struct cow_seat *seat)
 			    kb->keymap != NULL ? seat->binding_sequence_view :
 			    (kb->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0 ?
 			    NULL : seat->binding_context_view;
+			seat->binding_action_modifiers = kb->modifiers;
 			run_binding_action(seat, target, kb->action,
 			    kb->action_arg);
+			seat->binding_action_modifiers = 0;
 			if (fire_press && kb->keymap != NULL) {
 				if (kb->repeatable || kb->release_action != NULL)
 					seat->sequence_finishing = kb;
@@ -1314,6 +1318,7 @@ cow_seat_register_default_bindings(struct cow_seat *seat)
 void
 cow_seat_destroy_bindings(struct cow_seat *seat)
 {
+	cow_focus_cycle_modifiers(seat, 0);
 	binding_sequence_reset(seat);
 
 	struct cow_keybinding *kb, *kb_tmp;

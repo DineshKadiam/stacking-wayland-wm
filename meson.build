@@ -26,6 +26,7 @@ conf = configuration_data()
 
 srcs = [
     'src/alias.c',
+    'src/focus-history.c',
     'src/app_icon.c',
     'src/arguments.c',
     'src/border.c',
@@ -404,6 +405,7 @@ foreach name, replacement : {
     'decoration-tiles': 'src/decoration-tiles.c',
     'alias-args': '',
     'send-key': '',
+    'focus-mru': '',
     'container': '',
     'container-state': '',
     'style-state': '',

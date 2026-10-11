@@ -61,6 +61,7 @@
 #include "cow/view.h"
 #include "cow/update.h"
 #include "cow/wm.h"
+#include "cow/focus-history.h"
 
 #include "cursor-shape-v1-client-protocol.h"
 #include "ext-idle-notify-v1-client-protocol.h"
@@ -1975,6 +1976,7 @@ cow_wm_set_focused_view(struct cow_view *view)
 	if (cow_wm.focused_view == view)
 		return;
 	cow_wm.focused_view = view;
+	cow_focus_history_changed(view);
 	cow_update_request(COW_UPDATE_STATUS);
 }
 

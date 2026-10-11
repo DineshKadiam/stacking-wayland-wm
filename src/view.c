@@ -54,6 +54,7 @@
 #include "cow/util.h"
 #include "cow/update.h"
 #include "cow/wm.h"
+#include "cow/focus-history.h"
 
 #include "river-window-management-v1-client-protocol.h"
 
@@ -1264,6 +1265,7 @@ view_clear_seat_refs(struct cow_view *view)
 void
 cow_view_destroy(struct cow_view *view)
 {
+	cow_focus_history_forget(view);
 	struct cow_output *output = view->output;
 	bool		   was_iconified = cow_view_is_iconified(view);
 
