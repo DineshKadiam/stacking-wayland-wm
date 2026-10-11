@@ -377,6 +377,12 @@ cow_titlebar_squeezed_rect_for(const struct cow_view *view, int cw, int ch)
 	if (start + want > strip_len)
 		start = strip_len - want;
 
+	/* Left-side titles rotate counterclockwise: their reading direction
+	 * runs bottom-to-top. Apply justification and offset before rotation.
+	 */
+	if (view->cfg.titlebar.position == COW_TITLEBAR_LEFT)
+		start = strip_len - want - start;
+
 	if (vertical) {
 		return (struct cow_box) {
 			.x	= strip_x,

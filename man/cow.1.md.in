@@ -2220,11 +2220,15 @@ feel of a window. All of these can be used with **decor -d**.
 | **titlebar.button.N.active\_colour** | hexadecimal RGB or RGBA | Background of button *N* when the window is focused. If unset, the focused titlebar background is used. |
 | **titlebar.button.N.inactive\_colour** | hexadecimal RGB or RGBA | Background of button *N* when the window is unfocused. If unset, the unfocused titlebar background is used. |
 | **titlebar.squeeze** | *none* \| *natural* \| *fixed* | Shrink the titlebar down to a minimum size. Remaining pixels of the titlebar strip are transparent and pass clicks through. *none* is the default (full-width titlebar); *natural* sizes the titlebar to the title text + buttons; *fixed* uses *titlebar.squeeze.width*. |
-| **titlebar.squeeze.justify** | *left* \| *centre* \| *right* | Horizontal alignment of the squeezed titlebar within the full-width strip. Default: *left*. *center* is accepted as a synonym for *centre*. |
+| **titlebar.squeeze.justify** | *left* \| *centre* \| *right* | Alignment relative to the titlebar's orientation. On left-side titlebars, *left* means bottom and *right* means top; on right-side titlebars, they mean top and bottom. Default: *left*. *center* is accepted as a synonym for *centre*. |
 | **titlebar.squeeze.width** | integer (pixels) | Width of the squeezed titlebar when *titlebar.squeeze* is *fixed*. Default: *300*. |
-| **titlebar.squeeze.offset** | integer (pixels; may be negative) | Horizontal nudge applied after *justify*. Useful for e.g. positioning the titlebar 40px in from the left edge. Default: *0*. |
+| **titlebar.squeeze.offset** | integer (pixels; may be negative) | Nudge applied after *justify*. Positive values move right on horizontal titlebars, up on left-side titlebars and down on right-side titlebars. Default: *0*. |
 | **titlebar.squeeze.min\_width** | integer (pixels) | Minimum width for *natural* mode (floor applied after measurement). Default: *80*. |
 | **title\_format** | string | Controls the display title used in the titlebar. Default is: '\[%t\] %n' Supported escapes are **%n** for the raw window title, **%t** for **cow**'s unique short window id, **%I** for the full window id, **%c** for app\_id, and **%%** for a literal percent. The default is **\[%t\] %n**. |
+
+Text alignment and squeeze placement do not reverse for right-to-left
+titles. Arabic, Hebrew and mixed-direction text retain their normal
+writing direction within the chosen alignment.
 
 The default decoration's button 3 (inward chevrons beside Close) toggles
 the clicked window's titlebar between full width and *natural* squeeze.

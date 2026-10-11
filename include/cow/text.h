@@ -26,7 +26,8 @@ int cow_text_baseline(cairo_t *, const PangoFontDescription *,
 
 /*
  * Draw a single line of validated UTF-8 in the supplied rectangle.  Text
- * which does not fit is ellipsized at the end.
+ * which does not fit is ellipsized at the end. Alignment is physical
+ * left/right/centre, independent of the text's writing direction.
  */
 void cow_text_render(cairo_t *, const PangoFontDescription *, double, double,
     double, double, const char *, PangoAlignment, int *);

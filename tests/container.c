@@ -170,6 +170,29 @@ main(void)
 		COW_TITLEBAR_TOP, COW_TITLEBAR_BOTTOM,
 		COW_TITLEBAR_LEFT, COW_TITLEBAR_RIGHT
 	};
+	const enum cow_squeeze_just justifications[] = {
+		COW_JUST_LEFT, COW_JUST_CENTRE, COW_JUST_RIGHT
+	};
+	const int offsets[] = { -1000, -40, 0, 40, 1000 };
+	for (size_t i = 0; i < 4; i++) {
+		a.cfg.titlebar.position = positions[i];
+		int space = cow_titlebar_is_vertical(positions[i]) ? 500 : 700;
+		for (size_t j = 0; j < 3; j++) {
+			a.cfg.titlebar.squeeze.justify = justifications[j];
+			for (size_t k = 0; k < 5; k++) {
+				a.cfg.titlebar.squeeze.offset = offsets[k];
+				int start = (int)j * space / 2 + offsets[k];
+				start = start < 0 ? 0 : start > space ? space : start;
+				if (positions[i] == COW_TITLEBAR_LEFT)
+					start = space - start;
+				struct cow_box rect = cow_titlebar_squeezed_rect(&a);
+				CHECK((cow_titlebar_is_vertical(positions[i]) ?
+				    rect.y : rect.x) == a.dec.border_width + start);
+			}
+		}
+	}
+	a.cfg.titlebar.squeeze.justify = COW_JUST_LEFT;
+	a.cfg.titlebar.squeeze.offset = 0;
 	for (size_t i = 0; i < sizeof(positions) / sizeof(positions[0]); i++) {
 		a.cfg.titlebar.position = positions[i];
 		int fw, fh, cx, cy;
@@ -178,13 +201,17 @@ main(void)
 		int x = title.x + 10 - cx;
 		int y = title.y + 10 - cy;
 		CHECK(cow_view_contains_point(&a, x, y));
-		if (cow_titlebar_is_vertical(positions[i]))
+		if (positions[i] == COW_TITLEBAR_LEFT)
+			y -= 200;
+		else if (cow_titlebar_is_vertical(positions[i]))
 			y += 200;
 		else
 			x += 200;
 		CHECK(!cow_view_contains_point(&a, x, y));
 		CHECK(cow_view_contains_point(&a, 50, 50));
-		CHECK(cow_view_contains_point(&a, -cx, -cy));
+		struct cow_box body, title_frame;
+		cow_decoration_frame_rects(&a, 800, 600, &body, &title_frame);
+		CHECK(cow_view_contains_point(&a, body.x - cx, body.y - cy));
 		CHECK(!cow_view_contains_point(&a, -cx - 1, -cy));
 	}
 	/* Squeezed body borders no longer own diagonal resize handles. */
@@ -192,7 +219,7 @@ main(void)
 	const uint32_t corner_edges[] = {
 		COW_EDGE_TOP,
 		COW_EDGE_BOTTOM,
-		COW_EDGE_BOTTOM,
+		COW_EDGE_TOP,
 		COW_EDGE_BOTTOM,
 	};
 	for (size_t i = 0; i < sizeof(positions) / sizeof(positions[0]); i++) {
@@ -201,7 +228,8 @@ main(void)
 		cow_decoration_frame_rects(&a, 800, 600, &body, &title);
 		int x = positions[i] == COW_TITLEBAR_LEFT ? body.x + 2 :
 		    body.x + body.width - 2;
-		int y = positions[i] == COW_TITLEBAR_TOP ? body.y + 2 :
+		int y = (positions[i] == COW_TITLEBAR_TOP ||
+			positions[i] == COW_TITLEBAR_LEFT) ? body.y + 2 :
 		    body.y + body.height - 2;
 		CHECK(cow_decoration_edges_at(&a, x, y, 800, 600) ==
 		    corner_edges[i]);

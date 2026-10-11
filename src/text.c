@@ -75,12 +75,21 @@ cow_text_render(cairo_t *cr, const PangoFontDescription *font, double x,
 	pango_layout_set_width(layout, (int)(width * PANGO_SCALE));
 	pango_layout_set_height(layout, -1);
 	pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
-	pango_layout_set_alignment(layout, align);
-
-	int text_width, text_height;
-	pango_layout_get_pixel_size(layout, &text_width, &text_height);
+	PangoRectangle logical;
+	pango_layout_get_pixel_extents(layout, NULL, &logical);
+	int text_width = logical.width, text_height = logical.height;
 	if (out_text_width != NULL)
 		*out_text_width = text_width;
+
+	/* Keep Pango's bidi shaping, but place the resulting line ourselves:
+	 * automatic direction can reverse Pango's left/right alignment.
+	 */
+	int offset = 0;
+	if (align == PANGO_ALIGN_RIGHT)
+		offset = width - text_width;
+	else if (align == PANGO_ALIGN_CENTER)
+		offset = (width - text_width) / 2;
+	x += offset - logical.x;
 
 	double text_y = y + (height - text_height) / 2.0;
 	if (text_y < y)
