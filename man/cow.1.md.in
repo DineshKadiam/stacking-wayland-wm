@@ -2139,7 +2139,8 @@ Use **-d** to choose another direction.
 **-d** *dir*
 
 : Shade direction: *titlebar* (default), *north*, *south*, *east*, *west*,
-  *nw*, *ne*, *sw*, *se*.
+  *nw*, *ne*, *sw*, *se*. With *titlebar*, shading follows the
+  titlebar when its position changes; compass directions remain fixed.
 
 # WINDOW DECORATION SETTINGS
 

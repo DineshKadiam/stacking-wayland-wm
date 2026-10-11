@@ -77,8 +77,7 @@ static void		    do_shade(struct cow_view *, const char *);
 static bool		    parse_tiled_edges(const char *, uint32_t *);
 static enum expand_dir	    resolve_direction(const char *);
 static uint32_t		    expand_tiled_edges(enum expand_dir);
-static enum shade_direction resolve_shade_direction(struct cow_view *,
-    const char *);
+static enum shade_direction resolve_shade_direction(const char *);
 
 struct cmd_entry cmd_winops_entry = {
 	"winops",
@@ -727,30 +726,16 @@ resolve_direction(const char *dir_str)
 }
 
 static enum shade_direction
-resolve_shade_direction(struct cow_view *view, const char *dir_str)
+resolve_shade_direction(const char *dir_str)
 {
 	int dir = COW_SHADE_NORTH;
 
 	if (dir_str == NULL)
 		return (dir);
 
-	if (strcmp(dir_str, "titlebar") == 0) {
-		switch (view->cfg.titlebar.position) {
-		case COW_TITLEBAR_BOTTOM:
-			dir = COW_SHADE_SOUTH;
-			break;
-		case COW_TITLEBAR_LEFT:
-			dir = COW_SHADE_WEST;
-			break;
-		case COW_TITLEBAR_RIGHT:
-			dir = COW_SHADE_EAST;
-			break;
-		case COW_TITLEBAR_TOP:
-		default:
-			dir = COW_SHADE_NORTH;
-			break;
-		}
-	} else if (strcmp(dir_str, "north") == 0)
+	if (strcmp(dir_str, "titlebar") == 0)
+		dir = COW_SHADE_TITLEBAR;
+	else if (strcmp(dir_str, "north") == 0)
 		dir = COW_SHADE_NORTH;
 	else if (strcmp(dir_str, "south") == 0)
 		dir = COW_SHADE_SOUTH;
@@ -883,7 +868,7 @@ do_expand(struct cow_view *view, enum expand_dir dir, bool toggle)
 static void
 do_shade(struct cow_view *view, const char *dir_str)
 {
-	enum shade_direction sd = resolve_shade_direction(view, dir_str);
+	enum shade_direction sd = resolve_shade_direction(dir_str);
 
 	cow_view_shade(view, sd);
 }

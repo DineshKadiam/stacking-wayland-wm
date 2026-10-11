@@ -17,6 +17,7 @@
 #include "cow/log.h"
 
 #include <cJSON.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -191,6 +192,10 @@ cow_state_save(void)
 			    view->shade_saved_width);
 			cJSON_AddNumberToObject(v, "shade_saved_height",
 			    view->shade_saved_height);
+			cJSON_AddNumberToObject(v, "shade_offset_x",
+			    view->shade_offset_x);
+			cJSON_AddNumberToObject(v, "shade_offset_y",
+			    view->shade_offset_y);
 		}
 
 		cJSON_AddItemToArray(views, v);
@@ -566,7 +571,7 @@ cow_state_restore(void)
 			long long vshade;
 			if (cow_json_get_int(vs, "shade_direction", &vshade)) {
 				if (vshade > COW_SHADE_NONE &&
-				    vshade <= COW_SHADE_SE) {
+				    vshade <= COW_SHADE_TITLEBAR) {
 					long long ssw, ssh;
 					if (cow_json_get_int(vs,
 						"shade_saved_width", &ssw) &&
@@ -577,6 +582,19 @@ cow_state_restore(void)
 						    ssw;
 						view->shade_saved_height = (int)
 						    ssh;
+						long long offset;
+						if (cow_json_get_int(vs,
+							"shade_offset_x",
+							&offset) &&
+						    offset >= INT_MIN && offset <= INT_MAX)
+							view->shade_offset_x =
+							    (int)offset;
+						if (cow_json_get_int(vs,
+							"shade_offset_y",
+							&offset) &&
+						    offset >= INT_MIN && offset <= INT_MAX)
+							view->shade_offset_y =
+							    (int)offset;
 						/* Shading keeps the client's real size and
 						 * hides its content with a clip box.  Restore
 						 * that clip instead of resizing the client;

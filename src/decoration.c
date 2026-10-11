@@ -163,7 +163,8 @@ make_display_title(const struct cow_view *view)
 
 static void
 restore_shaded_side_borders(uint32_t *pixels, int stride_px, int frame_w,
-    int frame_h, const struct cow_border_colour *bc, int bw, int style)
+    int frame_h, const struct cow_border_colour *bc, int bw, int style,
+    bool vertical)
 {
 	size_t	  nbytes = (size_t)stride_px * (size_t)frame_h * 4;
 	uint32_t *scratch = xmalloc(nbytes);
@@ -171,17 +172,24 @@ restore_shaded_side_borders(uint32_t *pixels, int stride_px, int frame_w,
 	cow_border_style_render(scratch, stride_px, frame_w, frame_h, bc, bw, 0,
 	    style);
 
-	int right_x = frame_w - bw;
-	if (right_x < 0)
-		right_x = 0;
-	if (right_x + bw > frame_w)
-		right_x = frame_w - bw;
-
-	for (int y = bw; y < frame_h - bw; y++) {
-		memcpy(&pixels[y * stride_px], &scratch[y * stride_px],
-		    (size_t)bw * 4);
-		memcpy(&pixels[y * stride_px + right_x],
-		    &scratch[y * stride_px + frame_w - bw], (size_t)bw * 4);
+	/* The short ends of a shaded titlebar have no room for corner
+	 * handles. Restore their plain relief, leaving the corners and
+	 * the marks along the long edges intact.
+	 */
+	for (int y = 0; y < frame_h; y++) {
+		if (vertical) {
+			if (y >= bw && y < frame_h - bw)
+				continue;
+			memcpy(&pixels[y * stride_px + bw],
+			    &scratch[y * stride_px + bw],
+			    (size_t)(frame_w - 2 * bw) * sizeof(*pixels));
+		} else if (y >= bw && y < frame_h - bw) {
+			memcpy(&pixels[y * stride_px], &scratch[y * stride_px],
+			    (size_t)bw * sizeof(*pixels));
+			memcpy(&pixels[y * stride_px + frame_w - bw],
+			    &scratch[y * stride_px + frame_w - bw],
+			    (size_t)bw * sizeof(*pixels));
+		}
 	}
 
 	xfree(scratch);
@@ -706,6 +714,7 @@ cow_decoration_sync_metrics(struct cow_view *view)
 	dec->title_thickness = cow_container_title_visible(view) ?
 	    dec->nominal_title_thickness :
 	    0;
+	cow_view_sync_shade(view);
 }
 
 void
@@ -933,12 +942,12 @@ cow_decoration_update(struct cow_view *view, bool active)
 				xfree((char *)tab_titles[i]);
 			xfree(tab_titles);
 
-			if (shaded && ch == 0 && bw > 0 &&
-			    !cow_titlebar_is_vertical(
-				view->cfg.titlebar.position))
+			bool vertical = cow_titlebar_is_vertical(
+			    view->cfg.titlebar.position);
+			if (shaded && (vertical ? cw == 0 : ch == 0) && bw > 0)
 				restore_shaded_side_borders(dec->buffer->data,
 				    stride_px, frame_w, frame_h, bc, bw,
-				    view->cfg.border_style);
+				    view->cfg.border_style, vertical);
 		}
 
 		/*

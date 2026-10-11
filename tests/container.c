@@ -247,6 +247,45 @@ main(void)
 	wl_list_init(&cow_wm.containers);
 	wl_list_init(&cow_wm.views);
 	wl_list_init(&cow_wm.seats);
+	/* Title-relative shading follows decoration changes without losing
+	 * the full-size origin, including moves made while shaded.
+	 */
+	for (size_t i = 0; i < 4; i++) {
+		for (size_t j = 0; j < 4; j++) {
+			struct cow_view shaded	     = { .use_ssd = true,
+				      .x			  = 100,
+				      .y			  = 200,
+				      .content_width		  = 800,
+				      .content_height		  = 600,
+				      .cfg			  = a.cfg,
+				      .dec			  = a.dec };
+			shaded.cfg.titlebar.position = positions[i];
+			cow_view_shade(&shaded, COW_SHADE_TITLEBAR);
+			shaded.x += 30;
+			shaded.y += 40;
+			shaded.cfg.titlebar.position = positions[j];
+			cow_decoration_sync_metrics(&shaded);
+			int x = shaded.x, y = shaded.y, width, height;
+			cow_decoration_sync_metrics(&shaded);
+			CHECK(shaded.x == x && shaded.y == y);
+			cow_view_effective_content_size(&shaded, &width,
+			    &height);
+			if (cow_titlebar_is_vertical(positions[j]))
+				CHECK(width == 0 && height > 0);
+			else
+				CHECK(width > 0 && height == 0);
+			cow_view_unshade(&shaded);
+			CHECK(shaded.x == 130 && shaded.y == 240);
+			CHECK(shaded.content_width == 800 &&
+			    shaded.content_height == 600);
+			cow_view_shade(&shaded, COW_SHADE_NORTH);
+			shaded.cfg.titlebar.position = positions[i];
+			cow_decoration_sync_metrics(&shaded);
+			cow_view_effective_content_size(&shaded, &width, &height);
+			CHECK(shaded.sd == COW_SHADE_NORTH && height == 0);
+			cow_view_unshade(&shaded);
+		}
+	}
 	wl_list_insert(&cow_wm.views, &a.wm_link);
 	wl_list_insert(&cow_wm.views, &b.wm_link);
 	wl_list_insert(&cow_wm.views, &d.wm_link);

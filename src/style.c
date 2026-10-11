@@ -659,7 +659,7 @@ apply_initial_state(struct cow_view *view,
 	}
 	if (resolved->shaded != NULL && cmd_parse_bool(resolved->shaded, &value)) {
 		if (value && view->sd == COW_SHADE_NONE)
-			cow_view_shade(view, COW_SHADE_NORTH);
+			cow_view_shade(view, COW_SHADE_TITLEBAR);
 		else if (!value && view->sd != COW_SHADE_NONE)
 			cow_view_unshade(view);
 	}

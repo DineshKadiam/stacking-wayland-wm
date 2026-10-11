@@ -52,6 +52,7 @@ enum shade_direction {
 	COW_SHADE_NE,
 	COW_SHADE_SW,
 	COW_SHADE_SE,
+	COW_SHADE_TITLEBAR,
 	COW_SHADE_ERROR,
 };
 
@@ -390,6 +391,7 @@ struct cow_view {
 	enum shade_direction sd;
 	int shade_saved_width; /* content dimensions before shading */
 	int shade_saved_height;
+	int shade_offset_x, shade_offset_y; /* Title-relative shading displacement. */
 
 	/* Decoration press state (for sunken title/button visual) */
 	bool title_pressed;
@@ -582,6 +584,7 @@ void cow_view_reflow_maximized(struct cow_view *);
  * Shade/unshade a view.
  */
 void cow_view_shaded_content_size(const struct cow_view *, int, int *, int *);
+void cow_view_sync_shade(struct cow_view *);
 void cow_view_effective_content_size(const struct cow_view *, int *, int *);
 void cow_view_shade(struct cow_view *, int);
 void cow_view_unshade(struct cow_view *);

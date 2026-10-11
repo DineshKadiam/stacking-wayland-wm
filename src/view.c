@@ -80,6 +80,24 @@ cow_view_drop_decoration(struct cow_view *view)
 static void cow_view_icon_destroy(struct cow_view *);
 static void view_refit_maximized(struct cow_view *);
 
+static int
+shade_direction_for_titlebar(const struct cow_view *view, int direction)
+{
+	if (direction != COW_SHADE_TITLEBAR)
+		return direction;
+	switch (view->cfg.titlebar.position) {
+	case COW_TITLEBAR_BOTTOM:
+		return COW_SHADE_SOUTH;
+	case COW_TITLEBAR_LEFT:
+		return COW_SHADE_WEST;
+	case COW_TITLEBAR_RIGHT:
+		return COW_SHADE_EAST;
+	case COW_TITLEBAR_TOP:
+	default:
+		return COW_SHADE_NORTH;
+	}
+}
+
 static bool
 shade_uses_titlebar_axis(const struct cow_view *view, int direction)
 {
@@ -2507,6 +2525,7 @@ cow_view_shaded_content_size(const struct cow_view *view, int direction,
 {
 	int sw = view->shade_saved_width;
 	int sh = view->shade_saved_height;
+	direction = shade_direction_for_titlebar(view, direction);
 
 	switch (direction) {
 	case COW_SHADE_EAST:
@@ -2645,6 +2664,34 @@ view_place_for_shade_edge(struct cow_view *view, int direction,
 }
 
 void
+cow_view_sync_shade(struct cow_view *view)
+{
+	if (view->sd != COW_SHADE_TITLEBAR)
+		return;
+
+	int old_x = view->x, old_y = view->y;
+	/* Recover the full-size origin using the previous displacement, not
+	 * the new decoration. Moves made while shaded are preserved this way.
+	 */
+	int x		    = view->x - view->shade_offset_x;
+	int y		    = view->y - view->shade_offset_y;
+	view->x		    = x;
+	view->y		    = y;
+	struct cow_box full = view_frame_box_for_size(view, x, y,
+	    view->shade_saved_width, view->shade_saved_height);
+	int	       width, height;
+	int	       direction = shade_direction_for_titlebar(view, view->sd);
+	cow_view_shaded_content_size(view, direction, &width, &height);
+	view_place_for_shade_edge(view, direction, &full, width, height);
+	view->shade_offset_x = view->x - x;
+	view->shade_offset_y = view->y - y;
+	if (view->x != old_x || view->y != old_y) {
+		view->dec.dirty = true;
+		cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
+	}
+}
+
+void
 cow_view_shade(struct cow_view *view, int direction)
 {
 	struct cow_container *c = cow_view_container(view);
@@ -2676,11 +2723,17 @@ cow_view_shade(struct cow_view *view, int direction)
 	view->shade_saved_width	 = view->content_width;
 	view->shade_saved_height = view->content_height;
 	view->sd		 = direction;
+	view->shade_offset_x = view->shade_offset_y = 0;
 
 	int shaded_cw, shaded_ch;
-	cow_view_shaded_content_size(view, direction, &shaded_cw, &shaded_ch);
-	view_place_for_shade_edge(view, direction, &old_fb, shaded_cw,
-	    shaded_ch);
+	if (direction == COW_SHADE_TITLEBAR) {
+		cow_view_sync_shade(view);
+	} else {
+		cow_view_shaded_content_size(view, direction, &shaded_cw,
+		    &shaded_ch);
+		view_place_for_shade_edge(view, direction, &old_fb, shaded_cw,
+		    shaded_ch);
+	}
 
 	/* Clip the window content to 1x1 pixel so it's effectively
 	 * invisible.  0x0 disables clipping per the protocol.
@@ -2729,7 +2782,14 @@ cow_view_unshade(struct cow_view *view)
 
 	view->content_width  = sw;
 	view->content_height = sh;
-	view_place_for_shade_edge(view, direction, &old_fb, sw, sh);
+	if (direction == COW_SHADE_TITLEBAR) {
+		view->x -= view->shade_offset_x;
+		view->y -= view->shade_offset_y;
+		view->shade_offset_x = view->shade_offset_y = 0;
+		cow_view_sync_vxy_from_global(view);
+	} else {
+		view_place_for_shade_edge(view, direction, &old_fb, sw, sh);
+	}
 
 	/* Disable clipping (0 width/height = disabled per protocol). */
 	view->pending_clip = true;
