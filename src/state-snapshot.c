@@ -256,6 +256,7 @@ state_snapshot_view(const struct cow_view *view)
 	rec_set_bool(r, "iconified", cow_view_is_iconified(view));
 	rec_set_bool(r, "circulate_skip",
 	    (view->flags & COW_VIEW_CIRCULATE_SKIP_FLAG) != 0);
+	rec_set_bool(r, "snap_target", !view->snap_skip);
 	rec_set_number(r, "raise_seq", (double)view->raise_seq);
 	rec_set_number(r, "layer", (double)view->layer);
 	rec_set_bool(r, "sticky_desk",

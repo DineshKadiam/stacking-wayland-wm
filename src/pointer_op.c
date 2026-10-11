@@ -303,7 +303,8 @@ snap_edges(struct cow_view *view, int *frame_left, int *frame_top,
 	wl_list_for_each(other, &cow_wm.views, wm_link)
 	{
 		if (other == view || pointer_op_group_contains(op, other) ||
-		    !other->has_dimensions)
+		    !other->has_dimensions ||
+		    other->snap_skip)
 			continue;
 		/* Panes move with their frame, so cannot be snap targets for it
 		 * or for another pane in the same container.

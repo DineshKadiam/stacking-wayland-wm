@@ -466,6 +466,7 @@ struct cow_view {
 	/* Declarative style state and explicit rule/user policy overrides. */
 	uint32_t style_live_mask;
 	uint32_t policy_overrides;
+	bool     snap_skip; /* Derived from styles; false enables snap targeting. */
 	bool     style_initial_applied;
 	char    *style_pending_anchor;
 	char    *style_anchor;
@@ -479,6 +480,7 @@ struct cow_view {
 #define COW_VIEW_POLICY_CIRCULATE_SKIP (1u << 1)
 #define COW_VIEW_POLICY_STICKY_DESK    (1u << 2)
 #define COW_VIEW_POLICY_STICKY_PAGE    (1u << 3)
+#define COW_VIEW_POLICY_SNAP_TARGET    (1u << 4)
 
 /* Create/destroy view wrappers. */
 struct cow_view *cow_view_create(struct river_window_v1 *);

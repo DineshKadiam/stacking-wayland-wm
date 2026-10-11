@@ -1088,6 +1088,7 @@ and when the configuration is reloaded:
 |:---|:---|
 | **layer** | An absolute layer number, **top**, or **bottom**. |
 | **circulate.skip** | A boolean controlling whether ordinary next/previous focus skips the window. |
+| **snap.target** | Whether other windows snap to this window's edges when moved or resized. Defaults to **true**. |
 | **sticky.desk**, **sticky.page** | Booleans controlling desk and page stickiness. |
 | **decor** *name* | Overlay a named sparse decoration profile. |
 | **decor { ... }** | Overlay decoration keys local to this style. The keys and values are the same as for **decor -d**. |
@@ -1129,6 +1130,16 @@ work desk:
         placement.width 50vw
         placement.height 100vh
     }
+
+To stop other windows snapping to a decorative window, without changing its
+own snapping or focus behaviour:
+
+    style -g -n teddy-no-snap -s %wteddy {
+        snap.target false
+    }
+
+Window queries and DSL window records expose this as **snap_target**.
+Output boundaries remain snap targets regardless of this setting.
 
 An event rule can then make a particular terminal an explicit exception:
 

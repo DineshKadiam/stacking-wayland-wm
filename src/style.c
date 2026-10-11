@@ -47,6 +47,7 @@ static bool reapply_pending;
 struct resolved_style {
 	char *layer;
 	char *circulate_skip;
+	char *snap_target;
 	char *sticky_desk;
 	char *sticky_page;
 	char *output;
@@ -205,6 +206,7 @@ style_key_from_name(const char *name, enum cow_style_key *key)
 	} keys[] = {
 		{ "layer", COW_STYLE_LAYER },
 		{ "circulate.skip", COW_STYLE_CIRCULATE_SKIP },
+		{ "snap.target", COW_STYLE_SNAP_TARGET },
 		{ "sticky.desk", COW_STYLE_STICKY_DESK },
 		{ "sticky.page", COW_STYLE_STICKY_PAGE },
 		{ "placement.output", COW_STYLE_PLACEMENT_OUTPUT },
@@ -244,6 +246,7 @@ style_value_valid(enum cow_style_key key, const char *value)
 		return (errstr == NULL);
 	}
 	case COW_STYLE_CIRCULATE_SKIP:
+	case COW_STYLE_SNAP_TARGET:
 	case COW_STYLE_STICKY_DESK:
 	case COW_STYLE_STICKY_PAGE:
 	case COW_STYLE_STATE_MAXIMIZED_IGNORE_RESERVED:
@@ -406,6 +409,8 @@ resolve_entry(struct resolved_style *resolved,
 	    COW_VIEW_POLICY_LAYER; break;
 	case COW_STYLE_CIRCULATE_SKIP: RESOLVE(circulate_skip);
 	    resolved->live_mask |= COW_VIEW_POLICY_CIRCULATE_SKIP; break;
+	case COW_STYLE_SNAP_TARGET: RESOLVE(snap_target);
+	    resolved->live_mask |= COW_VIEW_POLICY_SNAP_TARGET; break;
 	case COW_STYLE_STICKY_DESK: RESOLVE(sticky_desk); resolved->live_mask |=
 	    COW_VIEW_POLICY_STICKY_DESK; break;
 	case COW_STYLE_STICKY_PAGE: RESOLVE(sticky_page); resolved->live_mask |=
@@ -436,6 +441,7 @@ resolved_style_fini(struct resolved_style *resolved)
 {
 	xfree(resolved->layer);
 	xfree(resolved->circulate_skip);
+	xfree(resolved->snap_target);
 	xfree(resolved->sticky_desk);
 	xfree(resolved->sticky_page);
 	xfree(resolved->output);
@@ -507,6 +513,12 @@ static void
 apply_live_values(struct cow_view *view, const struct resolved_style *resolved)
 {
 	uint32_t owned = view->style_live_mask | resolved->live_mask;
+	if ((owned & COW_VIEW_POLICY_SNAP_TARGET) != 0) {
+		bool value = true;
+		if (resolved->snap_target != NULL)
+			(void)cmd_parse_bool(resolved->snap_target, &value);
+		view->snap_skip = !value;
+	}
 	if ((owned & COW_VIEW_POLICY_LAYER) != 0 &&
 	    (view->policy_overrides & COW_VIEW_POLICY_LAYER) == 0)
 		cow_view_set_layer(view, resolve_layer(resolved->layer));

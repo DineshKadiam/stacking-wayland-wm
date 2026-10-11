@@ -407,6 +407,7 @@ foreach name, replacement : {
     'container': '',
     'container-state': '',
     'style-state': '',
+    'snap-target': 'src/pointer_op.c',
     'arguments': 'src/arguments.c',
     'config-layers': '',
     'icon-hover': 'src/view.c',
