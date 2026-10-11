@@ -1897,6 +1897,13 @@ cow_view_focusable(const struct cow_view *v)
 	    !(v->flags & COW_VIEW_ICONIFIED_FLAG);
 }
 
+bool
+cow_view_focus_replacement_candidate(const struct cow_view *view)
+{
+	return cow_view_focusable(view) && view->output != NULL &&
+	    cow_view_visible(view, view->output);
+}
+
 static int
 view_floor_div(int n, int d)
 {
@@ -3429,7 +3436,7 @@ cow_view_iconify(struct cow_view *view)
 	if ((focused != NULL && cow_view_is_iconified(focused)) ||
 	    (pending != NULL && cow_view_is_iconified(pending))) {
 		struct cow_view *next = cow_view_walk(view, true,
-		    cow_view_focusable);
+		    cow_view_focus_replacement_candidate);
 		if (next != NULL && next != view) {
 			cow_wm.pending_focus = next;
 		} else {

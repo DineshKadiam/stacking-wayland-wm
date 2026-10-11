@@ -508,6 +508,7 @@ bool cow_view_current_output(const struct cow_view *);
 bool cow_view_current_page(const struct cow_view *);
 void cow_view_set_page_sticky(struct cow_view *, bool);
 bool cow_view_focusable(const struct cow_view *);
+bool cow_view_focus_replacement_candidate(const struct cow_view *);
 bool cow_view_circulatable(const struct cow_view *);
 
 /* Effective layer used by stack sorting. */

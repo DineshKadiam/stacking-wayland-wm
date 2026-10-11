@@ -117,9 +117,50 @@ check_return_joins(void)
 	}
 }
 
+static void
+check_iconify_focus(void)
+{
+	struct cow_config config = { .page_cols = 3, .page_rows = 3 };
+	cow_config = &config;
+	struct cow_desk current = { 0 }, other = { 0 };
+	struct cow_output output = { .width = 1000, .height = 1000,
+	    .current_desk = &current };
+	wl_list_init(&cow_wm.views);
+	wl_list_init(&cow_wm.seats);
+	wl_list_init(&cow_wm.outputs);
+	wl_list_init(&cow_wm.containers);
+	for (int scenario = 0; scenario < 4; scenario++) {
+		struct cow_view focused = { .has_dimensions = true };
+		struct cow_view candidate = { .has_dimensions = true,
+		    .output = &output, .desk = &current,
+		    .content_width = 100, .content_height = 100 };
+		if (scenario == 0)
+			candidate.desk = &other;
+		else if (scenario == 1)
+			candidate.vx = 1000;
+		else if (scenario == 2)
+			candidate.vy = 1000;
+		wl_list_insert(&cow_wm.views, &focused.wm_link);
+		wl_list_insert(&cow_wm.views, &candidate.wm_link);
+		cow_wm.focused_view = &focused;
+		cow_wm.pending_focus = NULL;
+		cow_view_iconify(&focused);
+		CHECK(cow_view_is_iconified(&focused));
+		CHECK(!cow_view_is_iconified(&candidate));
+		CHECK(cow_wm.pending_focus == (scenario == 3 ? &candidate : NULL));
+		if (scenario != 3)
+			CHECK(cow_wm.focused_view == NULL);
+		wl_list_remove(&focused.wm_link);
+		wl_list_remove(&candidate.wm_link);
+	}
+	cow_wm.focused_view = cow_wm.pending_focus = NULL;
+	cow_config = NULL;
+}
+
 int
 main(void)
 {
+	check_iconify_focus();
 	check_return_joins();
 	/* Internal joins are straight, with handles only at outer corners. */
 	uint32_t framed[80 * 60], plain[80 * 60], pane_pixels[80 * 60];
@@ -381,7 +422,9 @@ main(void)
 	CHECK(dialog.raise_seq == a.raise_seq && !dialog.needs_raise);
 	dialog.parent = &dialog;
 	CHECK(cow_container_ancestor(&dialog, NULL) == NULL);
-	struct cow_view outsider = { .raise_seq = 20 };
+	struct cow_output outsider_output = { 0 };
+	struct cow_view outsider = { .raise_seq = 20,
+	    .output = &outsider_output };
 	wl_list_insert(&cow_wm.views, &outsider.wm_link);
 	cow_wm.raise_seq_counter = 20;
 	a.needs_raise = d.needs_raise = true;

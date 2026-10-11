@@ -126,7 +126,6 @@ static void render_outputs(void);
 static void render_views(void);
 static void render_drag_ghost(void);
 static struct cow_view *session_unlock_focus_target(struct cow_seat *);
-static bool manage_focus_replacement_candidate(const struct cow_view *);
 static struct cow_view *manage_focus_replacement_for_close(struct cow_seat *,
     struct cow_view *);
 static void manage_prepare_focus_replacement(struct cow_view *);
@@ -1246,32 +1245,25 @@ manage_apply_seat_refocus(void)
 	}
 }
 
-static bool
-manage_focus_replacement_candidate(const struct cow_view *view)
-{
-	return cow_view_focusable(view) && view->output != NULL &&
-	    cow_view_visible(view, view->output);
-}
-
 static struct cow_view *
 manage_focus_replacement_for_close(struct cow_seat *seat,
     struct cow_view *closing)
 {
 	if (closing->parent != NULL && closing->parent != closing &&
-	    manage_focus_replacement_candidate(closing->parent))
+	    cow_view_focus_replacement_candidate(closing->parent))
 		return (closing->parent);
 
 	if (seat->previous_focused_view != NULL &&
 	    seat->previous_focused_view != closing &&
-	    manage_focus_replacement_candidate(seat->previous_focused_view))
+	    cow_view_focus_replacement_candidate(seat->previous_focused_view))
 		return (seat->previous_focused_view);
 
 	if (seat->pointer_entered_view != NULL &&
 	    seat->pointer_entered_view != closing &&
-	    manage_focus_replacement_candidate(seat->pointer_entered_view))
+	    cow_view_focus_replacement_candidate(seat->pointer_entered_view))
 		return (seat->pointer_entered_view);
 
-	return cow_view_walk(closing, true, manage_focus_replacement_candidate);
+	return cow_view_walk(closing, true, cow_view_focus_replacement_candidate);
 }
 
 static void
