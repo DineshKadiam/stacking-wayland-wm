@@ -142,8 +142,10 @@ main(int argc, char **argv)
 	    "decor -d default titlebar.active_colour 0x333333\n"
 	    "decor -d default titlebar.inactive_colour 0x555555\n"
 	    "decor -d default titlebar.fg_inactive 0xFFFFFF\n"
+	    "decor -d default titlebar.squeeze.offset -1\n"
 	    "decor -a default\n");
 	CHECK(cow_ipc_load_config(argv[1], user));
+	CHECK(cow_config->titlebar.squeeze.offset == -1);
 	CHECK(cow_config->menu_style.bg_gradient.mode == COW_GRADIENT_NONE);
 	CHECK(
 	    cow_config->menu_style.title_bg_gradient.mode == COW_GRADIENT_NONE);

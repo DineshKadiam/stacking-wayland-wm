@@ -55,7 +55,7 @@ static bool	      decor_profile_resets(struct decor_profile *);
 
 struct cmd_entry cmd_decor_entry = {
 	"decor",
-	"d:a:t:",
+	"+d:a:t:",
 	0,
 	-1,
 	"decor -d name key value\n"
