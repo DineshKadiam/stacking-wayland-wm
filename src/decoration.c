@@ -620,8 +620,33 @@ squeeze_paint_vertical_corner(uint32_t *buf, int stride_px, int frame_w,
 }
 
 static void
+squeeze_restore_vertical_body_corner(uint32_t *buf, const uint32_t *scratch,
+    int stride_px, int frame_w, int frame_h, int bw, int tt, int cl,
+    bool east, bool bottom, enum cow_border_style style)
+{
+	/* The horizontal arm of the old handle can extend beyond the strip
+	 * cleared beside the titlebar. Marks straddle the corner boundary by
+	 * one pixel in MWM and two in FVWM; restore both halves from the
+	 * handle-free border, leaving the relocated vertical edge untouched.
+	 */
+	int bevel = style == COW_BORDER_STYLE_MWM ? 1 :
+	    style == COW_BORDER_STYLE_FVWM ? 2 : 0;
+	int start = tt + bw;
+	int end = cl + bevel;
+	if (end > frame_w / 2)
+		end = frame_w / 2;
+	for (int row = 0; row < bw && row < frame_h; row++) {
+		int y = bottom ? frame_h - 1 - row : row;
+		for (int col = start; col < end; col++) {
+			int x = east ? frame_w - 1 - col : col;
+			buf[y * stride_px + x] = scratch[y * stride_px + x];
+		}
+	}
+}
+
+static void
 squeeze_paint_vertical_side(uint32_t *buf, const uint32_t *scratch,
-    int stride_px, int frame_w, int frame_h, int bw, int tt,
+    int stride_px, int frame_w, int frame_h, int bw, int tt, int cl,
     struct cow_box tbr, bool east,
     const struct cow_border_colour *bc, enum cow_border_style border_style)
 {
@@ -638,6 +663,8 @@ squeeze_paint_vertical_side(uint32_t *buf, const uint32_t *scratch,
 		    side_w, frame_h - apex);
 		copy_vertical_border(buf, scratch, stride_px, src_x, dst_x,
 		    apex + bw, frame_h, bw, frame_w, frame_h);
+		squeeze_restore_vertical_body_corner(buf, scratch, stride_px,
+		    frame_w, frame_h, bw, tt, cl, east, true, border_style);
 		squeeze_paint_vertical_corner(buf, stride_px, frame_w,
 		    frame_h, clr_x, corner_y, bw, side_w, bc, border_style,
 		    east, true);
@@ -650,6 +677,8 @@ squeeze_paint_vertical_side(uint32_t *buf, const uint32_t *scratch,
 		    side_w, apex);
 		copy_vertical_border(buf, scratch, stride_px, src_x, dst_x,
 		    0, apex - bw, bw, frame_w, frame_h);
+		squeeze_restore_vertical_body_corner(buf, scratch, stride_px,
+		    frame_w, frame_h, bw, tt, cl, east, false, border_style);
 		squeeze_paint_vertical_corner(buf, stride_px, frame_w,
 		    frame_h, clr_x, corner_y, bw, side_w, bc, border_style,
 		    east, false);
@@ -980,7 +1009,7 @@ cow_decoration_update(struct cow_view *view, bool active)
 					squeeze_paint_vertical_side(
 					    dec->buffer->data, scratch,
 					    stride_px, frame_w, frame_h, bw,
-					    tt, tbr, east, bc,
+					    tt, cl, tbr, east, bc,
 					    view->cfg.border_style);
 				} else {
 					/* Offsets can inset either end, even with left
