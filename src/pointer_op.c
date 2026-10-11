@@ -261,7 +261,7 @@ pointer_op_group_contains(const struct cow_pointer_op *op,
 
 static void
 snap_edges(struct cow_view *view, int *frame_left, int *frame_top,
-    int *frame_right, int *frame_bottom, bool snap_size,
+    int *frame_right, int *frame_bottom, uint32_t resize_edges,
     const struct cow_pointer_op *op)
 {
 	int sd = cow_config ? cow_config->snap_distance : 0; /* snap off */
@@ -332,15 +332,15 @@ snap_edges(struct cow_view *view, int *frame_left, int *frame_top,
 	}
 
 	/* Apply snaps */
-	if (snap_size) {
+	if (resize_edges != 0) {
 		/* Resize: snap individual edges */
-		if (best_dl <= sd)
+		if ((resize_edges & COW_EDGE_LEFT) && best_dl <= sd)
 			*frame_left = snap_l;
-		if (best_dr <= sd)
+		if ((resize_edges & COW_EDGE_RIGHT) && best_dr <= sd)
 			*frame_right = snap_r;
-		if (best_dt <= sd)
+		if ((resize_edges & COW_EDGE_TOP) && best_dt <= sd)
 			*frame_top = snap_t;
-		if (best_db <= sd)
+		if ((resize_edges & COW_EDGE_BOTTOM) && best_db <= sd)
 			*frame_bottom = snap_b;
 	} else {
 		/* Move: snap the whole window (prefer closest edge) */
@@ -1055,7 +1055,9 @@ op_finalize(struct cow_seat *seat, struct cow_view *view)
 		    view->content_width;
 		int height = view->proposed_height > 0 ? view->proposed_height :
 		    view->content_height;
-		pointer_op_reassign_output(view, view->x, view->y, width, height,
+		int x = view->deferred_position ? view->deferred_x : view->x;
+		int y = view->deferred_position ? view->deferred_y : view->y;
+		pointer_op_reassign_output(view, x, y, width, height,
 		    seat->has_pointer_position);
 	}
 	if (finished_type == COW_POINTER_OP_MOVE) {
@@ -1305,7 +1307,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 		int ft = cy - content_y;
 		int fr = fl + frame_w;
 		int fb = ft + frame_h;
-		snap_edges(view, &fl, &ft, &fr, &fb, false, &seat->op);
+		snap_edges(view, &fl, &ft, &fr, &fb, 0, &seat->op);
 
 		if (seat->container_drag) {
 			/* Container drag (-C): keep source in place, move ghost
@@ -1421,26 +1423,16 @@ cow_pointer_op_process(struct cow_seat *seat)
 		}
 
 		/* Enforce minimum size */
-		if (new_w < 50) {
+		if ((edges & (COW_EDGE_LEFT | COW_EDGE_RIGHT)) && new_w < 50) {
 			if (edges & COW_EDGE_LEFT)
 				new_x -= (50 - new_w);
 			new_w = 50;
 		}
-		if (new_h < 50) {
+		if ((edges & (COW_EDGE_TOP | COW_EDGE_BOTTOM)) && new_h < 50) {
 			if (edges & COW_EDGE_TOP)
 				new_y -= (50 - new_h);
 			new_h = 50;
 		}
-
-		/* Respect dimension hints */
-		if (view->min_width > 0 && new_w < view->min_width)
-			new_w = view->min_width;
-		if (view->min_height > 0 && new_h < view->min_height)
-			new_h = view->min_height;
-		if (view->max_width > 0 && new_w > view->max_width)
-			new_w = view->max_width;
-		if (view->max_height > 0 && new_h > view->max_height)
-			new_h = view->max_height;
 
 		/* Snap frame edges during resize */
 		{
@@ -1453,7 +1445,7 @@ cow_pointer_op_process(struct cow_seat *seat)
 			int ft		  = new_y - content_y;
 			int fr		  = fl + frame_w;
 			int fb		  = ft + frame_h;
-			snap_edges(view, &fl, &ft, &fr, &fb, true, NULL);
+			snap_edges(view, &fl, &ft, &fr, &fb, edges, NULL);
 			if (edges & COW_EDGE_LEFT) {
 				new_x = fl + content_x;
 				new_w = fr - fl - frame_extra_w;
@@ -1466,14 +1458,44 @@ cow_pointer_op_process(struct cow_seat *seat)
 			}
 			if (edges & COW_EDGE_BOTTOM)
 				new_h = fb - ft - frame_extra_h;
-			if (new_w < 50)
+			if ((edges & (COW_EDGE_LEFT | COW_EDGE_RIGHT)) && new_w < 50)
 				new_w = 50;
-			if (new_h < 50)
+			if ((edges & (COW_EDGE_TOP | COW_EDGE_BOTTOM)) && new_h < 50)
 				new_h = 50;
 		}
 
-		view->x		      = new_x;
-		view->y		      = new_y;
+		/* Limits take precedence over snapping. Recompute the moving
+		 * origin from the original opposite edge after clamping.
+		 */
+		if (edges & (COW_EDGE_LEFT | COW_EDGE_RIGHT)) {
+			if (new_w < view->min_width)
+				new_w = view->min_width;
+			if (view->max_width > 0 && new_w > view->max_width)
+				new_w = view->max_width;
+		}
+		if (edges & (COW_EDGE_TOP | COW_EDGE_BOTTOM)) {
+			if (new_h < view->min_height)
+				new_h = view->min_height;
+			if (view->max_height > 0 && new_h > view->max_height)
+				new_h = view->max_height;
+		}
+		int right = seat->op.start_x + seat->op.start_width;
+		int bottom = seat->op.start_y + seat->op.start_height;
+		if (edges & COW_EDGE_LEFT)
+			new_x = right - new_w;
+		if (edges & COW_EDGE_TOP)
+			new_y = bottom - new_h;
+
+		/* Reuse the deferred-position path so client-chosen dimensions
+		 * keep the opposite edges fixed, even after the drag ends.
+		 */
+		view->deferred_position = true;
+		view->deferred_x = new_x;
+		view->deferred_y = new_y;
+		view->deferred_anchor_right = (edges & COW_EDGE_LEFT) != 0;
+		view->deferred_anchor_bottom = (edges & COW_EDGE_TOP) != 0;
+		view->deferred_anchor_right_x = right;
+		view->deferred_anchor_bottom_y = bottom;
 		view->proposed_width  = new_w;
 		view->proposed_height = new_h;
 		river_window_v1_propose_dimensions(view->river_window, new_w,
@@ -1484,17 +1506,9 @@ cow_pointer_op_process(struct cow_seat *seat)
 		 */
 		pointer_op_reassign_output(view, new_x, new_y, new_w, new_h,
 		    seat->has_pointer_position);
-		/*
-		 * Sync container position and dimensions so that
-		 * river_node_v1_set_position uses the updated values and lx/ly
-		 * hit-detection remains correct.  Use the already-computed
-		 * new_x/y/w/h directly because view->content_width/height
-		 * haven't been updated yet (they're updated when the dimensions
-		 * event arrives).
+		/* Position and container geometry follow the accepted size in
+		 * window_handle_dimensions(), not the proposed dimensions.
 		 */
-		cow_view_sync_vxy_from_global(view);
-		cow_view_sync_container_geometry(view, new_x, new_y, new_w,
-		    new_h);
 		{
 			struct cow_output *output = NULL;
 			if (seat->has_pointer_position)

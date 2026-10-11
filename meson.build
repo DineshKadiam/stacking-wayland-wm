@@ -415,6 +415,7 @@ foreach name, replacement : {
     'icon-hover': 'src/view.c',
     'maximize-page': 'src/view.c',
     'resize-direction': 'src/cmd-resize.c',
+    'resize-geometry': 'src/view.c',
     'window-list': 'src/cmd-window-list.c',
 }
     test_sources = []
