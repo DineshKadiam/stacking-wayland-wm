@@ -29,11 +29,14 @@ cmd_find_cmd(const char *name)
 	static struct cmd_entry nop = { .name = "nop" };
 	static struct cmd_entry bind = { .name = "bind" };
 	static struct cmd_entry style = { .name = "style" };
+	static struct cmd_entry focus = { .name = "focus" };
 
 	if (strcmp(name, "nop") == 0)
 		return (&nop);
 	if (strcmp(name, "style") == 0)
 		return (&style);
+	if (strcmp(name, "focus") == 0)
+		return (&focus);
 	return (strcmp(name, "bind") == 0 ? &bind : NULL);
 }
 
@@ -94,6 +97,46 @@ fail:
 	exit(1);
 }
 
+static void
+check_single_quotes(void)
+{
+	const char *source =
+	    "{ focus -n -F 'self.current_output' '' pre' two words'post "
+	    "'#{literal}; } # \"quoted\" \\n'\n"
+	    "style -g -n nested {\nnop '}' '#{literal}'\n}\n}";
+	const char *expected[] = { "-n", "-F", "self.current_output", "",
+	    "pre two wordspost", "#{literal}; } # \"quoted\" \\n" };
+	struct dsl_error error = { 0 };
+	struct dsl_ast *ast = dsl_parse(source, NULL, &error);
+	if (ast == NULL || ast->root->u.block.n != 2)
+		goto fail;
+	struct dsl_node *cmd = ast->root->u.block.stmts[0];
+	if (cmd->u.cmd.n != sizeof(expected) / sizeof(expected[0]))
+		goto fail;
+	for (size_t i = 0; i < cmd->u.cmd.n; i++) {
+		const char *p = expected[i];
+		for (size_t j = 0; j < cmd->u.cmd.args[i].n; j++) {
+			struct dsl_arg_piece *piece = &cmd->u.cmd.args[i].pieces[j];
+			if (!piece->is_raw)
+				goto fail;
+			size_t n = strlen(piece->u.raw);
+			if (strncmp(p, piece->u.raw, n) != 0)
+				goto fail;
+			p += n;
+		}
+		if (*p != '\0')
+			goto fail;
+	}
+	dsl_free(ast);
+	dsl_error_fini(&error);
+	return;
+fail:
+	fprintf(stderr, "single-quoted command arguments were not preserved\n");
+	dsl_free(ast);
+	dsl_error_fini(&error);
+	exit(1);
+}
+
 int
 main(void)
 {
@@ -135,5 +178,8 @@ main(void)
 		check_invalid("{ if self.output == \"HDMI-A-1\"{");
 	}
 	check_composite_arguments();
+	check_single_quotes();
+	check_invalid("{ nop 'unterminated }");
+	check_invalid("{ style -g -n nested { nop 'unterminated } }");
 	return (0);
 }

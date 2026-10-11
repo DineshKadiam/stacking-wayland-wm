@@ -367,6 +367,9 @@ separates them.
   before the command runs. Commands run in order, and later statements
   see changes made by earlier commands.
 
+  Single quotes group literal command arguments; double quotes also allow
+  interpolation. For example: **focus -n -F 'self.current_output'**.
+
 ## Expressions
 
 The expression language has no arithmetic; it covers what's needed to choose

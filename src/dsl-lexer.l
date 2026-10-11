@@ -166,8 +166,10 @@ classify_word(const char *word, YYSTYPE *lval, bool *push_cmd_arg)
 
 %x CMDARG
 %x CMDSTR
+%x CMDSINGLE
 %x CMDBODY
 %x CMDBODYSTR
+%x CMDBODYSINGLE
 %x CMDBODYCOMMENT
 %x INTERP
 %x STRLIT
@@ -213,12 +215,18 @@ DEC	[0-9]+\.[0-9]+
 				yy_push_state(CMDSTR, yyscanner);
 				return (continuation ? STR_CONT_BEGIN : STR_BEGIN);
 			}
+	"'"			{
+				bool continuation = yyextra->cmd_arg_continuation;
+				yyextra->cmd_arg_continuation = true;
+				yy_push_state(CMDSINGLE, yyscanner);
+				return (continuation ? STR_CONT_BEGIN : STR_BEGIN);
+			}
 	"}"			{
 				/* Re-scan as a block close. */
 				yy_pop_state(yyscanner);
 				yyless(0);
 			}
-	[^ \t\n;#{}\"]+		{
+	[^ \t\n;#{}\"']+		{
 				bool continuation = yyextra->cmd_arg_continuation;
 				yyextra->cmd_arg_continuation = true;
 				yylval->str = xstrdup(yytext);
@@ -226,10 +234,32 @@ DEC	[0-9]+\.[0-9]+
 			}
 }
 
+	/* Single quotes group literal text without escapes or interpolation. */
+<CMDSINGLE>{
+	"'"			{
+				yy_pop_state(yyscanner);
+				return (STR_END);
+			}
+	[^'\n]+			{
+				yylval->str = xstrdup(yytext);
+				return (RAW_STRING);
+			}
+	\n			{
+				yyextra->col = 1;
+				yylval->str = xstrdup("\n");
+				return (RAW_STRING);
+			}
+}
+
 	/* A brace-delimited command argument remains one argv element while
 	 * interpolation expressions are still exposed to the parser.
 	 */
 <CMDBODY>{
+	"'"			{
+				yy_push_state(CMDBODYSINGLE, yyscanner);
+				yylval->str = xstrdup(yytext);
+				return (RAW_STRING);
+			}
 	"#{"			{
 				yy_push_state(INTERP, yyscanner);
 				return (INTERP_BEGIN);
@@ -262,8 +292,25 @@ DEC	[0-9]+\.[0-9]+
 				yylval->str = xstrdup("\n");
 				return (RAW_STRING);
 			}
-	[^#{}\"\n]+		{
+	[^#{}\"'\n]+		{
 				yylval->str = xstrdup(yytext);
+				return (RAW_STRING);
+			}
+}
+
+<CMDBODYSINGLE>{
+	"'"			{
+				yy_pop_state(yyscanner);
+				yylval->str = xstrdup(yytext);
+				return (RAW_STRING);
+			}
+	[^'\n]+			{
+				yylval->str = xstrdup(yytext);
+				return (RAW_STRING);
+			}
+	\n			{
+				yyextra->col = 1;
+				yylval->str = xstrdup("\n");
 				return (RAW_STRING);
 			}
 }
