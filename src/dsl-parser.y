@@ -82,6 +82,7 @@ record_error(struct dsl_parse_ctx *ctx, YYLTYPE *loc, const char *msg)
 struct dsl_source_spec {
 	enum dsl_source	 src;
 	struct dsl_node *where;	/* NULL = no where clause */
+	bool mru;
 };
 }
 
@@ -97,7 +98,7 @@ struct dsl_source_spec {
 
 %token LBRACE RBRACE LBRACKET RBRACKET LPAREN RPAREN
 %token COMMA DOT EQUALS
-%token LET FOR IN IF ELSE BREAK CONTINUE WHERE AND OR NOT MATCHES
+%token LET FOR IN IF ELSE BREAK CONTINUE WHERE ORDER AND OR NOT MATCHES
 %token SELF
 %token TRUE_LIT FALSE_LIT NIL_LIT
 %token <src> SOURCE_NAME
@@ -114,6 +115,7 @@ struct dsl_source_spec {
 %type <node> expr or_expr and_expr not_expr rel_expr atom path list_literal
 %type <node> list_items
 %type <source_spec> source
+%type <boolean> source_order
 
 %destructor { xfree($$); } <str>
 
@@ -165,20 +167,41 @@ for_stmt
 		{
 			$$ = dsl_node_for(ctx->ast, @1.first_line,
 			    @1.first_column, $2, $4.src, $4.where, $5);
+			$$->u.forstmt.mru = $4.mru;
 			xfree($2);
+			if ($4.mru && $4.src != DSL_SRC_WINDOWS) {
+				yyerror(&@4, ctx, scanner, "order mru requires windows");
+				YYERROR;
+			}
 		}
 	;
 
 source
-	: LPAREN SOURCE_NAME RPAREN
+	: LPAREN SOURCE_NAME source_order RPAREN
 		{
 			$$.src	 = $2;
 			$$.where = NULL;
+			$$.mru = $3;
 		}
-	| LPAREN SOURCE_NAME WHERE expr RPAREN
+	| LPAREN SOURCE_NAME WHERE expr source_order RPAREN
 		{
 			$$.src	 = $2;
 			$$.where = $4;
+			$$.mru = $5;
+		}
+	;
+
+source_order
+	: %empty { $$ = false; }
+	| ORDER IDENT
+		{
+			bool valid = strcmp($2, "mru") == 0;
+			xfree($2);
+			if (!valid) {
+				yyerror(&@2, ctx, scanner, "expected order mru");
+				YYERROR;
+			}
+			$$ = true;
 		}
 	;
 

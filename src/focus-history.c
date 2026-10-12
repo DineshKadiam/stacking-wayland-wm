@@ -27,10 +27,11 @@ static uint64_t sequence;
 static struct cow_seat *cycle_seat;
 static uint32_t cycle_modifiers;
 static struct cow_view *cycle_target;
-static struct entry {
+struct entry {
 	struct cow_view *view;
 	size_t order;
-} *entries;
+};
+static struct cow_view **entries;
 static size_t count;
 
 void
@@ -66,8 +67,8 @@ void
 cow_focus_history_forget(struct cow_view *view)
 {
 	for (size_t i = 0; i < count; i++) {
-		if (entries[i].view == view)
-			entries[i].view = NULL;
+		if (entries[i] == view)
+			entries[i] = NULL;
 	}
 	if (cycle_target == view)
 		cycle_target = NULL;
@@ -89,6 +90,27 @@ compare_entries(const void *a, const void *b)
 	return (left->order > right->order) - (left->order < right->order);
 }
 
+struct cow_view **
+cow_focus_mru_snapshot(size_t *n)
+{
+	size_t capacity = wl_list_length(&cow_wm.views);
+	struct entry *sorted = xcalloc(capacity + 1, sizeof(*sorted));
+	*n = 0;
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link) {
+		if (!view->closed) {
+			sorted[*n] = (struct entry){ view, *n };
+			(*n)++;
+		}
+	}
+	qsort(sorted, *n, sizeof(*sorted), compare_entries);
+	struct cow_view **views = xcalloc(*n + 1, sizeof(*views));
+	for (size_t i = 0; i < *n; i++)
+		views[i] = sorted[i].view;
+	xfree(sorted);
+	return views;
+}
+
 struct cow_view *
 cow_focus_mru_next(bool forward, bool (*eligible)(const struct cow_view *))
 {
@@ -103,18 +125,12 @@ cow_focus_mru_next(bool forward, bool (*eligible)(const struct cow_view *))
 		cow_focus_cycle_end();
 	struct cow_view *focused = cow_wm_effective_focus();
 	if (entries == NULL) {
-		size_t capacity = wl_list_length(&cow_wm.views);
-		if (capacity == 0)
-			return NULL;
-		entries = xcalloc(capacity, sizeof(*entries));
-		struct cow_view *view;
-		wl_list_for_each(view, &cow_wm.views, wm_link) {
-			if (eligible(view)) {
-				entries[count] = (struct entry){ view, count };
-				count++;
-			}
+		size_t n;
+		entries = cow_focus_mru_snapshot(&n);
+		for (size_t i = 0; i < n; i++) {
+			if (eligible(entries[i]))
+				entries[count++] = entries[i];
 		}
-		qsort(entries, count, sizeof(*entries), compare_entries);
 		cycle_seat = seat;
 		cycle_modifiers = modifiers;
 	}
@@ -125,7 +141,7 @@ cow_focus_mru_next(bool forward, bool (*eligible)(const struct cow_view *))
 	/* Start at the appropriate end when focus is outside the filter. */
 	size_t index = forward ? count - 1 : 0;
 	for (size_t i = 0; i < count; i++) {
-		if (entries[i].view == focused) {
+		if (entries[i] == focused) {
 			index = i;
 			break;
 		}
@@ -133,7 +149,7 @@ cow_focus_mru_next(bool forward, bool (*eligible)(const struct cow_view *))
 	struct cow_view *next = NULL;
 	for (size_t i = 0; i < count; i++) {
 		index = forward ? (index + 1) % count : (index + count - 1) % count;
-		struct cow_view *view = entries[index].view;
+		struct cow_view *view = entries[index];
 		if (view != NULL && eligible(view)) {
 			next = view;
 			break;

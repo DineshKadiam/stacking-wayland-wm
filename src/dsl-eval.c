@@ -604,7 +604,8 @@ exec_stmt(struct dsl_eval_ctx *ctx, struct dsl_env *env, struct dsl_node *n)
 		return;
 	}
 	case DSL_N_FOR: {
-		struct state_value *list = state_snapshot_collection(
+		struct state_value *list = n->u.forstmt.mru ?
+		    state_snapshot_windows_mru() : state_snapshot_collection(
 		    state_source_from_dsl(n->u.forstmt.src));
 		if (list == NULL)
 			return;

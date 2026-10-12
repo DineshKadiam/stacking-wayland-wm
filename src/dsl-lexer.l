@@ -104,6 +104,8 @@ classify_word(const char *word, YYSTYPE *lval, bool *push_cmd_arg)
 		return (CONTINUE);
 	if (strcmp(word, "where") == 0)
 		return (WHERE);
+	if (strcmp(word, "order") == 0)
+		return (ORDER);
 	if (strcmp(word, "and") == 0)
 		return (AND);
 	if (strcmp(word, "or") == 0)

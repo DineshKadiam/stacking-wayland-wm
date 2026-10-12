@@ -17,12 +17,15 @@
 #define COW_FOCUS_HISTORY_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 struct cow_view;
 struct cow_seat;
 
 struct cow_view *cow_focus_mru_next(bool, bool (*)(const struct cow_view *));
+/* Caller owns the array; views are borrowed. Does not alter circulation. */
+struct cow_view **cow_focus_mru_snapshot(size_t *);
 void cow_focus_history_changed(struct cow_view *);
 void cow_focus_history_forget(struct cow_view *);
 void cow_focus_cycle_end(void);

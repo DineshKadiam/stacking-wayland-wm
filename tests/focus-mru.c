@@ -78,6 +78,12 @@ main(void)
 	cow_wm_set_focused_view(&c);
 	uint64_t original = c.focus_seq;
 	run("focus -n -O mru", true, &b);
+	/* Reading the order must not end or advance a held-key cycle. */
+	size_t n;
+	struct cow_view **ordered = cow_focus_mru_snapshot(&n);
+	CHECK(n == 3 && ordered[0] == &c && ordered[1] == &b && ordered[2] == &a);
+	free(ordered);
+	CHECK(c.focus_seq == original);
 	/* A follow operation can temporarily clear focus before settling. */
 	cow_wm_set_focused_view(NULL);
 	settle();
@@ -126,6 +132,22 @@ main(void)
 	CHECK(a.focus_seq > c.focus_seq);
 	cow_focus_cycle_end();
 	cow_wm.current_interaction_seat = NULL;
+	a.content_width = 100;
+	c.content_width = 200;
+	run("script { for w in (windows order mru) { set step #{w.width} } }",
+	    true, &a);
+	CHECK(cow_config->step == 200);
+	run("script { for w in (windows where w.width == 100 order mru) { "
+	    "set step #{w.width} } }", true, &a);
+	CHECK(cow_config->step == 100);
+	/* Unordered loops retain their original list order. */
+	run("script { for w in (windows) { set step #{w.width} } }", true, &a);
+	CHECK(cow_config->step == 100);
+	/* Equal recency (including never-focused windows) is stable. */
+	a.focus_seq = c.focus_seq;
+	ordered = cow_focus_mru_snapshot(&n);
+	CHECK(n == 2 && ordered[0] == &c && ordered[1] == &a);
+	free(ordered);
 	cow_wm_set_focused_view(NULL);
 	wl_list_remove(&a.wm_link);
 	wl_list_remove(&c.wm_link);

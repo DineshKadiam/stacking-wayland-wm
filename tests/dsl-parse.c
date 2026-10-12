@@ -178,6 +178,10 @@ main(void)
 		check_invalid("{ if self.output == \"HDMI-A-1\"{");
 	}
 	check_composite_arguments();
+	check_valid("{ for w in (windows order mru) { nop } }");
+	check_valid("{ for w in (windows where w.current_desk order mru) { nop } }");
+	check_invalid("{ for o in (outputs order mru) { nop } }");
+	check_invalid("{ for w in (windows order invalid) { nop } }");
 	check_single_quotes();
 	check_invalid("{ nop 'unterminated }");
 	check_invalid("{ style -g -n nested { nop 'unterminated } }");

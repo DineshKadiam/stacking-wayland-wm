@@ -51,6 +51,7 @@ enum state_source {
  * when done.
  */
 struct state_value *state_snapshot_collection(enum state_source);
+struct state_value *state_snapshot_windows_mru(void);
 struct state_value *state_snapshot_view(const struct cow_view *);
 struct state_value *state_snapshot_container(const struct cow_container *);
 struct state_value *state_snapshot_pane(const struct cow_container *,

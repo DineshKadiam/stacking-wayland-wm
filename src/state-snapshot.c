@@ -33,6 +33,7 @@
 #include "cow/colour.h"
 #include "cow/config.h"
 #include "cow/decoration.h"
+#include "cow/focus-history.h"
 #include "cow/memory.h"
 #include "cow/menu.h"
 #include "cow/output.h"
@@ -661,6 +662,21 @@ state_snapshot_alias(const struct cow_alias *alias)
 	if (alias->parameters != NULL)
 		rec_set_string(record, "parameters", alias->parameters);
 	return (record);
+}
+
+struct state_value *
+state_snapshot_windows_mru(void)
+{
+	size_t count;
+	struct cow_view **views = cow_focus_mru_snapshot(&count);
+	struct state_value *list = state_value_list();
+	for (size_t i = 0; i < count; i++) {
+		struct state_value *record = state_snapshot_view(views[i]);
+		state_list_append(list, record);
+		state_value_unref(record);
+	}
+	xfree(views);
+	return list;
 }
 
 struct state_value *

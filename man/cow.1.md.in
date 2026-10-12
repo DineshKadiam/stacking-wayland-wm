@@ -399,6 +399,20 @@ For example, match every named cowiconman instance on a particular output:
 
 ## Sources
 
+Iterating over windows uses the insertion order.  It is possible to use a MRU
+(Most Recently Used) order, with **order mru**.  For example@
+
+    menu-clear RecentWindows
+    script {
+        for w in (windows where w.current_desk order mru) {
+            menu-add RecentWindows "#{w.title}" "focus -t '#{w.id}' -f"
+        }
+    }
+
+Looping over windows with MRU does not modify the window ordering.
+
+**order mru** applies only to windows.
+
 Each iterable source yields records whose fields match the corresponding **show
 -a** topic JSON. Common window fields include **id**, **app\_id**, **title**,
 **desk**, **output**, **layer**, **focused**, **iconified**,

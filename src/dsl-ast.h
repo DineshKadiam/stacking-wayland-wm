@@ -128,6 +128,7 @@ struct dsl_node {
 		struct {
 			char		*var;
 			enum dsl_source	 src;
+			bool mru;
 			struct dsl_node *where; /* may be NULL */
 			struct dsl_node *body;
 		} forstmt;
