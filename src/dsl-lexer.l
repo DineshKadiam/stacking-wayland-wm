@@ -174,6 +174,7 @@ classify_word(const char *word, YYSTYPE *lval, bool *push_cmd_arg)
 %x CMDBODYSINGLE
 %x CMDBODYCOMMENT
 %x INTERP
+%x FIELD
 %x STRLIT
 
 ID	[A-Za-z_][A-Za-z0-9_-]*
@@ -182,7 +183,7 @@ DEC	[0-9]+\.[0-9]+
 
 %%
 
-<INITIAL,INTERP>{
+<INITIAL,INTERP,FIELD>{
 	[ \t]+			{ /* skip */ }
 	\n			{ yyextra->col = 1; }
 	"#"[^\n]*		{ /* line comment */ }
@@ -407,6 +408,19 @@ DEC	[0-9]+\.[0-9]+
 			}
 }
 
+	/* After a dot, command names and DSL keywords are ordinary field names. */
+<FIELD>{
+	{ID}			{
+				yy_pop_state(yyscanner);
+				yylval->str = xstrdup(yytext);
+				return (IDENT);
+			}
+	.			{
+				yy_pop_state(yyscanner);
+				return (yytext[0]);
+			}
+}
+
 <INITIAL,INTERP>{
 	"{"			{ return (LBRACE); }
 	"}"			{ return (RBRACE); }
@@ -415,7 +429,10 @@ DEC	[0-9]+\.[0-9]+
 	"("			{ return (LPAREN); }
 	")"			{ return (RPAREN); }
 	","			{ return (COMMA); }
-	"."			{ return (DOT); }
+	"."			{
+				yy_push_state(FIELD, yyscanner);
+				return (DOT);
+			}
 	"=="			{
 				yylval->cmp = DSL_CMP_EQ;
 				return (CMP_OP);

@@ -30,6 +30,9 @@ cmd_find_cmd(const char *name)
 	static struct cmd_entry bind = { .name = "bind" };
 	static struct cmd_entry style = { .name = "style" };
 	static struct cmd_entry focus = { .name = "focus" };
+	static struct cmd_entry desk = { .name = "desk" };
+	static struct cmd_entry menu_add = { .name = "menu-add" };
+	static struct cmd_entry menu_show = { .name = "menu-show" };
 
 	if (strcmp(name, "nop") == 0)
 		return (&nop);
@@ -37,6 +40,12 @@ cmd_find_cmd(const char *name)
 		return (&style);
 	if (strcmp(name, "focus") == 0)
 		return (&focus);
+	if (strcmp(name, "desk") == 0)
+		return (&desk);
+	if (strcmp(name, "menu-add") == 0)
+		return (&menu_add);
+	if (strcmp(name, "menu-show") == 0)
+		return (&menu_show);
 	return (strcmp(name, "bind") == 0 ? &bind : NULL);
 }
 
@@ -178,6 +187,15 @@ main(void)
 		check_invalid("{ if self.output == \"HDMI-A-1\"{");
 	}
 	check_composite_arguments();
+	check_valid("{ for w in (windows) {\n"
+	    "menu-add TestMenu1 \"#{w.desk}: #{w.title}\" \"focus -f -i #{w.id}\"\n"
+	    "}\nmenu-show TestMenu1 -c\n}");
+	check_valid("{ for w in (windows where w.desk == 1) {\n"
+	    "menu-add TestMenu2 \"#{w.title}\" \"focus -f -i #{w.id}\"\n"
+	    "}\nmenu-show TestMenu2 -c\n}");
+	check_valid("{ if self.desk == 1 { desk -d 2 } }");
+	check_valid("{ nop #{w.order} #{w.windows} #{w.focus} #{w.if} }");
+	check_invalid("{ nop #{w.} }");
 	check_valid("{ for w in (windows order mru) { nop } }");
 	check_valid("{ for w in (windows where w.current_desk order mru) { nop } }");
 	check_invalid("{ for o in (outputs order mru) { nop } }");
