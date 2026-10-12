@@ -259,6 +259,40 @@ pointer_op_group_contains(const struct cow_pointer_op *op,
 	return false;
 }
 
+/* Extra axes in the visible frame contour, rather than its bounding box.
+ * Include the border around each titlebar end, just as the renderer does.
+ */
+static bool
+squeezed_snap_box(const struct cow_view *view, struct cow_box *box)
+{
+	if (view->sd != COW_SHADE_NONE || view->fullscreen ||
+	    view->dec.title_thickness <= 0)
+		return false;
+	struct cow_box title = cow_titlebar_squeezed_rect(view);
+	struct cow_box frame = cow_view_frame_box(view);
+	int bw = view->dec.border_width;
+	int tt = view->dec.title_thickness;
+	bool vertical = cow_titlebar_is_vertical(view->cfg.titlebar.position);
+	if (vertical ? title.height >= frame.height - 2 * bw :
+	    title.width >= frame.width - 2 * bw)
+		return false;
+	*box = frame;
+	if (vertical) {
+		box->y += title.y - bw;
+		box->height = title.height + 2 * bw;
+		box->width -= tt;
+		if (view->cfg.titlebar.position == COW_TITLEBAR_LEFT)
+			box->x += tt;
+	} else {
+		box->x += title.x - bw;
+		box->width = title.width + 2 * bw;
+		box->height -= tt;
+		if (view->cfg.titlebar.position == COW_TITLEBAR_TOP)
+			box->y += tt;
+	}
+	return true;
+}
+
 static void
 snap_edges(struct cow_view *view, int *frame_left, int *frame_top,
     int *frame_right, int *frame_bottom, uint32_t resize_edges,
@@ -329,6 +363,18 @@ snap_edges(struct cow_view *view, int *frame_left, int *frame_top,
 		try_snap(ft, ot, &best_dt, &snap_t);
 		try_snap(fb, ot, &best_db, &snap_b);
 		try_snap(fb, ob, &best_db, &snap_b);
+
+		struct cow_box squeezed;
+		if (squeezed_snap_box(other, &squeezed)) {
+			int xs[] = { squeezed.x, squeezed.x + squeezed.width };
+			int ys[] = { squeezed.y, squeezed.y + squeezed.height };
+			for (int i = 0; i < 2; i++) {
+				try_snap(fl, xs[i], &best_dl, &snap_l);
+				try_snap(fr, xs[i], &best_dr, &snap_r);
+				try_snap(ft, ys[i], &best_dt, &snap_t);
+				try_snap(fb, ys[i], &best_db, &snap_b);
+			}
+		}
 	}
 
 	/* Apply snaps */

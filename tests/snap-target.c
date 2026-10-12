@@ -75,6 +75,30 @@ main(void)
 			CHECK(r == (policy == 1 ? 305 : 300));
 		}
 	}
+	/* Squeezed frame axes follow the rendered title in every orientation. */
+	target.dec.border_width = 4;
+	target.dec.title_thickness = 20;
+	target.cfg.titlebar.squeeze.mode = COW_SQUEEZE_FIXED;
+	target.cfg.titlebar.squeeze.width = 40;
+	target.cfg.titlebar.squeeze.justify = COW_JUST_CENTRE;
+	enum cow_titlebar_position positions[] = { COW_TITLEBAR_TOP,
+	    COW_TITLEBAR_BOTTOM, COW_TITLEBAR_LEFT, COW_TITLEBAR_RIGHT };
+	for (size_t i = 0; i < sizeof positions / sizeof positions[0]; i++) {
+		target.cfg.titlebar.position = positions[i];
+		struct cow_box box;
+		CHECK(squeezed_snap_box(&target, &box));
+		bool vertical = cow_titlebar_is_vertical(positions[i]);
+		CHECK((vertical ? box.height : box.width) == 48);
+		CHECK((vertical ? box.width : box.height) == 108);
+		CHECK(box.x == (vertical ? 296 : 326));
+		CHECK(box.y == (vertical ? 326 : 296));
+		int l = box.x + 3, t = box.y + 3, r = l + 10, b = t + 10;
+		snap_edges(&moving, &l, &t, &r, &b, false, NULL);
+		CHECK(l == box.x && t == box.y);
+		target.cfg.titlebar.squeeze.width = 100;
+		CHECK(!squeezed_snap_box(&target, &box));
+		target.cfg.titlebar.squeeze.width = 40;
+	}
 	wl_list_remove(&target.wm_link);
 	cow_view_cfg_fini(&target.cfg);
 	cow_style_fini();

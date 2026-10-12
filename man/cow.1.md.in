@@ -1158,6 +1158,10 @@ own snapping or focus behaviour:
 Window queries and DSL window records expose this as **snap_target**.
 Output boundaries remain snap targets regardless of this setting.
 
+Squeezed titlebars also provide snap targets at their ends and along the
+exposed frame edge. These extra targets disappear when the titlebar fills
+the edge or the window is shaded.
+
 An event rule can then make a particular terminal an explicit exception:
 
     rule -g -T on-map -n build-log -s '/build log/' script {
