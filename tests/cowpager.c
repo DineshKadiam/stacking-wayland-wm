@@ -116,6 +116,37 @@ main(void)
 		CHECK((red_vertical > 0) == visible);
 		CHECK((red_horizontal > 0) == visible);
 	}
+	/* Page images overlay inherited colours, but explicit pager colours win. */
+	char tile[] = "/tmp/cowpager-tile.XXXXXX.xpm";
+	int fd = mkstemps(tile, 4);
+	CHECK(fd >= 0);
+	FILE *file = fdopen(fd, "w");
+	CHECK(file != NULL);
+	CHECK(fputs("/* XPM */\nstatic char *tile[] = {\n"
+	    "\"2 1 2 1\",\n\"g c #00ff00\",\n\"b c #0000ff\",\n\"gb\"};\n", file) >= 0);
+	CHECK(fclose(file) == 0);
+	struct cow_module_page_background page = {
+		.desk = 0, .col = 0, .row = 0, .has_colour = true,
+		.colour = { 1, 0, 0, 1 }, .image = tile,
+	};
+	outputs[0].page_backgrounds = &page;
+	outputs[0].n_page_backgrounds = 1;
+	fill_output_backgrounds(cr, &st, &canvas, 0, 0, 0, 0, 0, 100, 100);
+	cairo_surface_flush(image);
+	uint32_t *pixel = (uint32_t *)cairo_image_surface_get_data(image);
+	CHECK(pixel[0] == 0xff00ff00);
+	CHECK(pixel[1] == 0xff0000ff && pixel[2] == 0xff00ff00);
+	CHECK(unlink(tile) == 0);
+	page.image = "none";
+	fill_output_backgrounds(cr, &st, &canvas, 0, 0, 0, 0, 0, 100, 100);
+	cairo_surface_flush(image);
+	CHECK(pixel[0] == 0xffff0000);
+	page.image = tile;
+	cfg.page_bg_set = true;
+	fill_output_backgrounds(cr, &st, &canvas, 0, 0, 0, 0, 0, 100, 100);
+	cairo_surface_flush(image);
+	CHECK(pixel[0] == 0xffff0000);
+	cow_image_cache_clear(&background_cache);
 	cairo_destroy(cr);
 	cairo_surface_destroy(image);
 	free(overlay_handles);

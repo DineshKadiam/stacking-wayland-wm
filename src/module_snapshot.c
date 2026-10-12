@@ -96,6 +96,30 @@ parse_outputs(struct cow_module_snapshot *snapshot, cJSON *array)
 			memcpy(output->background, theme.background,
 			    sizeof(output->background));
 		parse_desks(output, cJSON_GetObjectItem(item, "desks"));
+		cJSON *image = cJSON_GetObjectItem(item, "background_image");
+		if (cJSON_IsString(image))
+			output->background_image = xstrdup(image->valuestring);
+		cJSON *pages = cJSON_GetObjectItem(item, "page_backgrounds");
+		if (cJSON_IsArray(pages) && cJSON_GetArraySize(pages) > 0) {
+			output->page_backgrounds = xcalloc(cJSON_GetArraySize(pages),
+			    sizeof(*output->page_backgrounds));
+			cJSON *page;
+			cJSON_ArrayForEach(page, pages) {
+				struct cow_module_theme colours;
+				if (!cow_module_theme_parse(page, &colours))
+					continue;
+				struct cow_module_page_background *bg =
+				    &output->page_backgrounds[output->n_page_backgrounds++];
+				bg->desk = json_int(page, "desk");
+				bg->col = json_int(page, "col");
+				bg->row = json_int(page, "row");
+				bg->has_colour = colours.has_background;
+				memcpy(bg->colour, colours.background, sizeof(bg->colour));
+				image = cJSON_GetObjectItem(page, "background_image");
+				if (cJSON_IsString(image))
+					bg->image = xstrdup(image->valuestring);
+			}
+		}
 	}
 	snapshot->n_outs = index;
 	return true;
@@ -152,8 +176,13 @@ cow_module_snapshot_fini(struct cow_module_snapshot *snapshot)
 {
 	if (snapshot == NULL)
 		return;
-	for (size_t i = 0; i < snapshot->n_outs; i++)
+	for (size_t i = 0; i < snapshot->n_outs; i++) {
 		xfree(snapshot->outs[i].desks);
+		xfree(snapshot->outs[i].background_image);
+		for (size_t j = 0; j < snapshot->outs[i].n_page_backgrounds; j++)
+			xfree(snapshot->outs[i].page_backgrounds[j].image);
+		xfree(snapshot->outs[i].page_backgrounds);
+	}
 	xfree(snapshot->outs);
 	xfree(snapshot->wins);
 	*snapshot = (struct cow_module_snapshot){ 0 };

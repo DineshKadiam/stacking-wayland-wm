@@ -41,6 +41,21 @@ make_snapshot(void)
 		cJSON_AddNumberToObject(output, "output_w", 1920);
 		cJSON_AddNumberToObject(output, "output_h", 1080);
 		cJSON_AddBoolToObject(output, "current", i == 23);
+		cJSON *pages = cJSON_AddArrayToObject(output, "page_backgrounds");
+		cJSON *page = cJSON_CreateObject();
+		cJSON_AddNumberToObject(page, "desk", 2);
+		cJSON_AddNumberToObject(page, "col", 1);
+		cJSON_AddNumberToObject(page, "row", 0);
+		cJSON_AddStringToObject(page, "background", "0xff0000");
+		cJSON_AddStringToObject(page, "background_image", "/tmp/tile.xpm");
+		if (i == 2)
+			cJSON_DeleteItemFromObject(page, "background");
+		cJSON_AddItemToArray(pages, page);
+		/* Accept both older snapshots and outputs without overrides. */
+		if (i == 0)
+			cJSON_DeleteItemFromObject(output, "page_backgrounds");
+		else if (i == 1)
+			cJSON_DeleteItemFromArray(pages, 0);
 		cJSON *desks = cJSON_AddArrayToObject(output, "desks");
 		for (int d = 0; d < 40; d++) {
 			cJSON *desk = cJSON_CreateObject();
@@ -84,6 +99,16 @@ main(void)
 		failed = 1;
 	}
 	if (snapshot.n_outs != 24 || snapshot.outs[23].n_desks != 40 ||
+	    snapshot.outs[0].n_page_backgrounds != 0 ||
+	    snapshot.outs[1].n_page_backgrounds != 0 ||
+	    snapshot.outs[2].n_page_backgrounds != 1 ||
+	    snapshot.outs[2].page_backgrounds[0].has_colour ||
+	    strcmp(snapshot.outs[2].page_backgrounds[0].image, "/tmp/tile.xpm") != 0 ||
+	    snapshot.outs[23].n_page_backgrounds != 1 ||
+	    snapshot.outs[23].page_backgrounds[0].desk != 2 ||
+	    snapshot.outs[23].page_backgrounds[0].col != 1 ||
+	    snapshot.outs[23].page_backgrounds[0].colour[0] != 1.0f ||
+	    !snapshot.outs[23].page_backgrounds[0].has_colour ||
 	    snapshot.n_wins != 600 ||
 	    strcmp(snapshot.wins[599].id, "window-599") != 0) {
 		fprintf(stderr, "snapshot collections were truncated\n");

@@ -29,6 +29,13 @@ struct cow_module_desk {
 	char name[128];
 };
 
+struct cow_module_page_background {
+	int desk, col, row;
+	bool has_colour;
+	float colour[4];
+	char *image;
+};
+
 struct cow_module_output_state {
 	char name[128];
 	int  number;
@@ -42,8 +49,11 @@ struct cow_module_output_state {
 	int  output_w, output_h;
 	bool has_background;
 	float background[4];
+	char *background_image;
 	struct cow_module_desk *desks;
 	size_t n_desks;
+	struct cow_module_page_background *page_backgrounds;
+	size_t n_page_backgrounds;
 };
 
 struct cow_module_window_state {

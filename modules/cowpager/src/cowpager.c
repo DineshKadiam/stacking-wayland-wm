@@ -179,6 +179,7 @@ static int    initial_size_done;
 static struct pager_config cfg;
 
 static struct cow_image_cache icon_cache;
+static struct cow_image_cache background_cache;
 
 /*
  * Drag-an-overlay-plate handles.  The page-grid drawing publishes one
@@ -1193,15 +1194,25 @@ draw_window_icon(cairo_t *cr, const char *path, double x, double y, double w,
 
 static void
 fill_output_backgrounds(cairo_t *cr, const state_t *st, const canvas_t *cv,
-    double cell_x, double cell_y, double cw, double ch)
+    int desk, int col, int row, double cell_x, double cell_y, double cw, double ch)
 {
 	if (cfg.background_set || cfg.page_bg_set)
 		return;
 
 	for (size_t oi = 0; oi < st->n_outs; oi++) {
 		const pout_t *o = &st->outs[oi];
-		if (!o->has_background)
-			continue;
+		const float *colour = o->has_background ? o->background : NULL;
+		const char *image = o->background_image;
+		for (size_t i = 0; i < o->n_page_backgrounds; i++) {
+			const struct cow_module_page_background *bg = &o->page_backgrounds[i];
+			if (bg->desk == desk && ((bg->col == -1 && bg->row == -1) ||
+			    (bg->col == col && bg->row == row))) {
+				colour = bg->has_colour ? bg->colour : NULL;
+				image = bg->image;
+				if (bg->col == col && bg->row == row)
+					break;
+			}
+		}
 		if (!monitor_visible(st, o->name))
 			continue;
 		if (!output_in_canvas(cv, o))
@@ -1218,7 +1229,13 @@ fill_output_backgrounds(cairo_t *cr, const state_t *st, const canvas_t *cv,
 		if (aw <= 0.0 || ah <= 0.0)
 			continue;
 
-		cow_module_cairo_fill(cr, o->background, ax, ay, aw, ah);
+		if (cfg.page_active_bg_set && o->current_desk == desk &&
+		    o->page_col == col && o->page_row == row)
+			continue;
+		if (colour != NULL)
+			cow_module_cairo_fill(cr, colour, ax, ay, aw, ah);
+		cow_image_cache_tile(&background_cache, image, cr,
+		    ax, ay, aw, ah, 1, 1);
 	}
 }
 
@@ -1282,7 +1299,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 			cow_module_cairo_fill(cr,
 			    is_cur ? cfg.page_active_bg : cfg.page_bg, cx, cy,
 			    cw, ch);
-			fill_output_backgrounds(cr, st, cv, cx, cy, cw, ch);
+			fill_output_backgrounds(cr, st, cv, d->nr, pc, pr, cx, cy, cw, ch);
 		}
 	}
 
@@ -3533,6 +3550,7 @@ main(int argc, char *argv[])
 	    sizeof(buffers) / sizeof(buffers[0]));
 	wl_display_disconnect(display);
 	cow_image_cache_clear(&icon_cache);
+	cow_image_cache_clear(&background_cache);
 	pager_selections_free();
 	xfree(cp_outputs);
 	xfree(overlay_handles);

@@ -187,6 +187,12 @@ desk and page backgrounds. **desk.bg**, **page.bg**, and **page.active.bg** may
 be set when those areas should differ. **desk.active.border** controls the
 frame around the active desk.
 
+Without explicit **background** or **page.bg** settings, page cells inherit
+CoW's output, desk and page colours, including those set with **background**.
+Background images tile at their original size to keep patterns recognisable
+in small page cells. An explicit **page.active.bg** overrides the current page
+background, including its image.
+
 **page.separator** sets the colour of the dashed lines between pages. Set it to
 **0x00000000**.
 
