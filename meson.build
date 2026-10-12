@@ -124,6 +124,7 @@ srcs = [
     'src/style.c',
     'src/text.c',
     'src/titlebar.c',
+    'src/frame.c',
     'src/update.c',
     'src/util.c',
     'src/vector.c',

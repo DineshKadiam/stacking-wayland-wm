@@ -3517,16 +3517,6 @@ cow_clamp_dimensions(int *w, int *h)
 		*h = COW_MIN_WINDOW_DIM;
 }
 
-bool
-cow_view_skip_for_expand(const struct cow_view *other,
-    const struct cow_view		       *self)
-{
-	return other == self || other->closed ||
-	    (other->flags & COW_VIEW_ICONIFIED_FLAG) ||
-	    other->output != self->output;
-}
-
-
 void
 cow_view_warp_to(const struct cow_view *view)
 {

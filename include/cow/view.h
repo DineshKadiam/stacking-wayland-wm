@@ -634,9 +634,6 @@ void cow_view_centre(const struct cow_view *, int *, int *);
 
 void cow_clamp_dimensions(int *, int *);
 
-/* Common snap/expand skip predicate. */
-bool cow_view_skip_for_expand(const struct cow_view *, const struct cow_view *);
-
 /* Sync virtual coordinates from rendered coordinates. */
 void cow_view_sync_vxy_from_global(struct cow_view *);
 

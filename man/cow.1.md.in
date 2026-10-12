@@ -1640,7 +1640,11 @@ Move a window. With no flags, begin an interactive move using the mouse.
 **-n**
 
 : With **-d**, snap to the nearest edge instead of stepping. It may be
-  combined with **-w** as **-nw**.
+  combined with **-w** as **-nw**. Window edges provide alignment targets
+  along the movement path, allowing windows to fit beside squeezed
+  titlebars. The exposed border beside a squeezed titlebar also provides
+  an alignment target, so windows can line up before moving into the gap.
+  Repeat the move to pass a window already reached.
 
 **-w**
 
@@ -1988,6 +1992,10 @@ needed for these keys and normal keyboard input resumes when it closes.
 
 Expand a window to fill available space between windows, or the whole monitor
 if the window is the only window on that monitor.
+
+Expansion respects squeezed titlebars and their exposed frame edges. When
+expanding in all directions, horizontal growth is resolved before vertical
+growth to avoid overlapping neighbouring windows.
 
 Use **window-maximize -k** after expanding to retain the original window
 position so that it can be unmaximized.

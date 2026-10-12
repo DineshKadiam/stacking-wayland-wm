@@ -16,6 +16,7 @@
 
 #include "../src/pointer_op.c"
 #include "cow/cmd.h"
+#include "cow/frame.h"
 #include "cow/style.h"
 
 #define CHECK(x) do { \
@@ -86,7 +87,7 @@ main(void)
 	for (size_t i = 0; i < sizeof positions / sizeof positions[0]; i++) {
 		target.cfg.titlebar.position = positions[i];
 		struct cow_box box;
-		CHECK(squeezed_snap_box(&target, &box));
+		CHECK(cow_titlebar_snap_box(&target, &box));
 		bool vertical = cow_titlebar_is_vertical(positions[i]);
 		CHECK((vertical ? box.height : box.width) == 48);
 		CHECK((vertical ? box.width : box.height) == 108);
@@ -95,11 +96,116 @@ main(void)
 		int l = box.x + 3, t = box.y + 3, r = l + 10, b = t + 10;
 		snap_edges(&moving, &l, &t, &r, &b, false, NULL);
 		CHECK(l == box.x && t == box.y);
+		/* Approach the exposed side outside the title's span. */
+		struct cow_box probe = { 300, 240, 20, 20 };
+		uint32_t edge = COW_EDGE_BOTTOM;
+		if (positions[i] == COW_TITLEBAR_BOTTOM) {
+			probe.y = 440;
+			edge = COW_EDGE_TOP;
+		} else if (positions[i] == COW_TITLEBAR_LEFT) {
+			probe.x = 240;
+			probe.y = 300;
+			edge = COW_EDGE_RIGHT;
+		} else if (positions[i] == COW_TITLEBAR_RIGHT) {
+			probe.x = 440;
+			probe.y = 300;
+			edge = COW_EDGE_LEFT;
+		}
+		CHECK(cow_frame_travel(&moving, &probe, edge, false, 200) == 36);
+		CHECK(cow_frame_travel(&moving, &probe, edge, true, 200) == 36);
+		struct cow_box outside = probe;
+		if (vertical)
+			outside.y = 500;
+		else
+			outside.x = 500;
+		CHECK(cow_frame_travel(&moving, &outside, edge, false, 200) == 36);
+		CHECK(cow_frame_travel(&moving, &outside, edge, true, 200) == 200);
 		target.cfg.titlebar.squeeze.width = 100;
-		CHECK(!squeezed_snap_box(&target, &box));
+		CHECK(cow_frame_travel(&moving, &outside, edge, false, 200) == 200);
+		target.cfg.titlebar.squeeze.width = 40;
+		cow_frame_extend(&probe, edge, false, 36);
+		CHECK(cow_frame_travel(&moving, &probe, edge, false, 200) == 200);
+		CHECK(cow_frame_travel(&moving, &probe, edge, true, 200) == 0);
+		target.cfg.titlebar.squeeze.width = 100;
+		CHECK(!cow_titlebar_snap_box(&target, &box));
 		target.cfg.titlebar.squeeze.width = 40;
 	}
+	struct cow_box shape[2], bounds = cow_view_frame_box(&target);
+	target.sd = COW_SHADE_NORTH;
+	CHECK(cow_titlebar_frame_rects(&target, &bounds, shape) == 1);
+	target.sd = COW_SHADE_NONE;
+	target.cfg.titlebar.squeeze.mode = COW_SQUEEZE_NONE;
+	CHECK(cow_titlebar_frame_rects(&target, &bounds, shape) == 1);
+	target.cfg.titlebar.squeeze.mode = COW_SQUEEZE_FIXED;
+	/* Travel through the empty strip stops at the body, while travel
+	 * beneath the title stops at its protruding edge instead.
+	 */
+	target.cfg.titlebar.position = COW_TITLEBAR_TOP;
+	struct cow_box beside = { 300, 240, 20, 20 };
+	struct cow_box below_title = { 330, 240, 20, 20 };
+	for (int resize = 0; resize < 2; resize++) {
+		CHECK(cow_frame_travel(&moving, &beside, COW_EDGE_BOTTOM,
+		    resize, 200) == 36);
+		CHECK(cow_frame_travel(&moving, &below_title, COW_EDGE_BOTTOM,
+		    resize, 200) == 16);
+	}
+	/* Repeating a move passes the neighbour, including its body.
+	 * Expansion remains blocked at contact.
+	 */
+	struct cow_box touching = below_title;
+	cow_frame_extend(&touching, COW_EDGE_BOTTOM, false, 16);
+	CHECK(cow_frame_travel(&moving, &touching, COW_EDGE_BOTTOM, false, 200) == 200);
+	CHECK(cow_frame_travel(&moving, &touching, COW_EDGE_BOTTOM, true, 200) == 0);
+	/* Full-width titles leave no passage beside them. */
+	target.cfg.titlebar.squeeze.width = 100;
+	CHECK(cow_frame_travel(&moving, &beside, COW_EDGE_BOTTOM, false, 200) == 16);
+	target.cfg.titlebar.squeeze.width = 40;
+	/* Align with the exposed body edge before moving into the gap. */
+	struct cow_box away = { 500, 240, 20, 20 };
+	CHECK(cow_frame_travel(&moving, &away, COW_EDGE_BOTTOM, false, 200) == 36);
+	cow_frame_extend(&away, COW_EDGE_BOTTOM, false, 36);
+	CHECK(cow_frame_travel(&moving, &away, COW_EDGE_LEFT, false, 200) == 126);
+	CHECK(cow_frame_travel(&moving, &away, COW_EDGE_BOTTOM, true, 200) == 200);
+	target.snap_skip = true;
+	CHECK(cow_frame_travel(&moving, &away, COW_EDGE_LEFT, false, 200) == 200);
+	CHECK(cow_frame_travel(&moving, &beside, COW_EDGE_BOTTOM, false, 200) == 200);
+	target.snap_skip = false;
+	/* The titlebar ends remain separate alignment targets as well. */
+	struct cow_box end = { 276, 276, 20, 20 };
+	CHECK(cow_frame_travel(&moving, &end, COW_EDGE_RIGHT, false, 200) == 30);
+	/* Slide along the exposed north border straight to the titlebar,
+	 * without stopping at the body's right edge or an unrelated window.
+	 */
+	struct cow_box gap = { 450, 276, 20, 20 };
+	struct cow_view unrelated = { .output = &output, .has_dimensions = true,
+	    .x = 420, .y = 500, .content_width = 20, .content_height = 20 };
+	wl_list_insert(&cow_wm.views, &unrelated.wm_link);
+	CHECK(cow_frame_travel(&moving, &gap, COW_EDGE_LEFT, false, 200) == 76);
+	cow_frame_extend(&gap, COW_EDGE_LEFT, false, 76);
+	CHECK(cow_frame_travel(&moving, &gap, COW_EDGE_LEFT, false, 200) == 200);
+	wl_list_remove(&unrelated.wm_link);
+	target.cfg.titlebar.squeeze.width = 100;
+	CHECK(cow_frame_travel(&moving, &end, COW_EDGE_RIGHT, false, 200) == 200);
+	target.cfg.titlebar.squeeze.width = 40;
+	/* Expanding horizontally brings a previously diagonal window into
+	 * the vertical path. Use the enlarged footprint for the second axis.
+	 */
+	cow_frame_extend(&beside, COW_EDGE_RIGHT, true, 40);
+	CHECK(cow_frame_travel(&moving, &beside, COW_EDGE_BOTTOM, true, 200) == 16);
+	/* A moving squeezed title can interlock with an ordinary neighbour. */
+	struct cow_box start = cow_view_frame_box(&target);
 	wl_list_remove(&target.wm_link);
+	struct cow_view obstacle = { .output = &output, .has_dimensions = true,
+	    .x = 300, .y = 240, .content_width = 20, .content_height = 20 };
+	wl_list_insert(&cow_wm.views, &obstacle.wm_link);
+	CHECK(cow_frame_travel(&target, &start, COW_EDGE_TOP, false, 200) == 36);
+	/* Growth shifts a centred title into the obstacle before the body
+	 * reaches it; do not merely test the final, potentially clear position.
+	 */
+	obstacle.x = 300;
+	obstacle.y = 276;
+	CHECK(cow_frame_travel(&target, &start, COW_EDGE_LEFT, true, 200) == 12);
+	wl_list_remove(&obstacle.wm_link);
 	cow_view_cfg_fini(&target.cfg);
 	cow_style_fini();
 	cow_config_destroy(cow_config);

@@ -257,12 +257,80 @@ cow_titlebar_effective_squeeze(const struct cow_view *view,
 	*out = view->cfg.titlebar.squeeze;
 }
 
+/* Combine the body edge and titlebar ends without adding the internal seam
+ * between the two rectangles as a snap target.
+ */
+bool
+cow_titlebar_snap_box(const struct cow_view *view, struct cow_box *box)
+{
+	struct cow_box frame = cow_view_frame_box(view), rects[2];
+	if (cow_titlebar_frame_rects(view, &frame, rects) != 2)
+		return false;
+	bool vertical = cow_titlebar_is_vertical(view->cfg.titlebar.position);
+	if (vertical ? rects[1].height == frame.height :
+	    rects[1].width == frame.width)
+		return false;
+	*box = rects[0];
+	if (vertical) {
+		box->y = rects[1].y;
+		box->height = rects[1].height;
+	} else {
+		box->x = rects[1].x;
+		box->width = rects[1].width;
+	}
+	return true;
+}
+
 struct cow_box
 cow_titlebar_squeezed_rect(const struct cow_view *view)
 {
 	int width, height;
 	cow_view_effective_content_size(view, &width, &height);
 	return cow_titlebar_squeezed_rect_for(view, width, height);
+}
+
+int
+cow_titlebar_frame_rects(const struct cow_view *view,
+    const struct cow_box *frame, struct cow_box rects[2])
+{
+	rects[0] = *frame;
+	struct cow_titlebar_squeeze sq;
+	cow_titlebar_effective_squeeze(view, &sq);
+	int bw = view->dec.border_width;
+	int tt = view->dec.title_thickness;
+	if (sq.mode == COW_SQUEEZE_NONE || tt <= 0 || view->fullscreen ||
+	    view->sd != COW_SHADE_NONE ||
+	    (cow_view_container(view) != NULL && cow_view_container(view)->shaded))
+		return 1;
+	bool vertical = cow_titlebar_is_vertical(view->cfg.titlebar.position);
+	int cw = frame->width - 2 * bw - (vertical ? tt : 0);
+	int ch = frame->height - 2 * bw - (vertical ? 0 : tt);
+	struct cow_box title = cow_titlebar_squeezed_rect_for(view, cw, ch);
+	/* Only the protruding strip is separate; the adjoining border belongs
+	 * to the body. Keeping the parts stable also handles a title growing
+	 * from full-width to squeezed during a resize.
+	 */
+	rects[1] = *frame;
+	if (vertical) {
+		rects[0].width -= tt;
+		rects[1].y += title.y - bw;
+		rects[1].height = title.height + 2 * bw;
+		rects[1].width = tt;
+		if (view->cfg.titlebar.position == COW_TITLEBAR_LEFT)
+			rects[0].x += tt;
+		else
+			rects[1].x += rects[0].width;
+	} else {
+		rects[0].height -= tt;
+		rects[1].x += title.x - bw;
+		rects[1].width = title.width + 2 * bw;
+		rects[1].height = tt;
+		if (view->cfg.titlebar.position == COW_TITLEBAR_TOP)
+			rects[0].y += tt;
+		else
+			rects[1].y += rects[0].height;
+	}
+	return 2;
 }
 
 struct cow_box

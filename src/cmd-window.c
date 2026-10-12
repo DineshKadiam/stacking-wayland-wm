@@ -23,6 +23,7 @@
 #include "cow/compat.h"
 #include "cow/config.h"
 #include "cow/desk_ops.h"
+#include "cow/frame.h"
 #include "cow/keybinding.h"
 #include "cow/output.h"
 #include "cow/titlebar.h"
@@ -783,70 +784,40 @@ do_expand(struct cow_view *view, enum expand_dir dir, bool toggle)
 		cow_view_save_expanded_geometry(view);
 
 	struct cow_box fb  = cow_view_frame_box(view);
-	int	       fx2 = fb.x + fb.width;
-	int	       fy2 = fb.y + fb.height;
-
-	/* Start with current frame edges for constrained directions,
-	 * usable area for unconstrained directions. */
-	int grow_left  = (dir == EXPAND_ALL || dir == EXPAND_LEFT) ? ua->x :
-								     fb.x;
-	int grow_top   = (dir == EXPAND_ALL || dir == EXPAND_UP) ? ua->y : fb.y;
-	int grow_right = (dir == EXPAND_ALL || dir == EXPAND_RIGHT) ?
-	    ua->x + ua->width :
-	    fx2;
-	int grow_bottom = (dir == EXPAND_ALL || dir == EXPAND_DOWN) ?
-	    ua->y + ua->height :
-	    fy2;
-
-	struct cow_container *group = cow_container_top_group(view);
-	struct cow_view *other;
-	wl_list_for_each(other, &cow_wm.views, wm_link)
-	{
-		if (other == view || other->closed || !other->has_dimensions)
+	/* Resolve horizontal growth first, then use that footprint for vertical
+	 * growth. Independent tests against the original size can overlap a
+	 * diagonal neighbour. The swept titlebar is checked as its size changes.
+	 */
+	uint32_t edges = expand_tiled_edges(dir);
+	const uint32_t order[] = { COW_EDGE_LEFT, COW_EDGE_RIGHT,
+	    COW_EDGE_TOP, COW_EDGE_BOTTOM };
+	for (size_t i = 0; i < sizeof order / sizeof order[0]; i++) {
+		uint32_t edge = order[i];
+		if (!(edges & edge))
 			continue;
-		if (group && cow_container_top_group(other) == group)
-			continue;
-		if (other->output != view->output)
-			continue;
-		if (other->desk != view->desk)
-			continue;
-		if (other->flags & COW_VIEW_ICONIFIED_FLAG)
-			continue;
-
-		struct cow_box ob  = cow_view_frame_box(other);
-		int	       ox2 = ob.x + ob.width;
-		int	       oy2 = ob.y + ob.height;
-
-		/* Horizontal constraints (if growing left or right) */
-		if (ob.y < fy2 && oy2 > fb.y) {
-			if ((dir == EXPAND_ALL || dir == EXPAND_LEFT) &&
-			    ox2 <= fb.x && ox2 > grow_left)
-				grow_left = ox2;
-			if ((dir == EXPAND_ALL || dir == EXPAND_RIGHT) &&
-			    ob.x >= fx2 && ob.x < grow_right)
-				grow_right = ob.x;
+		int distance;
+		switch (edge) {
+		case COW_EDGE_LEFT:
+			distance = fb.x - ua->x;
+			break;
+		case COW_EDGE_RIGHT:
+			distance = ua->x + ua->width - fb.x - fb.width;
+			break;
+		case COW_EDGE_TOP:
+			distance = fb.y - ua->y;
+			break;
+		default:
+			distance = ua->y + ua->height - fb.y - fb.height;
+			break;
 		}
-
-		/* Vertical constraints (if growing up or down) */
-		if (ob.x < fx2 && ox2 > fb.x) {
-			if ((dir == EXPAND_ALL || dir == EXPAND_UP) &&
-			    oy2 <= fb.y && oy2 > grow_top)
-				grow_top = oy2;
-			if ((dir == EXPAND_ALL || dir == EXPAND_DOWN) &&
-			    ob.y >= fy2 && ob.y < grow_bottom)
-				grow_bottom = ob.y;
-		}
+		distance = cow_frame_travel(view, &fb, edge, true, distance);
+		cow_frame_extend(&fb, edge, true, distance);
 	}
 
-	int new_x = grow_left + content_x;
-	int new_y = grow_top + content_y;
-	int new_w = (grow_right - grow_left) - frame_extra_w;
-	int new_h = (grow_bottom - grow_top) - frame_extra_h;
-
-	if (new_w < 50)
-		new_w = 50;
-	if (new_h < 50)
-		new_h = 50;
+	int new_x = fb.x + content_x;
+	int new_y = fb.y + content_y;
+	int new_w = fb.width - frame_extra_w;
+	int new_h = fb.height - frame_extra_h;
 
 	cow_view_set_pending_geometry(view, new_x, new_y, new_w, new_h);
 	/* Container parity: see do_maximize.  Without this, expand on a

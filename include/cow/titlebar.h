@@ -69,6 +69,13 @@ struct cow_box cow_titlebar_squeezed_rect_for(const struct cow_view *, int,
     int);
 void cow_titlebar_frame_geometry(const struct cow_view *, int, int, int *, int *,
     int *, int *);
+/* Visible frame as body plus titlebar, in layout coordinates. The supplied
+ * bounding box may describe pending geometry. Returns one or two rectangles.
+ */
+int cow_titlebar_frame_rects(const struct cow_view *, const struct cow_box *,
+    struct cow_box [2]);
+/* Extra snap axes at the exposed body edge and squeezed titlebar ends. */
+bool cow_titlebar_snap_box(const struct cow_view *, struct cow_box *);
 bool cow_titlebar_is_vertical(enum cow_titlebar_position);
 const char *cow_titlebar_position_name(enum cow_titlebar_position);
 

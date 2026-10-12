@@ -22,6 +22,7 @@
 #include "cow/cmd.h"
 #include "cow/config.h"
 #include "cow/desk_ops.h"
+#include "cow/frame.h"
 #include "cow/keybinding.h"
 #include "cow/menu_choice.h"
 #include "cow/output.h"
@@ -790,60 +791,28 @@ do_snap(struct cow_view *view, const char *dir, struct cmd_q *cmdq)
 		return;
 	}
 
+	uint32_t edge;
+	int distance;
 	if (strcmp(dir, "up") == 0) {
-		int		 target = ua->y;
-		struct cow_view *v;
-		wl_list_for_each(v, &cow_wm.views, wm_link)
-		{
-			if (cow_view_skip_for_expand(v, view))
-				continue;
-			struct cow_box vb = cow_view_frame_box(v);
-			int	       edge = vb.y + vb.height;
-			if (edge < frame_top && edge > target)
-				target = edge;
-		}
-		view->y = target + content_y;
+		edge = COW_EDGE_TOP;
+		distance = frame_top - ua->y;
 	} else if (strcmp(dir, "down") == 0) {
-		int		 target = ua->y + ua->height;
-		struct cow_view *v;
-		wl_list_for_each(v, &cow_wm.views, wm_link)
-		{
-			if (cow_view_skip_for_expand(v, view))
-				continue;
-			struct cow_box vb = cow_view_frame_box(v);
-			if (vb.y > frame_bottom && vb.y < target)
-				target = vb.y;
-		}
-		view->y = target - frame_h + content_y;
+		edge = COW_EDGE_BOTTOM;
+		distance = ua->y + ua->height - frame_bottom;
 	} else if (strcmp(dir, "left") == 0) {
-		int		 target = ua->x;
-		struct cow_view *v;
-		wl_list_for_each(v, &cow_wm.views, wm_link)
-		{
-			if (cow_view_skip_for_expand(v, view))
-				continue;
-			struct cow_box vb = cow_view_frame_box(v);
-			int	       edge = vb.x + vb.width;
-			if (edge < frame_left && edge > target)
-				target = edge;
-		}
-		view->x = target + content_x;
+		edge = COW_EDGE_LEFT;
+		distance = frame_left - ua->x;
 	} else if (strcmp(dir, "right") == 0) {
-		int		 target = ua->x + ua->width;
-		struct cow_view *v;
-		wl_list_for_each(v, &cow_wm.views, wm_link)
-		{
-			if (cow_view_skip_for_expand(v, view))
-				continue;
-			struct cow_box vb = cow_view_frame_box(v);
-			if (vb.x > frame_right && vb.x < target)
-				target = vb.x;
-		}
-		view->x = target - frame_w + content_x;
+		edge = COW_EDGE_RIGHT;
+		distance = ua->x + ua->width - frame_right;
 	} else {
 		cmdq_error(cmdq, "snap: unknown direction: %s", dir);
 		return;
 	}
+	distance = cow_frame_travel(view, &fb, edge, false, distance);
+	cow_frame_extend(&fb, edge, false, distance);
+	view->x = fb.x + content_x;
+	view->y = fb.y + content_y;
 
 	apply_move(view);
 }
