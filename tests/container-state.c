@@ -69,6 +69,13 @@ main(void)
 	init_view(&a, "a");
 	init_view(&b, "b");
 	init_view(&d, "d");
+	/* Restart preserves squeeze policy even when a pane's effective title
+	 * is temporarily unsqueezed by its container.
+	 */
+	a.cfg.titlebar.squeeze = (struct cow_titlebar_squeeze){
+		.mode = COW_SQUEEZE_FIXED, .justify = COW_JUST_RIGHT,
+		.width = 240, .offset = -30, .min_width = 90,
+	};
 	struct cow_container *c = cow_container_create(&a, &b);
 	CHECK(cow_container_add(c, &d));
 	CHECK(cow_container_split(&a, &d, COW_CONTAINER_HORIZONTAL, false));
@@ -86,7 +93,14 @@ main(void)
 	cow_wm.focused_view = &b;
 	CHECK(cow_state_save());
 	cow_container_destroy(c);
+	a.cfg.titlebar.squeeze = (struct cow_titlebar_squeeze){0};
 	CHECK(cow_state_restore());
+	CHECK(a.cfg.titlebar.squeeze.mode == COW_SQUEEZE_FIXED);
+	CHECK(a.cfg.titlebar.squeeze.justify == COW_JUST_RIGHT);
+	CHECK(a.cfg.titlebar.squeeze.width == 240);
+	CHECK(a.cfg.titlebar.squeeze.offset == -30);
+	CHECK(a.cfg.titlebar.squeeze.min_width == 90);
+	CHECK(cow_view_cfg_is_override(&a.cfg, COW_VIEW_CFG_TITLEBAR_SQUEEZE));
 	c = cow_view_container(&a);
 	CHECK(c != NULL && c->n_members == 3 && c->active->view == &b);
 	CHECK(c->root->layout.share == 6300);
@@ -127,6 +141,26 @@ main(void)
 	    !cow_view_has_icon(&d));
 	cow_view_deiconify(&b);
 	cow_container_destroy(c);
+
+	/* A fresh view starts with the configured rotation. Restore the live
+	 * position along with squeeze settings, including negative offsets.
+	 */
+	for (enum cow_titlebar_position position = COW_TITLEBAR_TOP;
+	    position <= COW_TITLEBAR_RIGHT; position++) {
+		a.cfg.titlebar.position = position;
+		CHECK(cow_state_save());
+		a.cfg.titlebar.position = (position + 1) % 4;
+		a.cfg.titlebar.squeeze = (struct cow_titlebar_squeeze){0};
+		CHECK(cow_state_restore());
+		CHECK(a.cfg.titlebar.position == position);
+		CHECK(cow_view_cfg_is_override(&a.cfg, COW_VIEW_CFG_TITLEBAR_POSITION));
+		CHECK(a.cfg.titlebar.squeeze.mode == COW_SQUEEZE_FIXED);
+		CHECK(a.cfg.titlebar.squeeze.justify == COW_JUST_RIGHT);
+		CHECK(a.cfg.titlebar.squeeze.width == 240);
+		CHECK(a.cfg.titlebar.squeeze.offset == -30);
+		CHECK(a.cfg.titlebar.squeeze.min_width == 90);
+	}
+	a.cfg.titlebar.position = COW_TITLEBAR_TOP;
 
 	/* The selected window, a whole pane, or every client may disappear. */
 	b.closed = true;

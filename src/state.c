@@ -144,6 +144,15 @@ cow_state_save(void)
 		cJSON_AddNumberToObject(v, "height", view->content_height);
 		cJSON_AddNumberToObject(v, "flags", view->flags);
 		cJSON_AddNumberToObject(v, "layer", view->layer);
+		cJSON_AddNumberToObject(v, "titlebar_position",
+		    view->cfg.titlebar.position);
+		const struct cow_titlebar_squeeze *sq = &view->cfg.titlebar.squeeze;
+		cJSON *squeeze = cJSON_AddObjectToObject(v, "squeeze");
+		cJSON_AddNumberToObject(squeeze, "mode", sq->mode);
+		cJSON_AddNumberToObject(squeeze, "justify", sq->justify);
+		cJSON_AddNumberToObject(squeeze, "width", sq->width);
+		cJSON_AddNumberToObject(squeeze, "offset", sq->offset);
+		cJSON_AddNumberToObject(squeeze, "min_width", sq->min_width);
 		cJSON_AddNumberToObject(v, "z_order",
 		    view_stack_order(view));
 		if (view->keyboard_layout != NULL)
@@ -394,6 +403,46 @@ cow_state_restore(void)
 			}
 			if (vs == NULL)
 				continue;
+
+			long long position;
+			if (cow_json_get_int(vs, "titlebar_position", &position) &&
+			    position >= COW_TITLEBAR_TOP && position <= COW_TITLEBAR_RIGHT) {
+				view->cfg.titlebar.position = position;
+				cow_view_cfg_set_override(&view->cfg,
+				    COW_VIEW_CFG_TITLEBAR_POSITION);
+				view->dec.dirty = true;
+			}
+
+			/* Restore the stored policy, not effective pane/shade geometry.
+			 * Older state files leave the loaded configuration unchanged.
+			 */
+			cJSON *squeeze = cJSON_GetObjectItem(vs, "squeeze");
+			long long mode, justify, width, offset, min_width;
+			if (cow_json_get_int(squeeze, "mode", &mode) &&
+			    mode >= COW_SQUEEZE_NONE && mode <= COW_SQUEEZE_FIXED &&
+			    cow_json_get_int(squeeze, "justify", &justify) &&
+			    justify >= COW_JUST_LEFT && justify <= COW_JUST_RIGHT &&
+			    cow_json_get_int(squeeze, "width", &width) &&
+			    width >= 0 && width <= 32767 &&
+			    cow_json_get_int(squeeze, "offset", &offset) &&
+			    offset >= -32768 && offset <= 32767 &&
+			    cow_json_get_int(squeeze, "min_width", &min_width) &&
+			    min_width >= 0 && min_width <= 32767) {
+				view->cfg.titlebar.squeeze = (struct cow_titlebar_squeeze){
+					.mode = mode, .justify = justify, .width = width,
+					.offset = offset, .min_width = min_width,
+				};
+				const enum cow_view_cfg_option options[] = {
+					COW_VIEW_CFG_TITLEBAR_SQUEEZE,
+					COW_VIEW_CFG_TITLEBAR_SQUEEZE_JUSTIFY,
+					COW_VIEW_CFG_TITLEBAR_SQUEEZE_WIDTH,
+					COW_VIEW_CFG_TITLEBAR_SQUEEZE_OFFSET,
+					COW_VIEW_CFG_TITLEBAR_SQUEEZE_MIN_WIDTH,
+				};
+				for (size_t i = 0; i < sizeof options / sizeof options[0]; i++)
+					cow_view_cfg_set_override(&view->cfg, options[i]);
+				view->dec.dirty = true;
+			}
 
 			const char *keyboard_layout;
 			if (cow_json_get_string(vs, "keyboard_layout",

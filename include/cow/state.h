@@ -21,7 +21,8 @@
 /*
  * Save the current window manager state to a file.
  * State includes: per-view position, sheet assignment, flags, stacking,
- * maximize/shade state, keyboard layout, focus, and per-output current sheet.
+ * maximize/shade state, titlebar position/squeeze, keyboard layout, focus, and
+ * per-output current sheet.
  *
  * Returns true on success.
  */
