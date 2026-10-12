@@ -22,6 +22,7 @@
 #include <unistd.h>
 
 #include "cow/alias.h"
+#include "cow/background.h"
 #include "cow/colour.h"
 #include "cow/compat.h"
 #include "cow/memory.h"
@@ -373,6 +374,7 @@ cow_config_create(void)
 	wl_list_init(&config->decoration_bindings);
 	wl_list_init(&config->aliases);
 	wl_list_init(&config->output_backgrounds);
+	wl_list_init(&config->page_backgrounds);
 	wl_list_init(&config->configured_commands);
 	cow_icon_placement_config_init(config);
 
@@ -477,6 +479,7 @@ cow_config_destroy(struct cow_config *config)
 		xfree(command);
 	}
 	xfree(config->output_bg_image);
+	cow_background_fini(config);
 	xfree(config->menu_style.icon_path);
 	xfree(config->menu_style.side_image);
 	xfree(config->menu_style.font);

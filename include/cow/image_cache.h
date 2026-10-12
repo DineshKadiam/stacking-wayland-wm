@@ -17,6 +17,7 @@
 #define COW_IMAGE_CACHE_H
 
 #include <stdbool.h>
+#include <cairo.h>
 
 #include "cow/draw.h"
 
@@ -29,5 +30,7 @@ struct cow_image_cache {
 void cow_image_cache_clear(struct cow_image_cache *);
 bool cow_image_cache_blit(struct cow_image_cache *, const char *,
     const char *, struct cow_pixbuf *, int, int, int);
+void cow_image_cache_tile(struct cow_image_cache *, const char *, cairo_t *,
+    double, double, double, double, double, double);
 
 #endif

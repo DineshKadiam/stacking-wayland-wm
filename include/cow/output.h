@@ -22,6 +22,7 @@ struct zwp_confined_pointer_v1;
 #include <wayland-client.h>
 
 #include "cow/cow_box.h"
+#include "cow/image_cache.h"
 
 /* Desk limits. */
 #define COW_MAX_DESK_COUNT 32
@@ -110,6 +111,8 @@ struct cow_output {
 	bool			      bg_dirty;
 	char                         *bg_rendered_image;
 	uint32_t                      bg_rendered_colour;
+	int bg_desk, bg_vx, bg_vy;
+	struct cow_image_cache bg_images;
 
 	/* Per-output layer-shell state (opaque to consumers). */
 	struct cow_layer_shell_output *layer_shell_state;

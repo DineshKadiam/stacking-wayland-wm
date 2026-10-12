@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cow/background.h"
 #include "cow/colour.h"
 #include "cow/compat.h"
 #include "cow/config.h"
@@ -64,6 +65,7 @@ output_background_destroy_resources(struct cow_output *output)
 	output->bg_configured = false;
 	xfree(output->bg_rendered_image);
 	output->bg_rendered_image = NULL;
+	cow_image_cache_clear(&output->bg_images);
 	output->bg_dirty      = true;
 }
 
@@ -741,6 +743,16 @@ cow_output_render_background(struct cow_output *output)
 	bool colour_changed = px != output->bg_rendered_colour;
 	bool needs_render = missing || output->bg_dirty || image_changed ||
 	    colour_changed || resized;
+	int desk = output->current_desk != NULL ? output->current_desk->nr : -1;
+	int vx = output->current_desk != NULL ? output->current_desk->page_vx : 0;
+	int vy = output->current_desk != NULL ? output->current_desk->page_vy : 0;
+	bool scoped = cow_config != NULL &&
+	    !wl_list_empty(&cow_config->page_backgrounds);
+	/* Page motion does not invalidate the decoded output wallpaper. */
+	if (needs_render)
+		cow_image_cache_clear(&output->bg_images);
+	needs_render |= scoped && (desk != output->bg_desk ||
+	    vx != output->bg_vx || vy != output->bg_vy);
 
 	if (needs_render) {
 		/* Free old buffer if wrong size or busy */
@@ -767,16 +779,19 @@ cow_output_render_background(struct cow_output *output)
 		};
 		cow_draw_fill_rect(&p, 0, 0, output->width, output->height,
 		    px);
-		if (image != NULL)
+		if (scoped)
+			cow_background_paint(output, &p);
+		if (image != NULL && !scoped)
 			cow_image_render_tiled(image, &p);
 		xstrset(&output->bg_rendered_image, image);
 		output->bg_rendered_colour = px;
+		output->bg_desk = desk;
+		output->bg_vx = vx;
+		output->bg_vy = vy;
 		output->bg_dirty = false;
 	}
 
-	/* The committed surface retains its contents. Do not damage an
-	 * unchanged background on every window update or page-scroll frame.
-	 */
+	/* Leave unchanged background surfaces attached without damage. */
 	if (!needs_render || output->bg_buffer == NULL)
 		return;
 

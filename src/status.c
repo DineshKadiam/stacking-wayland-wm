@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "cow/status.h"
+#include "cow/background.h"
 #include "cow/log.h"
 
 #include <cJSON.h>
@@ -371,6 +372,7 @@ status_add_theme(cJSON *root)
 void
 cow_status_add_output_geometry(cJSON *out, const struct cow_output *output)
 {
+	cJSON_AddItemToObject(out, "page_backgrounds", cow_background_snapshot(output));
 	cJSON_AddStringToObject(out, "name", output->name ? output->name : "");
 	cJSON_AddNumberToObject(out, "number", output->number);
 

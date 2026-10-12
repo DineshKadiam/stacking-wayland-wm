@@ -658,6 +658,31 @@ The following details those commands which operate globally within **cow**.
 Note that the same command might also contain window/output settings, which
 will be also be added under the relevant section in this man page.
 
+## background \[-t output\[:desk\]\] \[-P col,row\] colour|image VALUE|inherit
+
+Set a background colour or image globally, for an output or desk, or for a
+page. Without **-t**, the setting applies to every output and desk. Use
+**:desk** for a desk on all outputs. Output names and **@N** are accepted,
+including when the configuration is read before outputs exist.
+
+**-P** behaves like page option.  Within the same scope, the last setting
+wins. **inherit** removes the property at that scope.  Colours and images
+inherit settings.
+
+Images may be PNG, SVG or XPM and tile over the page colour. Relative paths are
+resolved from the configuration file. **image none** disables an inherited
+image; **image inherit** restores it. Decoded images are cached during
+scrolling.
+
+```conf
+background colour 0x303030
+background -t @1:0 colour 0x304050
+background -t @1:0 -P 1,0 colour 0x503040
+background -t @1:0 -P 1,0 colour inherit
+background -t @1:0 -P 0,0 image textures/cork.xpm
+background -t @1:0 -P 1,0 image none
+```
+
 ## alias \[-p PARAM,...\] name command ... \| alias -d name
 
 Define *name* as an alias for a CoW command. An alias can be used anywhere a

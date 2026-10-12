@@ -503,6 +503,7 @@ struct cow_config {
 	bool  has_output_bg_image;
 
 	struct wl_list output_backgrounds;
+	struct wl_list page_backgrounds;
 	struct wl_list configured_commands;
 
 	/* Menu style overrides (set via 'menu-style') */

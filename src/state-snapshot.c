@@ -41,6 +41,7 @@
 #include "cow/selection.h"
 #include "cow/style.h"
 #include "cow/titlebar.h"
+#include "cow/background.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
@@ -396,6 +397,9 @@ struct state_value *
 state_snapshot_output(const struct cow_output *out)
 {
 	struct state_value *r = state_value_record();
+	cJSON *pages = cow_background_snapshot(out);
+	state_record_set(r, "page_backgrounds", state_value_from_json(pages));
+	cJSON_Delete(pages);
 	char		   colour[16];
 	rec_set_string(r, "name", out->name);
 	rec_set_number(r, "number", out->number);

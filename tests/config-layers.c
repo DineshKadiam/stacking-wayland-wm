@@ -30,6 +30,9 @@
 #include "cow/titlebar.h"
 #include "cow/colour.h"
 #include "cow/alias.h"
+#include "cow/background.h"
+#include "cow/output.h"
+#include "cow/draw.h"
 
 #define CHECK(x)                                                   \
 	do {                                                       \
@@ -256,6 +259,74 @@ main(int argc, char **argv)
 		cow_titlebar_render(&render);
 		CHECK(pixels[80] == cow_colour_to_pixel(dark));
 	}
+	/* Background policy is accepted before outputs exist, and resolves
+	 * independently for each desk/page once outputs are available.
+	 */
+	reset();
+	write_config(user,
+	    "background colour 0x100000\n"
+	    "background -t DP-1 colour 0x200000\n"
+	    "background -t :1 colour 0x300000\n"
+	    "background -t DP-1:1 -P 1,0 colour 0x400000\n"
+	    "background -t DP-1:1 -P 0,1 colour 0x500000\n"
+	    "background -t DP-1:1 -P 0,1 colour inherit\n"
+	    "background -t @1:1 -P 1,1 colour 0x600000\n");
+	CHECK(cow_ipc_load_config(NULL, user));
+	struct cow_output output = { .name = "DP-1", .number = 1 };
+	struct cow_desk desk = { .nr = 1 };
+	wl_list_insert(&cow_wm.outputs, &output.wm_link);
+	float colour[4];
+	CHECK(cow_background_colour(&output, &desk, 1, 0, colour));
+	CHECK(cow_colour_to_pixel(colour) == 0xff400000);
+	CHECK(cow_background_colour(&output, &desk, 0, 1, colour));
+	CHECK(cow_colour_to_pixel(colour) == 0xff300000);
+	CHECK(cow_background_colour(&output, &desk, 1, 1, colour));
+	CHECK(cow_colour_to_pixel(colour) == 0xff600000);
+	output.width = output.height = 4;
+	output.current_desk = &desk;
+	desk.page_vx = desk.page_vy = 2;
+	uint32_t page_pixels[16] = {0};
+	struct cow_pixbuf canvas = {
+		.pixels = page_pixels, .width = 4, .height = 4, .stride_px = 4,
+	};
+	cow_background_paint(&output, &canvas);
+	CHECK(page_pixels[0] == 0xff300000);
+	CHECK(page_pixels[3] == 0xff400000);
+	CHECK(page_pixels[12] == 0xff300000);
+	CHECK(page_pixels[15] == 0xff600000);
+	desk.nr = 0;
+	CHECK(cow_background_colour(&output, &desk, 1, 0, colour));
+	CHECK(cow_colour_to_pixel(colour) == 0xff200000);
+	output.name = "DP-2";
+	CHECK(cow_background_colour(&output, &desk, 1, 0, colour));
+	CHECK(cow_colour_to_pixel(colour) == 0xff100000);
+	/* Image scope is independent of colour; none masks an inherited tile. */
+	char *tile;
+	xasprintf(&tile, "%s/tile.xpm", directory);
+	write_config(tile, "/* XPM */\nstatic char *tile[] = {\n"
+	    "\"2 1 2 1\",\n\"a c #ffffff\",\n\"b c None\",\n\"ab\"};\n");
+	write_config(user,
+	    "background colour 0x100000\n"
+	    "background image tile.xpm\n"
+	    "background -P 1,0 image none\n"
+	    "background -P 0,1 image none\n"
+	    "background -P 0,1 image inherit\n");
+	reset();
+	CHECK(cow_ipc_load_config(NULL, user));
+	cow_background_paint(&output, &canvas);
+	CHECK(page_pixels[0] == 0xffffffff);
+	CHECK(page_pixels[1] == 0xff100000);
+	CHECK(page_pixels[2] == 0xff100000);
+	CHECK(page_pixels[12] == 0xffffffff);
+	/* Cached tiles still render without reopening the source file. */
+	CHECK(unlink(tile) == 0);
+	memset(page_pixels, 0, sizeof(page_pixels));
+	cow_background_paint(&output, &canvas);
+	CHECK(page_pixels[0] == 0xffffffff);
+	CHECK(page_pixels[12] == 0xffffffff);
+	cow_image_cache_clear(&output.bg_images);
+	xfree(tile);
+	wl_list_remove(&output.wm_link);
 	cow_config_destroy(cow_config);
 	cow_config = NULL;
 	xfree(cow_ipc.config_path);
