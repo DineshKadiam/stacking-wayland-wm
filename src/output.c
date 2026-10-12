@@ -765,7 +765,10 @@ cow_output_render_background(struct cow_output *output)
 		output->bg_dirty = false;
 	}
 
-	if (output->bg_buffer == NULL)
+	/* The committed surface retains its contents. Do not damage an
+	 * unchanged background on every window update or page-scroll frame.
+	 */
+	if (!needs_render || output->bg_buffer == NULL)
 		return;
 
 	/* Commit the background layer surface. */
