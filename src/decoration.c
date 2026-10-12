@@ -81,45 +81,30 @@ hidden_border_colour(struct cow_border_colour *bc, uint32_t edges,
 }
 
 static void
-render_resize_indicator(uint32_t *pixels, int stride_px, int frame_w,
-    int frame_h, int border_width, int corner_length, uint32_t edges,
-    const float *colour)
+render_resize_indicator(struct cow_view *view, uint32_t *pixels, int stride_px,
+    int cw, int ch, uint32_t edges, const float *colour)
 {
 	uint32_t pixel = cow_colour_to_pixel(colour);
-	bool horizontal = (edges & (COW_EDGE_TOP | COW_EDGE_BOTTOM)) != 0;
-	bool vertical = (edges & (COW_EDGE_LEFT | COW_EDGE_RIGHT)) != 0;
-	bool corner = horizontal && vertical;
-	int corner_x = corner_length < border_width ? border_width : corner_length;
-	int corner_y = corner_x;
-
-	if (corner_x > frame_w / 2)
-		corner_x = frame_w / 2;
-	if (corner_y > frame_h / 2)
-		corner_y = frame_h / 2;
+	int frame_w, frame_h, cx, cy;
+	cow_titlebar_frame_geometry(view, cw, ch, &frame_w, &frame_h, &cx, &cy);
+	struct cow_box title = cow_titlebar_squeezed_rect_for(view, cw, ch);
 
 	for (int y = 0; y < frame_h; y++) {
-		bool in_horizontal_border = ((edges & COW_EDGE_TOP) != 0 &&
-		    y < border_width) || ((edges & COW_EDGE_BOTTOM) != 0 &&
-		    y >= frame_h - border_width);
-
 		for (int x = 0; x < frame_w; x++) {
-			bool in_horizontal_span = corner ?
-			    (((edges & COW_EDGE_LEFT) != 0 && x < corner_x) ||
-				((edges & COW_EDGE_RIGHT) != 0 &&
-				    x >= frame_w - corner_x)) :
-			    (x >= corner_x && x < frame_w - corner_x);
-			bool in_vertical_border = ((edges & COW_EDGE_LEFT) != 0 &&
-			    x < border_width) ||
-			    ((edges & COW_EDGE_RIGHT) != 0 &&
-				x >= frame_w - border_width);
-			bool in_vertical_span = corner ?
-			    (((edges & COW_EDGE_TOP) != 0 && y < corner_y) ||
-				((edges & COW_EDGE_BOTTOM) != 0 &&
-				    y >= frame_h - corner_y)) :
-			    (y >= corner_y && y < frame_h - corner_y);
-
-			if ((in_horizontal_border && in_horizontal_span) ||
-			    (in_vertical_border && in_vertical_span))
+			/* Avoid hit testing the client and title contents. The
+			 * remaining pixels use the same relocated edge/corner
+			 * geometry as pointer input, including squeezed gaps.
+			 */
+			if (x >= cx && x < cx + cw && y >= cy && y < cy + ch) {
+				x = cx + cw - 1;
+				continue;
+			}
+			if (x >= title.x && x < title.x + title.width &&
+			    y >= title.y && y < title.y + title.height) {
+				x = title.x + title.width - 1;
+				continue;
+			}
+			if (cow_decoration_edges_at(view, x, y, cw, ch) == edges)
 				pixels[y * stride_px + x] = pixel;
 		}
 	}
@@ -1104,8 +1089,8 @@ cow_decoration_update(struct cow_view *view, bool active)
 
 		if (bw > 0 && view->resize_indicator_edges != 0 &&
 		    view->cfg.has_border_resize)
-			render_resize_indicator(dec->buffer->data, stride_px,
-			    frame_w, frame_h, bw, cl,
+			render_resize_indicator(view, dec->buffer->data, stride_px,
+			    cw, ch,
 			    view->resize_indicator_edges,
 			    view->cfg.border_resize);
 
