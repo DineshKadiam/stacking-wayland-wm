@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "cow/config.h"
+#include "cow/cmd.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -376,6 +377,7 @@ cow_config_create(void)
 	wl_list_init(&config->output_backgrounds);
 	wl_list_init(&config->page_backgrounds);
 	wl_list_init(&config->configured_commands);
+	wl_list_init(&config->deprecation_warnings);
 	cow_icon_placement_config_init(config);
 
 	return config;
@@ -479,6 +481,7 @@ cow_config_destroy(struct cow_config *config)
 		xfree(command);
 	}
 	xfree(config->output_bg_image);
+	cmd_deprecations_clear(config);
 	cow_background_fini(config);
 	xfree(config->menu_style.icon_path);
 	xfree(config->menu_style.side_image);

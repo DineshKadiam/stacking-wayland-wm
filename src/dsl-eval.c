@@ -531,6 +531,18 @@ enqueue_command(struct dsl_eval_ctx *ctx, struct dsl_env *env,
 		goto fail;
 	}
 
+	/* Keep repeated evaluations of one script warning site together. */
+	if (cmd->deprecated != NULL) {
+		struct cmd *parent = ctx->cmdq != NULL ? ctx->cmdq->cmd : NULL;
+		cmd->line = cmd_node->line;
+		if (parent != NULL) {
+			cmd->deprecation_context = cmd_to_config(parent);
+			if (parent->file != NULL)
+				cmd->file = xstrdup(parent->file);
+			cmd->line += parent->line != 0 ? parent->line - 1 : 0;
+		}
+	}
+
 	/* Window loops provide an implicit per-command target. */
 	if (ctx->implicit_target_id != NULL && !cmd_has_explicit_t(cmd_node)) {
 		struct cow_view *v = cow_view_find_by_identifier(

@@ -690,7 +690,9 @@ settings are deprecated. CoW logs a warning and translates them to
 becomes **background -t DP-1 colour 0x303030**.
 
 Deprecated commands still run, but new configurations should use the
-replacement shown in the warning. Executed commands are saved in their new
+replacement shown in the warning. Repeated uses of the same deprecated form
+at the same location warn only once per loaded configuration.
+Executed commands are saved in their new
 form by **show config -f config**. Stored script and binding bodies retain
 their original text.
 

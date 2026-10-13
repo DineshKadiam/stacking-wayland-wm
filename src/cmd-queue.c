@@ -266,15 +266,7 @@ cmdq_continue(struct cmd_q *cmdq)
 			    (void *)cmdq, cmdq->number, command);
 
 			struct timespec started, finished;
-			if (cmdq->cmd->deprecated != NULL) {
-				char *replacement = cmd_to_config(cmdq->cmd);
-				cow_log_warn("%s:%u: '%s' is deprecated; use '%s'",
-				    cmdq->cmd->file != NULL ? cmdq->cmd->file : "<command>",
-				    cmdq->cmd->line, cmdq->cmd->deprecated, replacement);
-				xfree(replacement);
-				xfree(cmdq->cmd->deprecated);
-				cmdq->cmd->deprecated = NULL;
-			}
+			cmd_warn_deprecated(cmdq->cmd);
 			clock_gettime(CLOCK_MONOTONIC, &started);
 			retval = cmdq->cmd->entry->exec(cmdq->cmd, cmdq);
 			clock_gettime(CLOCK_MONOTONIC, &finished);

@@ -44,6 +44,7 @@ struct args {
 };
 
 struct cow_output;
+struct cow_config;
 struct cow_desk;
 struct cow_view;
 struct cmd_q;
@@ -113,6 +114,8 @@ struct cmd {
 	struct args	       *args;
 	char		       *invoked_name; /* dynamic alias name */
 	char		       *deprecated; /* original syntax, warned on execution */
+	const char	       *deprecation_id;
+	char		       *deprecation_context;
 
 	char *file;
 	u_int line;
@@ -320,6 +323,8 @@ char		 *cmd_argv_to_command_string_or_body(int, char **, int);
 size_t		  cmd_print(struct cmd *, char *, size_t);
 char		 *cmd_to_config(struct cmd *);
 struct cmd	 *cmd_parse(int, char **, const char *, u_int, char **);
+void cmd_warn_deprecated(struct cmd *);
+void cmd_deprecations_clear(struct cow_config *);
 
 struct cmd_list *cmd_list_parse(int, char **, const char *, u_int, char **);
 void		 cmd_list_free(struct cmd_list *);

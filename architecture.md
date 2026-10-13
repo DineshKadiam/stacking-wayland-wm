@@ -443,8 +443,10 @@ Each translator replaces a deprecated command's entry and arguments while
 preserving its source location and target context. Add migrations there,
 rather than duplicating old behaviour in command executors. Replacements
 must be canonical; translation is not recursive. The command queue warns
-on the first execution of each translated command object and records the
-replacement syntax in the configuration journal.
+once per migration and source location in each configuration lifetime, and
+records the replacement syntax in the configuration journal. Script warning
+sites also include their enclosing command so separate scripts remain
+distinct. Argument values do not participate in warning deduplication.
 
 Parsing is derived from tmux-style command infrastructure:
 

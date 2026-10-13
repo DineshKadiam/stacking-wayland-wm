@@ -131,6 +131,26 @@ check_background_value(const char *output, bool image, const char *expected)
 	cJSON_Delete(value);
 }
 
+static void
+check_warning(const char *text, const char *file, u_int line, int count)
+{
+	struct cmd_list *list = NULL;
+	char *cause = NULL;
+	CHECK(cmd_string_parse(text, &list, file, line, &cause) == 0);
+	struct cmd *cmd = TAILQ_FIRST(&list->list);
+	cmd_warn_deprecated(cmd);
+	cmd_warn_deprecated(cmd);
+	if (cmd->entry == &cmd_script_entry) {
+		struct cmd_q *queue = cmdq_new();
+		queue->client_fd = -1;
+		cmdq_run(queue, list);
+		CHECK(!queue->failed);
+		cmdq_free(queue);
+	}
+	CHECK(wl_list_length(&cow_config->deprecation_warnings) == count);
+	cmd_list_free(list);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -143,6 +163,21 @@ main(int argc, char **argv)
 	wl_list_init(&cow_wm.outputs);
 	wl_list_init(&cow_wm.containers);
 	wl_list_init(&cow_wm.seats);
+	reset();
+	check_warning("scroll 1100 0", "a.conf", 1, 1);
+	check_warning("scroll 1200 0", "a.conf", 1, 1);
+	check_warning("scroll 1100 0", "a.conf", 2, 2);
+	check_warning("scroll 1100 0", "b.conf", 1, 3);
+	check_warning("set output.colour.background 0xff0000", "a.conf", 1, 4);
+	check_warning("set output.image.background none", "a.conf", 1, 5);
+	reset();
+	check_warning("scroll 1100 0", "a.conf", 1, 1);
+	check_warning("script { set output.colour.background 0xff0000 }",
+	    NULL, 0, 2);
+	check_warning("script { set output.colour.background 0xff0000 }",
+	    NULL, 0, 2);
+	check_warning("script { set output.colour.background 0x00ff00 }",
+	    NULL, 0, 3);
 	char directory[] = "/tmp/cow-config-layers.XXXXXX";
 	CHECK(mkdtemp(directory) != NULL);
 	char *defaults, *user;

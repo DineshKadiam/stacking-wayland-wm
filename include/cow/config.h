@@ -505,6 +505,7 @@ struct cow_config {
 	struct wl_list output_backgrounds;
 	struct wl_list page_backgrounds;
 	struct wl_list configured_commands;
+	struct wl_list deprecation_warnings;
 
 	/* Menu style overrides (set via 'menu-style') */
 	struct cow_menu_style menu_style;

@@ -96,6 +96,7 @@ cmd_list_free(struct cmd_list *cmdlist)
 		xfree(cmd->file);
 		xfree(cmd->invoked_name);
 		xfree(cmd->deprecated);
+		xfree(cmd->deprecation_context);
 		xfree(cmd);
 	}
 

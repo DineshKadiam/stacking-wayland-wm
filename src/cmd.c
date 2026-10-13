@@ -24,6 +24,8 @@
 #include "cow/compat.h"
 #include "cow/alias.h"
 #include "cow/cmd.h"
+#include "cow/config.h"
+#include "cow/log.h"
 #include "cow/cmd_scan.h"
 #include "cow/util.h"
 #include "cow/view.h"
@@ -257,6 +259,7 @@ deprecated_background(struct cmd *cmd)
 		if (key[len] == '.')
 			args_set(cmd->args, 't', key + len + 1);
 		cmd->entry = &cmd_background_entry;
+		cmd->deprecation_id = settings[i].key;
 		xfree(value);
 		args_free(old);
 		return true;
@@ -279,6 +282,7 @@ deprecated_move_page(struct cmd *cmd)
 	cmd_free_argv(args->argc, args->argv);
 	args->argc = 0;
 	args->argv = NULL;
+	cmd->deprecation_id = "window-move separate row";
 	return true;
 }
 
@@ -302,7 +306,59 @@ deprecated_scroll_wrap(struct cmd *cmd)
 	xasprintf(&args->argv[0], "%lld", h % 1000);
 	xasprintf(&args->argv[1], "%lld", v % 1000);
 	args_set(args, 'w', NULL);
+	cmd->deprecation_id = "scroll implicit wrap";
 	return true;
+}
+
+struct deprecation_warning {
+	struct wl_list link;
+	const char *id;
+	char *file, *context;
+	u_int line;
+};
+
+void
+cmd_deprecations_clear(struct cow_config *config)
+{
+	struct deprecation_warning *warning, *tmp;
+	wl_list_for_each_safe(warning, tmp, &config->deprecation_warnings, link) {
+		wl_list_remove(&warning->link);
+		xfree(warning->file);
+		xfree(warning->context);
+		xfree(warning);
+	}
+}
+
+void
+cmd_warn_deprecated(struct cmd *cmd)
+{
+	if (cmd->deprecated == NULL)
+		return;
+	const char *file = cmd->file != NULL ? cmd->file : "<command>";
+	const char *context = cmd->deprecation_context != NULL ?
+	    cmd->deprecation_context : "";
+	struct deprecation_warning *warning;
+	if (cow_config != NULL) {
+		wl_list_for_each(warning, &cow_config->deprecation_warnings, link) {
+			if (strcmp(warning->id, cmd->deprecation_id) == 0 &&
+			    warning->line == cmd->line && strcmp(warning->file, file) == 0 &&
+			    strcmp(warning->context, context) == 0)
+				goto done;
+		}
+		warning = xcalloc(1, sizeof *warning);
+		warning->id = cmd->deprecation_id;
+		warning->file = xstrdup(file);
+		warning->context = xstrdup(context);
+		warning->line = cmd->line;
+		wl_list_insert(&cow_config->deprecation_warnings, &warning->link);
+	}
+	char *replacement = cmd_to_config(cmd);
+	cow_log_warn("%s:%u: '%s' is deprecated; use '%s'", file,
+	    cmd->line, cmd->deprecated, replacement);
+	xfree(replacement);
+done:
+	xfree(cmd->deprecated);
+	cmd->deprecated = NULL;
 }
 
 static void
