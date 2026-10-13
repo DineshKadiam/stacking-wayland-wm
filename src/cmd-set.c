@@ -1572,6 +1572,11 @@ set_output_image(const char *key, const char *val, struct cmd_q *cmdq)
 
 	xstrset(&cow_config->output_bg_image, image);
 	cow_config->has_output_bg_image = true;
+	struct cow_output *output;
+	wl_list_for_each(output, &cow_wm.outputs, wm_link) {
+		if (!output->has_bg_image)
+			output->bg_dirty = true;
+	}
 	refresh_visuals();
 	xfree(path);
 	return (CMD_RETURN_NORMAL);
@@ -1746,7 +1751,6 @@ set_output_colour(const char *key, const char *val, struct cmd_q *cmdq)
 			cow_config_set_output_background(cow_config, oname, c);
 			memcpy(out->bg_colour, c, sizeof(float) * 4);
 			out->has_bg_colour = true;
-			out->bg_dirty	   = true;
 			refresh_visuals();
 			return (true);
 		}
@@ -2195,5 +2199,4 @@ static void
 refresh_output_visuals(struct cow_output *output)
 {
 	(void)cow_output_recompute_usable_area(output);
-	output->bg_dirty = true;
 }

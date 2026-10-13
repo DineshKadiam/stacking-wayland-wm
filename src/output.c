@@ -62,6 +62,8 @@ output_background_destroy_resources(struct cow_output *output)
 		output->bg_surface = NULL;
 	}
 	output->bg_configured = false;
+	xfree(output->bg_rendered_image);
+	output->bg_rendered_image = NULL;
 	output->bg_dirty      = true;
 }
 
@@ -213,6 +215,8 @@ output_handle_dimensions(void	    *data,
 {
 	struct cow_output *output  = data;
 	bool changed = output->width != width || output->height != height;
+	if (!changed)
+		return;
 	output->width		   = width;
 	output->height		   = height;
 	cow_log_debug("output dimensions changed (name=%s width=%d height=%d)",
@@ -256,7 +260,6 @@ background_layer_configure(void *data, struct zwlr_layer_surface_v1 *lsurf,
 		return;
 
 	output->bg_configured = true;
-	output->bg_dirty      = true;
 	cow_update_request(COW_UPDATE_MANAGE);
 }
 
@@ -613,8 +616,6 @@ output_apply_configured_background(struct cow_output *output)
 	}
 	xstrset(&output->bg_image,
 	    output->has_bg_image ? image : NULL);
-
-	output->bg_dirty = true;
 }
 
 void
@@ -717,10 +718,29 @@ cow_output_render_background(struct cow_output *output)
 	if (output->width <= 0 || output->height <= 0)
 		return;
 
-	/* Only re-render if dirty or dimensions changed */
-	bool needs_render = output->bg_buffer == NULL || output->bg_dirty ||
-	    output->bg_buffer->width != output->width ||
-	    output->bg_buffer->height != output->height;
+	const float *bg = output->has_bg_colour ? output->bg_colour :
+	    cow_config != NULL && cow_config->has_output_bg_colour ?
+	    cow_config->output_bg_colour : NULL;
+
+	const char *image = output->has_bg_image ? output->bg_image :
+	    cow_config != NULL && cow_config->has_output_bg_image ?
+	    cow_config->output_bg_image : NULL;
+	uint32_t px = bg != NULL ? cow_colour_to_pixel(bg) : 0;
+
+	bool image_changed = image == NULL || output->bg_rendered_image == NULL ?
+	    image != output->bg_rendered_image :
+	    strcmp(image, output->bg_rendered_image) != 0;
+
+	/* The shm buffer is the cached wallpaper. Compare its
+	 * actual inputs, not unrelated decoration or output notifications.
+	 */
+	bool missing = output->bg_buffer == NULL;
+	bool resized = !missing &&
+	    (output->bg_buffer->width != output->width ||
+	    output->bg_buffer->height != output->height);
+	bool colour_changed = px != output->bg_rendered_colour;
+	bool needs_render = missing || output->bg_dirty || image_changed ||
+	    colour_changed || resized;
 
 	if (needs_render) {
 		/* Free old buffer if wrong size or busy */
@@ -739,19 +759,6 @@ cow_output_render_background(struct cow_output *output)
 				return;
 		}
 
-		const float *bg = NULL;
-		if (output->has_bg_colour)
-			bg = output->bg_colour;
-		else if (cow_config != NULL && cow_config->has_output_bg_colour)
-			bg = cow_config->output_bg_colour;
-
-		const char *image = NULL;
-		if (output->has_bg_image)
-			image = output->bg_image;
-		else if (cow_config != NULL && cow_config->has_output_bg_image)
-			image = cow_config->output_bg_image;
-
-		uint32_t px = bg != NULL ? cow_colour_to_pixel(bg) : 0;
 		struct cow_pixbuf p = {
 			.pixels = output->bg_buffer->data,
 			.stride_px = output->bg_buffer->stride / 4,
@@ -762,6 +769,8 @@ cow_output_render_background(struct cow_output *output)
 		    px);
 		if (image != NULL)
 			cow_image_render_tiled(image, &p);
+		xstrset(&output->bg_rendered_image, image);
+		output->bg_rendered_colour = px;
 		output->bg_dirty = false;
 	}
 

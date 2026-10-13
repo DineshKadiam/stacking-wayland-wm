@@ -108,6 +108,8 @@ struct cow_output {
 	struct cow_shm_buffer	     *bg_buffer;
 	bool			      bg_configured;
 	bool			      bg_dirty;
+	char                         *bg_rendered_image;
+	uint32_t                      bg_rendered_colour;
 
 	/* Per-output layer-shell state (opaque to consumers). */
 	struct cow_layer_shell_output *layer_shell_state;

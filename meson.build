@@ -417,6 +417,7 @@ foreach name, replacement : {
     'icon-hover': 'src/view.c',
     'maximize-page': 'src/view.c',
     'resize-direction': 'src/cmd-resize.c',
+    'output-background': 'src/output.c',
     'resize-geometry': 'src/view.c',
     'window-list': 'src/cmd-window-list.c',
 }
