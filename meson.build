@@ -408,6 +408,7 @@ foreach name, replacement : {
     'alias-args': '',
     'send-key': '',
     'focus-mru': '',
+    'binding-updates': 'src/keybinding.c',
     'container': '',
     'container-state': '',
     'style-state': '',

@@ -80,16 +80,17 @@ cmd_mouse_exec(struct cmd *self, struct cmd_q *cmdq)
 		cmdq_error(cmdq, "usage: %s", cmd_mouse_entry.usage);
 		return CMD_RETURN_ERROR;
 	}
-	uint32_t context;
-	const char *mouse, *error;
-	if (!cow_binding_parse_context(self->args->argv[0], &context,
-		&mouse, &error)) {
+	/* Allow deletion of invalid bindings retained by older versions. */
+	if (args_has(self->args, 'd'))
+		return update_mouse_binding(self);
+	uint32_t context, button, modifiers;
+	const char *error;
+	if (!cow_binding_parse_mouse(self->args->argv[0], &button,
+		&modifiers, &context, &error)) {
 		cmdq_error(cmdq, "mouse: invalid button specification %s: %s",
 		    self->args->argv[0],
 		    error != NULL ? error : "invalid context");
 		return (CMD_RETURN_ERROR);
 	}
-	(void)context;
-	(void)mouse;
 	return update_mouse_binding(self);
 }

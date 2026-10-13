@@ -781,7 +781,8 @@ observed, so the action instead runs when the main key is released.
 | **A** / **M** | Alt (Mod1). **M** (for meta) is a synonym. |
 | **5**         | AltGr (Mod5).                              |
 
-Modifiers are combined by concatenation: **LS** means Logo+Shift, **LCA** means
+Modifier letters are case-insensitive and combined by concatenation:
+**LS** means Logo+Shift, **LCA** means
 Logo+Control+Alt, and **CM** means Control+Meta. Use **0** to specify no
 modifier.
 
@@ -831,7 +832,7 @@ name replaces the keysym:
     mouse CONTEXTS:MODIFIERS+button command
 
 Button names: **left**, **right**, **middle**, **side**, **extra**,
-**forward**, **back**, **task**.
+**forward**, **back**, **task**. Button names are case-insensitive.
 
 Bind a pointer button combination to a command. The *key* format is the same as
 for **bind**, but the key name is a button name (see **MOUSE BINDINGS**). The

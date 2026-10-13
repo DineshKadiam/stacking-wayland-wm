@@ -14,9 +14,11 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "cow/compat.h"
 #include "cow/log.h"
@@ -789,7 +791,7 @@ parse_modifiers(const char *str, uint32_t *modifiers_out,
 	const char *p	 = str;
 
 	while (*p != '\0' && *p != '+') {
-		switch (*p) {
+		switch (toupper((unsigned char)*p)) {
 		case 'L':
 			mods |= RIVER_SEAT_V1_MODIFIERS_MOD4;
 			break;
@@ -998,47 +1000,45 @@ cow_binding_validate_key_sequence(const char *sequence)
 static uint32_t
 parse_button_name(const char *name)
 {
-	if (!strcmp(name, "left"))
+	if (!strcasecmp(name, "left"))
 		return BTN_LEFT;
-	if (!strcmp(name, "right"))
+	if (!strcasecmp(name, "right"))
 		return BTN_RIGHT;
-	if (!strcmp(name, "middle"))
+	if (!strcasecmp(name, "middle"))
 		return BTN_MIDDLE;
-	if (!strcmp(name, "side"))
+	if (!strcasecmp(name, "side"))
 		return BTN_SIDE;
-	if (!strcmp(name, "extra"))
+	if (!strcasecmp(name, "extra"))
 		return BTN_EXTRA;
-	if (!strcmp(name, "forward"))
+	if (!strcasecmp(name, "forward"))
 		return BTN_FORWARD;
-	if (!strcmp(name, "back"))
+	if (!strcasecmp(name, "back"))
 		return BTN_BACK;
-	if (!strcmp(name, "task"))
+	if (!strcasecmp(name, "task"))
 		return BTN_TASK;
 
-	cow_log_error("unknown mouse button \"%s\"", name);
 	return 0;
 }
 
-static bool
-parse_mouse_string(const char *str, uint32_t *button_out,
-    uint32_t *modifiers_out, uint32_t *context_out)
+bool
+cow_binding_parse_mouse(const char *str, uint32_t *button_out,
+    uint32_t *modifiers_out, uint32_t *context_out, const char **error)
 {
 	uint32_t    mods;
 	uint32_t    context;
-	const char *mouse_spec, *btn_part, *error;
+	const char *mouse_spec, *btn_part;
 
-	if (!cow_binding_parse_context(str, &context, &mouse_spec, &error)) {
-		fprintf(stderr, "cow: invalid mouse binding \"%s\": %s\n", str,
-		    error != NULL ? error : "invalid context");
+	if (!cow_binding_parse_context(str, &context, &mouse_spec, error))
+		return false;
+
+	if (!parse_modifiers(mouse_spec, &mods, &btn_part)) {
+		*error = "invalid modifiers";
 		return false;
 	}
 
-	if (!parse_modifiers(mouse_spec, &mods, &btn_part))
-		return false;
-
 	uint32_t button = parse_button_name(btn_part);
 	if (button == 0) {
-		cow_log_error("invalid mouse binding \"%s\"", str);
+		*error = "unknown mouse button";
 		return false;
 	}
 
@@ -1171,9 +1171,13 @@ register_config_mouse_bindings(struct cow_seat *seat)
 		uint32_t modifiers;
 		uint32_t context;
 
-		if (!parse_mouse_string(entry->key_string, &button, &modifiers,
-			&context))
+		const char *error;
+		if (!cow_binding_parse_mouse(entry->key_string, &button, &modifiers,
+			&context, &error)) {
+			cow_log_error("invalid mouse binding \"%s\": %s",
+			    entry->key_string, error);
 			continue;
+		}
 
 		cow_action_fn fn;
 		void	     *arg;
@@ -1363,6 +1367,7 @@ cow_rebind_all_seats(void)
 	 *
 	 * This reduces overhead on the socket, not filling the buffer up.
 	 */
+	bindings_dirty = true;
 	cow_update_request(COW_UPDATE_MANAGE);
 }
 
