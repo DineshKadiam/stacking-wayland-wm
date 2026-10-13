@@ -683,6 +683,17 @@ background -t @1:0 -P 0,0 image textures/cork.xpm
 background -t @1:0 -P 1,0 image none
 ```
 
+The old **set output.colour.background** and **set output.image.background**
+settings are deprecated. CoW logs a warning and translates them to
+**background colour** and **background image**. An output suffix becomes
+**-t output**; for example, **set output.colour.background.DP-1 0x303030**
+becomes **background -t DP-1 colour 0x303030**.
+
+Deprecated commands still run, but new configurations should use the
+replacement shown in the warning. Executed commands are saved in their new
+form by **show config -f config**. Stored script and binding bodies retain
+their original text.
+
 ## alias \[-p PARAM,...\] name command ... \| alias -d name
 
 Define *name* as an alias for a CoW command. An alias can be used anywhere a
@@ -1712,6 +1723,9 @@ Move a window. With no flags, begin an interactive move using the mouse.
   end of the corresponding axis. A signed value suffixed with **p** is
   relative to the window's current page, for example **-P +1p,+0p**
   moves it one page to the right. *row* defaults to 0.
+
+  The space-separated **-P col row** form is deprecated and translated
+  to **-P col,row** with a warning.
 
   Only meaningful when *desktop\_size* is larger than 1x1.
 
@@ -3298,9 +3312,11 @@ Options are:
 **-w**
 
 : Wrap at the desk edges. Without **-w**, the viewport is clamped to the
-  desk extent. The legacy fvwm idiom of multiplying the percentage by
-  1000 (e.g. *scroll 100000 0*) is also recognised as an implicit
-  **-w**.
+  desk extent. The old implicit-wrap form (a percentage of magnitude
+  1000 or more) is deprecated. CoW warns and converts it to **-w**, keeping
+  the remainder of each value after division by 1000. For example,
+  **scroll 1100 0** becomes **scroll -w 100 0**. Explicit **-w** and
+  pixel scrolling are unchanged.
 
 **-p**
 
@@ -3470,10 +3486,6 @@ behaviour of desktops and pages:
 | **edge\_scroll** | *true* \| *false* | Enable edge scroll: hovering the cursor at a screen edge switches the page after **edge\_scroll\_delay\_ms** milliseconds. Default: *false*. |
 | **edge\_scroll\_delay\_ms** | integer (ms, 50..5000) | Cursor hover time at an edge before the page switches. Default: *300*. |
 | **edge\_scroll\_modifiers** | modifier combination | Modifiers which must be held to activate edge scrolling. This uses the same **L**, **S**, **A**/**M**, **C**, and **5** notation as **bind**. Additional held modifiers do not prevent activation. Use **0** (the default) to require no modifier. |
-| **output.colour.background** | hex colour (*0xRRGGBB* or *0xRRGGBBAA*) | Background colour for all outputs. |
-| **output.colour.background.***output* | hex colour (*0xRRGGBB* or *0xRRGGBBAA*) | Background colour for the named output or output number (**@N**). |
-| **output.image.background** | path \| *none* | PNG, SVG, or XPM background image for all outputs. Images are tiled over the background colour; transparent pixels leave the colour visible. |
-| **output.image.background.***output* | path \| *none* | PNG, SVG, or XPM background image for the named output or output number (**@N**). Use *none* to suppress a global background image on that output. |
 | **reserved.top** | integer (default: 0) | Pixels reserved at the top of each output. |
 | **reserved.bottom** | integer (default: 0) | Pixels reserved at the bottom of each output. |
 | **reserved.left** | integer (default: 0) | Pixels reserved at the left of each output. |

@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <cJSON.h>
 
 #include "cow/config.h"
 #include "cow/cmd.h"
@@ -63,10 +64,78 @@ write_config(const char *path, const char *text)
 	CHECK(fclose(file) == 0);
 }
 
+static void
+check_deprecation(void)
+{
+	struct cmd_list *list = NULL;
+	char *cause = NULL;
+	CHECK(cmd_string_parse("set -v -- output.image.background.@2 "
+	    "'a file.xpm'", &list, "example.conf", 12, &cause) == 0);
+	struct cmd *cmd = TAILQ_FIRST(&list->list);
+	CHECK(cmd->entry == &cmd_background_entry);
+	CHECK(cmd->deprecated != NULL);
+	CHECK(strcmp(cmd->file, "example.conf") == 0 && cmd->line == 12);
+	CHECK(strcmp(args_get(cmd->args, 't'), "@2") == 0);
+	CHECK(strcmp(cmd->args->argv[1], "a file.xpm") == 0);
+	char *text = cmd_to_config(cmd);
+	CHECK(strncmp(text, "background ", 11) == 0);
+	xfree(text);
+	cmd_list_free(list);
+	CHECK(cmd_string_parse("set output.colour.backgroundExtra 0xff0000",
+	    &list, NULL, 0, &cause) == 0);
+	cmd = TAILQ_FIRST(&list->list);
+	CHECK(cmd->entry == &cmd_set_entry && cmd->deprecated == NULL);
+	cmd_list_free(list);
+	CHECK(cmd_string_parse("window-move -w -P +0p -- -1p", &list,
+	    NULL, 0, &cause) == 0);
+	cmd = TAILQ_FIRST(&list->list);
+	CHECK(cmd->deprecated != NULL && cmd->args->argc == 0);
+	CHECK(strcmp(args_get(cmd->args, 'P'), "+0p,-1p") == 0);
+	CHECK(args_has(cmd->args, 'w'));
+	cmd_list_free(list);
+	static const struct {
+		const char *command, *h, *v;
+		bool translated;
+	} scrolls[] = {
+		{ "scroll 1100 200", "100", "200", true },
+		{ "scroll -- -1100 -1200", "-100", "-200", true },
+		{ "scroll 100000 0", "0", "0", true },
+		{ "scroll -w 1100 0", "1100", "0", false },
+		{ "scroll -p 1100 0", "1100", "0", false },
+		{ "scroll 100 0", "100", "0", false },
+		{ "scroll invalid 1000", "invalid", "1000", false },
+	};
+	for (size_t i = 0; i < sizeof scrolls / sizeof scrolls[0]; i++) {
+		CHECK(cmd_string_parse(scrolls[i].command, &list, NULL, 0,
+		    &cause) == 0);
+		cmd = TAILQ_FIRST(&list->list);
+		CHECK((cmd->deprecated != NULL) == scrolls[i].translated);
+		CHECK(strcmp(cmd->args->argv[0], scrolls[i].h) == 0);
+		CHECK(strcmp(cmd->args->argv[1], scrolls[i].v) == 0);
+		if (scrolls[i].translated)
+			CHECK(args_has(cmd->args, 'w'));
+		cmd_list_free(list);
+	}
+}
+
+static void
+check_background_value(const char *output, bool image, const char *expected)
+{
+	cJSON *value = cow_background_config_value(output, image);
+	if (expected == NULL)
+		CHECK(cJSON_IsNull(value));
+	else {
+		CHECK(cJSON_IsString(value));
+		CHECK(strcmp(value->valuestring, expected) == 0);
+	}
+	cJSON_Delete(value);
+}
+
 int
 main(int argc, char **argv)
 {
 	CHECK(argc == 2);
+	check_deprecation();
 	wl_list_init(&cow_wm.menus);
 	wl_list_init(&cow_wm.open_menus);
 	wl_list_init(&cow_wm.menu_graveyard);
@@ -264,7 +333,9 @@ main(int argc, char **argv)
 	 */
 	reset();
 	write_config(user,
-	    "background colour 0x100000\n"
+	    "background colour 0xabcdef\n"
+	    "set output.colour.background 0x100000\n"
+	    "set output.colour.background.DP-1 0xabcdef\n"
 	    "background -t DP-1 colour 0x200000\n"
 	    "background -t :1 colour 0x300000\n"
 	    "background -t DP-1:1 -P 1,0 colour 0x400000\n"
@@ -272,9 +343,17 @@ main(int argc, char **argv)
 	    "background -t DP-1:1 -P 0,1 colour inherit\n"
 	    "background -t @1:1 -P 1,1 colour 0x600000\n");
 	CHECK(cow_ipc_load_config(NULL, user));
+	char *saved = cow_config_commands_string(cow_config);
+	CHECK(strstr(saved, "set output.") == NULL);
+	CHECK(strstr(saved, "background colour 0x100000") != NULL);
+	xfree(saved);
+	check_background_value(NULL, false, "0x100000");
+	check_background_value("DP-1", false, "0x200000");
+	check_background_value("missing", false, NULL);
 	struct cow_output output = { .name = "DP-1", .number = 1 };
 	struct cow_desk desk = { .nr = 1 };
 	wl_list_insert(&cow_wm.outputs, &output.wm_link);
+	check_background_value("@1", false, "0x200000");
 	float colour[4];
 	CHECK(cow_background_colour(&output, &desk, 1, 0, colour));
 	CHECK(cow_colour_to_pixel(colour) == 0xff400000);
@@ -302,17 +381,21 @@ main(int argc, char **argv)
 	CHECK(cow_colour_to_pixel(colour) == 0xff100000);
 	/* Image scope is independent of colour; none masks an inherited tile. */
 	char *tile;
-	xasprintf(&tile, "%s/tile.xpm", directory);
+	xasprintf(&tile, "%s/a tile.xpm", directory);
 	write_config(tile, "/* XPM */\nstatic char *tile[] = {\n"
 	    "\"2 1 2 1\",\n\"a c #ffffff\",\n\"b c None\",\n\"ab\"};\n");
 	write_config(user,
 	    "background colour 0x100000\n"
-	    "background image tile.xpm\n"
+	    "set output.image.background 'a tile.xpm'\n"
+	    "set output.image.background.DP-1 none\n"
+	    "background -t DP-1 image inherit\n"
 	    "background -P 1,0 image none\n"
 	    "background -P 0,1 image none\n"
 	    "background -P 0,1 image inherit\n");
 	reset();
 	CHECK(cow_ipc_load_config(NULL, user));
+	check_background_value(NULL, true, tile);
+	check_background_value("DP-1", true, NULL);
 	cow_background_paint(&output, &canvas);
 	CHECK(page_pixels[0] == 0xffffffff);
 	CHECK(page_pixels[1] == 0xff100000);

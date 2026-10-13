@@ -28,6 +28,8 @@ void cow_background_fini(struct cow_config *);
 bool cow_background_colour(const struct cow_output *, const struct cow_desk *,
     int, int, float[4]);
 struct cJSON *cow_background_snapshot(const struct cow_output *);
+/* Configured global/output property, excluding desk and page overrides. */
+struct cJSON *cow_background_config_value(const char *, bool);
 void cow_background_paint(struct cow_output *, struct cow_pixbuf *);
 
 #endif

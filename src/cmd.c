@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <limits.h>
 
 #include "cow/compat.h"
 #include "cow/alias.h"
@@ -228,6 +229,110 @@ cmd_print(struct cmd *cmd, char *buf, size_t len)
 	return (off);
 }
 
+/* Translators replace only the command and arguments, preserving context. */
+static bool
+deprecated_background(struct cmd *cmd)
+{
+	static const struct {
+		const char *key;
+		const char *property;
+	} settings[] = {
+		{ "output.colour.background", "colour" },
+		{ "output.image.background", "image" },
+	};
+	struct args *old = cmd->args;
+	const char *key = old->argv[0];
+
+	for (size_t i = 0; i < sizeof settings / sizeof settings[0]; i++) {
+		size_t len = strlen(settings[i].key);
+		if (strncmp(key, settings[i].key, len) != 0 ||
+		    (key[len] != '\0' && key[len] != '.'))
+			continue;
+		/* An empty output suffix is not a global setting. */
+		if (key[len] == '.' && key[len + 1] == '\0')
+			continue;
+
+		char *value = cmd_argv_to_string(old->argc, old->argv, 1);
+		cmd->args = args_create(2, settings[i].property, value);
+		if (key[len] == '.')
+			args_set(cmd->args, 't', key + len + 1);
+		cmd->entry = &cmd_background_entry;
+		xfree(value);
+		args_free(old);
+		return true;
+	}
+	return false;
+}
+
+static bool
+deprecated_move_page(struct cmd *cmd)
+{
+	struct args *args = cmd->args;
+	const char *col = args_get(args, 'P');
+	if (col == NULL || strchr(col, ',') != NULL || args->argc != 1 ||
+	    args_has(args, 'G'))
+		return false;
+	char *pair;
+	xasprintf(&pair, "%s,%s", col, args->argv[0]);
+	args_set(args, 'P', pair);
+	xfree(pair);
+	cmd_free_argv(args->argc, args->argv);
+	args->argc = 0;
+	args->argv = NULL;
+	return true;
+}
+
+static bool
+deprecated_scroll_wrap(struct cmd *cmd)
+{
+	struct args *args = cmd->args;
+	if (args->argc != 2 || args_has(args, 'p') || args_has(args, 'w') ||
+	    args_has(args, 'r') || args_has(args, 'a') || args_has(args, 'd') ||
+	    args_has(args, 'n') || args_has(args, 'P'))
+		return false;
+	const char *error;
+	long long h = strtonum(args->argv[0], INT_MIN, INT_MAX, &error);
+	if (error != NULL)
+		return false;
+	long long v = strtonum(args->argv[1], INT_MIN, INT_MAX, &error);
+	if (error != NULL || (h > -1000 && h < 1000 && v > -1000 && v < 1000))
+		return false;
+	xfree(args->argv[0]);
+	xfree(args->argv[1]);
+	xasprintf(&args->argv[0], "%lld", h % 1000);
+	xasprintf(&args->argv[1], "%lld", v % 1000);
+	args_set(args, 'w', NULL);
+	return true;
+}
+
+static void
+cmd_translate_deprecated(struct cmd *cmd)
+{
+	/* Add migrations here rather than compatibility paths in executors.
+	 * A translator returns false without changing cmd when it does not match.
+	 * Replacements must be canonical: migrations are applied only once.
+	 */
+	static const struct {
+		const struct cmd_entry *entry;
+		bool (*translate)(struct cmd *);
+	} migrations[] = {
+		{ &cmd_set_entry, deprecated_background },
+		{ &cmd_move_entry, deprecated_move_page },
+		{ &cmd_scroll_entry, deprecated_scroll_wrap },
+	};
+
+	for (size_t i = 0; i < sizeof migrations / sizeof migrations[0]; i++) {
+		if (cmd->entry != migrations[i].entry)
+			continue;
+		char *original = cmd_to_config(cmd);
+		if (migrations[i].translate(cmd)) {
+			cmd->deprecated = original;
+			return;
+		}
+		xfree(original);
+	}
+}
+
 struct cmd *
 cmd_parse(int argc, char **argv, const char *file, u_int line, char **cause)
 {
@@ -265,6 +370,7 @@ cmd_parse(int argc, char **argv, const char *file, u_int line, char **cause)
 	if (file != NULL)
 		cmd->file = xstrdup(file);
 	cmd->line = line;
+	cmd_translate_deprecated(cmd);
 
 	return (cmd);
 

@@ -20,6 +20,7 @@
 
 #include "cow/alias.h"
 #include "cow/cmd.h"
+#include "cow/background.h"
 #include "cow/cmd-filter.h"
 #include "cow/config.h"
 #include "cow/container.h"
@@ -647,32 +648,13 @@ show_config_value(const char *ckey, struct cmd_q *cmdq)
 	else if (strcmp(ckey, "reserved.right") == 0)
 		val = cJSON_CreateNumber(cow_config->reserved.right);
 	else if (strcmp(ckey, "output.colour.background") == 0) {
-		if (cow_config->has_output_bg_colour) {
-			char colour[16];
-			cow_colour_format(colour, sizeof(colour),
-			    cow_config->output_bg_colour);
-			val = cJSON_CreateString(colour);
-		} else
-			val = cJSON_CreateNull();
+		val = cow_background_config_value(NULL, false);
 	} else if (strcmp(ckey, "output.image.background") == 0) {
-		if (cow_config->has_output_bg_image)
-			val = cJSON_CreateString(cow_config->output_bg_image != NULL ?
-			    cow_config->output_bg_image : "none");
-		else
-			val = cJSON_CreateNull();
+		val = cow_background_config_value(NULL, true);
 	} else if (strncmp(ckey, "output.colour.background.", 25) == 0) {
-		float colour[4];
-		if (cow_config_get_output_background(cow_config, ckey + 25,
-			colour)) {
-			char text[16];
-			cow_colour_format(text, sizeof(text), colour);
-			val = cJSON_CreateString(text);
-		}
+		val = cow_background_config_value(ckey + 25, false);
 	} else if (strncmp(ckey, "output.image.background.", 24) == 0) {
-		const char *image;
-		if (cow_config_get_output_background_image(cow_config, ckey + 24,
-			&image))
-			val = cJSON_CreateString(image != NULL ? image : "none");
+		val = cow_background_config_value(ckey + 24, true);
 	}
 	else if (strcmp(ckey, "snap_distance") == 0)
 		val = cJSON_CreateNumber(cow_config->snap_distance);

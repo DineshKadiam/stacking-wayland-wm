@@ -230,13 +230,6 @@ cmd_move_exec(struct cmd *self, struct cmd_q *cmdq)
 			if (!cmd_parse_page_axis(cmdq, "window-move", "col",
 				page_s, cow_view_page_col(view), cols, &lc))
 				return (CMD_RETURN_ERROR);
-			if (args->argc >= 1) {
-				if (!cmd_parse_page_axis(cmdq, "window-move", "row",
-					args->argv[0], cow_view_page_row(view), rows,
-					&lr))
-					return (CMD_RETURN_ERROR);
-				row = (int)lr;
-			}
 		}
 		col = (int)lc;
 		cow_view_move_to_page(view, col, row);

@@ -59,9 +59,7 @@
  *   scroll 50 25           # half page right, quarter page down
  *   scroll -100 0          # one full page left
  *   scroll -p 200 0        # 200 pixels right
- *   scroll -w 100000 0     # one page right, wrapping at desk edge
- *                          # (the fvwm 'multiply by 1000' wrap idiom);
- *                          # equivalent to: scroll -w 100 0
+ *   scroll -w 100 0       # one page right, wrapping at desk edge
  *   scroll -a 2,0          # jump to page (col=2, row=0)
  *   scroll -a -1,+0p       # jump to last column in the current row
  *   scroll -d right        # one page right, wrapping
@@ -287,9 +285,6 @@ cmd_scroll_exec(struct cmd *self, struct cmd_q *cmdq)
 	/*
 	 * Accept the full int range here: the actual bounds (clamp/wrap)
 	 * are applied by cow_page_scroll_to once we have output dims.
-	 * INT_MIN / INT_MAX are wide enough for any sensible scroll arg
-	 * including the fvwm legacy `100000`-style multiply-by-1000 wrap
-	 * idiom.
 	 */
 	if (!cmd_parse_int(cmdq, "scroll", "horizontal", args->argv[0], INT_MIN,
 		INT_MAX, &hh))
@@ -302,32 +297,13 @@ cmd_scroll_exec(struct cmd *self, struct cmd_q *cmdq)
 	 * Compute the pixel deltas.  In percent mode, 100 == one full
 	 * page in that axis (i.e. output width / height).  Trickle the
 	 * percent through as integer arithmetic to avoid pulling in
-	 * floats: dx_px = h * w / 100.  At fvwm-3-compat magnitudes
-	 * (multiply-by-1000 to wrap) the input is always a multiple of
-	 * 100, so integer division is exact in the cases users hit.
+	 * floats: dx_px = h * w / 100.
 	 */
 	long long dx_px, dy_px;
 	if (pixels) {
 		dx_px = hh;
 		dy_px = vv;
 	} else {
-		/*
-		 * Legacy fvwm-compat: when -w is NOT given, a percent
-		 * value with magnitude >= 1000 implicitly enables wrap
-		 * (and the actual scroll amount is value mod 1000
-		 * percent).  fvwm uses this multiply-by-1000 idiom
-		 * because its `Scroll` command has no flag form; cow
-		 * users are encouraged to use `-w` plus a percent in
-		 * [-100, 100] instead.  Skip the implicit form when
-		 * -w is already explicit -- otherwise `scroll -w 100000`
-		 * would mod down to 0 and do nothing.
-		 */
-		if (!wrap &&
-		    (hh >= 1000 || hh <= -1000 || vv >= 1000 || vv <= -1000)) {
-			wrap = true;
-			hh %= 1000;
-			vv %= 1000;
-		}
 		dx_px = hh * w / 100;
 		dy_px = vv * h / 100;
 	}

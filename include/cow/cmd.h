@@ -112,6 +112,7 @@ struct cmd {
 	const struct cmd_entry *entry;
 	struct args	       *args;
 	char		       *invoked_name; /* dynamic alias name */
+	char		       *deprecated; /* original syntax, warned on execution */
 
 	char *file;
 	u_int line;

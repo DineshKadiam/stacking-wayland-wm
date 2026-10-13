@@ -60,6 +60,57 @@ cow_background_fini(struct cow_config *config)
 	}
 }
 
+struct cJSON *
+cow_background_config_value(const char *output, bool image)
+{
+	const struct background *found = NULL;
+	struct background *bg;
+	struct cow_output *resolved = output != NULL ?
+	    cow_output_find_by_spec(output) : NULL;
+	wl_list_for_each(bg, &cow_config->page_backgrounds, link) {
+		if (bg->is_image != image || bg->col >= 0 ||
+		    bg->scope.desk_nr >= 0 || bg->scope.desk_name != NULL)
+			continue;
+		const char *name = bg->scope.output_name;
+		if ((output == NULL && name == NULL) ||
+		    (output != NULL && name != NULL &&
+		    (strcmp(output, name) == 0 || (resolved != NULL &&
+		    cow_output_find_by_spec(name) == resolved))))
+			found = bg;
+	}
+	if (image) {
+		const char *value = NULL;
+		bool present = found != NULL;
+		if (found != NULL)
+			value = found->image;
+		else if (output != NULL)
+			present = cow_config_get_output_background_image(
+			    cow_config, output, &value);
+		else {
+			present = cow_config->has_output_bg_image;
+			value = cow_config->output_bg_image;
+		}
+		return present ? cJSON_CreateString(value != NULL ? value : "none") :
+		    cJSON_CreateNull();
+	}
+	float colour[4];
+	bool present;
+	if (found != NULL) {
+		memcpy(colour, found->colour, sizeof colour);
+		present = true;
+	} else if (output != NULL)
+		present = cow_config_get_output_background(cow_config, output, colour);
+	else {
+		present = cow_config->has_output_bg_colour;
+		memcpy(colour, cow_config->output_bg_colour, sizeof colour);
+	}
+	if (!present)
+		return cJSON_CreateNull();
+	char text[16];
+	cow_colour_format(text, sizeof text, colour);
+	return cJSON_CreateString(text);
+}
+
 static const struct background *
 background_find(const struct cow_output *output, const struct cow_desk *desk,
     int col, int row, bool image, int best)

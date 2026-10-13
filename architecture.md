@@ -438,6 +438,14 @@ objects.
 ## Commands And Configuration
 
 Commands are declared in `cmd_table[]` and implemented by `src/cmd-*.c`.
+Compatibility migrations live in `cmd_translate_deprecated()` in `src/cmd.c`.
+Each translator replaces a deprecated command's entry and arguments while
+preserving its source location and target context. Add migrations there,
+rather than duplicating old behaviour in command executors. Replacements
+must be canonical; translation is not recursive. The command queue warns
+on the first execution of each translated command object and records the
+replacement syntax in the configuration journal.
+
 Parsing is derived from tmux-style command infrastructure:
 
 ```
