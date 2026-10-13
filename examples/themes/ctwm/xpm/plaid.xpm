@@ -1,0 +1,29 @@
+/* XPM */
+/* X11 plaid bitmap, with CTWM default workspace colours. */
+static char *plaid[] = {
+"22 22 2 1",
+"w c #ffffff",
+"r c #b22222",
+"wrwrwwwrwrwwwwwwwwwwww",
+"rwrwrwrwrwrwwwwwrwwwww",
+"wrwrwwwrwrwwwwwwwwwwww",
+"rwrwrwrwrwrwwwwwrwwwww",
+"wrwrwwwrwrwwwwwwwwwwww",
+"wwwwwwwwwwwrwrwrwrwrwr",
+"wrwrwwwrwrwwwwwwwwwwww",
+"rwrwrwrwrwrwwwwwrwwwww",
+"wrwrwwwrwrwwwwwwwwwwww",
+"rwrwrwrwrwrwwwwwrwwwww",
+"wrwrwwwrwrwwwwwwwwwwww",
+"rrrrrwrrrrrwrwrwwwrwrw",
+"rrrrrwrrrrrrwrwrwrwrwr",
+"rrrrrwrrrrrwrwrwwwrwrw",
+"rrrrrwrrrrrrwrwrwrwrwr",
+"rrrrrwrrrrrwrwrwwwrwrw",
+"wwwwwwwwwwwwwwwwwwwwww",
+"rrrrrwrrrrrwrwrwwwrwrw",
+"rrrrrwrrrrrrwrwrwrwrwr",
+"rrrrrwrrrrrwrwrwwwrwrw",
+"rrrrrwrrrrrrwrwrwrwrwr",
+"rrrrrwrrrrrwrwrwwwrwrw"
+};

@@ -22,6 +22,7 @@ Included examples:
 |brushedmetal | brushed metal pixmaps
 |canoe    | lavender, purple, and grey Canoe-inspired Motif styling
 |cde       | CDE-style geometry and colours
+|ctwm      | cyan CTWM-style furniture, eight page backgrounds and a matching pager
 |celticbow | red celtic titlebar pixmaps
 |default   | default fvwm-themes decoration
 |e17       | Enlightenment-style titlebar pixmaps
@@ -46,6 +47,9 @@ Included examples:
 |unsafe    | dark red unsafe titlebar pixmaps
 |redmondxp | glossy blue Windows XP-style SVG textures
 |redmond98 | flat blue/grey Windows 98-style SVG textures
+
+The `ctwm` pack sets a 4x2 page grid and backgrounds for desk 0, and includes a
+matching cowpager configuration. See [ctwm/README.md](ctwm/README.md).
 
 The `twm` pack also includes a matching cowiconman configuration. Run it with:
 
