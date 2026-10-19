@@ -416,6 +416,7 @@ struct cow_config {
 	int repeat_delay_ms;
 	int repeat_interval_ms;
 	char *menu_repeat_keys;
+	bool binding_sequence_hints;
 
 	/* Pointer idle hiding.  Zero disables it. */
 	char *cursor_theme;

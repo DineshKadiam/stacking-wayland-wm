@@ -117,6 +117,7 @@ struct cow_menu_item {
 };
 
 struct cow_menu {
+	bool literal_labels; /* generated information, not hotkey markup */
 	bool inherited; /* replace default items on first menu-add */
 	char		      *name;  /* unique identifier used in config */
 	struct cow_menu_style style; /* values for explicitly overridden fields */
@@ -154,6 +155,9 @@ struct cow_menu_popup {
 	bool needs_layout;			  /* style changed geometry */
 	bool needs_destroy;			  /* defer destroy to render */
 	bool keep_centered;			  /* preserve centre across relayout */
+	bool passive; /* caller-owned popup, outside interactive menu state */
+	int max_width, max_height; /* optional bounds for passive layout */
+	uint64_t style_generation;
 
 	/* Popup nesting */
 	struct cow_menu_popup *parent; /* NULL for the root popup */
@@ -213,6 +217,14 @@ struct cow_menu_popup *cow_menu_popup_open_centered(struct cow_menu *, int,
 /* Open a generated menu in the centre of an output's usable area. */
 struct cow_menu_popup *cow_menu_popup_open_on_output(struct cow_menu *,
     struct cow_output *, struct cow_view *);
+
+/*
+ * Passive popups borrow their definition and do not enter open_menus or
+ * take input. The caller renders them and closes them with popup_close().
+ */
+struct cow_menu_popup *cow_menu_popup_open_passive(struct cow_menu *);
+void cow_menu_popup_render_passive(struct cow_menu_popup *,
+    struct cow_output *, int, int, bool);
 
 /* Make digit keys select menu items by ordinal. */
 void cow_menu_enable_numbered_selection(struct cow_menu *);

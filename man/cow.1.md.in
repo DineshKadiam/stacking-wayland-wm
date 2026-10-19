@@ -845,6 +845,25 @@ default command target throughout the sequence. A key cannot be both a complete
 binding and a prefix. The **-r** and **-x** options apply to the final key.
 Chorded bindings require version 2 or newer of River's XKB bindings protocol.
 
+While a sequence is active, a hint popup shows the prefix and available next
+keys with their commands. It uses the menu styling but takes no input, and
+disappears when the sequence finishes or is cancelled. Context bindings
+show the hint near their target window; global bindings use the pointer's
+output. Long lists and commands are clipped to fit the output.
+
+Hints are enabled by default. Disable them with:
+
+    set binding.sequence_hints false
+
+For example, these bindings start a sequence from a container and keep that
+window as the command target:
+
+    bind W:L+c,0+r window-container -o clockwise
+    bind W:L+c,0+t window-container -H
+
+These bindings also match ordinary windows; the commands still require an
+appropriate container or pane target.
+
 Examples:
 
     bind L+Return     exec xterm
@@ -1212,6 +1231,35 @@ Delete a style with **style -d -n name**.
 
 Styles can be inspected with the **show style name** and **show -a style**
 commands.
+
+## notify \[-n name\] \[-t milliseconds\] text
+
+## notify -n name -d
+
+Show text in a **cow** menu without taking focus or input. Newlines
+separate rows; the first row is a heading. Menu styling is inherited. The
+notification appears near the command's target window, or centred on the
+current output when there is no target. Long text is clipped to fit the output.
+
+The default lifetime is 3000 milliseconds. **-t 0** keeps the notification
+until it is dismissed or replaced; the maximum is 86400000 milliseconds.
+
+**-n** names the notification; showing the same name again replaces it and
+restarts its timer. Without **-n**, the name is `default`. **-d** dismisses the
+named notification; dismissing a name which is not present is harmless.
+Notifications are cleared on configuration reload or session lock, and when
+their target window disappears.
+
+    notify "Layout rotated"
+    notify -n status -t 0 "Working…"
+    notify -n status -d
+
+For example:
+
+    bind W:LC+r script {
+        window-container -o clockwise
+        notify -n layout "Layout rotated clockwise"
+    }
 
 ## exec command ...
 

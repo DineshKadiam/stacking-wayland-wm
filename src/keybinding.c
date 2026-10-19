@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include "cow/chord_hint.h"
 
 #include "cow/compat.h"
 #include "cow/log.h"
@@ -45,6 +46,7 @@
 
 struct cow_keymap {
 	struct wl_list link;
+	char *prefix;
 };
 
 static void
@@ -564,6 +566,7 @@ run_binding_action(struct cow_seat *seat, struct cow_view *view,
 static void
 binding_sequence_reset(struct cow_seat *seat)
 {
+	cow_chord_hint_hide(seat);
 	if (seat->active_keymap == NULL && seat->sequence_finishing == NULL)
 		return;
 	seat->binding_sequence_cancel_eat = true;
@@ -583,6 +586,31 @@ cow_keybinding_cancel_sequence(struct cow_seat *seat)
 	cow_update_request(COW_UPDATE_MANAGE);
 }
 
+static char *
+binding_sequence_hint_text(struct cow_seat *seat)
+{
+	char *hint;
+	xasprintf(&hint, "%s …", seat->active_keymap->prefix);
+	struct cow_keybinding *next;
+	wl_list_for_each_reverse(next, &seat->keybindings, link) {
+		if (next->keymap != seat->active_keymap ||
+		    !binding_wanted(seat, next))
+			continue;
+		char *action = xstrdup(next->next_keymap != NULL ?
+		    "More keys …" : (const char *)next->action_arg);
+		for (char *p = action; *p != '\0'; p++) {
+			if (*p == '\n' || *p == '\r' || *p == '\t')
+				*p = ' ';
+		}
+		char *text;
+		xasprintf(&text, "%s\n%s    %s", hint, next->key_label, action);
+		xfree(hint);
+		xfree(action);
+		hint = text;
+	}
+	return hint;
+}
+
 static void
 binding_sequence_enter(struct cow_seat *seat, struct cow_keybinding *kb)
 {
@@ -592,6 +620,9 @@ binding_sequence_enter(struct cow_seat *seat, struct cow_keybinding *kb)
 		    NULL : seat->binding_context_view;
 	seat->active_keymap = kb->next_keymap;
 	seat->binding_keymap_dirty = true;
+	char *hint = binding_sequence_hint_text(seat);
+	cow_chord_hint_show(seat, hint);
+	xfree(hint);
 	river_xkb_bindings_seat_v1_ensure_next_key_eaten(seat->xkb_seat);
 }
 
@@ -651,6 +682,8 @@ cow_seat_process_bindings(struct cow_seat *seat)
 			    (kb->context_mask & COW_BIND_CONTEXT_GLOBAL) != 0 ?
 			    NULL : seat->binding_context_view;
 			seat->binding_action_modifiers = kb->modifiers;
+			if (kb->keymap != NULL)
+				cow_chord_hint_hide(seat);
 			run_binding_action(seat, target, kb->action,
 			    kb->action_arg);
 			seat->binding_action_modifiers = 0;
@@ -1131,12 +1164,16 @@ register_config_keyboard_bindings(struct cow_seat *seat)
 				if (existing == NULL) {
 					struct cow_keymap *next =
 					    xcalloc(1, sizeof(*next));
+					xasprintf(&next->prefix, "%s%s%s",
+					    keymap != NULL ? keymap->prefix : "",
+					    keymap != NULL ? "," : "", part);
 					wl_list_insert(&seat->binding_keymaps,
 					    &next->link);
 					existing = cow_keybinding_create(seat, keysym,
 					    modifiers, context, NULL, NULL, false,
 					    NULL, NULL);
 					existing->keymap = keymap;
+					existing->key_label = xstrdup(part);
 					existing->next_keymap = next;
 				}
 				keymap = existing->next_keymap;
@@ -1152,6 +1189,7 @@ register_config_keyboard_bindings(struct cow_seat *seat)
 			    context, fn, arg, entry->repeatable, release_fn,
 			    release_arg);
 			kb->keymap = keymap;
+			kb->key_label = xstrdup(part);
 			arg = NULL;
 			release_arg = NULL;
 		}
@@ -1332,12 +1370,14 @@ cow_seat_destroy_bindings(struct cow_seat *seat)
 		river_xkb_binding_v1_destroy(kb->river_binding);
 		xfree(kb->action_arg);
 		xfree(kb->release_action_arg);
+		xfree(kb->key_label);
 		xfree(kb);
 	}
 	struct cow_keymap *keymap, *keymap_tmp;
 	wl_list_for_each_safe(keymap, keymap_tmp, &seat->binding_keymaps, link)
 	{
 		wl_list_remove(&keymap->link);
+		xfree(keymap->prefix);
 		xfree(keymap);
 	}
 

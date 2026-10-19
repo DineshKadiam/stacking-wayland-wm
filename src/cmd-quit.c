@@ -23,6 +23,7 @@
 #include <stdio.h>
 
 #include "cow/cmd.h"
+#include "cow/notification.h"
 #include "cow/log.h"
 #include "cow/config.h"
 #include "cow/decoration.h"
@@ -79,6 +80,7 @@ do_reload(struct cmd_q *cmdq)
 		path = cow_config_default_path();
 
 	struct cow_config *old = cow_config;
+	cow_notification_clear();
 	cow_config	       = cow_config_create();
 	cow_config_destroy(old);
 

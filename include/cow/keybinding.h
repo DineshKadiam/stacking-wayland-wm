@@ -85,6 +85,7 @@ struct cow_keybinding {
 	 */
 	struct cow_keymap *keymap;
 	struct cow_keymap *next_keymap;
+	char *key_label;
 
 	cow_action_fn action;
 	void	     *action_arg;

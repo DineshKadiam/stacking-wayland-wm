@@ -277,6 +277,7 @@ cow_config_create(void)
 	config->repeat_delay_ms	     = COW_CFG_DEFAULT_REPEAT_DELAY_MS;
 	config->repeat_interval_ms   = COW_CFG_DEFAULT_REPEAT_INTERVAL_MS;
 	config->menu_repeat_keys = xstrdup(COW_CFG_DEFAULT_MENU_REPEAT_KEYS);
+	config->binding_sequence_hints = true;
 	const char *cursor_theme = getenv("XCURSOR_THEME");
 	config->cursor_theme = xstrdup(cursor_theme != NULL &&
 	    cursor_theme[0] != '\0' ? cursor_theme :

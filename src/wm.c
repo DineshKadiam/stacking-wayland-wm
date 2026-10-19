@@ -36,6 +36,8 @@
 #include "cow/event.h"
 #include "cow/draw_exec.h"
 #include "cow/geometry_window.h"
+#include "cow/chord_hint.h"
+#include "cow/notification.h"
 #include "cow/ipc.h"
 #include "cow/keybinding.h"
 #include "cow/layer_shell.h"
@@ -1442,6 +1444,8 @@ handle_wm_render_start(__unused void *data,
 	cow_geometry_window_render();
 	cow_draw_exec_render();
 	render_drag_ghost();
+	cow_chord_hint_update();
+	cow_notification_render_all();
 	cow_menu_render_all();
 
 	river_window_manager_v1_render_finish(manager);
@@ -1703,6 +1707,7 @@ cow_wm_fini(void)
 {
 	xfree(cow_wm.reported_focus_id);
 	cow_wm.reported_focus_id = NULL;
+	cow_notification_clear();
 	cow_menu_destroy_all();
 	cow_state_save();
 	cow_draw_exec_cancel();
@@ -1892,6 +1897,12 @@ cow_wm_schedule_tick(struct event *tick_ev)
 	int menu_repeat_ms = cow_menu_next_repeat_ms();
 	if (menu_repeat_ms >= 0) {
 		int wait = menu_repeat_ms < 1 ? 1 : menu_repeat_ms;
+		if (tick_ms < 0 || wait < tick_ms)
+			tick_ms = wait;
+	}
+	int notification_ms = cow_notification_next_ms();
+	if (notification_ms >= 0) {
+		int wait = notification_ms < 1 ? 1 : notification_ms;
 		if (tick_ms < 0 || wait < tick_ms)
 			tick_ms = wait;
 	}

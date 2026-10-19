@@ -632,6 +632,14 @@ const struct cow_option_entry cow_options_table[] = {
 		.view_offset = COW_OPTION_NO_OFFSET,
 	},
 	{
+		.name = "binding.sequence_hints",
+		.match = COW_OPTION_EXACT,
+		.scope = COW_OPTION_GLOBAL,
+		.action = COW_OPTION_SCALAR_BOOL,
+		.config_offset = offsetof(struct cow_config, binding_sequence_hints),
+		.view_offset = COW_OPTION_NO_OFFSET,
+	},
+	{
 		.name = "raise_on_focus",
 		.match = COW_OPTION_EXACT,
 		.scope = COW_OPTION_GLOBAL,

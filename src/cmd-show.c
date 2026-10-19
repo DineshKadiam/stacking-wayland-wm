@@ -87,6 +87,7 @@ static const char *show_config_keys[] = {
 	"repeat_delay_ms",
 	"repeat_interval_ms",
 	"menu.repeat_keys",
+	"binding.sequence_hints",
 	"raise_on_focus",
 	"keyboard_layout.per_window",
 	"preserve_desk_on_output_loss",
@@ -753,6 +754,8 @@ show_config_value(const char *ckey, struct cmd_q *cmdq)
 	else if (strcmp(ckey, "menu.repeat_keys") == 0)
 		val = cJSON_CreateString(cow_config->menu_repeat_keys != NULL ?
 		    cow_config->menu_repeat_keys : "");
+	else if (strcmp(ckey, "binding.sequence_hints") == 0)
+		val = cJSON_CreateBool(cow_config->binding_sequence_hints);
 	else if (strcmp(ckey, "raise_on_focus") == 0)
 		val = cJSON_CreateBool(cow_config->raise_on_focus);
 	else if (strcmp(ckey, "keyboard_layout.per_window") == 0)

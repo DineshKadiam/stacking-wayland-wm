@@ -44,6 +44,7 @@ struct cow_seat {
 	bool	       bindings_enabled;
 	/* Per-seat chorded-binding state. */
 	struct cow_keymap *active_keymap;
+	struct cow_notification *chord_hint;
 	struct cow_keybinding *sequence_finishing;
 	struct cow_view *binding_sequence_view;
 	bool		binding_keymap_dirty;

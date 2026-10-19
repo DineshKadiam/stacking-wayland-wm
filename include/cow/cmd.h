@@ -252,6 +252,7 @@ void cow_exec_run_deferred(void);
 /* Built-in commands. */
 extern struct cmd_entry cmd_menu_add_entry;
 extern struct cmd_entry cmd_alias_entry;
+extern struct cmd_entry cmd_notify_entry;
 extern struct cmd_entry cmd_alias_invoke_entry;
 extern struct cmd_entry cmd_menu_clear_entry;
 extern struct cmd_entry cmd_menu_destroy_entry;

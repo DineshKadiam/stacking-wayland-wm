@@ -55,6 +55,8 @@
 #define MENU_CHECK_GUTTER 16
 #define MENU_CHECK_SIZE 9
 
+static uint64_t g_style_generation;
+
 void
 cow_menu_style_default(struct cow_menu_style *s)
 {
@@ -729,6 +731,10 @@ menu_label_resolve(const struct cow_menu *menu, const struct cow_menu_item *it,
 		*underline_out = -1;
 	if (it == NULL || it->label == NULL)
 		return;
+	if (menu->literal_labels) {
+		strlcpy(out, it->label, outlen);
+		return;
+	}
 
 	int explicit_key = label_explicit_hotkey(it->label);
 	int auto_key = explicit_key >= 0 ? explicit_key :
@@ -861,12 +867,20 @@ cow_menu_destroy(struct cow_menu *menu)
 void
 cow_menu_destroy_all(void)
 {
+	g_style_generation++;
 	struct cow_menu *m, *tmp;
 	if (cow_wm.menus.next != NULL) {
 		wl_list_for_each_safe(m, tmp, &cow_wm.menus, link)
 		    cow_menu_destroy(m);
 	}
 	cow_menu_close_all();
+	if (cow_wm.menu_graveyard.next != NULL) {
+		struct cow_menu_popup *p, *tmp_popup;
+		wl_list_for_each_safe(p, tmp_popup, &cow_wm.menu_graveyard, link) {
+			wl_list_remove(&p->link);
+			popup_destroy(p);
+		}
+	}
 	menu_keyboard_destroy();
 	xfree(g_deferred_action);
 	xfree(g_deferred_context_id);
@@ -1081,6 +1095,12 @@ popup_layout(struct cow_menu_popup *p)
 	p->item_h = content_h + st->padding_y * 2;
 	p->width  = inner_w + p->side_w + st->border_width * 2;
 	p->height = height;
+	if (p->passive) {
+		if (p->max_width > 0 && p->width > p->max_width)
+			p->width = p->max_width;
+		if (p->max_height > 0 && p->height > p->max_height)
+			p->height = p->max_height;
+	}
 }
 
 static struct cow_output *
@@ -1529,6 +1549,9 @@ cow_menu_popup_redraw(struct cow_menu_popup *popup)
 void
 cow_menu_style_refresh(struct cow_menu *menu, bool geometry_changed)
 {
+	/* Passive popups resolve the new style on their next render. */
+	g_style_generation++;
+	cow_update_request(COW_UPDATE_MANAGE);
 	if (!cow_menu_is_open())
 		return;
 	struct cow_menu_popup *p;
@@ -1541,7 +1564,6 @@ cow_menu_style_refresh(struct cow_menu *menu, bool geometry_changed)
 		if (geometry_changed)
 			p->needs_layout = true;
 	}
-	cow_update_request(COW_UPDATE_MANAGE);
 }
 
 static struct cow_menu_popup *
@@ -1558,7 +1580,19 @@ popup_alloc(struct cow_menu *def)
 			    sizeof(*p->checked));
 	}
 	cow_menu_style_resolve(def, &p->style);
+	p->style_generation = g_style_generation;
 	return (p);
+}
+
+struct cow_menu_popup *
+cow_menu_popup_open_passive(struct cow_menu *menu)
+{
+	struct cow_menu_popup *p = popup_alloc(menu);
+	p->passive = true;
+	p->needs_create = true;
+	p->needs_layout = true;
+	wl_list_init(&p->link);
+	return p;
 }
 
 static void
@@ -1787,6 +1821,14 @@ popup_materialise(struct cow_menu_popup *p)
 	p->surface = wl_compositor_create_surface(cow_wm.compositor);
 	if (p->surface == NULL)
 		return;
+	if (p->passive) {
+		struct wl_region *region =
+		    wl_compositor_create_region(cow_wm.compositor);
+		if (region == NULL)
+			return;
+		wl_surface_set_input_region(p->surface, region);
+		wl_region_destroy(region);
+	}
 	p->shell_surface = river_window_manager_v1_get_shell_surface(
 	    cow_wm.manager, p->surface);
 	if (p->shell_surface == NULL)
@@ -1807,7 +1849,7 @@ popup_materialise(struct cow_menu_popup *p)
 	wl_surface_commit(p->surface);
 	p->buffer->busy = true;
 	p->committed	= true;
-	if (p->parent == NULL)
+	if (p->parent == NULL && !p->passive)
 		cow_update_request(COW_UPDATE_MANAGE);
 }
 
@@ -1890,6 +1932,49 @@ popup_refit_position(struct cow_menu_popup *p)
 	p->y = y;
 }
 
+static void
+popup_commit(struct cow_menu_popup *p)
+{
+	if (p->needs_create) {
+		popup_materialise(p);
+		return;
+	}
+	if (p->needs_redraw) {
+		popup_recommit(p);
+		p->needs_redraw = false;
+	}
+	if (p->node != NULL) {
+		river_node_v1_set_position(p->node, p->x, p->y);
+		river_node_v1_place_top(p->node);
+	}
+}
+
+void
+cow_menu_popup_render_passive(struct cow_menu_popup *p,
+    struct cow_output *out, int x, int y, bool centred)
+{
+	if (p == NULL || !p->passive || out == NULL || out->width <= 0 ||
+	    out->height <= 0 || cow_wm.compositor == NULL || cow_wm.manager == NULL)
+		return;
+	if (p->style_generation != g_style_generation ||
+	    p->max_width != out->width || p->max_height != out->height) {
+		cow_menu_style_resolve(p->def, &p->style);
+		p->style_generation = g_style_generation;
+		p->max_width = out->width;
+		p->max_height = out->height;
+		p->needs_layout = true;
+	}
+	popup_apply_relayout(p);
+	if (centred) {
+		x -= p->width / 2;
+		y -= p->height / 2;
+	}
+	popup_fit_to_output(p, &x, &y, NULL, out);
+	p->x = x;
+	p->y = y;
+	popup_commit(p);
+}
+
 void
 cow_menu_render_all(void)
 {
@@ -1901,8 +1986,9 @@ cow_menu_render_all(void)
 		wl_list_for_each_safe(gp, gtmp, &cow_wm.menu_graveyard, link)
 		{
 			wl_list_remove(&gp->link);
+			if (!gp->passive)
+				destroyed = true;
 			popup_destroy(gp);
-			destroyed = true;
 		}
 	}
 	if (destroyed && g_deferred_action != NULL) {
@@ -1923,18 +2009,7 @@ cow_menu_render_all(void)
 	}
 	wl_list_for_each(p, &cow_wm.open_menus, link)
 	{
-		if (p->needs_create) {
-			popup_materialise(p);
-			continue;
-		}
-		if (p->needs_redraw) {
-			popup_recommit(p);
-			p->needs_redraw = false;
-		}
-		if (p->node != NULL) {
-			river_node_v1_set_position(p->node, p->x, p->y);
-			river_node_v1_place_top(p->node);
-		}
+		popup_commit(p);
 	}
 }
 
