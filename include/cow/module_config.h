@@ -27,6 +27,7 @@ struct cow_module_config_reader {
 	bool section;
 	bool selected;
 	bool scoped_only;
+	char quote;
 	unsigned int continuation_lines;
 };
 

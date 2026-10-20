@@ -164,9 +164,8 @@ cow_module_config_parse_bool(const char *s, bool *out)
  * Count escaping while scanning so a literal doubled backslash is retained.
  */
 static bool
-line_continues(const char *line, size_t len)
+line_continues(const char *line, size_t len, char quote)
 {
-	char quote = 0;
 	for (size_t i = 0; i < len; i++) {
 		if (line[i] == '\\') {
 			if (i + 1 == len)
@@ -209,7 +208,7 @@ cow_module_config_getline(struct cow_module_config_reader *reader,
 			end--;
 		if (end > 0 && (*line)[end - 1] == '\r')
 			end--;
-		if (!line_continues(*line, end))
+		if (!line_continues(*line, end, reader->quote))
 			break;
 		char *next = NULL;
 		size_t next_cap = 0;
@@ -240,7 +239,7 @@ cow_module_config_getline(struct cow_module_config_reader *reader,
 		free(next);
 	}
 	bool emit = reader->section ? reader->selected : !reader->scoped_only;
-	if (reader->depth == 0) {
+	if (reader->depth == 0 && reader->quote == 0) {
 		char *fields[4];
 		char error[64];
 		int n = cow_module_config_parse_fields(*line, fields, 4,
@@ -260,7 +259,7 @@ cow_module_config_getline(struct cow_module_config_reader *reader,
 		if (n >= 0)
 			cow_module_config_free_fields(fields, n);
 	}
-	char quote = 0;
+	char quote = reader->quote;
 	for (const char *p = *line; *p; p++) {
 		if (*p == '\\' && p[1]) {
 			p++;
@@ -287,6 +286,7 @@ cow_module_config_getline(struct cow_module_config_reader *reader,
 			}
 		}
 	}
+	reader->quote = quote;
 	if (!emit) {
 		(*line)[0] = '\n';
 		(*line)[1] = '\0';
