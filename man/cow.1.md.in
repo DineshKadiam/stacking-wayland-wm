@@ -618,6 +618,8 @@ are literal and must be specified:
 
   - **/***substring***/** - match by title substring
 
+  - **=***title* - match the complete title exactly
+
   - **\#***id* - match by River identifier
 
   - **@focused** - the currently focused window (default)
@@ -1148,8 +1150,8 @@ as rules, but describe window state rather than executing commands in response
 to an event. Styles can override one another, the last match wins, with theat
 style overriding any previous properties within it/
 
-The selector forms are the same as for **rule**: **%app-id**, **/title/**, and
-**\#identifier**. A global style uses **-g**. With **-t output\[:desk\]**,
+The selector forms are the same as for **rule**: **%app-id**, **/substring/**,
+**=title**, and **\#identifier**. A global style uses **-g**. With **-t output\[:desk\]**,
 either part may be omitted to match any output or desk.
 
 Use **-r** to replace an existing named style, keeping its position in the
@@ -1959,7 +1961,8 @@ moocow focus -nf -F 'self.app_id == "emacs"' || emacs
 **-t** *selector*
 
 : Select a window across all outputs and desks: **%app_id** matches an
-  exact app ID, **/text/** matches a title substring, and **#id** matches
+  exact app ID, **/text/** matches a title substring, **=title** matches
+  the complete title, and **#id** matches
   a River identifier. Add **-f** to follow it to its desk and page.
   Cannot be combined with **-n** or **-p**; use **-F** for filtered cycling.
 

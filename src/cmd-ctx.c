@@ -153,9 +153,8 @@ resolve_window(const char *spec, struct cow_output *output,
 		return v != NULL ? v : focused;
 	}
 
-	/* %app_id -- match by app_id */
-	if (spec[0] == '%') {
-		const char	*app_id = spec + 1;
+	/* Exact app ID or title, shared with rule and style matching. */
+	if (spec[0] == '%' || spec[0] == '=') {
 		struct cow_view *v;
 		wl_list_for_each(v, &cow_wm.views, wm_link)
 		{
@@ -165,10 +164,11 @@ resolve_window(const char *spec, struct cow_output *output,
 				continue;
 			if (desk != NULL && v->desk != desk)
 				continue;
-			if (v->app_id != NULL && strcmp(v->app_id, app_id) == 0)
+			if (cow_view_matches_selector(v, spec))
 				return v;
 		}
-		xasprintf(cause, "no window with app_id: %s", app_id);
+		xasprintf(cause, "no window with %s: %s",
+		    spec[0] == '%' ? "app_id" : "title", spec + 1);
 		return NULL;
 	}
 
@@ -270,7 +270,10 @@ cmd_ctx_parse(const char *spec, struct cmd_ctx *ctx, char **cause)
 	char *colon = strchr(buf, ':');
 	char *dot   = NULL;
 
-	if (colon != NULL) {
+	if (buf[0] == '=') {
+		/* Colons and dots belong to an unscoped exact title. */
+		window_str = buf;
+	} else if (colon != NULL) {
 		*colon	   = '\0';
 		output_str = buf;
 		dot	   = strchr(colon + 1, '.');

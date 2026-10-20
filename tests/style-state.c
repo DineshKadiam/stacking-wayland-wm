@@ -21,6 +21,8 @@
 #include "cow/ipc.h"
 #include "cow/memory.h"
 #include "cow/style.h"
+#include "cow/view.h"
+#include "cow/wm.h"
 
 #define CHECK(x)                                                   \
 	do {                                                       \
@@ -55,6 +57,29 @@ run(const char *text)
 int
 main(void)
 {
+	struct cow_view panel = {.title = "cowbuttons:Starter:DP-1",
+	    .app_id = "cowbuttons", .has_dimensions = true};
+	CHECK(cow_view_matches_selector(&panel, "=cowbuttons:Starter:DP-1"));
+	CHECK(cow_view_matches_selector(&panel, "%cowbuttons"));
+	CHECK(cow_view_matches_selector(&panel, "/Starter/"));
+	panel.title = "cowbuttons:Starter:DP-10";
+	CHECK(!cow_view_matches_selector(&panel, "=cowbuttons:Starter:DP-1"));
+	panel.title = "cowbuttons:Starter:DP-1-terminal";
+	CHECK(!cow_view_matches_selector(&panel, "=cowbuttons:Starter:DP-1"));
+	panel.title = NULL;
+	CHECK(!cow_view_matches_selector(&panel, "=cowbuttons:Starter:DP-1"));
+
+	wl_list_init(&cow_wm.views);
+	wl_list_init(&cow_wm.outputs);
+	panel.title = "cowbuttons:Starter:DP-1.0";
+	wl_list_insert(&cow_wm.views, &panel.wm_link);
+	struct cmd_ctx ctx;
+	char *cause = NULL;
+	CHECK(cmd_ctx_parse("=cowbuttons:Starter:DP-1.0", &ctx, &cause));
+	CHECK(ctx.window == &panel);
+	xfree(cause);
+	wl_list_remove(&panel.wm_link);
+
 	cow_ipc.startup_mode = true;
 	run("style -g -n from-config {\nlayer 2\n}");
 	cow_ipc.startup_mode = false;

@@ -1858,6 +1858,8 @@ cow_view_matches_selector(const struct cow_view *view, const char *spec)
 	if (view == NULL || spec == NULL || spec[0] == '\0')
 		return false;
 	switch (spec[0]) {
+	case '=':
+		return view->title != NULL && strcmp(view->title, spec + 1) == 0;
 	case '%':
 		if (view->app_id == NULL)
 			return false;
