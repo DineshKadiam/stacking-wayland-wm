@@ -60,6 +60,34 @@ view_stack_order(const struct cow_view *view)
 	return order;
 }
 
+/* Move every reference before freeing the old desks, including windows
+ * which have no saved state and containers created during initial mapping.
+ */
+static void
+restore_desk_references(struct cow_output *output,
+    struct cow_desk_set *previous)
+{
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link) {
+		if (view->desk == NULL || view->desk->output != output)
+			continue;
+		struct cow_desk *desk = cow_desk_by_nr(output, view->desk->nr);
+		if (desk == NULL)
+			desk = cow_desk_first(output);
+		wl_list_remove(&view->desk_views);
+		view->desk = desk;
+		wl_list_insert(&desk->views, &view->desk_views);
+	}
+	struct cow_container *container;
+	wl_list_for_each(container, &cow_wm.containers, wm_link) {
+		if (container->desk == NULL || container->desk->output != output)
+			continue;
+		struct cow_desk *desk = cow_desk_by_nr(output, container->desk->nr);
+		container->desk = desk != NULL ? desk : cow_desk_first(output);
+	}
+	cow_desk_set_fini(previous);
+}
+
 const char *
 cow_state_path(void)
 {
@@ -318,14 +346,18 @@ cow_state_restore(void)
 			(void)cow_json_get_bool(out_obj, "user_named",
 			    &user_named);
 			if (user_named && cJSON_IsArray(names)) {
-				cow_desk_set_fini(&output->desk_set);
+				struct cow_desk_set previous;
+				cow_desk_set_init(&previous);
+				wl_list_insert_list(&previous.desks,
+				    &output->desk_set.desks);
 				cow_desk_set_init(&output->desk_set);
 				cJSON *dn;
 				cJSON_ArrayForEach(dn, names)
 				{
 					long long nr;
 					const char *nm;
-					if (!cow_json_get_int(dn, "nr", &nr))
+					if (!cow_json_get_int(dn, "nr", &nr) ||
+					    nr < 0 || nr >= COW_MAX_DESK_COUNT)
 						continue;
 					if (!cow_json_get_string(dn, "name",
 						&nm))
@@ -340,8 +372,11 @@ cow_state_restore(void)
 						xstrset(&dk->name, nm);
 					}
 				}
+				if (output->desk_set.count == 0)
+					(void)cow_desk_set_append_default(output);
 				output->desk_set.user_named = true;
 				output->current_desk = cow_desk_first(output);
+				restore_desk_references(output, &previous);
 			}
 
 			long long cur_desk;

@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #include "cow/state.h"
+#include "cow/output.h"
 #include "cow/view.h"
 #include "cow/wm.h"
 
@@ -57,6 +58,64 @@ reject(const cJSON *record)
 	    d.container_member == NULL);
 	CHECK(!a.pending_resize && !b.pending_resize && !d.pending_resize);
 	CHECK(wl_list_empty(&cow_wm.containers));
+}
+
+static void
+restore_named_desks(void)
+{
+	struct cow_output output = { .width = 1280, .height = 720 };
+	static struct cow_view host, client, unsaved;
+	wl_list_init(&cow_wm.views);
+	wl_list_init(&output.visible_views);
+	wl_list_insert(&cow_wm.outputs, &output.wm_link);
+	cow_desk_set_init(&output.desk_set);
+	for (int i = 0; i < 3; i++)
+		cow_desk_set_append_default(&output);
+	output.current_desk = cow_desk_first(&output);
+	struct cow_view *views[] = { &host, &client, &unsaved };
+	char *ids[] = { "panel", "terminal", "new-window" };
+	for (int i = 0; i < 3; i++) {
+		init_view(views[i], ids[i]);
+		views[i]->output = &output;
+		views[i]->desk = cow_desk_by_nr(&output, i == 2 ? 2 : 1);
+		wl_list_insert(&views[i]->desk->views, &views[i]->desk_views);
+		wl_list_insert(&output.visible_views, &views[i]->output_views);
+	}
+	CHECK(cow_container_attach(&host, &client, "terminal",
+	    (struct cow_box){0, 0, 400, 200}, true, false));
+	struct cow_container *c = cow_container_window_owner(&host);
+	CHECK(c && c->attached);
+
+	/* These live windows are absent from the saved file. Recreating named
+	 * desks must still rebind them and their already-created attachment.
+	 */
+	FILE *file = fopen(cow_state_path(), "w");
+	CHECK(file != NULL);
+	CHECK(fputs("{\"outputs\":[{\"x\":0,\"y\":0,\"user_named\":true,"
+	    "\"current_desk\":1,\"desk_names\":["
+	    "{\"nr\":0,\"name\":\"A\"},{\"nr\":1,\"name\":\"B\"}]}],"
+	    "\"views\":[],\"containers\":[]}", file) >= 0);
+	CHECK(fclose(file) == 0);
+	(void)cow_state_restore();
+	CHECK(output.desk_set.count == 2);
+	CHECK(!strcmp(output.current_desk->name, "B"));
+	CHECK(host.desk == output.current_desk && client.desk == host.desk);
+	CHECK(c->desk == host.desk);
+	CHECK(unsaved.desk == cow_desk_first(&output));
+	CHECK(wl_list_length(&host.desk->views) == 2);
+	CHECK(wl_list_length(&unsaved.desk->views) == 1);
+	cow_container_attachment_sync(c);
+	CHECK(client.desk_views.next->prev == &client.desk_views);
+	CHECK(client.desk_views.prev->next == &client.desk_views);
+
+	cow_container_destroy(c);
+	for (int i = 0; i < 3; i++) {
+		wl_list_remove(&views[i]->wm_link);
+		wl_list_remove(&views[i]->desk_views);
+		wl_list_remove(&views[i]->output_views);
+	}
+	wl_list_remove(&output.wm_link);
+	cow_desk_set_fini(&output.desk_set);
 }
 
 int
@@ -378,7 +437,6 @@ main(void)
 	CHECK(c->frame_state.flags == frame.flags);
 	cow_container_destroy(c);
 	cJSON_Delete(record);
-	CHECK(rmdir(directory) == 0);
 	/* Every rotation of a mixed-axis layout must survive restart.
 	 */
 	c = cow_container_create_empty("rotated", "a");
@@ -399,5 +457,7 @@ main(void)
 		cJSON_Delete(roundtrip);
 	}
 	cow_container_destroy(c);
+	restore_named_desks();
+	CHECK(rmdir(directory) == 0);
 	return 0;
 }
