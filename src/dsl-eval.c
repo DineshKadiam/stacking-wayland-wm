@@ -25,6 +25,7 @@
 
 #include "cow/cmd.h"
 #include "cow/dsl.h"
+#include "cow/ipc.h"
 #include "cow/memory.h"
 #include "cow/view.h"
 
@@ -735,6 +736,12 @@ dsl_eval_args(struct dsl_ast *ast, struct cmd_q *cmdq,
 	ctx.err			= err;
 
 	struct dsl_env *env = env_new(NULL);
+	struct state_value *session = state_value_record();
+	struct state_value *has_config = state_value_bool(cow_ipc.has_config);
+	state_record_set(session, "has_config", has_config);
+	state_value_unref(has_config);
+	env_set(env, "session", session);
+	state_value_unref(session);
 	cJSON *json = cmdq != NULL && cmdq->event_json != NULL ?
 	    cJSON_Parse(cmdq->event_json) : NULL;
 	struct state_value *event = state_value_from_json(json);

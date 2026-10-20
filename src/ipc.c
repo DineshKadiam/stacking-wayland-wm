@@ -248,6 +248,8 @@ bool
 cow_ipc_load_config(const char *defaults, const char *path)
 {
 	cow_ipc.startup_mode = true;
+	/* /dev/null explicitly requests the complete defaults-only desktop. */
+	cow_ipc.has_config = path != NULL && strcmp(path, "/dev/null") != 0;
 
 	if (defaults != NULL) {
 		cow_ipc.loading_defaults = true;

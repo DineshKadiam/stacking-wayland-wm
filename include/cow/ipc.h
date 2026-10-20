@@ -49,6 +49,7 @@ struct cow_ipc {
 	bool		      startup_mode;
 	bool		      loading_defaults;
 	bool		      skip_defaults;
+	bool		      has_config;
 };
 
 extern struct cow_ipc cow_ipc;

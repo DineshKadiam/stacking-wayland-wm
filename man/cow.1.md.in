@@ -324,6 +324,17 @@ branch on conditions, and invoke any cow command on the results. A **script**
 block is itself a cow command, so it can appear anywhere a command is accepted:
 the top-level configuration file, or the body of a rule.
 
+Scripts can inspect **session.has_config**, which is true when a configuration
+file other than **/dev/null** was selected, including an explicit **-c** path.
+It is available while loading defaults, before that file is read; it does not
+indicate whether the file loaded successfully. Includes do not change it.
+
+The shipped defaults start the panel and welcome message only when this is
+false, including with **-c /dev/null**. Add **starter** to a personal
+configuration to opt into both, including panels on newly connected outputs.
+**welcome** and **starter-panels** remain
+available separately for manual use.
+
 ## Statements
 
 A block contains zero or more statements; whitespace (including newlines)

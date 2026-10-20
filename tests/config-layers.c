@@ -154,7 +154,7 @@ check_warning(const char *text, const char *file, u_int line, int count)
 int
 main(int argc, char **argv)
 {
-	CHECK(argc == 2);
+	CHECK(argc == 2 || (argc == 3 && strcmp(argv[1], "--starter") == 0));
 	check_deprecation();
 	wl_list_init(&cow_wm.menus);
 	wl_list_init(&cow_wm.open_menus);
@@ -164,6 +164,49 @@ main(int argc, char **argv)
 	wl_list_init(&cow_wm.containers);
 	wl_list_init(&cow_wm.seats);
 	reset();
+	if (argc == 3) {
+		FILE *file = fopen(argv[2], "r");
+		CHECK(file != NULL);
+		char *text = NULL, *line = NULL;
+		size_t used = 0, cap = 0;
+		ssize_t len;
+		while ((len = getline(&line, &cap, file)) >= 0) {
+			text = xrealloc(text, used + (size_t)len + 1, 1);
+			memcpy(text + used, line, (size_t)len);
+			used += (size_t)len;
+			text[used] = '\0';
+		}
+		CHECK(!ferror(file) && text != NULL);
+		CHECK(fclose(file) == 0);
+		xfree(line);
+		/* Execute with no existing aliases, then replace the live rules. */
+		for (int i = 0; i < 2; i++) {
+			struct cmd_list *list = NULL;
+			char *cause = NULL;
+			CHECK(cmd_string_parse(text, &list, NULL, 0, &cause) == 0);
+			struct cmd_q *queue = cmdq_new();
+			queue->client_fd = -1;
+			cmdq_run(queue, list);
+			CHECK(!queue->failed);
+			cmdq_free(queue);
+			cmd_list_free(list);
+			xfree(cause);
+			CHECK(wl_list_length(cow_rules_head()) == 2);
+			CHECK(wl_list_length(cow_styles_head()) == 1);
+			struct cow_style *style = cow_style_find_by_name(
+			    "cowbuttons:Starter");
+			CHECK(style != NULL);
+			struct cow_view view = {.title = "cowbuttons:Starter"};
+			CHECK(cow_policy_view_matches(&style->policy, &view));
+			view.title = "cowbuttons:Starter-terminal";
+			CHECK(!cow_policy_view_matches(&style->policy, &view));
+		}
+		xfree(text);
+		reset();
+		cow_config_destroy(cow_config);
+		cow_config = NULL;
+		return 0;
+	}
 	check_warning("scroll 1100 0", "a.conf", 1, 1);
 	check_warning("scroll 1200 0", "a.conf", 1, 1);
 	check_warning("scroll 1100 0", "a.conf", 2, 2);
@@ -238,6 +281,31 @@ main(int argc, char **argv)
 	CHECK(cow_ipc.startup_mode == false);
 	CHECK(cow_config->menu_style.bg_gradient.mode != COW_GRADIENT_NONE);
 	CHECK(cow_config->titlebar.active_gradient.mode != COW_GRADIENT_NONE);
+	CHECK(cow_rule_find_by_name("starter-panels-outputs") != NULL);
+	/* /dev/null requests the complete defaults. Real overlays suppress
+	 * first-run startup, even when empty or unreadable.
+	 */
+	reset();
+	CHECK(cow_ipc_load_config(argv[1], "/dev/null"));
+	CHECK(cow_rule_find_by_name("starter-panels-outputs") != NULL);
+	write_config(user, "");
+	reset();
+	CHECK(cow_ipc_load_config(argv[1], user));
+	CHECK(cow_rule_find_by_name("starter-panels-outputs") == NULL);
+	reset();
+	CHECK(!cow_ipc_load_config(argv[1], "/nonexistent/cow-personal.conf"));
+	CHECK(cow_rule_find_by_name("starter-panels-outputs") == NULL);
+	write_config(user, "starter\nstarter\n");
+	reset();
+	CHECK(cow_ipc_load_config(argv[1], user));
+	CHECK(cow_rule_find_by_name("starter-panels-outputs") != NULL);
+	write_config(user, "# Existing personal config\n");
+	reset();
+	CHECK(cow_ipc_load_config(argv[1], user));
+	CHECK(cow_rule_find_by_name("starter-panels-outputs") == NULL);
+	reset();
+	CHECK(cow_ipc_load_config(argv[1], NULL));
+	CHECK(cow_rule_find_by_name("starter-panels-outputs") != NULL);
 	/* A legacy solid-colour config must not inherit optional theme effects.
 	 */
 	reset();

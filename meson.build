@@ -448,6 +448,9 @@ foreach name, replacement : {
     test(name, runner,
         args: name == 'config-layers' ? files('config/cow/cow-defaults.conf') : [],
     )
+    if name == 'config-layers'
+        config_layers_test = runner
+    endif
 endforeach
 
 xpm_test = executable('test-xpm',
@@ -729,6 +732,10 @@ if appmenu_xml.found()
         args: [cow_appmenu])
     test('application-menu-output', find_program('tests/application-menu-output.sh'),
         args: [cow_appmenu, cow])
+    test('application-panel', find_program('sh'),
+        args: [files('tests/application-panel.sh'), cow_appmenu, cowbuttons, cow,
+            files('config/cow/starter-panel.conf'), buttons_applications_test,
+            cowiconman, config_layers_test, cowpager])
     install_data('examples/applications.menu', install_dir: datadir / 'cow')
 endif
 
@@ -738,10 +745,10 @@ install_data(
     install_dir: get_option('bindir'),
     install_mode: 'rwxr-xr-x',
 )
+install_data('config/cow/starter-panel.conf', install_dir: datadir / 'cow')
 test('application-starter', find_program('sh'),
     args: files('tests/application-starter.sh', 'tools/cow-applications',
         'tools/cow-terminal'))
-install_data('config/cow/starter-panel.conf', install_dir: datadir / 'cow')
 
 install_data(
     'share/wayland-sessions/cow.desktop',

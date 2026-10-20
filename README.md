@@ -104,6 +104,11 @@ Required packages:
 Optional packages:
 
 * lowdown
+* libxml2 (for `cow-appmenu`, application discovery and the starter launchers)
+
+Use `-Dcow_appmenu=enabled` with `meson setup` to require the application menu
+helper, or `-Dcow_appmenu=disabled` to omit it. The default detects libxml2
+automatically. The helper does not require Xfce or Python.
 
 Note that the names of the libraries above will vary across systems.
 
@@ -160,6 +165,86 @@ itself, such as `XKB_DEFAULT_LAYOUT`, must be set before launching River.
 Alternatively, a globally-installed `cow.desktop` file is installed allowing
 cow to be used with wayland login managers.
 
+## First start and personal configuration
+
+CoW loads the installed `cow-defaults.conf` first, then
+`~/.config/cow/cow.conf`. The latter is an override, not a copy of every
+default. The shipped [example cow.conf](config/cow/cow.conf) explains common
+overrides. Inspect the defaults with:
+
+```sh
+moocow show -D -f config config
+```
+
+The starter desktop provides a searchable Applications submenu, a bottom panel
+on each output, and a centred welcome message. Application discovery includes
+`~/.local/share/applications` and the system XDG application directories. The
+panel's gold handle shows or hides its launchers, embedded terminal and task
+list. It reserves space while open.
+Desk buttons show the active desk and switch between configured desks. The
+embedded pager shows pages on the panel output's current desk. With
+`desktop-configuration global`, desk switches affect all outputs; with
+`per-output`, each panel controls its own output. The `shared` mode retains
+CoW's desk-swapping behaviour. Desk names, counts and the
+active highlight update from CoW rather than a fixed list in the panel config.
+
+The panel and welcome message start automatically when no configuration
+file is selected, or with `-c /dev/null`. Existing personal configurations keep
+their startup behaviour.
+To opt in, add `starter` to your `cow.conf`; this also starts panels on newly
+connected outputs. Run `moocow starter` to enable it for the current session.
+
+The Terminal menu entry and Super+Return use the `terminal` alias. Its default
+helper chooses `foot`, then `xterm`, from `PATH`. Override it with, for example,
+`alias terminal exec kitty`. Desktop entries requiring a terminal use the same
+helper; override their terminal separately through `applications-refresh` as
+shown in the example configuration.
+
+Dismiss the welcome message through the root menu or with
+`moocow notify -n CoWWelcome -d`. When opting in, you can omit individual
+features by adding these overrides:
+
+```text
+alias welcome nop
+alias starter-panels nop
+alias applications-refresh nop
+```
+
+These overrides do not close panels already running. To customise the panel,
+copy the installed `starter-panel.conf` into `~/.config/cow/` and override:
+
+```text
+alias starter-panels script {
+    for o in (outputs) {
+        exec cowbuttons -c ~/.config/cow/starter-panel.conf -m #{o.name}
+    }
+}
+```
+
+Panel layout lives in this editable file, not in `cow-appmenu`. Restart the
+panels to load layout edits. Repeated launches otherwise reuse the live panel.
+Use **Starter → Refresh Applications**, or run `moocow applications-refresh`,
+after installing applications to rebuild the menu. Application discovery
+requires `cow-appmenu` (built with libxml2); without it, the panel still provides
+its menu button and any installed terminal or task list. A failed refresh
+leaves the last successfully loaded application menu intact.
+
+To try only the shipped defaults in a test session, start `cow -c /dev/null`.
+This includes the starter panel and welcome message without loading your
+personal configuration.
+This ignores your personal configuration but still loads `cow-defaults.conf`;
+`-n` disables the defaults instead. Install the updated binaries **and** shared
+configuration files before testing.
+
+The external menu helper can also run without CoW:
+
+```sh
+cow-appmenu --menu --format json
+```
+
+See [application discovery](dev-docs/application-menu.md) for supported XDG
+menu features and current limitations.
+
 ## CoW Themes
 
 CoW has support for themes -- see [the themes directory](examples/themes) for
@@ -169,9 +254,10 @@ incomplete attempt at converting
 
 ## Waybar
 
-*CoW* has no support for a bar, like waybar. For that, see the
+Waybar is an alternative to the starter cowbuttons panel. See the
 [example file](./config/waybar/) -- this can be copied verbatim to `~/.config/`
-if desired to it can be configured to your liking.
+and configured to your liking. Disable the starter panel with
+`alias starter-panels nop` if you do not want both.
 
 It is also suggested to look at cowbar(1) for sending information to waybar.
 
