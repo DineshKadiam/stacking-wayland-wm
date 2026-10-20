@@ -31,6 +31,7 @@
 
 #include "cow/compat.h"
 #include "cow/image.h"
+#include "cow/icon_lookup.h"
 #include "cow/memory.h"
 
 struct desktop_icon {
@@ -38,31 +39,12 @@ struct desktop_icon {
 	char *startup_wm_class;
 };
 
-struct icon_match {
-	char *path;
-	int   score;
-};
-
-static bool  supported_image_path(const char *);
 static bool  svg_uses_text(const char *);
 static bool  renderable_image_path(const char *);
 static void  desktop_icon_fini(struct desktop_icon *);
 static bool  desktop_icon_read(const char *, struct desktop_icon *);
 static char *desktop_icon_find(const char *, const char *);
 static char *desktop_icon_from_data_dirs(const char *);
-static char *icon_name_find(const char *, int);
-static void  icon_theme_search(const char *, const char *, int,
-     struct icon_match *);
-
-static bool
-supported_image_path(const char *path)
-{
-	const char *dot = path != NULL ? strrchr(path, '.') : NULL;
-
-	return dot != NULL &&
-	    (strcasecmp(dot, ".png") == 0 || strcasecmp(dot, ".svg") == 0 ||
-	    strcasecmp(dot, ".xpm") == 0);
-}
 
 static bool
 svg_uses_text(const char *path)
@@ -266,135 +248,6 @@ desktop_icon_from_data_dirs(const char *app_id)
 	return NULL;
 }
 
-static int
-icon_size_score(const char *path, int wanted)
-{
-	const char *p	  = path;
-	int	    score = 100000;
-	while ((p = strchr(p, '/')) != NULL) {
-		p++;
-		int width, height;
-		if (sscanf(p, "%dx%d/", &width, &height) == 2 &&
-		    width == height) {
-			int delta = width - wanted;
-			if (delta < 0)
-				delta = -delta + 1000;
-			if (delta < score)
-				score = delta;
-		}
-	}
-	if (strstr(path, "/scalable/") != NULL)
-		score = 1;
-	return score;
-}
-
-static void
-icon_theme_walk(const char *dir, const char *name, int wanted, int depth,
-    struct icon_match *best)
-{
-	if (depth > 5)
-		return;
-	DIR *dp = opendir(dir);
-	if (dp == NULL)
-		return;
-
-	struct dirent *de;
-	while ((de = readdir(dp)) != NULL) {
-		if (de->d_name[0] == '.')
-			continue;
-		char path[PATH_MAX];
-		if (snprintf(path, sizeof(path), "%s/%s", dir, de->d_name) >=
-		    (int)sizeof(path))
-			continue;
-		struct stat st;
-		if (stat(path, &st) != 0)
-			continue;
-		if (S_ISDIR(st.st_mode)) {
-			icon_theme_walk(path, name, wanted, depth + 1, best);
-			continue;
-		}
-		if (!S_ISREG(st.st_mode) || !supported_image_path(path))
-			continue;
-		const char *dot = strrchr(de->d_name, '.');
-		if (dot == NULL || (size_t)(dot - de->d_name) != strlen(name) ||
-		    strncasecmp(de->d_name, name, strlen(name)) != 0)
-			continue;
-		int score = icon_size_score(path, wanted);
-		if ((best->path == NULL || score < best->score) &&
-		    renderable_image_path(path)) {
-			xstrset(&best->path, path);
-			best->score = score;
-		}
-	}
-	closedir(dp);
-}
-
-static void
-icon_theme_search(const char *data_dir, const char *name, int wanted,
-    struct icon_match *best)
-{
-	char path[PATH_MAX];
-	if (snprintf(path, sizeof(path), "%s/icons/hicolor", data_dir) <
-	    (int)sizeof(path))
-		icon_theme_walk(path, name, wanted, 0, best);
-	if (best->path != NULL)
-		return;
-
-	const char *extensions[] = { ".png", ".svg", ".xpm" };
-	for (size_t i = 0; i < sizeof(extensions) / sizeof(extensions[0]);
-	    i++) {
-		if (snprintf(path, sizeof(path), "%s/pixmaps/%s%s", data_dir,
-			name, extensions[i]) >= (int)sizeof(path))
-			continue;
-		if (access(path, R_OK) == 0 && renderable_image_path(path)) {
-			best->path  = xstrdup(path);
-			best->score = 0;
-			return;
-		}
-	}
-}
-
-static char *
-icon_name_find(const char *name, int wanted)
-{
-	if (name == NULL || *name == '\0')
-		return NULL;
-	if (name[0] == '/' && supported_image_path(name) &&
-	    access(name, R_OK) == 0 && renderable_image_path(name))
-		return xstrdup(name);
-
-	char *base = xstrdup(name);
-	char *dot  = strrchr(base, '.');
-	if (dot != NULL && supported_image_path(base))
-		*dot = '\0';
-
-	struct icon_match best	    = { .score = INT_MAX };
-	const char	 *data_home = getenv("XDG_DATA_HOME");
-	char		  home_path[PATH_MAX];
-	if (data_home == NULL || *data_home == '\0') {
-		const char *home = getenv("HOME");
-		if (home != NULL &&
-		    snprintf(home_path, sizeof(home_path), "%s/.local/share",
-			home) < (int)sizeof(home_path))
-			data_home = home_path;
-	}
-	if (data_home != NULL)
-		icon_theme_search(data_home, base, wanted, &best);
-
-	const char *dirs = getenv("XDG_DATA_DIRS");
-	if (dirs == NULL || *dirs == '\0')
-		dirs = "/usr/local/share:/usr/share";
-	char *copy   = xstrdup(dirs);
-	char *cursor = copy;
-	char *dir;
-	while (best.path == NULL && (dir = strsep(&cursor, ":")) != NULL)
-		if (*dir != '\0')
-			icon_theme_search(dir, base, wanted, &best);
-	xfree(copy);
-	xfree(base);
-	return best.path;
-}
-
 char *
 cow_app_icon_resolve(const char *app_id, int wanted)
 {
@@ -404,15 +257,16 @@ cow_app_icon_resolve(const char *app_id, int wanted)
 		wanted = 64;
 
 	char *name = desktop_icon_from_data_dirs(app_id);
-	char *path = icon_name_find(name != NULL ? name : app_id, wanted);
+	char *path = cow_icon_name_resolve(name != NULL ? name : app_id,
+	    wanted, renderable_image_path);
 	if (path == NULL && name != NULL) {
 		char *colour_name;
 		xasprintf(&colour_name, "%s-color", app_id);
-		path = icon_name_find(colour_name, wanted);
+		path = cow_icon_name_resolve(colour_name, wanted, renderable_image_path);
 		xfree(colour_name);
 	}
 	if (path == NULL && name != NULL)
-		path = icon_name_find(app_id, wanted);
+		path = cow_icon_name_resolve(app_id, wanted, renderable_image_path);
 	xfree(name);
 	return path;
 }

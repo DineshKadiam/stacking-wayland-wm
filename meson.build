@@ -28,6 +28,7 @@ srcs = [
     'src/alias.c',
     'src/focus-history.c',
     'src/app_icon.c',
+    'src/icon_lookup.c',
     'src/arguments.c',
     'src/border.c',
     'src/cmd-alias.c',
@@ -479,6 +480,15 @@ icon_placement_test = executable('test-icon-placement',
     dependencies: all_deps,
 )
 test('icon-placement', icon_placement_test)
+
+icon_lookup_test = executable('test-icon-lookup',
+    'tests/icon-lookup.c',
+    'src/icon_lookup.c',
+    'src/memory.c',
+    include_directories: include_dirs,
+    dependencies: [libbsd],
+)
+test('icon-lookup', icon_lookup_test)
 
 selection_test = executable('test-selection',
     'tests/selection.c',
