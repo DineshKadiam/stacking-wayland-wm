@@ -61,6 +61,7 @@ jobs:
             libwayland-bin \
             libwayland-dev \
             libxkbcommon-dev \
+            libxml2-dev \
             meson \
             ninja-build \
             pkg-config \
@@ -153,7 +154,7 @@ jobs:
 
       - name: Build and test distribution archive
         run: |
-          meson setup build --buildtype=release
+          meson setup build --buildtype=release -Dcow_appmenu=enabled
           meson compile -C build
           meson test -C build --print-errorlogs
           meson dist -C build --formats gztar

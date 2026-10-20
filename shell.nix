@@ -7,6 +7,7 @@ pkgs.mkShell {
     libbsd
     libevent
     libxkbcommon
+    libxml2
     ncurses
     pango
     pkg-config

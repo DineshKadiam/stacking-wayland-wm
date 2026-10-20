@@ -10,6 +10,7 @@ packages:
   - libbsd-dev
   - libevent-dev
   - libxkbcommon-dev
+  - libxml2-dev
   - pango-dev
   - pixman-dev
   - wayland-dev
@@ -26,7 +27,7 @@ sources:
 tasks:
   - build: |
       cd cow
-      meson setup build && meson compile -C build
+      meson setup build -Dcow_appmenu=enabled && meson compile -C build
   - test: |
       cd cow
       meson test -C build --print-errorlogs

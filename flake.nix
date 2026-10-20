@@ -28,6 +28,7 @@
               libbsd
               libevent
               libxkbcommon
+              libxml2
               meson
               ncurses
               ninja

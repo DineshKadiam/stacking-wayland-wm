@@ -18,12 +18,13 @@ packages:
   - x11/pixman
   - x11-servers/xwayland
   - textproc/lowdown
+  - textproc/libxml2
 sources:
   - https://codeberg.org/cow-wm/cow.git
 tasks:
   - build: |
       cd cow
-      meson setup build && meson compile -C build
+      meson setup build -Dcow_appmenu=enabled && meson compile -C build
   - test-cowdiag-process-backend: |
       cd cow
       meson test -C build cowdiag-proc --print-errorlogs

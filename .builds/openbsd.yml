@@ -9,6 +9,7 @@ packages:
   - libevent
   - libinput-openbsd
   - libxkbcommon
+  - libxml
   - meson
   - ninja
   - pango
@@ -20,7 +21,7 @@ sources:
 tasks:
   - build: |
       cd cow
-      meson setup build && meson compile -C build
+      meson setup build -Dcow_appmenu=enabled && meson compile -C build
   - test-cowdiag-process-backend: |
       cd cow
       meson test -C build cowdiag-proc --print-errorlogs

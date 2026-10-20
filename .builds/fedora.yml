@@ -6,6 +6,7 @@ image: fedora/44
 packages:
   - bison
   - cairo-devel.x86_64
+  - diffutils
   - flex
   - gawk
   - gcc
@@ -14,6 +15,7 @@ packages:
   - libevent-devel.x86_64
   - libubsan.x86_64
   - libxkbcommon-devel.x86_64
+  - libxml2-devel.x86_64
   - meson
   - ncurses-devel.x86_64
   - pango-devel.x86_64
@@ -25,13 +27,13 @@ sources:
 tasks:
   - build: |
       cd cow
-      meson setup build && meson compile -C build
+      meson setup build -Dcow_appmenu=enabled && meson compile -C build
   - test: |
       cd cow
       meson test -C build --print-errorlogs
   - sanitizers: |
       cd cow
-      meson setup build-sanitized -Db_sanitize=address,undefined -Db_lundef=false
+      meson setup build-sanitized -Dcow_appmenu=enabled -Db_sanitize=address,undefined -Db_lundef=false
       meson compile -C build-sanitized
       ASAN_OPTIONS=detect_leaks=0:halt_on_error=1:abort_on_error=1 \
         meson test -C build-sanitized --print-errorlogs
