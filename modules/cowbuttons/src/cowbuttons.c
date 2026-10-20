@@ -28,6 +28,7 @@
 #include <strings.h>
 #include <time.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <event2/event.h>
 #include <wayland-client.h>
@@ -36,6 +37,7 @@
 #include "cow/colour.h"
 #include "cow/draw.h"
 #include "cow/image.h"
+#include "cow/icon_lookup.h"
 #include "cow/memory.h"
 #include "cow/module.h"
 #include "cow/module_config.h"
@@ -43,6 +45,7 @@
 #include "cow/module_draw.h"
 #include "cow/module_shm.h"
 #include "cow/module_status.h"
+#include "cow/output_selector.h"
 #include "cow/text.h"
 #include "cow/util.h"
 #include "cow/vector.h"
@@ -167,6 +170,7 @@ struct style {
 };
 
 struct cell_style {
+	bool icon_only;
 	bool		    frame_set;
 	int		    frame;
 	bool  bg_set;
@@ -265,6 +269,7 @@ struct win_info {
 struct cell {
 	bool		  drag;
 	bool		       fill_width;
+	bool		       indicator;
 	enum cell_type	  type;
 	enum status_type  status;
 	int		  row;
@@ -327,6 +332,7 @@ static int	   running = 1;
 static int	   win_w;
 static int	   win_h;
 static int			    expanded_w, expanded_h;
+static int	   reopening_w, reopening_h;
 static int	   pressed_cell = -1;
 static cJSON *desk_output;
 static int pressed_desk = -1;
@@ -355,6 +361,10 @@ static char	      *config_dir;
 static char	      *config_file;
 static struct cow_module_config_instances config_instances;
 static char	       instance_title[256] = PROG;
+static char *instance_output;
+static int instance_lock = -1;
+static bool apply_cow_config(const char *);
+static char *instance_script(const char *);
 static struct panel_selection *selected_panels;
 static int	       n_selected_panels;
 static struct event_base *script_event_base;
@@ -388,7 +398,7 @@ static void script_cells_stop(void);
 static void
 usage(void)
 {
-	fprintf(stderr, "usage: cowbuttons [-c path] [-p panel] [-h]\n");
+	fprintf(stderr, "usage: cowbuttons [-S | -c path] [-p panel] [-m output] [-h]\n");
 }
 
 static void
@@ -923,7 +933,12 @@ parse_cell_style_prop(struct cell_style *st, const char *prop, const char *val,
 {
 	int v;
 
-	if (strcmp(prop, "frame") == 0) {
+	if (strcmp(prop, "icon_only") == 0) {
+		if (!parse_bool(val, &st->icon_only)) {
+			*why = "bad icon_only";
+			return false;
+		}
+	} else if (strcmp(prop, "frame") == 0) {
 		if (!parse_int(val, &st->frame)) {
 			*why = "bad frame";
 			return false;
@@ -1234,8 +1249,22 @@ load_external(char **fields, int n, const char **why)
 			    "shrink");
 		} else if (!strcmp(fields[i], "app_id"))
 			xstrset(&external->external_app_id, fields[i + 1]);
-		else if (!strcmp(fields[i], "title"))
-			xstrset(&external->match_title, fields[i + 1]);
+		else if (!strcmp(fields[i], "title")) {
+			const char *token = "${COWBUTTONS_INSTANCE}";
+			const char *output_token = "${COWBUTTONS_OUTPUT}";
+			const char *output = strstr(fields[i + 1], output_token);
+			if (!strncmp(fields[i + 1], token, strlen(token))) {
+				free(external->match_title);
+				xasprintf(&external->match_title, "%s%s", instance_title,
+				    fields[i + 1] + strlen(token));
+			} else if (output && !output[strlen(output_token)]) {
+				free(external->match_title);
+				xasprintf(&external->match_title, "%.*s%s",
+				    (int)(output - fields[i + 1]), fields[i + 1],
+				    instance_output ? instance_output : "@current");
+			} else
+				xstrset(&external->match_title, fields[i + 1]);
+		}
 		else if (!strcmp(fields[i], "respawn")) {
 			if (!parse_bool(fields[i + 1], &external->respawn)) {
 				*why = "respawn expects true or false";
@@ -1334,7 +1363,13 @@ load_cell_props(struct cell *c, char **fields, int start, int n,
 		enum click_button button;
 		enum click_count count;
 
-		if (strcmp(prop, "drag") == 0 && c->type == CELL_BUTTON) {
+		if (strcmp(prop, "indicator") == 0 && c->type == CELL_BUTTON) {
+			if (!panel_direction_parse(val, &c->panel_dir)) {
+				*why = "bad indicator direction";
+				return false;
+			}
+			c->indicator = true;
+		} else if (strcmp(prop, "drag") == 0 && c->type == CELL_BUTTON) {
 			if (!parse_bool(val, &c->drag)) {
 				*why = "bad drag value";
 				return false;
@@ -1768,6 +1803,199 @@ scan_selected_panels(const char *path)
 	return 1;
 }
 
+static const char *
+application_string(const cJSON *app, const char *key)
+{
+	const cJSON *value = cJSON_GetObjectItemCaseSensitive(app, key);
+	return cJSON_IsString(value) ? value->valuestring : "";
+}
+
+static cJSON *
+application_catalogue(void)
+{
+	if (!command_exists("cow-appmenu"))
+		return NULL;
+	FILE *pipe = popen("cow-appmenu --format json", "r");
+	if (pipe == NULL)
+		return NULL;
+	char *text = NULL;
+	size_t used = 0;
+	char chunk[4096];
+	size_t n;
+	while ((n = fread(chunk, 1, sizeof(chunk), pipe)) != 0) {
+		if (used + n > COW_MODULE_STATUS_MAX_LINE)
+			break;
+		text = xrealloc(text, used + n + 1, 1);
+		memcpy(text + used, chunk, n);
+		used += n;
+		text[used] = '\0';
+	}
+	bool ok = feof(pipe) && !ferror(pipe);
+	int status = pclose(pipe);
+	cJSON *root = ok && status == 0 && text ? cJSON_Parse(text) : NULL;
+	free(text);
+	return root;
+}
+
+static bool
+application_category(const cJSON *app, const char *category)
+{
+	const char *p = application_string(app, "Categories");
+	size_t length = strlen(category);
+	while (*p) {
+		size_t n = strcspn(p, ";");
+		if (n == length && !strncmp(p, category, n))
+			return true;
+		p += n;
+		if (*p)
+			p++;
+	}
+	return false;
+}
+
+static bool
+application_usable(const cJSON *app, const char *terminal)
+{
+	return !cJSON_IsTrue(cJSON_GetObjectItem(app, "selected")) &&
+	    cJSON_IsTrue(cJSON_GetObjectItem(app, "available")) &&
+	    (!cJSON_IsTrue(cJSON_GetObjectItem(app, "Terminal")) ||
+		command_exists(terminal));
+}
+
+static char *
+application_default(const char *category)
+{
+	static const struct { const char *category, *mime; } roles[] = {
+		{"WebBrowser", "x-scheme-handler/https"},
+		{"Email", "x-scheme-handler/mailto"},
+		{"FileManager", "inode/directory"},
+		{"TextEditor", "text/plain"},
+	};
+	if (!command_exists("xdg-mime"))
+		return NULL;
+	for (size_t i = 0; i < sizeof(roles) / sizeof(roles[0]); i++) {
+		if (strcmp(category, roles[i].category))
+			continue;
+		char *command, *line = NULL;
+		size_t cap = 0;
+		/* Only fixed MIME types enter the shell command. */
+		xasprintf(&command, "xdg-mime query default %s 2>/dev/null", roles[i].mime);
+		FILE *pipe = popen(command, "r");
+		free(command);
+		if (pipe == NULL)
+			return NULL;
+		ssize_t len = getline(&line, &cap, pipe);
+		int status = pclose(pipe);
+		if (len <= 0 || status != 0) {
+			free(line);
+			return NULL;
+		}
+		line[strcspn(line, "\r\n")] = '\0';
+		return line;
+	}
+	return NULL;
+}
+
+static cJSON *
+application_select(cJSON *catalogue, const char *category,
+    const char *preferred, const char *terminal)
+{
+	cJSON *app, *best = NULL;
+	cJSON_ArrayForEach(app, cJSON_GetObjectItem(catalogue, "applications")) {
+		if (!application_usable(app, terminal))
+			continue;
+		if (preferred != NULL &&
+		    !strcmp(application_string(app, "id"), preferred))
+			return app;
+		if (category != NULL && !application_category(app, category))
+			continue;
+		/* Prefer graphical launchers, then stable name/ID order. */
+		bool console = cJSON_IsTrue(cJSON_GetObjectItem(app, "Terminal"));
+		bool best_console = best && cJSON_IsTrue(cJSON_GetObjectItem(best, "Terminal"));
+		int order = best ? strcmp(application_string(app, "Name"),
+		    application_string(best, "Name")) : -1;
+		if (best == NULL || (best_console && !console) ||
+		    (console == best_console && (order < 0 || (order == 0 &&
+			strcmp(application_string(app, "id"), application_string(best, "id")) < 0))))
+			best = app;
+	}
+	return best;
+}
+
+static bool
+load_applications(char **fields, int n, cJSON *catalogue, const char **why)
+{
+	if (n < 2 || !in_row) {
+		*why = "applications requires categories inside a row";
+		return false;
+	}
+	const char *terminal = command_exists("foot") ? "foot" : "xterm";
+	char *categories = xstrdup(fields[1]), *cursor = categories, *category;
+	size_t count = 1;
+	for (const char *p = fields[1]; *p; p++)
+		if (*p == ',')
+			count++;
+	cJSON **choices = xcalloc(count, sizeof(*choices));
+	size_t slot = 0;
+	while ((category = strsep(&cursor, ",")) != NULL) {
+		char *preferred = strchr(category, '=');
+		if (preferred != NULL)
+			*preferred++ = '\0';
+		char *xdg = preferred ? NULL : application_default(category);
+		choices[slot] = application_select(catalogue, category,
+		    preferred ? preferred : xdg, terminal);
+		free(xdg);
+		if (choices[slot] != NULL)
+			cJSON_AddBoolToObject(choices[slot], "selected", true);
+		slot++;
+	}
+	/* Satisfy all requested categories before filling gaps in this row. */
+	for (slot = 0; slot < count; slot++) {
+		cJSON *app = choices[slot];
+		if (app == NULL) {
+			app = application_select(catalogue, NULL, NULL, terminal);
+			if (app == NULL)
+				continue;
+			cJSON_AddBoolToObject(app, "selected", true);
+		}
+		struct cell *c = cell_append();
+		if (c == NULL) {
+			*why = "too many application buttons";
+			free(categories);
+			free(choices);
+			return false;
+		}
+		c->type = CELL_BUTTON;
+		strlcpy(c->label, application_string(app, "Name"),
+		    sizeof(c->label));
+		char *file = cow_shell_quote(application_string(app, "file"));
+		if (file == NULL)
+			log_fatal("cannot quote application path");
+		char *shell;
+		xasprintf(&shell, "cow-appmenu --launch %s --terminal %s",
+		    file, terminal);
+		const char *argv[] = {"exec", shell};
+		c->command[CLICK_LEFT][CLICK_SINGLE] =
+		    cow_command_from_argv(2, argv);
+		free(file);
+		free(shell);
+		if (!load_cell_props(c, fields, 2, n, why)) {
+			free(categories);
+			free(choices);
+			return false;
+		}
+		if (c->style.image == NULL)
+			c->style.image = cow_icon_name_resolve(
+			    application_string(app, "Icon"),
+			    c->style.image_size_set ? c->style.image_size :
+			    style.image_size, NULL);
+		current_col = c->col + cell_colspan(c);
+	}
+	free(choices);
+	free(categories);
+	return true;
+}
+
 static int
 load_config(const char *path)
 {
@@ -1776,6 +2004,8 @@ load_config(const char *path)
 	char *line = NULL;
 	size_t cap = 0;
 	unsigned int lineno = 0;
+	cJSON *catalogue = NULL;
+	bool catalogue_loaded = false;
 
 	f = fopen(path, "r");
 	if (f == NULL) {
@@ -1792,6 +2022,7 @@ load_config(const char *path)
 		fclose(f);
 		return 0;
 	}
+	build_instance_title();
 
 	while (cow_module_config_getline(&reader, &line, &cap, f) != -1) {
 		char *fields[MAX_FIELDS] = { 0 };
@@ -1899,6 +2130,15 @@ load_config(const char *path)
 			if (!load_cell_props(c, fields, 3, n, &why))
 				goto line_error;
 			current_col = c->col + cell_colspan(c);
+		} else if (strcmp(fields[0], "applications") == 0) {
+			if (!catalogue_loaded) {
+				catalogue = application_catalogue();
+				catalogue_loaded = true;
+				if (catalogue == NULL)
+					fprintf(stderr, "%s: application discovery unavailable\n", PROG);
+			}
+			if (!load_applications(fields, n, catalogue, &why))
+				goto line_error;
 		} else if (strcmp(fields[0], "script") == 0) {
 			if (!load_script(fields, n, &why))
 				goto line_error;
@@ -1961,6 +2201,7 @@ line_error:
 
 	free(line);
 	fclose(f);
+	cJSON_Delete(catalogue);
 	if (n_blocks != 0 || reader.depth != 0) {
 		fprintf(stderr, "%s: %s:%u: unclosed block\n", PROG, path,
 		    lineno);
@@ -2047,6 +2288,10 @@ build_instance_title(void)
 			break;
 		len += (size_t)n;
 	}
+	if (instance_output != NULL &&
+	    snprintf(instance_title + len, sizeof(instance_title) - len,
+	    ":%s", instance_output) >= (int)(sizeof(instance_title) - len))
+		log_fatal("cowbuttons: output-specific title is too long");
 }
 
 static const struct cell *
@@ -2897,6 +3142,8 @@ render(void)
 				sunken = pressed_cell >= 0 &&
 				    &cells[pressed_cell] == c;
 				image = cell_image_path(c, sunken);
+				if (c->style.icon_only && image != NULL)
+					label = "";
 			} else if (c != NULL && c->type == CELL_EXTERNAL) {
 				label = c->external.mapped ||
 					c->external.collapsed ?
@@ -2957,7 +3204,8 @@ render(void)
 		bool external_handle = c->type == CELL_EXTERNAL &&
 		    c->external.handle_size;
 		if (cell_hidden(c) ||
-		    (c->type != CELL_PANEL_HANDLE && !external_handle) ||
+		    (c->type != CELL_PANEL_HANDLE && !external_handle &&
+			!c->indicator) ||
 		    cell_image_path(c, sunken) != NULL)
 			continue;
 		int x = col_offset(c->col);
@@ -3567,7 +3815,17 @@ external_start(int index, const struct win_info *host, const cJSON *windows)
 		return;
 	}
 	if (pid == 0) {
+		/* Panel lifetime is managed by attachments, not by signals sent
+		 * to the terminal which launched cowbuttons.
+		 */
+		if (setsid() < 0) {
+			perror(PROG ": setsid");
+			_exit(127);
+		}
 		setenv("COWBUTTONS_PANEL", panel->name, 1);
+		setenv("COWBUTTONS_INSTANCE", instance_title, 1);
+		if (instance_output != NULL)
+			setenv("COWBUTTONS_OUTPUT", instance_output, 1);
 		setenv("COWBUTTONS_PANEL_DIRECTION",
 		    panel_direction_name(panel->direction), 1);
 		setenv("COWBUTTONS_PANEL_MODE", "attached", 1);
@@ -3777,12 +4035,20 @@ panel_toggle(int handle)
 	if (panel < 0 || panel >= n_selected_panels)
 		return;
 	windows_find_panel(&selected_panels[panel], &before);
+	bool was_closed_width = panel_axis_closed(true);
+	bool was_closed_height = panel_axis_closed(false);
+	int closed_w = target_width();
+	int closed_h = target_height();
 
 	if (selected_panels[panel].open)
 		selected_panels[panel].collapsed_opposite =
 		    cells[handle].panel_dir != selected_panels[panel].direction;
 	selected_panels[panel].open = !selected_panels[panel].open;
 	selected_panels[panel].mapped = selected_panels[panel].open;
+	if (was_closed_width && !panel_axis_closed(true))
+		reopening_w = closed_w;
+	if (was_closed_height && !panel_axis_closed(false))
+		reopening_h = closed_h;
 	for (int i = 0; i < n_cells; i++) {
 		if (cells[i].type == CELL_EXTERNAL &&
 		    cells[i].external.drawer && !panel_open(cells[i].panel))
@@ -3836,7 +4102,11 @@ state_from_json(struct state *st, cJSON *root)
 	cJSON *out;
 	cJSON_ArrayForEach(out, outputs) {
 		cJSON *current = cJSON_GetObjectItem(out, "current");
-		if (!cJSON_IsTrue(current))
+		cJSON *output_name = cJSON_GetObjectItem(out, "name");
+		if (instance_output != NULL ?
+		    !cJSON_IsString(output_name) ||
+		    strcmp(instance_output, output_name->valuestring) :
+		    !cJSON_IsTrue(current))
 			continue;
 		desk_output = cJSON_Duplicate(out, true);
 		cJSON *name = cJSON_GetObjectItem(out, "name");
@@ -3888,6 +4158,13 @@ handle_status_line(const char *line, __unused void *data)
 
 	struct state st;
 	state_from_json(&st, root);
+	if (instance_output != NULL && desk_output == NULL &&
+	    (cJSON_IsArray(cJSON_GetObjectItem(root, "outputs")) ||
+		cJSON_IsArray(cJSON_GetObjectItem(root, "output")))) {
+		running = 0;
+		cJSON_Delete(root);
+		return;
+	}
 	cJSON_Delete(external_windows);
 	external_windows = cJSON_DetachItemFromObject(root, "windows");
 	cJSON_Delete(root);
@@ -3944,11 +4221,31 @@ static const struct xdg_surface_listener xdg_surface_listener = {
 static void
 xdg_toplevel_configure(__unused void *data,
     __unused struct xdg_toplevel *toplevel, int32_t w,
-    int32_t h, __unused struct wl_array *states)
+    int32_t h, struct wl_array *states)
 {
 	if (cfg.resizable && w > 0 && h > 0) {
 		bool closed_width = panel_axis_closed(true);
 		bool closed_height = panel_axis_closed(false);
+		bool resizing = false;
+		uint32_t *state;
+		wl_array_for_each(state, states) {
+			if (*state == XDG_TOPLEVEL_STATE_RESIZING)
+				resizing = true;
+		}
+		/* A configure for the collapsed surface can arrive after opening.
+		 * Do not let that acknowledgement replace the saved open extent.
+		 * Explicit interactive resizes still take precedence.
+		 */
+		if (!closed_width && reopening_w && !resizing &&
+		    (w == reopening_w || w <= minimum_extent(true)))
+			w = target_width();
+		else
+			reopening_w = 0;
+		if (!closed_height && reopening_h && !resizing &&
+		    (h == reopening_h || h <= minimum_extent(false)))
+			h = target_height();
+		else
+			reopening_h = 0;
 		if (w < minimum_extent(true))
 			w = minimum_extent(true);
 		if (h < minimum_extent(false))
@@ -4040,6 +4337,10 @@ cell_command(const struct cell *c, const char *action)
 	char *command;
 	if (action == NULL || *action == '\0')
 		return NULL;
+	if (c->type != CELL_DESKS &&
+	    (strstr(action, "#{panel_title}") ||
+		strstr(action, "#{panel_output}")))
+		return instance_script(action);
 	if (c->type != CELL_DESKS)
 		return xstrdup(action);
 	int desk = desk_at_point(c);
@@ -4340,8 +4641,11 @@ parse_args(int argc, char **argv, char **config_path)
 {
 	int ch;
 
-	while ((ch = getopt(argc, argv, "c:p:h")) != -1) {
+	while ((ch = getopt(argc, argv, "Sc:p:m:h")) != -1) {
 		switch (ch) {
+		case 'S':
+			xstrset(config_path, COW_DATADIR "/starter-panel.conf");
+			break;
 		case 'c':
 			free(*config_path);
 			*config_path = strdup(optarg);
@@ -4352,6 +4656,9 @@ parse_args(int argc, char **argv, char **config_path)
 			if (!panel_selection_add(optarg))
 				return 0;
 			break;
+		case 'm':
+			xstrset(&instance_output, optarg);
+			break;
 		case 'h':
 			usage();
 			exit(0);
@@ -4360,6 +4667,111 @@ parse_args(int argc, char **argv, char **config_path)
 		}
 	}
 	return optind == argc;
+}
+
+static bool
+resolve_instance_output(void)
+{
+	if (instance_output == NULL)
+		return true;
+	char *response = cow_module_cmd_request(PROG, "show -a output", true);
+	cJSON *root = response ? cJSON_Parse(response) : NULL;
+	cJSON *outputs = cJSON_GetObjectItem(root, "data");
+	size_t count = cJSON_IsArray(outputs) ? cJSON_GetArraySize(outputs) : 0;
+	struct cow_output_selector_entry *entries =
+	    xcalloc(count ? count : 1, sizeof(*entries));
+	for (size_t i = 0; i < count; i++) {
+		cJSON *o = cJSON_GetArrayItem(outputs, i);
+		cJSON *number = cJSON_GetObjectItem(o, "number");
+		entries[i].name = cJSON_GetStringValue(cJSON_GetObjectItem(o, "name"));
+		if (cJSON_IsNumber(number) && number->valuedouble > 0 &&
+		    number->valuedouble <= UINT32_MAX)
+			entries[i].number = number->valuedouble;
+		entries[i].current = cJSON_IsTrue(cJSON_GetObjectItem(o, "current"));
+	}
+	int index = cow_output_selector_resolve(instance_output, entries, count);
+	if (index >= 0)
+		xstrset(&instance_output, entries[index].name);
+	else
+		fprintf(stderr, "%s: cannot resolve output '%s'\n", PROG, instance_output);
+	free(entries);
+	cJSON_Delete(root);
+	free(response);
+	return index >= 0;
+}
+
+/* Keep the lock file in place: unlinking it would allow two owners.
+ * The kernel releases the lock when the instance exits.
+ */
+static int
+lock_instance(void)
+{
+	if (instance_output == NULL)
+		return 1;
+	char socket_path[PATH_MAX], *path;
+	if (!cow_module_cmd_path(socket_path, sizeof(socket_path), PROG))
+		return -1;
+	uint64_t hash = UINT64_C(14695981039346656037);
+	for (const unsigned char *p = (const unsigned char *)instance_title; *p; p++)
+		hash = (hash ^ *p) * UINT64_C(1099511628211);
+	xasprintf(&path, "%s.buttons-%016llx.lock", socket_path,
+	    (unsigned long long)hash);
+	instance_lock = open(path, O_CREAT | O_RDWR | O_CLOEXEC | O_NOFOLLOW, 0600);
+	free(path);
+	struct stat st;
+	if (instance_lock < 0 || fstat(instance_lock, &st) < 0 ||
+	    !S_ISREG(st.st_mode) || st.st_uid != getuid())
+		return -1;
+	struct flock lock = { .l_type = F_WRLCK, .l_whence = SEEK_SET };
+	if (fcntl(instance_lock, F_SETLK, &lock) == 0)
+		return 1;
+	return errno == EACCES || errno == EAGAIN ? 0 : -1;
+}
+
+static char *
+instance_script(const char *body)
+{
+	cJSON *title = cJSON_CreateString(instance_title);
+	cJSON *output = cJSON_CreateString(instance_output ? instance_output : "@current");
+	char *t = cJSON_PrintUnformatted(title), *o = cJSON_PrintUnformatted(output);
+	char *command;
+	if (t == NULL || o == NULL)
+		log_fatal("cowbuttons: cannot encode instance context");
+	xasprintf(&command, "script {\nlet panel_title = %s\n"
+	    "let panel_output = %s\n%s\n}", t, o, body);
+	free(t);
+	free(o);
+	cJSON_Delete(title);
+	cJSON_Delete(output);
+	return command;
+}
+
+/* A reservation change is also an output change. Repeated launches should
+ * restore policy only after CoW has replaced its command socket, not on
+ * every panel toggle.
+ */
+static bool
+instance_policy_current(bool save)
+{
+	struct {
+		dev_t device;
+		ino_t inode;
+	} current = {0}, previous;
+	char path[PATH_MAX];
+	struct stat st;
+
+	if (instance_lock < 0 ||
+	    !cow_module_cmd_path(path, sizeof(path), PROG) ||
+	    stat(path, &st) < 0)
+		return false;
+	current.device = st.st_dev;
+	current.inode = st.st_ino;
+	if (save)
+		return pwrite(instance_lock, &current, sizeof(current), 0) ==
+		    sizeof(current);
+	return pread(instance_lock, &previous, sizeof(previous), 0) ==
+	    sizeof(previous) && previous.device == current.device &&
+	    previous.inode == current.inode;
 }
 
 static bool
@@ -4386,8 +4798,7 @@ apply_cow_config(const char *path)
 	free(line);
 	fclose(file);
 	if (ok && body != NULL) {
-		char *command;
-		xasprintf(&command, "script {\n%s\n}", body);
+		char *command = instance_script(body);
 		char *response = cow_module_cmd_request(PROG, command, true);
 		cJSON *root = response != NULL ? cJSON_Parse(response) : NULL;
 		ok = root != NULL && cJSON_IsTrue(cJSON_GetObjectItem(root, "ok"));
@@ -4430,16 +4841,30 @@ main(int argc, char **argv)
 			return 1;
 		}
 	}
-	if (!load_config(config_path)) {
+	if (!resolve_instance_output() || !load_config(config_path)) {
 		free(config_path);
 		return 1;
 	}
 	config_file = realpath(config_path, NULL);
+	int locked = lock_instance();
+	if (locked < 0) {
+		fprintf(stderr, "%s: cannot lock output instance\n", PROG);
+		return 1;
+	}
+	if (locked == 0 && instance_policy_current(false)) {
+		free(config_file);
+		free(config_path);
+		return 0;
+	}
 	if (config_file == NULL || !apply_cow_config(config_file)) {
 		free(config_file);
 		free(config_path);
 		return 1;
 	}
+	(void)instance_policy_current(true);
+	/* Reapply policy after a CoW restart without replacing a live panel. */
+	if (locked == 0)
+		return 0;
 	cow_module_config_instances_spawn(&config_instances, argv);
 	free(config_path);
 

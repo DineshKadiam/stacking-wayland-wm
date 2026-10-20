@@ -14,10 +14,10 @@ buttons_deps = [
     m_dep,
 ]
 
-executable('cowbuttons',
-    ['src/cowbuttons.c'] + buttons_generated,
+buttons_common_sources = [
     '../../src/colour.c',
     '../../src/image.c',
+    '../../src/icon_lookup.c',
     '../../src/xpm.c',
     '../../src/memory.c',
     '../../src/module.c',
@@ -26,16 +26,26 @@ executable('cowbuttons',
     '../../src/shm_util.c',
     '../../src/module_cursor.c',
     '../../src/module_config.c',
+    '../../src/output_selector.c',
     '../../src/module_draw.c',
     '../../src/text.c',
     '../../src/util.c',
     '../../src/vector.c',
     '../../vendor/cJSON.c',
-    include_directories: [
+]
+buttons_include_dirs = [
         include_directories('../..'),
         include_directories('../../vendor'),
         include_directories('../../include'),
-    ],
+]
+cowbuttons = executable('cowbuttons',
+    ['src/cowbuttons.c'] + buttons_generated + buttons_common_sources,
+    include_directories: buttons_include_dirs,
     dependencies: buttons_deps,
     install: true,
+)
+buttons_applications_test = executable('test-buttons-applications',
+    ['../../tests/buttons-applications.c'] + buttons_generated + buttons_common_sources,
+    include_directories: buttons_include_dirs,
+    dependencies: buttons_deps,
 )

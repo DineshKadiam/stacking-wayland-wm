@@ -10,7 +10,7 @@ cowbuttons - Button panel for the cow window manager
 
 # SYNOPSIS
 
-**cowbuttons** \[**-c** *config*\] \[**-p** *panel*\]... \[**-h**\]
+**cowbuttons** \[**-S** | **-c** *config*\] \[**-p** *panel*\]... \[**-m** *output*\] \[**-h**\]
 
 # DESCRIPTION
 
@@ -31,6 +31,21 @@ or iconified. This uses CoW's container machinery.
 **-h**
 
 : Show usage.
+
+**-S**
+
+: Load the shipped **starter-panel.conf** from CoW's shared data directory.
+  Copy that file and use **-c** to customise it. It contains ordinary
+  cowbuttons configuration, including its placement and reservation rules.
+
+**-m** *output*
+
+: Bind this instance to an output name or selector such as **@1** or
+  **@current**. The selector is resolved at startup. Desk buttons and output
+  status follow that output, and the panel exits when it disappears.
+  The output name is appended to the window title. Starting the same panel
+  on that output again reapplies its **cow** block without creating another
+  window.
 
 # CONFIGURATION
 
@@ -63,6 +78,19 @@ ignore this block. These commands run when cowbuttons starts; restart
 cowbuttons to reapply them after restarting CoW.
 Use **style -r** for named styles in this block so relaunching the panel
 replaces its previous definition.
+
+The block can use **panel_title** and **panel_output** to define
+instance-specific styles and rules. **panel_output** is the resolved **-m**
+output, or **@current** without that option. Button commands can interpolate
+**#{panel_title}** and **#{panel_output}** too.
+
+External commands receive **COWBUTTONS_INSTANCE** (the full panel title)
+and, with **-m**, **COWBUTTONS_OUTPUT**. An external **title** selector
+starting with **${COWBUTTONS_INSTANCE}** expands that prefix, allowing each
+panel to capture its own terminal.
+A selector ending with **${COWBUTTONS_OUTPUT}** expands that suffix to the
+resolved output name, or **@current** without **-m**, for output-specific
+application titles such as cowpager's.
 
 Cowbuttons supplies **COWBUTTONS_CONFIG** to external applications. It is the
 absolute path to its configuration file; quote it in shell commands:
@@ -263,7 +291,19 @@ opaque dark grey.
   action. Supported properties are **width**, **height**, **span**,
   **frame**, **bg**, **bg\_pressed**, **fg**, **fg\_pressed**, **image**,
   **image\_pressed**, **image\_size**, **image\_position**, **justify**,
-  and the click-action properties described below.
+  **icon_only**, **indicator**, and the click-action properties described below.
+
+**indicator** *up|down|left|right*
+
+: Draw a centred vector arrow using the panel-handle renderer. This is a
+  visual indicator only; the button's command still determines its action.
+  An image takes precedence over the arrow.
+
+**icon_only** *true|false*
+
+: Hide the label when the button has an image. Buttons without an image
+  retain their label. Use **image_position center** for centred icon buttons.
+  The default is **false**.
 
 **leftclick** *command* **click** *command* **middleclick** *command* **rightclick** *command*
 
@@ -311,6 +351,30 @@ number and **output_selector** to its output selector. For example:
 Without an explicit left-click action, desk buttons switch to the clicked
 desk. Double-click matching and delayed actions retain the original desk
 and output context.
+
+**applications** *category*[,category...] \[*property* *value* ...\]
+
+: Discover applications at startup using **cow-appmenu --format json**.
+  Inside a **row**, add at most one available application per desktop-entry
+  category, without repeating applications selected by earlier entries.
+  Use **Category=desktop-id.desktop** to prefer a particular application.
+  Otherwise, when **xdg-mime** is installed, WebBrowser, Email, FileManager
+  and TextEditor prefer the handlers for **x-scheme-handler/https**,
+  **x-scheme-handler/mailto**, **inode/directory**, and **text/plain**.
+  Unavailable or already selected preferences fall back to the category.
+  Other choices prefer graphical applications, then sort by name and desktop
+  ID. Unmatched slots are filled from remaining available applications after
+  matching all categories in that directive. Earlier directives take priority;
+  if too few applications are available, the remaining slots are omitted.
+  Names and icons come from desktop entries;
+  ordinary button properties control their appearance and dimensions.
+  Launches use **cow-appmenu --launch**, never the desktop entry's **Exec**
+  text as shell code. Terminal applications use foot, then xterm.
+  Without cow-appmenu, the rest of the panel remains usable.
+  Restart cowbuttons to rediscover installed applications.
+
+      applications TerminalEmulator=foot.desktop,WebBrowser,FileManager,TextEditor \
+          width 112 height 48 image_size 24
 
 **script** *command* **interval** *seconds* \[*property* *value* ...\]
 
@@ -445,7 +509,8 @@ and output context.
 
 **desks** \[*property* *value* ...\]
 
-: Show one button per desk on the current output, using its name (or
+: Show one button per desk on the output selected by **-m**, or the current
+  output without **-m**, using its name (or
   number when unnamed). Left-click switches to that desk. The list updates
   when desks are added, removed or renamed, or the current output changes.
   **rows** sets the maximum number of rows (default 2). Buttons share the
@@ -456,6 +521,9 @@ and output context.
   Optional **colours** takes a comma-separated palette, repeated in desk
   order. This replaces the button background colours; the active desk
   remains distinguished by its relief.
+  Desk switches follow CoW's **desktop-configuration**: **global** switches
+  every output, **per-output** switches only the selected output, and
+  **shared** swaps desks when another output already shows the chosen desk.
 
 # EXAMPLES
 

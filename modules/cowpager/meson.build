@@ -42,7 +42,7 @@ pager_include_dirs = [
         include_directories('../../include'),
 ]
 
-executable('cowpager',
+cowpager = executable('cowpager',
     ['src/cowpager.c'] + pager_generated + pager_support_sources,
     include_directories: pager_include_dirs,
     dependencies: pager_deps,

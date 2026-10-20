@@ -741,6 +741,7 @@ install_data(
 test('application-starter', find_program('sh'),
     args: files('tests/application-starter.sh', 'tools/cow-applications',
         'tools/cow-terminal'))
+install_data('config/cow/starter-panel.conf', install_dir: datadir / 'cow')
 
 install_data(
     'share/wayland-sessions/cow.desktop',
