@@ -106,6 +106,7 @@ main(void)
 	assert(run("notify -n test -t 0 'Persistent notice'"));
 	assert(cow_notification_next_ms() == -1);
 	assert(run("notify -n test -t 1000 'Replacement'"));
+	assert(run("notify -c -n test -t 1000 'Centred replacement'"));
 	assert(cow_notification_next_ms() >= 0);
 	assert(cow_notification_next_ms() <= 1000);
 	assert(cow_notification_dismiss("test"));
@@ -116,6 +117,7 @@ main(void)
 	assert(!run("notify -t -1 'Bad timeout'"));
 	assert(!run("notify -d"));
 	assert(!run("notify -n test -d 'Unexpected text'"));
+	assert(!run("notify -c -n test -d"));
 	assert(!run("notify"));
 	assert(run("notify -n expires -t 1 'Short notice'"));
 	usleep(20000);

@@ -25,6 +25,7 @@
 #include "cow/colour.h"
 #include "cow/compat.h"
 #include "cow/config.h"
+#include "cow/container.h"
 #include "cow/draw.h"
 #include "cow/image.h"
 #include "cow/layer_shell.h"
@@ -94,24 +95,58 @@ output_apply_reserved_area(struct cow_box *area)
 		area->height = 100;
 }
 
+struct cow_box
+cow_output_base_usable_area(const struct cow_output *output)
+{
+	struct cow_box area = output->has_layer_usable_area ?
+	    output->layer_usable_area :
+	    (struct cow_box){output->x, output->y, output->width, output->height};
+	output_apply_reserved_area(&area);
+	return area;
+}
+
 bool
 cow_output_recompute_usable_area(struct cow_output *output)
 {
 	if (output == NULL)
-		return (false);
-
+		return false;
 	struct cow_box old = output->usable_area;
-
-	if (output->has_layer_usable_area) {
-		output->usable_area = output->layer_usable_area;
-	} else {
-		output->usable_area.x	    = output->x;
-		output->usable_area.y	    = output->y;
-		output->usable_area.width  = output->width;
-		output->usable_area.height = output->height;
+	output->usable_area = cow_output_base_usable_area(output);
+	int edges[COW_RESERVE_LEFT + 1] = {0};
+	struct cow_view *panel;
+	wl_list_for_each(panel, &cow_wm.views, wm_link) {
+		int edge = panel->reserve_edge;
+		if (edge <= COW_RESERVE_NONE || edge > COW_RESERVE_LEFT ||
+		    panel->output != output ||
+		    cow_container_is_attached_client(panel) ||
+		    panel->closed || !cow_view_visible(panel, output) ||
+		    cow_view_is_iconified(panel))
+			continue;
+		struct cow_box frame = cow_view_frame_box(panel);
+		int size = edge == COW_RESERVE_TOP || edge == COW_RESERVE_BOTTOM ?
+		    frame.height : frame.width;
+		if (size > edges[edge])
+			edges[edge] = size;
 	}
-
-	output_apply_reserved_area(&output->usable_area);
+	/* Same-edge reservations overlap, rather than accumulating on refresh.
+	 * Keep at least one pixel usable even with an oversized panel.
+	 */
+	int horizontal = output->usable_area.width > 1 ?
+	    output->usable_area.width - 1 : 0;
+	int vertical = output->usable_area.height > 1 ?
+	    output->usable_area.height - 1 : 0;
+	if (edges[COW_RESERVE_LEFT] > horizontal)
+		edges[COW_RESERVE_LEFT] = horizontal;
+	if (edges[COW_RESERVE_RIGHT] > horizontal - edges[COW_RESERVE_LEFT])
+		edges[COW_RESERVE_RIGHT] = horizontal - edges[COW_RESERVE_LEFT];
+	if (edges[COW_RESERVE_TOP] > vertical)
+		edges[COW_RESERVE_TOP] = vertical;
+	if (edges[COW_RESERVE_BOTTOM] > vertical - edges[COW_RESERVE_TOP])
+		edges[COW_RESERVE_BOTTOM] = vertical - edges[COW_RESERVE_TOP];
+	output->usable_area.x += edges[COW_RESERVE_LEFT];
+	output->usable_area.y += edges[COW_RESERVE_TOP];
+	output->usable_area.width -= edges[COW_RESERVE_RIGHT] + edges[COW_RESERVE_LEFT];
+	output->usable_area.height -= edges[COW_RESERVE_TOP] + edges[COW_RESERVE_BOTTOM];
 
 	bool changed = (old.x != output->usable_area.x ||
 	    old.y != output->usable_area.y ||

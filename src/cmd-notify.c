@@ -5,10 +5,10 @@ static enum cmd_retval cmd_notify_exec(struct cmd *, struct cmd_q *);
 
 struct cmd_entry cmd_notify_entry = {
 	"notify",
-	"dn:t:",
+	"cdn:t:",
 	0,
 	1,
-	"notify [-n name] [-t milliseconds] text | notify -n name -d",
+	"notify [-c] [-n name] [-t milliseconds] text | notify -n name -d",
 	cmd_notify_exec,
 	CMD_OWN_TS,
 };
@@ -20,7 +20,8 @@ cmd_notify_exec(struct cmd *self, struct cmd_q *cmdq)
 	const char *name = args_get(args, 'n');
 	bool dismiss = args_has(args, 'd');
 	if ((name != NULL && *name == '\0') ||
-	    (dismiss && (name == NULL || args->argc != 0 || args_has(args, 't'))) ||
+	    (dismiss && (name == NULL || args->argc != 0 ||
+		args_has(args, 't') || args_has(args, 'c'))) ||
 	    (!dismiss && args->argc != 1)) {
 		cmdq_error(cmdq, "usage: %s", self->entry->usage);
 		return CMD_RETURN_ERROR;
@@ -40,7 +41,7 @@ cmd_notify_exec(struct cmd *self, struct cmd_q *cmdq)
 		}
 	}
 	cow_notification_show(name != NULL ? name : "default", NULL,
-	    args->argv[0], cmd_ctx_target_window(cmdq),
+	    args->argv[0], args_has(args, 'c') ? NULL : cmd_ctx_target_window(cmdq),
 	    cmd_ctx_target_output(cmdq), timeout);
 	return CMD_RETURN_NORMAL;
 }

@@ -275,6 +275,7 @@ extern struct cmd_entry cmd_winops_entry;
 extern struct cmd_entry cmd_window_expand_entry;
 extern struct cmd_entry cmd_window_maximize_entry;
 extern struct cmd_entry cmd_window_tile_entry;
+extern struct cmd_entry cmd_window_reserve_entry;
 extern struct cmd_entry cmd_window_list_entry;
 extern struct cmd_entry cmd_move_entry;
 extern struct cmd_entry cmd_resize_entry;

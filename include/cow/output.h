@@ -146,6 +146,7 @@ void cow_output_name_known(struct cow_output *);
 
 /* Recompute output->usable_area from River layer-shell state and reserved area. */
 bool cow_output_recompute_usable_area(struct cow_output *);
+struct cow_box cow_output_base_usable_area(const struct cow_output *);
 
 /* Background surface lifecycle. */
 void cow_output_prepare_background(struct cow_output *);

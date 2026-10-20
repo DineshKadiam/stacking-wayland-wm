@@ -890,7 +890,9 @@ do_anchor(struct cow_view *view, const char *anchor, struct cmd_q *cmdq)
 	int frame_w, frame_h, content_x, content_y;
 	int frame_x, frame_y;
 	move_frame_geometry(view, &frame_w, &frame_h, &content_x, &content_y);
-	const struct cow_box *ua = &view->output->usable_area;
+	struct cow_box area = view->reserve_edge ?
+	    cow_output_base_usable_area(view->output) : view->output->usable_area;
+	const struct cow_box *ua = &area;
 	cow_placement_anchor(ua, frame_w, frame_h, parsed, &frame_x, &frame_y);
 	view->x = frame_x + content_x;
 	view->y = frame_y + content_y;

@@ -459,6 +459,9 @@ handle_wm_manage_start(__unused void *data,
 
 	cow_container_manage_windows();
 	manage_apply_deferred_views();
+	struct cow_output *reserved_output;
+	wl_list_for_each(reserved_output, &cow_wm.outputs, wm_link)
+		cow_output_recompute_usable_area(reserved_output);
 	manage_apply_focus();
 	cow_keyboard_layout_reconcile_focus();
 	manage_apply_warp();

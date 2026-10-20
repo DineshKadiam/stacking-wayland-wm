@@ -428,6 +428,8 @@ foreach name, replacement : {
     'resize-geometry': 'src/view.c',
     'title-updates': 'src/view.c',
     'window-list': 'src/cmd-window-list.c',
+    'menu-overflow': 'src/menu.c',
+    'window-reserve': '',
 }
     test_sources = []
     foreach source : wm_test_sources

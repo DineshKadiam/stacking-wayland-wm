@@ -1234,7 +1234,7 @@ Delete a style with **style -d -n name**.
 Styles can be inspected with the **show style name** and **show -a style**
 commands.
 
-## notify \[-n name\] \[-t milliseconds\] text
+## notify \[-c\] \[-n name\] \[-t milliseconds\] text
 
 ## notify -n name -d
 
@@ -1242,6 +1242,7 @@ Show text in a **cow** menu without taking focus or input. Newlines
 separate rows; the first row is a heading. Menu styling is inherited. The
 notification appears near the command's target window, or centred on the
 current output when there is no target. Long text is clipped to fit the output.
+Use **-c** to centre it on the current output even when a window is focused.
 
 The default lifetime is 3000 milliseconds. **-t 0** keeps the notification
 until it is dismissed or replaced; the maximum is 86400000 milliseconds.
@@ -2105,6 +2106,28 @@ position so that it can be unmaximized.
 **-T**
 
 : Toggle: restore original geometry if the window is already expanded.
+
+## window-reserve \[-t target\] -e edge
+
+Reserve a strip for the target window on its own output. *edge* is **top**,
+**right**, **bottom**, **left**, or **none** to disable the reservation. The
+strip follows the frame's height for top/bottom, or its width for left/right,
+and is present only while the window is visible. Closing the window removes its
+reservation.
+
+Reservations are additional to layer-shell and **reserved.EDGE** settings.
+Windows reserving the same edge share the largest requested strip; they do not
+accumulate it. Anchoring a reserving window uses the area before window
+reservations, preventing the panel from being moved by its own reservation. For
+example, a panel's on-resize rule can use:
+
+```text
+if self.width > 16 {
+    window-reserve -e bottom
+} else {
+    window-reserve -e none
+}
+```
 
 ## window-maximize \[-t target\] \[-T\] \[-m\] \[-u\] \[-h\] \[-v\] \[-k\] \[-R\]
 
@@ -3149,7 +3172,7 @@ titles, separators, or links to sub-menus.
 
 ## Showing menus
 
-**menu-show** *NAME* \[*-x N*\] \[*-y N*\] \[*-c* \[*-o* OUTPUT\]\]
+**menu-show** *NAME* \[*-T*\] \[*-x N*\] \[*-y N*\] \[*-a above*\] \[*-c* \[*-o* OUTPUT\]\]
 
 : Open the menu as a popup. Without explicit coordinates, the menu is
   centred horizontally on the current pointer location, with the pointer
@@ -3160,6 +3183,14 @@ titles, separators, or links to sub-menus.
   window-operation items target the right window even if focus drifts 
   during navigation.
 
+With **-a above**, **-x** and **-y** specify the menu's lower-left anchor. This
+is useful for opening a menu just above a panel. Overflow continues through
+**More…** rather than covering the panel. Do not combine it with **-c**.
+
+With **-T**, toggle the menu instead of always opening it. For panel buttons,
+use the panel window as the command target. Clicking that window to dismiss
+the menu then running the toggle on release leaves the menu closed.
+
 Menus take keyboard focus while open. Arrow keys navigate, Enter selects,
 Escape closes, and a menu item's alphanumeric hotkey activates it. Keys listed
 in **menu.repeat\_keys** repeat while held, using **repeat\_delay\_ms** and
@@ -3169,6 +3200,11 @@ initially highlighted. Pointer hover does not replace that selection until the
 pointer moves after the menu opens. Selecting a submenu item with Up or Down
 opens it after the same short delay used for pointer hover; Right continues to
 open it immediately.
+
+Menus which are too tall for their output end with a **More…** submenu
+containing the remaining entries. Continuations use the same style and
+navigation. Typeahead searches the complete menu, including entries beyond
+the current continuation.
 
 The **mouse** command can bind a menu to cow's output background with the **R**
 context:

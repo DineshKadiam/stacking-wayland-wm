@@ -200,6 +200,7 @@ cow_state_save(void)
 		}
 
 		cJSON_AddBoolToObject(v, "maximized", view->maximized);
+		cJSON_AddNumberToObject(v, "reserve_edge", view->reserve_edge);
 		/* Per-axis bits (for window-maximize -h / -v).  Older
 		 * state files without these keys restore as both-axis
 		 * maximised via the maximized key alone -- see the
@@ -440,6 +441,9 @@ cow_state_restore(void)
 				continue;
 
 			long long position;
+			if (cow_json_get_int(vs, "reserve_edge", &position) &&
+			    position >= COW_RESERVE_NONE && position <= COW_RESERVE_LEFT)
+				view->reserve_edge = (enum cow_reserve_edge)position;
 			if (cow_json_get_int(vs, "titlebar_position", &position) &&
 			    position >= COW_TITLEBAR_TOP && position <= COW_TITLEBAR_RIGHT) {
 				view->cfg.titlebar.position = position;

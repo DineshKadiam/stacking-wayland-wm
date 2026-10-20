@@ -130,8 +130,22 @@ struct cow_menu {
 	char	       typeahead_query[128];
 };
 
+struct cow_menu_row {
+	struct cow_menu_item *item; /* borrowed from the definition */
+	int source_index; /* original index for multi-selection */
+};
+
 struct cow_menu_popup {
 	struct cow_menu *def;	   /* definition being rendered */
+	struct cow_menu_row *rows; /* filtered, output-sized presentation */
+	int row_count;
+	int first_item; /* first source index of a continuation */
+	int next_item; /* first source index beyond this popup, or -1 */
+	int output_width, output_height; /* layout limits */
+	bool above;
+	int bottom; /* lower anchor for menus opened above a panel */
+	bool continuation;
+	struct cow_menu_item more;
 	int		 x, y;	   /* top-left screen position */
 	int		 width;	   /* rendered width in pixels */
 	int		 height;   /* rendered height in pixels */
@@ -156,6 +170,7 @@ struct cow_menu_popup {
 	bool needs_destroy;			  /* defer destroy to render */
 	bool keep_centered;			  /* preserve centre across relayout */
 	bool passive; /* caller-owned popup, outside interactive menu state */
+	bool toggle; /* launcher clicks may dismiss without reopening */
 	int max_width, max_height; /* optional bounds for passive layout */
 	uint64_t style_generation;
 
@@ -213,6 +228,8 @@ struct cow_menu_popup *cow_menu_popup_open(struct cow_menu *menu, int x, int y,
 /* Open a root popup centred as a whole on the given position. */
 struct cow_menu_popup *cow_menu_popup_open_centered(struct cow_menu *, int,
     int, struct cow_view *);
+struct cow_menu_popup *cow_menu_popup_open_above(struct cow_menu *, int,
+    int, struct cow_view *);
 
 /* Open a generated menu in the centre of an output's usable area. */
 struct cow_menu_popup *cow_menu_popup_open_on_output(struct cow_menu *,
@@ -244,6 +261,10 @@ void cow_menu_popup_close(struct cow_menu_popup *popup);
  * Close all open popups.
  */
 void cow_menu_close_all(void);
+
+void cow_menu_clear_toggle(void);
+void cow_menu_dismiss_for_window(struct cow_view *);
+bool cow_menu_toggle(struct cow_menu *, struct cow_view *);
 
 /* Restore the window focus saved before the root menu took keyboard focus. */
 void cow_menu_apply_focus_restore(void);

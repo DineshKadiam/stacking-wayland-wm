@@ -821,11 +821,14 @@ menu_item_free(struct cow_menu_item *it)
 	xfree(it);
 }
 
+static void close_popups_of(const struct cow_menu *);
+
 void
 cow_menu_clear(struct cow_menu *menu)
 {
 	if (menu == NULL)
 		return;
+	close_popups_of(menu);
 	menu->inherited = false;
 	struct cow_menu_item *it, *tmp;
 	wl_list_for_each_safe(it, tmp, &menu->items, link)
@@ -841,11 +844,22 @@ static void popup_destroy(struct cow_menu_popup *p);
 static void
 close_popups_of(const struct cow_menu *def)
 {
-	struct cow_menu_popup *p, *tmp;
-	wl_list_for_each_safe(p, tmp, &cow_wm.open_menus, link)
-	{
-		if (p->def == def)
-			cow_menu_popup_close(p);
+	if (cow_wm.open_menus.next == NULL)
+		return;
+	/* Closing a parent also removes its continuation children. Restart the
+	 * traversal rather than retaining a pointer to one of those children.
+	 */
+	for (;;) {
+		struct cow_menu_popup *p, *match = NULL;
+		wl_list_for_each(p, &cow_wm.open_menus, link) {
+			if (p->def == def) {
+				match = p;
+				break;
+			}
+		}
+		if (match == NULL)
+			break;
+		cow_menu_popup_close(match);
 	}
 }
 
@@ -854,7 +868,7 @@ cow_menu_destroy(struct cow_menu *menu)
 {
 	if (menu == NULL)
 		return;
-	close_popups_of(menu);
+	cow_menu_clear_toggle();
 	cow_menu_clear(menu);
 	wl_list_remove(&menu->link);
 	xfree(menu->name);
@@ -978,17 +992,13 @@ menu_item_visible(const struct cow_menu *menu, const struct cow_menu_item *it)
 }
 
 static int
-menu_first_selectable(const struct cow_menu *menu)
+popup_first_selectable(const struct cow_menu_popup *p)
 {
-	int idx = 0;
-	struct cow_menu_item *it;
-	wl_list_for_each(it, &menu->items, link)
-	{
-		if (menu_item_visible(menu, it) && item_selectable(it))
-			return (idx);
-		idx++;
+	for (int idx = 0; idx < p->row_count; idx++) {
+		if (item_selectable(p->rows[idx].item))
+			return idx;
 	}
-	return (-1);
+	return -1;
 }
 
 static void
@@ -1039,6 +1049,9 @@ menu_icon_gutter(const struct cow_menu *menu, const struct cow_menu_style *style
 	return (0);
 }
 
+static struct cow_output *popup_output_for(const struct cow_menu_popup *,
+    int, int);
+
 static void
 popup_layout(struct cow_menu_popup *p)
 {
@@ -1085,15 +1098,58 @@ popup_layout(struct cow_menu_popup *p)
 		p->side_w = p->side_image_w;
 	int inner_w = text_w + st->padding_x * 2;
 	int height  = st->border_width * 2;
+	struct cow_output *out = popup_output_for(p->parent, p->x, p->y);
+	p->output_width = out != NULL ? out->width : 0;
+	p->output_height = out != NULL ? out->height : 0;
+	int limit = out != NULL ? out->height : INT_MAX;
+	if (p->above && out != NULL && p->bottom > out->y &&
+	    p->bottom - out->y < limit)
+		limit = p->bottom - out->y;
+	int row_h = content_h + st->padding_y * 2;
+	int count = wl_list_length(&p->def->items);
+	xfree(p->rows);
+	p->rows = xcalloc(count + 1, sizeof(*p->rows));
+	p->row_count = 0;
+	p->next_item = -1;
+	int source_index = -1;
 	wl_list_for_each(it, &p->def->items, link)
 	{
-		if (!menu_item_visible(p->def, it))
+		source_index++;
+		if (source_index < p->first_item ||
+		    !menu_item_visible(p->def, it))
 			continue;
+		p->rows[p->row_count++] =
+		    (struct cow_menu_row){ it, source_index };
 		height += item_row_height(it, content_h, st);
 	}
 
+	/* Keep at least one real row so even unusually small outputs progress.
+	 * Remove rows from the end until the continuation link fits too.
+	 */
+	if (!p->passive && height > limit && p->row_count > 1) {
+		while (p->row_count > 1 && height + row_h > limit) {
+			struct cow_menu_row *row = &p->rows[--p->row_count];
+			height -= item_row_height(row->item, content_h, st);
+			p->next_item = row->source_index;
+		}
+		p->more = (struct cow_menu_item){
+		    .type = COW_MENU_ITEM_NORMAL,
+		    .label = "More…",
+		    .action = p->def->name,
+		    .is_popup = true,
+		};
+		p->rows[p->row_count++] =
+		    (struct cow_menu_row){ &p->more, -1 };
+		height += row_h;
+		int more_w, more_h;
+		text_extents(p->def, &p->more, st, false, &more_w, &more_h);
+		if (more_w > max_label_w)
+			inner_w += more_w - max_label_w;
+	}
 	p->item_h = content_h + st->padding_y * 2;
 	p->width  = inner_w + p->side_w + st->border_width * 2;
+	if (out != NULL && p->width > out->width)
+		p->width = out->width;
 	p->height = height;
 	if (p->passive) {
 		if (p->max_width > 0 && p->width > p->max_width)
@@ -1101,6 +1157,8 @@ popup_layout(struct cow_menu_popup *p)
 		if (p->max_height > 0 && p->height > p->max_height)
 			p->height = p->max_height;
 	}
+	if (p->selected >= p->row_count)
+		p->selected = popup_first_selectable(p);
 }
 
 static struct cow_output *
@@ -1153,6 +1211,8 @@ popup_fit_to_output(struct cow_menu_popup *popup, int *x, int *y,
 
 	int right  = out->x + out->width;
 	int bottom = out->y + out->height;
+	if (popup->above && popup->bottom > out->y && popup->bottom < bottom)
+		bottom = popup->bottom;
 
 	if (parent != NULL && *x + popup->width > right) {
 		int shift = *x + popup->width - right;
@@ -1414,12 +1474,8 @@ popup_render(struct cow_menu_popup *p)
 	const int CHECK_GUTTER = p->def->multi_select ? MENU_CHECK_GUTTER : 0;
 
 	struct cow_menu_item *it;
-	wl_list_for_each(it, &p->def->items, link)
-	{
-		if (!menu_item_visible(p->def, it)) {
-			idx++;
-			continue;
-		}
+	for (int row = 0; row < p->row_count; row++) {
+		it = p->rows[row].item;
 		int rh = item_row_height(it, p->item_h - st->padding_y * 2, st);
 
 		switch (it->type) {
@@ -1469,8 +1525,12 @@ popup_render(struct cow_menu_popup *p)
 			char label[512];
 			menu_label_resolve(p->def, it, label, sizeof(label),
 			    NULL);
+			/* Passive items are informational text, not unavailable
+			 * actions. Keep the normal foreground contrast.
+			 */
 			render_text(cs, label_x, y, label_w, rh,
-			    label, -1, st->disabled, st, false, 0);
+			    label, -1, p->passive ? st->fg : st->disabled,
+			    st, false, 0);
 			break;
 		}
 		case COW_MENU_ITEM_NORMAL:
@@ -1502,9 +1562,11 @@ popup_render(struct cow_menu_popup *p)
 			if (label_w < 1)
 				label_w = 1;
 			if (p->def->multi_select &&
-			    it->type == COW_MENU_ITEM_NORMAL) {
-				bool checked = (size_t)idx < p->checked_count &&
-				    p->checked[idx];
+			    it->type == COW_MENU_ITEM_NORMAL && !it->is_popup) {
+				int source = p->rows[row].source_index;
+				bool checked = source >= 0 &&
+				    (size_t)source < p->checked_count &&
+				    p->checked[source];
 				menu_draw_checkbox(&buf, x + st->padding_x,
 				    y + (rh - MENU_CHECK_SIZE) / 2, checked,
 				    px(st->fg));
@@ -1617,7 +1679,9 @@ popup_destroy(struct cow_menu_popup *p)
 		p->surface = NULL;
 	}
 	ext_release(p);
-	xfree(p->checked);
+	if (!p->continuation)
+		xfree(p->checked);
+	xfree(p->rows);
 	xfree(p);
 }
 
@@ -1646,9 +1710,20 @@ cow_menu_popup_close(struct cow_menu_popup *popup)
 	cow_update_request(COW_UPDATE_MANAGE);
 }
 
+static char *toggle_dismissed_menu;
+static char *toggle_dismissed_view;
+
+void
+cow_menu_clear_toggle(void)
+{
+	xstrset(&toggle_dismissed_menu, NULL);
+	xstrset(&toggle_dismissed_view, NULL);
+}
+
 void
 cow_menu_close_all(void)
 {
+	cow_menu_clear_toggle();
 	if (cow_wm.open_menus.next == NULL)
 		return;
 	while (!wl_list_empty(&cow_wm.open_menus)) {
@@ -1673,6 +1748,47 @@ cow_menu_close_all(void)
 	g_hover_suppressed_until_pointer_moves = false;
 	hover_reset_all();
 	cow_update_request(COW_UPDATE_MANAGE);
+}
+
+/* A launcher receives the release after its press dismissed the menu.
+ * Remember that dismissal for one toggle action from the same window.
+ * The next input interaction or menu opening invalidates it.
+ */
+void
+cow_menu_dismiss_for_window(struct cow_view *view)
+{
+	char *name = NULL;
+	if (cow_menu_is_open() && view != NULL &&
+	    view == cow_wm.menu_context_view) {
+		struct cow_menu_popup *p = wl_container_of(
+		    cow_wm.open_menus.next, p, link);
+		if (p->toggle)
+			name = xstrdup(p->def->name);
+	}
+	cow_menu_close_all();
+	if (name != NULL) {
+		toggle_dismissed_menu = name;
+		xstrset(&toggle_dismissed_view, view->identifier);
+	}
+}
+
+bool
+cow_menu_toggle(struct cow_menu *menu, struct cow_view *view)
+{
+	bool dismissed = toggle_dismissed_menu != NULL && view != NULL &&
+	    view->identifier != NULL && toggle_dismissed_view != NULL &&
+	    strcmp(toggle_dismissed_menu, menu->name) == 0 &&
+	    strcmp(toggle_dismissed_view, view->identifier) == 0;
+	cow_menu_clear_toggle();
+	if (cow_menu_is_open()) {
+		struct cow_menu_popup *p = wl_container_of(
+		    cow_wm.open_menus.next, p, link);
+		if (p->def == menu) {
+			cow_menu_close_all();
+			return true;
+		}
+	}
+	return dismissed;
 }
 
 void
@@ -1702,6 +1818,8 @@ cow_menu_popup_open(struct cow_menu *menu, int x, int y,
     struct cow_view *context_view, struct cow_menu_popup *parent,
     bool centre_title_on_position)
 {
+	if (parent == NULL)
+		cow_menu_clear_toggle();
 	if (menu == NULL)
 		return (NULL);
 	if (cow_wm.compositor == NULL || cow_wm.manager == NULL)
@@ -1709,6 +1827,22 @@ cow_menu_popup_open(struct cow_menu *menu, int x, int y,
 
 	struct cow_menu_popup *p = popup_alloc(menu);
 	p->parent		 = parent;
+	p->x = x;
+	p->y = y;
+	if (parent != NULL && parent->above) {
+		p->above = true;
+		p->bottom = parent->bottom;
+	}
+	if (parent != NULL && parent->def == menu &&
+	    parent->selected >= 0 &&
+	    parent->selected < parent->row_count &&
+	    parent->rows[parent->selected].item == &parent->more) {
+		p->continuation = true;
+		p->first_item = parent->next_item;
+		xfree(p->checked);
+		p->checked = parent->checked;
+		p->checked_count = parent->checked_count;
+	}
 	if (parent != NULL) {
 		if (parent->child != NULL)
 			cow_menu_popup_close(parent->child);
@@ -1716,7 +1850,6 @@ cow_menu_popup_open(struct cow_menu *menu, int x, int y,
 		parent->child_item = parent->selected;
 		parent->needs_redraw = true;
 	} else {
-		p->selected = menu_first_selectable(menu);
 		menu_pointer_baseline_reset();
 		cow_wm.menu_context_view = context_view;
 		cow_wm.menu_context_seat = cow_wm.current_interaction_seat;
@@ -1736,6 +1869,8 @@ cow_menu_popup_open(struct cow_menu *menu, int x, int y,
 	}
 
 	popup_layout(p);
+	if (parent == NULL || p->continuation)
+		p->selected = popup_first_selectable(p);
 	struct cow_output *out = popup_output_for(parent, x, y);
 
 	if (parent == NULL && centre_title_on_position) {
@@ -1756,14 +1891,32 @@ cow_menu_popup_open(struct cow_menu *menu, int x, int y,
 }
 
 struct cow_menu_popup *
+cow_menu_popup_open_above(struct cow_menu *menu, int x, int bottom,
+    struct cow_view *context_view)
+{
+	struct cow_menu_popup *p = cow_menu_popup_open(menu, x, bottom,
+	    context_view, NULL, false);
+	if (p == NULL)
+		return NULL;
+	p->above = true;
+	p->bottom = bottom;
+	popup_layout(p);
+	p->y = bottom - p->height;
+	popup_fit_to_output(p, &p->x, &p->y, NULL, NULL);
+	return p;
+}
+
+struct cow_menu_popup *
 cow_menu_popup_open_centered(struct cow_menu *menu, int cx, int cy,
     struct cow_view *context_view)
 {
+	cow_menu_clear_toggle();
 	if (menu == NULL)
 		return (NULL);
 	struct cow_menu_popup *p = popup_alloc(menu);
+	p->x = cx;
+	p->y = cy;
 	menu->typeahead_query[0] = '\0';
-	p->selected = menu_first_selectable(menu);
 	menu_pointer_baseline_reset();
 	cow_wm.menu_context_view = context_view;
 	cow_wm.menu_context_seat = cow_wm.current_interaction_seat;
@@ -1782,6 +1935,7 @@ cow_menu_popup_open_centered(struct cow_menu *menu, int cx, int cy,
 	p->keep_centered = true;
 
 	popup_layout(p);
+	p->selected = popup_first_selectable(p);
 	struct cow_output *out = popup_output_for(NULL, cx, cy);
 	int x = cx - p->width / 2;
 	int y = cy - p->height / 2;
@@ -1872,11 +2026,17 @@ popup_apply_relayout(struct cow_menu_popup *p)
 {
 	if (p == NULL || !p->needs_layout)
 		return;
+	if (p->child != NULL)
+		cow_menu_popup_close(p->child);
 	int old_width = p->width;
 	int old_height = p->height;
 	int old_item_h = p->item_h;
 	int old_centre_x = p->x + old_width / 2;
 	int old_centre_y = p->y + old_height / 2;
+	struct cow_menu_row *old_rows = p->rows;
+	int old_count = p->row_count;
+	int old_next = p->next_item;
+	p->rows = NULL;
 	popup_layout(p);
 	if (p->buffer != NULL &&
 	    (p->buffer->width != p->width || p->buffer->height != p->height)) {
@@ -1886,15 +2046,22 @@ popup_apply_relayout(struct cow_menu_popup *p)
 			p->width = old_width;
 			p->height = old_height;
 			p->item_h = old_item_h;
+			xfree(p->rows);
+			p->rows = old_rows;
+			p->row_count = old_count;
+			p->next_item = old_next;
 			return;
 		}
 		cow_shm_buffer_destroy(p->buffer);
 		p->buffer = replacement;
 	}
+	xfree(old_rows);
 	if (p->keep_centered) {
 		p->x = old_centre_x - p->width / 2;
 		p->y = old_centre_y - p->height / 2;
 	}
+	if (p->above && p->parent == NULL)
+		p->y = p->bottom - p->height;
 	p->needs_layout = false;
 	p->needs_redraw = true;
 }
@@ -1917,13 +2084,12 @@ popup_refit_position(struct cow_menu_popup *p)
 	int y = parent->y + st->border_width;
 	int idx = 0;
 	struct cow_menu_item *it;
-	wl_list_for_each(it, &parent->def->items, link)
-	{
+	for (int row = 0; row < parent->row_count; row++) {
+		it = parent->rows[row].item;
 		if (idx >= parent->child_item)
 			break;
-		if (menu_item_visible(parent->def, it))
-			y += item_row_height(it,
-			    parent->item_h - st->padding_y * 2, st);
+		y += item_row_height(it,
+		    parent->item_h - st->padding_y * 2, st);
 		idx++;
 	}
 	int x = parent->x + parent->width - 5;
@@ -2001,6 +2167,11 @@ cow_menu_render_all(void)
 	struct cow_menu_popup *p;
 	wl_list_for_each(p, &cow_wm.open_menus, link)
 	{
+		struct cow_output *out =
+		    popup_output_for(p->parent, p->x, p->y);
+		if (out != NULL && (p->output_width != out->width ||
+		    p->output_height != out->height))
+			p->needs_layout = true;
 		popup_apply_relayout(p);
 	}
 	wl_list_for_each(p, &cow_wm.open_menus, link)
@@ -2041,12 +2212,8 @@ item_under(const struct cow_menu_popup *p, int px_x, int px_y)
 	int		      y	  = p->y + st->border_width;
 	int		      idx = 0;
 	struct cow_menu_item *it;
-	wl_list_for_each(it, &p->def->items, link)
-	{
-		if (!menu_item_visible(p->def, it)) {
-			idx++;
-			continue;
-		}
+	for (int row = 0; row < p->row_count; row++) {
+		it = p->rows[row].item;
 		int rh = item_row_height(it, p->item_h - st->padding_y * 2, st);
 		if (px_y >= y && px_y < y + rh)
 			return (idx);
@@ -2057,17 +2224,9 @@ item_under(const struct cow_menu_popup *p, int px_x, int px_y)
 }
 
 static struct cow_menu_item *
-item_at_index(const struct cow_menu *def, int idx)
+item_at_index(const struct cow_menu_popup *p, int idx)
 {
-	int		      i = 0;
-	struct cow_menu_item *it;
-	wl_list_for_each(it, &def->items, link)
-	{
-		if (i == idx)
-			return (it);
-		i++;
-	}
-	return (NULL);
+	return idx >= 0 && idx < p->row_count ? p->rows[idx].item : NULL;
 }
 
 static bool
@@ -2092,7 +2251,7 @@ popup_close_child_if_unrelated(struct cow_menu_popup *p,
 	if (popup_is_ancestor_of(p->child, over))
 		return;
 	if (over == p && p->selected == p->child_item) {
-		struct cow_menu_item *it = item_at_index(p->def, p->selected);
+		struct cow_menu_item *it = item_at_index(p, p->selected);
 		if (it != NULL && it->is_popup)
 			return;
 	}
@@ -2171,11 +2330,14 @@ menu_defer_action(struct cow_menu_popup *p, const char *action)
 static void
 menu_multi_toggle(struct cow_menu_popup *p, int idx)
 {
-	struct cow_menu_item *it = item_at_index(p->def, idx);
+	struct cow_menu_item *it = item_at_index(p, idx);
 	if (it == NULL || it->type != COW_MENU_ITEM_NORMAL || it->is_popup ||
-	    idx < 0 || (size_t)idx >= p->checked_count)
+	    idx < 0)
 		return;
-	p->checked[idx] = !p->checked[idx];
+	int source = p->rows[idx].source_index;
+	if (source < 0 || (size_t)source >= p->checked_count)
+		return;
+	p->checked[source] = !p->checked[source];
 	cow_menu_popup_redraw(p);
 }
 
@@ -2274,13 +2436,12 @@ dispatch_item(struct cow_menu_popup *p, struct cow_menu_item *it)
 		struct cow_menu_item	    *iter;
 		int			     y = p->y + st->border_width;
 		int			     opener_idx = 0;
-		wl_list_for_each(iter, &p->def->items, link)
-		{
+		for (int row = 0; row < p->row_count; row++) {
+			iter = p->rows[row].item;
 			if (iter == it)
 				break;
-			if (menu_item_visible(p->def, iter))
-				y += item_row_height(iter,
-				    p->item_h - st->padding_y * 2, st);
+			y += item_row_height(iter,
+			    p->item_h - st->padding_y * 2, st);
 			opener_idx++;
 		}
 		int x = p->x + p->width - 5;
@@ -2297,8 +2458,8 @@ dispatch_item(struct cow_menu_popup *p, struct cow_menu_item *it)
 	if (p->def->multi_select) {
 		int idx = 0;
 		struct cow_menu_item *iter;
-		wl_list_for_each(iter, &p->def->items, link)
-		{
+		for (int row = 0; row < p->row_count; row++) {
+			iter = p->rows[row].item;
 			if (iter == it) {
 				menu_multi_toggle(p, idx);
 				return;
@@ -2328,7 +2489,7 @@ keyboard_submenu_process(void)
 		e->hover_arrow_pending = false;
 		if (p->selected != e->hover_item || p->child != NULL)
 			continue;
-		struct cow_menu_item *it = item_at_index(p->def, p->selected);
+		struct cow_menu_item *it = item_at_index(p, p->selected);
 		if (it != NULL && it->is_popup)
 			dispatch_item(p, it);
 	}
@@ -2407,7 +2568,7 @@ cow_menu_process_input(void)
 
 	if (!g_hover_suppressed_until_pointer_moves && over != NULL &&
 	    over->selected >= 0) {
-		struct cow_menu_item *it  = item_at_index(over->def,
+		struct cow_menu_item *it  = item_at_index(over,
 		     over->selected);
 		struct popup_ext     *e	  = ext_for(over, true);
 		long		      now = mono_ms();
@@ -2444,7 +2605,7 @@ cow_menu_process_input(void)
 			cow_menu_close_all();
 			return (true);
 		}
-		struct cow_menu_item *it = item_at_index(over->def, idx);
+		struct cow_menu_item *it = item_at_index(over, idx);
 		if (item_selectable(it)) {
 			/* A fast click may already have released before this pass. */
 			if (!released)
@@ -2469,7 +2630,7 @@ deepest_open(void)
 static void
 nav_move(struct cow_menu_popup *p, int step)
 {
-	int n = wl_list_length(&p->def->items);
+	int n = p->row_count;
 	if (n == 0)
 		return;
 	int idx = p->selected;
@@ -2479,9 +2640,8 @@ nav_move(struct cow_menu_popup *p, int step)
 			idx = n - 1;
 		else if (idx >= n)
 			idx = 0;
-		struct cow_menu_item *it = item_at_index(p->def, idx);
-		if (menu_item_visible(p->def, it) &&
-		    (item_selectable(it) || (it != NULL && it->is_popup))) {
+		struct cow_menu_item *it = item_at_index(p, idx);
+		if (item_selectable(it)) {
 			p->selected = idx;
 			struct popup_ext *e = ext_for(p, true);
 			if (e != NULL) {
@@ -2503,10 +2663,9 @@ nav_hotkey(struct cow_menu_popup *p, int key)
 		return (false);
 	int		      idx = 0;
 	struct cow_menu_item *it;
-	wl_list_for_each(it, &p->def->items, link)
-	{
-		if (menu_item_visible(p->def, it) &&
-		    (item_selectable(it) || (it != NULL && it->is_popup)) &&
+	for (int row = 0; row < p->row_count; row++) {
+		it = p->rows[row].item;
+		if (item_selectable(it) &&
 		    menu_auto_hotkey_for(p->def, it) == key) {
 			p->selected = idx;
 			cow_menu_popup_redraw(p);
@@ -2546,20 +2705,16 @@ label_contains_folded(const char *label, const char *query)
 static void
 nav_typeahead_match(struct cow_menu_popup *p)
 {
-	int idx = 0;
-	struct cow_menu_item *it;
-	wl_list_for_each(it, &p->def->items, link)
-	{
-		if (item_selectable(it) && menu_item_visible(p->def, it)) {
-			p->selected = idx;
-			p->needs_layout = true;
-			cow_menu_popup_redraw(p);
-			return;
-		}
-		idx++;
-	}
+	/* Search the original definition, not just this continuation page. */
+	while (p->continuation)
+		p = p->parent;
+	if (p->child != NULL)
+		cow_menu_popup_close(p->child);
+	p->first_item = 0;
 	p->selected = -1;
 	p->needs_layout = true;
+	popup_apply_relayout(p);
+	p->selected = popup_first_selectable(p);
 	cow_menu_popup_redraw(p);
 }
 
@@ -2570,9 +2725,9 @@ nav_number(struct cow_menu_popup *p, int key)
 	int number = 0;
 	int idx = 0;
 	struct cow_menu_item *it;
-	wl_list_for_each(it, &p->def->items, link)
-	{
-		if (menu_item_visible(p->def, it) && item_selectable(it) &&
+	for (int row = 0; row < p->row_count; row++) {
+		it = p->rows[row].item;
+		if (item_selectable(it) &&
 		    label_explicit_hotkey(it->label) == key) {
 			p->selected = idx;
 			dispatch_item(p, it);
@@ -2582,9 +2737,9 @@ nav_number(struct cow_menu_popup *p, int key)
 	}
 
 	idx = 0;
-	wl_list_for_each(it, &p->def->items, link)
-	{
-		if (menu_item_visible(p->def, it) && item_selectable(it) &&
+	for (int row = 0; row < p->row_count; row++) {
+		it = p->rows[row].item;
+		if (item_selectable(it) &&
 		    ++number == wanted) {
 			p->selected = idx;
 			dispatch_item(p, it);
@@ -2612,7 +2767,7 @@ menu_navigate(const char *direction)
 	} else if (strcmp(direction, "down") == 0) {
 		nav_move(p, 1);
 	} else if (strcmp(direction, "right") == 0) {
-		struct cow_menu_item *it = item_at_index(p->def, p->selected);
+		struct cow_menu_item *it = item_at_index(p, p->selected);
 		if (it != NULL && it->is_popup)
 			dispatch_item(p, it);
 	} else if (strcmp(direction, "left") == 0) {
@@ -2623,7 +2778,7 @@ menu_navigate(const char *direction)
 			menu_multi_accept(p);
 		else {
 			struct cow_menu_item *it =
-			    item_at_index(p->def, p->selected);
+			    item_at_index(p, p->selected);
 			if (it != NULL)
 				dispatch_item(p, it);
 		}

@@ -31,6 +31,7 @@
 #include "cow/desk_ops.h"
 #include "cow/ipc.h"
 #include "cow/memory.h"
+#include "cow/menu.h"
 #include "cow/output.h"
 #include "cow/pan_frames.h"
 #include "cow/pointer_op.h"
@@ -53,6 +54,7 @@ static void
 xkb_binding_handle_pressed(void		 *data,
     __unused struct river_xkb_binding_v1 *river_binding)
 {
+	cow_menu_clear_toggle();
 	struct cow_keybinding *kb = data;
 	kb->pending		  = true;
 	kb->main_key_held	  = true;

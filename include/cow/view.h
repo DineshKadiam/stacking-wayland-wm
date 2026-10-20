@@ -298,6 +298,14 @@ bool cow_view_cfg_is_override(const struct cow_view_cfg *,
 void cow_view_cfg_fini(struct cow_view_cfg *);
 
 /* A managed river window. */
+enum cow_reserve_edge {
+	COW_RESERVE_NONE,
+	COW_RESERVE_TOP,
+	COW_RESERVE_RIGHT,
+	COW_RESERVE_BOTTOM,
+	COW_RESERVE_LEFT,
+};
+
 struct cow_view {
 	struct river_window_v1 *river_window;
 	struct river_node_v1   *node;
@@ -469,6 +477,7 @@ struct cow_view {
 	uint32_t style_live_mask;
 	uint32_t policy_overrides;
 	bool     snap_skip; /* Derived from styles; false enables snap targeting. */
+	enum cow_reserve_edge reserve_edge;
 	bool     style_initial_applied;
 	char    *style_pending_anchor;
 	char    *style_anchor;

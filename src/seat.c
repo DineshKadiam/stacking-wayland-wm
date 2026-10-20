@@ -105,6 +105,7 @@ seat_handle_window_interaction(void *data,
 {
 	struct cow_seat *seat = data;
 
+	struct cow_view *view = cow_view_find(river_window);
 	/*
 	 * Clicking outside any menu popup closes all open menus.
 	 * river only fires window_interaction when the click lands on
@@ -114,10 +115,9 @@ seat_handle_window_interaction(void *data,
 	 */
 	if (cow_wm.open_menus.next != NULL &&
 	    !wl_list_empty(&cow_wm.open_menus)) {
-		cow_menu_close_all();
-	}
-
-	struct cow_view *view = cow_view_find(river_window);
+		cow_menu_dismiss_for_window(view);
+	} else
+		cow_menu_clear_toggle();
 	seat->interacted_view = view;
 	if (view != NULL && view->container_member != NULL)
 		cow_container_activate(cow_view_container(view),
@@ -138,6 +138,7 @@ seat_handle_shell_surface_interaction(void *data,
     __unused struct river_seat_v1	   *river_seat,
     struct river_shell_surface_v1	   *shell_surface)
 {
+	cow_menu_clear_toggle();
 	struct cow_seat *seat = data;
 	if (seat->consumed_icon_interaction != NULL &&
 	    seat->consumed_icon_interaction->icon_shell == shell_surface) {

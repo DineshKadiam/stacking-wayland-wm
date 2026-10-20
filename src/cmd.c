@@ -71,6 +71,7 @@ struct cmd_entry *cmd_table[] = {
 	&cmd_window_select_entry,
 	&cmd_window_maximize_entry,
 	&cmd_window_tile_entry,
+	&cmd_window_reserve_entry,
 	&cmd_window_shade_entry,
 	&cmd_winops_entry,
 	NULL,

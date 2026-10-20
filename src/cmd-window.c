@@ -241,6 +241,31 @@ struct cmd_entry cmd_window_tile_entry = {
 };
 
 static enum cmd_retval
+cmd_window_reserve_exec(struct cmd *self, struct cmd_q *cmdq)
+{
+	struct cow_view *view = cmd_require_target_window(cmdq, "window-reserve");
+	if (view == NULL)
+		return CMD_RETURN_ERROR;
+	const char *edge = args_get(self->args, 'e');
+	static const char *names[] = {"none", "top", "right", "bottom", "left"};
+	for (size_t i = 0; edge && i < sizeof(names) / sizeof(names[0]); i++) {
+		if (strcmp(edge, names[i]))
+			continue;
+		view->reserve_edge = (enum cow_reserve_edge)i;
+		cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
+		return CMD_RETURN_NORMAL;
+	}
+	cmdq_error(cmdq, "window-reserve: -e requires none|top|right|bottom|left");
+	return CMD_RETURN_ERROR;
+}
+
+struct cmd_entry cmd_window_reserve_entry = {
+	"window-reserve", "t:e:", 0, 0,
+	"window-reserve [-t target] -e none|top|right|bottom|left",
+	cmd_window_reserve_exec, 0,
+};
+
+static enum cmd_retval
 cmd_window_tile_exec(struct cmd *self, struct cmd_q *cmdq)
 {
 	struct args	*args = self->args;

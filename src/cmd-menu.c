@@ -275,6 +275,9 @@ cmd_menu_show_exec(struct cmd *self, struct cmd_q *cmdq)
 	int	     y	  = INT32_MIN;
 	const char  *name = NULL;
 	bool centred = false;
+	bool above = false;
+	bool toggle = false;
+	struct cow_menu_popup *popup = NULL;
 	const char * specific_output = NULL;
 
 	for (int i = 0; i < args->argc; i++) {
@@ -285,6 +288,14 @@ cmd_menu_show_exec(struct cmd *self, struct cmd_q *cmdq)
 			y = atoi(args->argv[++i]);
 		} else if (strcmp(a, "-c") == 0) {
 			centred = true;
+		} else if (strcmp(a, "-T") == 0) {
+			toggle = true;
+		} else if (strcmp(a, "-a") == 0 && i + 1 < args->argc) {
+			if (strcmp(args->argv[++i], "above") != 0) {
+				cmdq_error(cmdq, "menu-show: -a expects above");
+				return CMD_RETURN_ERROR;
+			}
+			above = true;
 		} else if (strcmp(a, "-o") == 0 && i+1 < args->argc) {
 			specific_output = args->argv[++i];
 		} else if (name == NULL) {
@@ -292,8 +303,12 @@ cmd_menu_show_exec(struct cmd *self, struct cmd_q *cmdq)
 		}
 	}
 	if (name == NULL) {
-		cmdq_error(cmdq, "menu-show: usage: NAME [-x N] [-y N] [-c [-o OUTPUT]]");
+		cmdq_error(cmdq, "menu-show: usage: NAME [-T] [-x N] [-y N] [-a above] [-c [-o OUTPUT]]");
 		return (CMD_RETURN_ERROR);
+	}
+	if (above && (centred || x == INT32_MIN || y == INT32_MIN)) {
+		cmdq_error(cmdq, "menu-show: -a above requires -x and -y, without -c");
+		return CMD_RETURN_ERROR;
 	}
 
 	struct cow_menu *m = cow_menu_find(name);
@@ -301,6 +316,8 @@ cmd_menu_show_exec(struct cmd *self, struct cmd_q *cmdq)
 		cmdq_error(cmdq, "menu-show: no such menu: %s", name);
 		return (CMD_RETURN_ERROR);
 	}
+	if (toggle && cow_menu_toggle(m, cmdq->target.window))
+		goto out;
 
 	bool centre_title_on_pointer = (x == INT32_MIN && y == INT32_MIN);
 	
@@ -317,7 +334,8 @@ cmd_menu_show_exec(struct cmd *self, struct cmd_q *cmdq)
 			x = output->usable_area.x + output->usable_area.width / 2;
 			y = output->usable_area.y + output->usable_area.height / 2;
 		}
-		cow_menu_popup_open_centered(m, x, y, NULL);
+		popup = cow_menu_popup_open_centered(m, x, y,
+		    toggle ? cmdq->target.window : NULL);
 		goto out;
 	}
 	if (x == INT32_MIN || y == INT32_MIN) {
@@ -339,9 +357,14 @@ cmd_menu_show_exec(struct cmd *self, struct cmd_q *cmdq)
 				y = 0;
 		}
 	}
-	cow_menu_popup_open(m, x, y, cmdq->target.window, NULL,
-		centre_title_on_pointer);
+	if (above)
+		popup = cow_menu_popup_open_above(m, x, y, cmdq->target.window);
+	else
+		popup = cow_menu_popup_open(m, x, y, cmdq->target.window, NULL,
+		    centre_title_on_pointer);
 out:
+	if (popup != NULL)
+		popup->toggle = toggle;
 	cow_update_request(COW_UPDATE_MANAGE);
 	return (CMD_RETURN_NORMAL);
 }
@@ -351,7 +374,7 @@ struct cmd_entry cmd_menu_show_entry = {
 	"",
 	1,
 	-1,
-	"menu-show NAME [-x N] [-y N] [-c [-o OUTPUT]]",
+	"menu-show NAME [-T] [-x N] [-y N] [-a above] [-c [-o OUTPUT]]",
 	cmd_menu_show_exec,
 	0,
 };
