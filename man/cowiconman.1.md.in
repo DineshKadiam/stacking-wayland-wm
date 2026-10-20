@@ -72,6 +72,15 @@ occur:
 
 Supported commands are described below.
 
+**title-env** *NAME*
+
+: Use the value of environment variable *NAME* as this instance's window
+  title instead of the generated title. The value must be nonempty and fit
+  the title limit. This lets an embedding panel identify its own task list
+  independently of other instances. For example, set
+  **title-env TASK_TITLE** and launch with
+  **TASK_TITLE=panel-left-tasks cowiconman -c panel.conf**.
+
 **resizable** *true|false*
 
 : Honour the window size requested by CoW, for example when embedded in

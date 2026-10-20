@@ -14,7 +14,7 @@ iconman_deps = [
     m_dep,
 ]
 
-executable('cowiconman',
+cowiconman = executable('cowiconman',
     ['src/cowiconman.c'] + iconman_generated,
     '../../src/image.c',
     '../../src/image_cache.c',

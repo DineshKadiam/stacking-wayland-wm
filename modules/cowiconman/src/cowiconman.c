@@ -240,6 +240,7 @@ static float		 palette_overrides[PALETTE_COUNT][4];
 static bool		 palette_override_set[PALETTE_COUNT];
 static struct cow_image_cache icon_cache;
 static char		 self_title[MAX_NAME];
+static bool              explicit_title;
 static char		 self_id[MAX_NAME];
 static struct match_rule *matches;
 static int		 n_matches;
@@ -577,7 +578,16 @@ load_iconman_option(char **fields, int n, const char **why)
 	int value;
 	bool enabled;
 
-	if (strcmp(fields[0], "output") == 0) {
+	if (strcmp(fields[0], "title-env") == 0) {
+		const char *title = n == 2 ? getenv(fields[1]) : NULL;
+		if (title == NULL || *title == '\0' ||
+		    strlen(title) >= sizeof(self_title)) {
+			*why = "title-env requires a nonempty environment value shorter than the title limit";
+			return false;
+		}
+		strlcpy(self_title, title, sizeof(self_title));
+		explicit_title = true;
+	} else if (strcmp(fields[0], "output") == 0) {
 		if (n != 2) {
 			*why = "bad output";
 			return false;
@@ -794,6 +804,8 @@ build_instance_title(void)
 {
 	size_t len;
 
+	if (explicit_title)
+		return;
 	if (n_selected_iconmans == 0) {
 		snprintf(self_title, sizeof(self_title), "%s-%ld", PROG,
 		    (long)getpid());
@@ -2074,6 +2086,8 @@ out_name(__unused void *d, struct wl_output *wo, const char *name)
 	if (to == NULL || name == NULL)
 		return;
 	strlcpy(to->name, name, sizeof(to->name));
+	if (output_filter == FILTER_SELF && to->on_surface)
+		render_current_state();
 }
 
 static void
@@ -2096,8 +2110,11 @@ surface_enter(__unused void *d, __unused struct wl_surface *s,
     struct wl_output *wo)
 {
 	struct tracked_output *to = tracked_for_wl(wo);
-	if (to != NULL)
+	if (to != NULL) {
 		to->on_surface = 1;
+		if (output_filter == FILTER_SELF)
+			render_current_state();
+	}
 }
 
 static void
@@ -2105,8 +2122,11 @@ surface_leave(__unused void *d, __unused struct wl_surface *s,
     struct wl_output *wo)
 {
 	struct tracked_output *to = tracked_for_wl(wo);
-	if (to != NULL)
+	if (to != NULL) {
 		to->on_surface = 0;
+		if (output_filter == FILTER_SELF)
+			render_current_state();
+	}
 }
 
 static const struct wl_surface_listener surface_listener = {
