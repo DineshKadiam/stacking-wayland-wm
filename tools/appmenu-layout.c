@@ -15,6 +15,8 @@
  */
 
 #include <stdio.h>
+#include <limits.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -44,6 +46,19 @@ string(const cJSON *object, const char *key)
 }
 
 static int
+limit_value(const char *value)
+{
+	char *end;
+	unsigned long n;
+
+	if (!*value || strspn(value, "0123456789") != strlen(value))
+		return -1;
+	errno = 0;
+	n = strtoul(value, &end, 10);
+	return errno || *end || n > INT_MAX ? -1 : (int)n;
+}
+
+static int
 attributes_valid(xmlNode *node)
 {
 	for (xmlAttr *attr = node->properties; attr; attr = attr->next) {
@@ -57,11 +72,14 @@ attributes_valid(xmlNode *node)
 				    !strcmp((char *)value, "files") ||
 				    !strcmp((char *)value, "all");
 			else if (is_node(node, "DefaultLayout") || is_node(node, "Menuname")) {
-				if (xmlStrEqual(attr->name, BAD_CAST "show_empty"))
+				if (xmlStrEqual(attr->name, BAD_CAST "show_empty") ||
+				    xmlStrEqual(attr->name, BAD_CAST "inline") ||
+				    xmlStrEqual(attr->name, BAD_CAST "inline_header") ||
+				    xmlStrEqual(attr->name, BAD_CAST "inline_alias"))
 					valid = !strcmp((char *)value, "true") ||
 					    !strcmp((char *)value, "false");
-				else if (xmlStrEqual(attr->name, BAD_CAST "inline"))
-					valid = !strcmp((char *)value, "false");
+				else if (xmlStrEqual(attr->name, BAD_CAST "inline_limit"))
+					valid = limit_value((char *)value) >= 0;
 			}
 		}
 		xmlFree(value);
@@ -135,10 +153,14 @@ last_child(xmlNode *node, const char *name)
 }
 
 static int
-show_empty(xmlNode *node, int fallback)
+option(xmlNode *node, const char *name, int fallback)
 {
-	xmlChar *value = node ? xmlGetProp(node, BAD_CAST "show_empty") : NULL;
-	int result = value ? xmlStrEqual(value, BAD_CAST "true") : fallback;
+	xmlChar *value = node ? xmlGetProp(node, BAD_CAST name) : NULL;
+	int result = fallback;
+
+	if (value)
+		result = !strcmp(name, "inline_limit") ? limit_value((char *)value) :
+		    xmlStrEqual(value, BAD_CAST "true");
 
 	xmlFree(value);
 	return result;
@@ -187,16 +209,41 @@ compare(const void *a, const void *b)
 }
 
 static void
-append(cJSON *entries, struct item *item, int empty)
+append(cJSON *entries, struct item *item, xmlNode *defaults)
 {
 	cJSON *entry;
+	const cJSON *children = cJSON_GetObjectItemCaseSensitive(item->object, "entries");
+	int count = cJSON_GetArraySize(children);
+	int empty = option(item->placement, "show_empty", option(defaults, "show_empty", 0));
+	int inline_menu = option(item->placement, "inline", option(defaults, "inline", 0));
+	int limit = option(item->placement, "inline_limit", option(defaults, "inline_limit", 4));
+	int alias = option(item->placement, "inline_alias", option(defaults, "inline_alias", 0));
+	int header = option(item->placement, "inline_header", option(defaults, "inline_header", 1));
 
 	if (item->used)
 		return;
 	item->used = 1;
-	if (item->submenu && !empty &&
-	    !cJSON_GetArraySize(cJSON_GetObjectItemCaseSensitive(item->object, "entries")))
+	if (item->submenu && !empty && !count)
 		return;
+	if (item->submenu && count && inline_menu && (!limit || count <= limit)) {
+		const cJSON *child;
+
+		if (header && !(alias && count == 1)) {
+			entry = cJSON_CreateObject();
+			cJSON_AddStringToObject(entry, "type", "header");
+			cJSON_AddStringToObject(entry, "name", item->label);
+			cJSON_AddItemToArray(entries, entry);
+		}
+		cJSON_ArrayForEach(child, children) {
+			entry = cJSON_Duplicate(child, 1);
+			if (alias && count == 1) {
+				cJSON_DeleteItemFromObjectCaseSensitive(entry, "name");
+				cJSON_AddStringToObject(entry, "name", item->label);
+			}
+			cJSON_AddItemToArray(entries, entry);
+		}
+		return;
+	}
 	entry = cJSON_CreateObject();
 	cJSON_AddStringToObject(entry, "type", item->submenu ? "menu" : "application");
 	cJSON_AddStringToObject(entry, "id", string(item->object, "id"));
@@ -215,13 +262,11 @@ appmenu_layout(xmlNode *node, cJSON *menu, const cJSON *catalogue, xmlNode *inhe
 	cJSON *entries, *object;
 	size_t count = cJSON_GetArraySize(children) + cJSON_GetArraySize(apps), n = 0;
 	struct item *items = xcalloc(count ? count : 1, sizeof(*items));
-	int empty;
 
 	if (!defaults)
 		defaults = inherited;
 	if (!layout || !xmlFirstElementChild(layout))
 		layout = defaults;
-	empty = show_empty(defaults, 0);
 	cJSON_ArrayForEach(object, children) {
 		const char *id = string(object, "id");
 		const char *name = strrchr(id, '/') + 1;
@@ -266,7 +311,7 @@ appmenu_layout(xmlNode *node, cJSON *menu, const cJSON *catalogue, xmlNode *inhe
 		for (int submenu = 1; submenu >= 0; submenu--) {
 			for (size_t i = 0; i < count; i++) {
 				if (items[i].submenu == submenu)
-					append(entries, &items[i], empty);
+					append(entries, &items[i], defaults);
 			}
 		}
 	}
@@ -285,13 +330,13 @@ appmenu_layout(xmlNode *node, cJSON *menu, const cJSON *catalogue, xmlNode *inhe
 			for (size_t i = 0; i < count; i++) {
 				if (!items[i].placement &&
 				    !xmlStrEqual(type, BAD_CAST (items[i].submenu ? "files" : "menus")))
-					append(entries, &items[i], empty);
+					append(entries, &items[i], defaults);
 			}
 			xmlFree(type);
 		} else {
 			for (size_t i = 0; i < count; i++) {
 				if (items[i].placement == child)
-					append(entries, &items[i], show_empty(child, empty));
+					append(entries, &items[i], defaults);
 			}
 		}
 	}

@@ -94,4 +94,7 @@ int cow_unix_listen(const char *, char *, size_t, int);
 		}                   \
 	} while (0)
 
+/* Owned shell word, or NULL on allocation failure. */
+char *cow_shell_quote(const char *);
+
 #endif /* COW_UTIL_H */

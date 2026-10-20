@@ -712,8 +712,12 @@ if appmenu_xml.found()
         'tools/appmenu-entry.c',
         'tools/appmenu-menu.c',
         'tools/appmenu-layout.c',
+        'tools/appmenu-launch.c',
+        'tools/appmenu-output.c',
         'tools/appmenu-xml.c',
+        'src/icon_lookup.c',
         'src/memory.c',
+        'src/util.c',
         'vendor/cJSON.c',
         include_directories: include_dirs,
         dependencies: [libbsd, appmenu_xml],
@@ -721,8 +725,22 @@ if appmenu_xml.found()
     )
     test('application-catalogue', find_program('tests/application-catalogue.sh'),
         args: [cow_appmenu])
+    test('application-launch', find_program('tests/application-launch.sh'),
+        args: [cow_appmenu])
+    test('application-menu-output', find_program('tests/application-menu-output.sh'),
+        args: [cow_appmenu, cow])
     install_data('examples/applications.menu', install_dir: datadir / 'cow')
 endif
+
+install_data(
+    'tools/cow-applications',
+    'tools/cow-terminal',
+    install_dir: get_option('bindir'),
+    install_mode: 'rwxr-xr-x',
+)
+test('application-starter', find_program('sh'),
+    args: files('tests/application-starter.sh', 'tools/cow-applications',
+        'tools/cow-terminal'))
 
 install_data(
     'share/wayland-sessions/cow.desktop',

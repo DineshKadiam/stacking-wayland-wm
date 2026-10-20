@@ -1,0 +1,52 @@
+#!/bin/sh
+
+# Generate privately, then load only a complete menu into the current session.
+set -eu
+
+show=true
+if [ "${1:-}" = --load ]; then
+	show=false
+	shift
+fi
+if [ "$#" -gt 1 ]; then
+	echo "usage: cow-applications [--load] [terminal-program]" >&2
+	exit 1
+fi
+
+fail()
+{
+	status=$1
+	shift
+	echo "cow-applications: $*" >&2
+	if command -v moocow >/dev/null 2>&1; then
+		moocow notify -n CoWApplicationsError -t 10000 "$*" >/dev/null 2>&1 || :
+	fi
+	exit "$status"
+}
+
+for program in cow-appmenu moocow; do
+	if ! command -v "$program" >/dev/null 2>&1; then
+		fail 1 "$program is not installed; application menus cannot be refreshed."
+	fi
+done
+
+# Resolve at launch time, so installing a terminal does not require rebuilding
+# the menu. Non-terminal applications remain usable without one installed.
+terminal=${1:-cow-terminal}
+
+umask 077
+menu=$(mktemp "${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/cow-applications.XXXXXX") ||
+	fail "$?" 'Could not create a temporary application menu. Check XDG_RUNTIME_DIR and available disk space.'
+trap 'rm -f "$menu"' EXIT
+trap 'exit 1' HUP INT TERM
+
+# This namespace belongs to the launcher, not to a user's Applications menu.
+cow-appmenu --menu --format cow --name CoWApplications \
+	--terminal "$terminal" > "$menu" ||
+	fail "$?" 'Application menu generation failed. The previous menu was kept. Run cow-applications in a terminal for details.'
+moocow include "$menu" ||
+	fail "$?" 'Could not load the application menu. Run cow-applications in a terminal for details.'
+moocow notify -n CoWApplicationsError -d >/dev/null 2>&1 || :
+if "$show"; then
+	moocow menu-show CoWApplications -c
+fi

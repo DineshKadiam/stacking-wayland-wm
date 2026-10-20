@@ -408,6 +408,22 @@ menu_name(xmlNode *menu)
 }
 
 static void
+merge_menu(xmlNode *source, xmlNode *destination)
+{
+	xmlNode *child, *next, *first = xmlFirstElementChild(destination);
+	xmlUnlinkNode(source);
+	for (child = source->children; child; child = next) {
+		next = child->next;
+		xmlUnlinkNode(child);
+		if (is_node(child, "Name"))
+			xmlFreeNode(child);
+		else
+			xmlAddPrevSibling(first, child);
+	}
+	xmlFreeNode(source);
+}
+
+static void
 consolidate(xmlNode *menu)
 {
 	xmlNode *node, *next;
@@ -430,20 +446,7 @@ consolidate(xmlNode *menu)
 			same = xmlStrEqual(name, other_name);
 			xmlFree(other_name);
 			if (same) {
-				xmlNode *child, *following, *first = other->children;
-
-				while (first->type != XML_ELEMENT_NODE)
-					first = first->next;
-				for (child = node->children; child; child = following) {
-					following = child->next;
-					xmlUnlinkNode(child);
-					if (is_node(child, "Name"))
-						xmlFreeNode(child);
-					else
-						xmlAddPrevSibling(first, child);
-				}
-				xmlUnlinkNode(node);
-				xmlFreeNode(node);
+				merge_menu(node, other);
 				break;
 			}
 		}
@@ -453,6 +456,81 @@ consolidate(xmlNode *menu)
 		if (is_node(node, "Menu"))
 			consolidate(node);
 	}
+}
+
+static xmlNode *
+menu_path(xmlNode *menu, const char *path, int create)
+{
+	char *copy = xstrdup(path), *part, *save = NULL;
+	for (part = strtok_r(copy, "/", &save); part && menu;
+	    part = strtok_r(NULL, "/", &save)) {
+		xmlNode *child;
+		for (child = menu->children; child; child = child->next) {
+			if (!is_node(child, "Menu"))
+				continue;
+			xmlChar *name = menu_name(child);
+			int same = xmlStrEqual(name, BAD_CAST part);
+			xmlFree(name);
+			if (same)
+				break;
+		}
+		if (!child && create) {
+			child = xmlNewChild(menu, NULL, BAD_CAST "Menu", NULL);
+			xmlNewTextChild(child, NULL, BAD_CAST "Name", BAD_CAST part);
+		}
+		menu = child;
+	}
+	free(copy);
+	return menu;
+}
+
+static int
+apply_moves(xmlNode *menu, int (*validate)(xmlNode *, unsigned))
+{
+	xmlNode *node;
+	/* Child moves precede parent moves, regardless of XML position. */
+	for (node = menu->children; node; node = node->next)
+		if (is_node(node, "Menu") && !apply_moves(node, validate))
+			return 0;
+	for (;;) {
+		/* Moves may remove or merge the following sibling. */
+		for (node = menu->children; node; node = node->next)
+			if (is_node(node, "Move"))
+				break;
+		if (!node)
+			break;
+		for (xmlNode *old = xmlFirstElementChild(node); old;
+		    old = xmlNextElementSibling(xmlNextElementSibling(old))) {
+			xmlChar *from = xmlNodeGetContent(old);
+			xmlChar *to = xmlNodeGetContent(xmlNextElementSibling(old));
+			xmlNode *source = menu_path(menu, (char *)from, 0);
+			int cyclic = strncmp((char *)from, (char *)to,
+			    strlen((char *)from)) == 0 &&
+			    to[strlen((char *)from)] == '/';
+			if (source && cyclic) {
+				fprintf(stderr, "cow-appmenu: cannot move a menu into itself\n");
+				xmlFree(from);
+				xmlFree(to);
+				return 0;
+			}
+			if (source && !xmlStrEqual(from, to)) {
+				xmlNode *destination = menu_path(menu, (char *)to, 1);
+				merge_menu(source, destination);
+				/* Bound the changed tree before recursive consolidation. */
+				if (!validate(xmlDocGetRootElement(menu->doc), 0)) {
+					xmlFree(from);
+					xmlFree(to);
+					return 0;
+				}
+				consolidate(menu);
+			}
+			xmlFree(from);
+			xmlFree(to);
+		}
+		xmlUnlinkNode(node);
+		xmlFreeNode(node);
+	}
+	return 1;
 }
 
 xmlDoc *
@@ -468,7 +546,8 @@ appmenu_load(const char *path, int (*validate)(xmlNode *, unsigned))
 	if (!doc)
 		return NULL;
 	consolidate(xmlDocGetRootElement(doc));
-	if (!validate(xmlDocGetRootElement(doc), 0)) {
+	if (!apply_moves(xmlDocGetRootElement(doc), validate) ||
+	    !validate(xmlDocGetRootElement(doc), 0)) {
 		xmlFreeDoc(doc);
 		return NULL;
 	}

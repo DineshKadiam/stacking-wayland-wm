@@ -28,6 +28,29 @@
 #include <time.h>
 #include <unistd.h>
 
+char *
+cow_shell_quote(const char *text)
+{
+	size_t size = 3;
+	for (const char *p = text; *p; p++)
+		size += *p == '\'' ? 4 : 1;
+	char *result = malloc(size);
+	if (result == NULL)
+		return NULL;
+	char *out = result;
+	*out++ = '\'';
+	for (; *text; text++) {
+		if (*text == '\'') {
+			memcpy(out, "'\\''", 4);
+			out += 4;
+		} else
+			*out++ = *text;
+	}
+	*out++ = '\'';
+	*out = '\0';
+	return result;
+}
+
 bool
 cow_string_choice_parse(const struct cow_string_choice *choices,
     const char *value, int *result)

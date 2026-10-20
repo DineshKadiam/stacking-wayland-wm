@@ -96,8 +96,8 @@ localized(cJSON *entry, const char *key)
 	return value(entry, key);
 }
 
-static char *
-unescape(const char *s)
+char *
+appmenu_unescape(const char *s)
 {
 	char *result = xstrdup(s), *out = result;
 
@@ -207,7 +207,7 @@ visible(cJSON *entry)
 static void
 add_label(cJSON *object, const char *key, cJSON *entry, const char *field)
 {
-	char *text = unescape(localized(entry, field));
+	char *text = appmenu_unescape(localized(entry, field));
 
 	cJSON_AddStringToObject(object, key, text);
 	free(text);
@@ -231,14 +231,14 @@ appmenu_directory(const char *path)
 	return metadata;
 }
 
-static int
-try_exec(const char *raw)
+int
+appmenu_program_available(const char *command)
 {
-	char *command = unescape(raw), *paths, *dir, *save, *path;
+	char *paths, *dir, *save, *path;
 	int found = 0;
 
 	if (!*command)
-		found = 1;
+		found = 0;
 	else if (strchr(command, '/'))
 		found = command[0] == '/' && executable(command);
 	else {
@@ -253,6 +253,14 @@ try_exec(const char *raw)
 		}
 		free(paths);
 	}
+	return found;
+}
+
+static int
+try_exec(const char *raw)
+{
+	char *command = appmenu_unescape(raw);
+	int found = !*command || appmenu_program_available(command);
 	free(command);
 	return found;
 }
@@ -288,7 +296,7 @@ add_application(cJSON *applications, cJSON *seen, const char *path,
 	cJSON_AddStringToObject(app, "Exec", value(entry, "Exec"));
 	cJSON_AddStringToObject(app, "Categories", value(entry, "Categories"));
 	cJSON_AddStringToObject(app, "Keywords", localized(entry, "Keywords"));
-	text = unescape(value(entry, "Path"));
+	text = appmenu_unescape(value(entry, "Path"));
 	cJSON_AddStringToObject(app, "Path", text);
 	free(text);
 	cJSON_AddBoolToObject(app, "Terminal",
@@ -298,6 +306,19 @@ add_application(cJSON *applications, cJSON *seen, const char *path,
 	cJSON_AddItemToArray(applications, app);
 out:
 	cJSON_Delete(entry);
+}
+
+cJSON *
+appmenu_application(const char *path)
+{
+	cJSON *apps = cJSON_CreateArray(), *seen = cJSON_CreateObject(), *app;
+	const char *name = strrchr(path, '/');
+
+	add_application(apps, seen, path, name ? name + 1 : path);
+	app = cJSON_DetachItemFromArray(apps, 0);
+	cJSON_Delete(apps);
+	cJSON_Delete(seen);
+	return app;
 }
 
 static void

@@ -11,7 +11,12 @@ cow-appmenu - discover installed desktop applications
 # SYNOPSIS
 
 **cow-appmenu** \[**--menu** \[*file*\]\] \[**--fallback** *file*\]
-\[**--help**\]
+\[**--format** *json|cow*\] \[**--name** *name*\] \[**--terminal** *program*\]
+\[**--icon-size** *pixels*\] \[**--help**\]
+
+**cow-appmenu --launch** *file* \[**--terminal** *program*\]
+
+**cow-applications** \[**--load**\] \[*terminal-program*\]
 
 # DESCRIPTION
 
@@ -87,11 +92,104 @@ label. Without a layout, submenus precede applications. Empty submenus are
 omitted from **entries** unless **show_empty="true"** is set. The membership
 arrays are unchanged. Leading, trailing, and repeated separators are omitted.
 
-Unsupported elements and attributes are reported as errors. In particular,
-**Move**, menu inlining, and its **inline_limit**, **inline_header**, and
-**inline_alias** attributes are not implemented yet. **inline="false"** is
-accepted. This is not a complete XDG Menu implementation. It does not generate
-CoW commands or launch applications.
+**Move** supports pairs of **Old** and **New** menu paths, relative to their
+containing menu. Child moves run first, then parent moves in document order.
+Missing sources are ignored; missing destinations are created. Existing
+destinations are merged with the moved menu, retaining destination precedence.
+Moving a menu into its own descendants is rejected.
+
+**inline="true"** places small submenus directly in their parent.
+**inline_limit** defaults to four entries; zero removes the limit.
+**inline_header** controls the heading, and **inline_alias** uses the menu's
+name for a single entry instead. These attributes may be set on
+**DefaultLayout** or overridden on **Menuname**.
+
+Unsupported elements and attributes are reported as errors. This is not a
+complete XDG Menu implementation.
+
+# LAUNCHING
+
+**--launch** reads a desktop entry and replaces the helper with its program.
+Arguments are parsed using desktop-entry quoting, not shell syntax. **Path**
+selects the working directory. **%c**, **%k**, **%i**, and **%%** are expanded;
+file/URL placeholders are removed because this launcher opens applications
+without documents. Invalid field codes and quoting are errors.
+
+For **Terminal=true**, **--terminal** selects an executable accepting **-e
+command arguments...**; it defaults to **xterm**. This option is a program name
+or path, not a shell command. D-Bus-only activation and startup notification
+are not implemented. Entries with **DBusActivatable=true** can still launch
+when they supply an **Exec** fallback.
+
+Only launch desktop entries you trust: they specify executable programs.
+
+# COW MENU OUTPUT
+
+With **--menu --format cow**, the helper emits configuration commands instead
+of JSON. **--name** selects the root menu name, defaulting to **Applications**.
+Generated submenus use names beneath that prefix; reserve it for the helper.
+Repeated loads replace menu contents rather than appending duplicate entries.
+Removed categories may leave unused menu definitions until CoW restarts.
+
+Every menu enables typeahead. An **All applications** submenu provides a flat
+search across the applications included in the hierarchy. Selecting an
+application runs **cow-appmenu --launch**, passing **--terminal** through. The
+installed helper must be available on **PATH**.
+
+Unsupported launch entries and entries whose executable is missing appear
+disabled, with diagnostics on standard error. Empty menus show an explanatory
+message instead of a blank list. Refresh the menu after installing applications.
+Application and submenu icons use CoW's shared **hicolor** and **pixmaps**
+lookup in the XDG data directories. Readable absolute PNG, SVG, and XPM paths
+are also accepted. Missing icons leave text-only entries. Other themes and
+**index.theme** inheritance are not supported yet.
+
+**--icon-size** selects the lookup size (1–1024 pixels, default 16). It does
+not change the menu's rendered icon size; use **menu-style icon.size** for
+that. Lookups, including misses, are cached during generation. The helper
+locates files; CoW validates and renders them when the menu is loaded.
+Generating output neither loads it into CoW nor starts programs.
+
+# DEFAULT LAUNCHER
+
+**cow-applications** generates a menu, loads it through **moocow**, and opens
+it centred on the current output. **--load** only populates the menu without
+opening it. CoW runs this mode in the background at startup and restart,
+through the **applications-refresh** alias. The root menu opens the result as a
+normal submenu. Each helper invocation rescans installed applications.
+
+Refresh failures show a brief notification; run **cow-applications** in a
+terminal for detailed diagnostics. Failed generation leaves the previous menu
+unchanged.
+
+The optional argument selects the terminal executable. Otherwise,
+**cow-terminal** chooses **foot**, then **xterm**, from **PATH** when launching
+an entry. Without either, non-terminal applications remain usable but terminal
+entries require installing a terminal.
+
+The generated **CoWApplications** menu namespace belongs to this launcher. Your
+root menu and any separately defined **Applications** menu are untouched.
+Generation errors leave the existing menu unchanged. A private temporary file
+is removed after loading. **WAYLAND_DISPLAY** selects the running session as
+usual; the helper needs **cow-appmenu** and **moocow** installed on **PATH**.
+
+Override the default launcher in **~/.config/cow/cow.conf**, for example:
+
+```text
+alias applications-refresh exec cow-applications --load foot
+```
+
+Use **alias applications-refresh script { }** to disable automatic generation,
+or replace the root menu to remove the entry altogether. Run **moocow
+applications-refresh** to refresh after installing applications, or **moocow
+applications** to refresh and open the menu directly.
+
+# PANEL INTEGRATION
+
+**cowbuttons**(1) reads the JSON catalogue to populate its **applications**
+entries. Panel layout, appearance and embedded applications belong to the
+cowbuttons configuration, not to this tool. Run **cowbuttons -S** to use the
+shipped starter panel, or copy its configuration to customise it.
 
 # ENVIRONMENT
 
@@ -149,6 +247,14 @@ Resolve the example hierarchy from a source checkout:
 ```sh
 cow-appmenu --menu examples/applications.menu | jq .menu
 ```
+
+Generate a configuration file, then include its absolute path in **cow.conf**:
+
+```sh
+cow-appmenu --menu --format cow --terminal foot > applications.conf
+```
+
+Open the generated menu with **menu-show Applications**.
 
 # SEE ALSO
 

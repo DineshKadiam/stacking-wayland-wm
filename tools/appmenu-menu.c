@@ -59,7 +59,8 @@ has_text(const xmlNode *node)
 	return is_node(node, "Name") || is_node(node, "Filename") ||
 	    is_node(node, "Category") || is_node(node, "Directory") ||
 	    is_node(node, "DirectoryDir") || is_node(node, "AppDir") ||
-	    is_node(node, "MergeFile") || is_node(node, "MergeDir");
+	    is_node(node, "MergeFile") || is_node(node, "MergeDir") ||
+	    is_node(node, "Old") || is_node(node, "New");
 }
 
 static int
@@ -91,6 +92,7 @@ static int
 validate(xmlNode *node, unsigned depth)
 {
 	int names = 0;
+	int moves = 0;
 	int valid = 0;
 
 	if (depth > 64) {
@@ -144,6 +146,7 @@ validate(xmlNode *node, unsigned depth)
 			    !is_node(child, "DefaultDirectoryDirs") &&
 			    !is_node(child, "MergeFile") && !is_node(child, "MergeDir") &&
 			    !is_node(child, "DefaultMergeDirs") &&
+			    !is_node(child, "Move") &&
 			    !is_node(child, "OnlyUnallocated") &&
 			    !is_node(child, "NotOnlyUnallocated") &&
 			    !is_node(child, "Include") && !is_node(child, "Exclude") &&
@@ -153,6 +156,12 @@ validate(xmlNode *node, unsigned depth)
 			}
 			if (is_node(child, "Name"))
 				names++;
+		} else if (is_node(node, "Move")) {
+			if (!is_node(child, moves % 2 ? "New" : "Old")) {
+				error_at(child, "Move requires Old/New pairs");
+				goto out;
+			}
+			moves++;
 		} else if (is_node(node, "Include") || is_node(node, "Exclude") ||
 		    is_node(node, "And") || is_node(node, "Or") || is_node(node, "Not")) {
 			if (!is_rule(child)) {
@@ -170,12 +179,25 @@ validate(xmlNode *node, unsigned depth)
 		error_at(node, "each menu needs exactly one Name");
 		goto out;
 	}
+	if (is_node(node, "Move") && (!moves || moves % 2)) {
+		error_at(node, "Move requires Old/New pairs");
+		goto out;
+	}
 	if (has_text(node)) {
 		xmlChar *text = xmlNodeGetContent(node);
 		int bad = ((!text || !*text) && !appmenu_parent_merge(node)) ||
 		    (is_node(node, "Name") && strchr((char *)text, '/')) ||
 		    (is_node(node, "Directory") &&
 		    !directory_name_valid((char *)text));
+		if (!bad && (is_node(node, "Old") || is_node(node, "New"))) {
+			const char *path = (char *)text;
+			unsigned parts = 1;
+			for (const char *p = path; *p; p++)
+				if (*p == '/')
+					parts++;
+			bad = *path == '/' || path[strlen(path) - 1] == '/' ||
+			    strstr(path, "//") != NULL || parts > 64;
+		}
 
 		xmlFree(text);
 		if (bad) {

@@ -1,0 +1,11 @@
+#!/bin/sh
+
+# Both candidates accept -e followed by a command and its arguments.
+for terminal in foot xterm; do
+	if command -v "$terminal" >/dev/null 2>&1; then
+		exec "$terminal" "$@"
+	fi
+done
+
+echo "cow-terminal: install foot or xterm, or override the terminal alias" >&2
+exit 127

@@ -81,12 +81,56 @@ expected='"menu":{"id":"Applications","name":"Applications","applications":[],"m
 test "$actual" = "$expected"
 
 # Unsupported constructs must fail even in an empty or deleted menu.
-for element in LegacyDir Move; do
+for element in LegacyDir; do
     printf '<Menu><Name>Test</Name><Deleted/><%s/></Menu>\n' "$element" > "$tmp/bad.menu"
     if "$tool" --menu "$tmp/bad.menu" > "$tmp/bad-result" 2> /dev/null; then
         exit 1
     fi
     test ! -s "$tmp/bad-result"
+done
+
+# Child moves run first; parent moves may precede their source in XML.
+# Chained moves create intermediate menus and merge into existing targets.
+cat > "$tmp/moves.menu" <<'EOF'
+<Menu><Name>Apps</Name><DefaultAppDirs/>
+  <Move><Old>Source/Renamed</Old><New>New/Target</New>
+    <Old>Absent</Old><New>Ghost</New>
+    <Old>New/Target</Old><New>Dest</New>
+    <Old>Dest</Old><New>Dest</New></Move>
+  <Menu><Name>Source</Name>
+    <Menu><Name>Leaf</Name><Include><Filename>override.desktop</Filename></Include></Menu>
+    <Move><Old>Leaf</Old><New>Renamed</New></Move>
+  </Menu>
+  <Menu><Name>Dest</Name><Include><Filename>nested-tool.desktop</Filename></Include></Menu>
+</Menu>
+EOF
+cat > "$tmp/moves-expected.menu" <<'EOF'
+<Menu><Name>Apps</Name><DefaultAppDirs/>
+  <Menu><Name>Source</Name></Menu>
+  <Menu><Name>Dest</Name>
+    <Include><Filename>override.desktop</Filename></Include>
+    <Include><Filename>nested-tool.desktop</Filename></Include>
+  </Menu>
+  <Menu><Name>New</Name></Menu>
+</Menu>
+EOF
+"$tool" --menu "$tmp/moves.menu" --format cow > "$tmp/moved"
+"$tool" --menu "$tmp/moves-expected.menu" --format cow > "$tmp/expected"
+cmp "$tmp/moved" "$tmp/expected"
+
+for move in \
+    '<Move/>' \
+    '<Move><Old>A</Old></Move>' \
+    '<Move><New>A</New><Old>B</Old></Move>' \
+    '<Move><Old>A</Old><New>A/B</New></Move>' \
+    '<Move><Old>A</Old><New>/B</New></Move>' \
+    '<Move><Old>A</Old><New>B//C</New></Move>'; do
+    printf '<Menu><Name>Apps</Name><Menu><Name>A</Name></Menu>%s</Menu>' \
+        "$move" > "$tmp/bad-move.menu"
+    if "$tool" --menu "$tmp/bad-move.menu" > "$tmp/bad-move-result" 2>/dev/null; then
+        exit 1
+    fi
+    test ! -s "$tmp/bad-move-result"
 done
 cat > "$tmp/bad.menu" <<'EOF'
 <!DOCTYPE Menu [<!ENTITY secret SYSTEM "file:///etc/passwd">]>
@@ -460,7 +504,9 @@ for layout in \
     '<Layout><Merge type="files"/></Layout>' \
     '<Layout><Merge type="all"/><Merge type="menus"/></Layout>' \
     '<Layout><Menuname>A/B</Menuname><Merge type="all"/></Layout>' \
-    '<DefaultLayout inline="true"/>' \
+    '<DefaultLayout inline="maybe"/>' \
+    '<DefaultLayout inline_limit="-1"/>' \
+    '<DefaultLayout inline_limit="999999999999999999999"/>' \
     '<Layout><Separator>bad</Separator><Merge type="all"/></Layout>'; do
     printf '<Menu><Name>Bad</Name><Deleted/>%s</Menu>' "$layout" > "$tmp/bad.menu"
     if "$tool" --menu "$tmp/bad.menu" > "$tmp/bad-result" 2>/dev/null; then
@@ -468,3 +514,42 @@ for layout in \
     fi
     test ! -s "$tmp/bad-result"
 done
+
+# Inlining inherits defaults but respects per-child limits and aliases.
+cat > "$tmp/inline.menu" <<'EOF'
+<Menu>
+  <Name>Apps</Name><AppDir>allocation</AppDir>
+  <DefaultLayout inline="true" inline_limit="0"/>
+  <Menu><Name>Alias</Name><Include><Filename>a.desktop</Filename></Include></Menu>
+  <Menu><Name>Heading</Name><Include><Filename>b.desktop</Filename></Include></Menu>
+  <Menu><Name>Large</Name><Include><All/></Include></Menu>
+  <Menu><Name>Outer</Name>
+    <Menu><Name>Nested</Name><Include><Filename>c.desktop</Filename></Include></Menu>
+    <Layout><Menuname inline="false">Nested</Menuname><Merge type="all"/></Layout>
+  </Menu>
+  <Layout>
+    <Menuname inline_alias="true">Alias</Menuname>
+    <Menuname>Heading</Menuname>
+    <Menuname inline_limit="1">Large</Menuname>
+    <Menuname inline_header="false">Outer</Menuname>
+    <Merge type="all"/>
+  </Layout>
+</Menu>
+EOF
+"$tool" --menu "$tmp/inline.menu" > "$tmp/menu-result"
+actual=$(sed -n "/^$root_entries/,\$p" "$tmp/menu-result" | tr -d ' \t\r\n')
+expected=$(tr -d ' \t\r\n' <<EOF
+"entries":[
+  {"type":"application","id":"a.desktop","file":"$tmp/allocation/a.desktop","name":"Alias"},
+  {"type":"header","name":"Heading"},
+  {"type":"application","id":"b.desktop","file":"$tmp/allocation/b.desktop"},
+  {"type":"menu","id":"Apps/Large"},
+  {"type":"menu","id":"Apps/Outer/Nested"}
+]}}
+EOF
+)
+test "$actual" = "$expected"
+"$tool" --menu "$tmp/inline.menu" --format cow > "$tmp/inline.conf"
+grep -q 'Alias.*--launch.*a.desktop' "$tmp/inline.conf"
+grep -q 'Heading title' "$tmp/inline.conf"
+grep -q 'Nested.*popup .*Apps/Outer/Nested' "$tmp/inline.conf"

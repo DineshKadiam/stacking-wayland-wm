@@ -12,6 +12,9 @@ cJSON *appmenu_config_dirs(const char *suffix);
 int appmenu_find_file(const cJSON *dirs, const char *name, int start, char **path);
 int appmenu_find_menu(char **path);
 cJSON *appmenu_catalogue(const cJSON *dirs);
+cJSON *appmenu_application(const char *path);
+int appmenu_program_available(const char *command);
+char *appmenu_unescape(const char *text);
 /* Owned metadata; NULL for an absent or invalid directory entry. */
 cJSON *appmenu_directory(const char *path);
 
