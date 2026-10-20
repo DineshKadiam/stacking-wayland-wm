@@ -1,0 +1,155 @@
+title: COW-APPMENU
+section: 1
+date: @DATE@
+source: @VERSION@
+volume: cow - Window Manager
+
+# NAME
+
+cow-appmenu - discover installed desktop applications
+
+# SYNOPSIS
+
+**cow-appmenu** \[**--menu** \[*file*\]\] \[**--fallback** *file*\]
+\[**--help**\]
+
+# DESCRIPTION
+
+**cow-appmenu** writes a JSON catalogue of visible desktop applications to
+standard output. It needs neither a running CoW instance nor a display.
+
+Applications are discovered in the XDG data directories. User entries take
+precedence over system entries, including entries marked **Hidden**.
+**NoDisplay**, **OnlyShowIn**, **NotShowIn**, and **TryExec** control which
+applications are included.
+
+The output contains a **version** number and an **applications** array. Each
+application includes its desktop-entry ID, source file, display labels, icon,
+execution metadata, categories, and keywords.
+
+With **--menu**, the output also contains a **menu** hierarchy. Menus have an
+**id**, **name**, **applications** array of references, and a **menus** array
+of submenus. Empty menus are retained; a deleted root produces **null**.
+
+Each menu also has an **entries** array giving display order. Entries have type
+**menu**, **application**, or **separator**. Menu entries reference an **id**;
+application entries reference both **id** and **file**.
+
+Without a filename, **--menu** searches the XDG configuration directories for
+**menus/${XDG_MENU_PREFIX}applications.menu**, with user configuration first.
+If no file exists, it uses CoW's installed **applications.menu**. Use
+**--fallback** *file* to select a different fallback for automatic discovery.
+Existing but invalid menus report an error; they do not use the fallback.
+**menu_file** records the chosen file and **menu_source** is **explicit**,
+**discovered**, or **fallback**.
+
+JSON version 2 identifies each referenced application by both **id** and
+**file**, matching the corresponding catalogue entry. Different menu scopes may
+use different files with the same desktop-entry ID.
+
+This initial resolver supports nested menus, **Name**, **AppDir**,
+**DefaultAppDirs**, ordered **Include**/**Exclude** rules, **All**,
+**Filename**, **Category**, **And**, **Or**, **Not**, **Deleted**, and
+**NotDeleted**.
+
+**Directory**, **DirectoryDir**, and **DefaultDirectoryDirs** provide localized
+menu names, icons, comments, and visibility from **.directory** files. Later
+search directories take priority and are inherited by submenus. Relative paths
+are resolved against the menu file. Missing directory entries fall back to
+earlier references, then the menu's **Name**. Menu IDs remain independent of
+translated labels.
+
+Application search paths also inherit into submenus without affecting siblings.
+Later directories override earlier ones, including hidden entries. Relative
+paths are resolved against the menu file. The catalogue includes visible
+default applications and custom applications considered during resolution.
+
+**OnlyUnallocated** restricts a menu to applications not included by ordinary
+menus. An application included and then excluded still counts as allocated.
+**NotOnlyUnallocated** restores ordinary matching. The last flag wins.
+
+**MergeFile** and **MergeDir** include local menu files. **MergeFile** accepts
+an omitted type or **type="path"**. Relative paths in included files retain
+their original base directory. Same-named submenus are combined, preserving
+directive order. Missing includes are ignored; malformed files and recursive
+includes are errors.
+
+**type="parent"** ignores the element's text and searches the remaining XDG
+configuration directories for the same menu filename. **DefaultMergeDirs**
+includes the corresponding **menus/*name*-merged** directories, applying user
+fragments last. For the prefixed applications menu, the name is
+**applications-merged**.
+
+**Layout** and inherited **DefaultLayout** support **Filename**, **Menuname**,
+**Separator**, and **Merge** with type **menus**, **files**, or **all**.
+Explicit entries retain their positions; merged entries are sorted by display
+label. Without a layout, submenus precede applications. Empty submenus are
+omitted from **entries** unless **show_empty="true"** is set. The membership
+arrays are unchanged. Leading, trailing, and repeated separators are omitted.
+
+Unsupported elements and attributes are reported as errors. In particular,
+**Move**, menu inlining, and its **inline_limit**, **inline_header**, and
+**inline_alias** attributes are not implemented yet. **inline="false"** is
+accepted. This is not a complete XDG Menu implementation. It does not generate
+CoW commands or launch applications.
+
+# ENVIRONMENT
+
+**XDG_CONFIG_HOME**, **XDG_CONFIG_DIRS**
+
+: User and system configuration directories; default to **$HOME/.config**
+  and **/etc/xdg**, respectively.
+
+**XDG_MENU_PREFIX**
+
+: Prefix of the applications menu filename, such as **cow-**. Defaults to
+  empty.
+
+**XDG_DATA_HOME**
+
+: User data directory; defaults to **$HOME/.local/share**.
+
+**XDG_DATA_DIRS**
+
+: Colon-separated system data directories; defaults to
+  **/usr/local/share:/usr/share**.
+
+**XDG_CURRENT_DESKTOP**
+
+: Colon-separated desktop names used for visibility checks. Defaults to
+  **CoW**.
+
+**LC_ALL**, **LC_MESSAGES**, **LANG**
+
+: Select translated display labels, in that order of precedence.
+
+**PATH**
+
+: Used to locate programs named by **TryExec**.
+
+# NOTES
+
+**Exec** is desktop-entry syntax, not a shell command. **Exec**,
+**Categories**, and **Keywords** retain their desktop-entry escaping. Consumers
+must interpret those fields before using them. Icons may be theme names rather
+than filesystem paths.
+
+Directory symlinks are not traversed. File symlinks are accepted.
+
+# EXAMPLES
+
+Inspect installed applications:
+
+```sh
+cow-appmenu | jq '.applications[] | {id, Name}'
+```
+
+Resolve the example hierarchy from a source checkout:
+
+```sh
+cow-appmenu --menu examples/applications.menu | jq .menu
+```
+
+# SEE ALSO
+
+**cow**(1), **cowbuttons**(1)

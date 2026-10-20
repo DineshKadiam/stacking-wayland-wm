@@ -15,3 +15,9 @@ option(
   value: 'auto',
   description: 'Build the optional ncurses cowdiag dashboard'
 )
+option(
+  'cow_appmenu',
+  type: 'feature',
+  value: 'auto',
+  description: 'Build the standalone application menu helper (libxml2)'
+)

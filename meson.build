@@ -705,6 +705,25 @@ subdir('modules/cowiconman')
 subdir('modules/cowpager')
 subdir('modules/cowrearrange')
 
+appmenu_xml = dependency('libxml-2.0', required: get_option('cow_appmenu'))
+if appmenu_xml.found()
+    cow_appmenu = executable('cow-appmenu',
+        'tools/cow-appmenu.c',
+        'tools/appmenu-entry.c',
+        'tools/appmenu-menu.c',
+        'tools/appmenu-layout.c',
+        'tools/appmenu-xml.c',
+        'src/memory.c',
+        'vendor/cJSON.c',
+        include_directories: include_dirs,
+        dependencies: [libbsd, appmenu_xml],
+        install: true,
+    )
+    test('application-catalogue', find_program('tests/application-catalogue.sh'),
+        args: [cow_appmenu])
+    install_data('examples/applications.menu', install_dir: datadir / 'cow')
+endif
+
 install_data(
     'share/wayland-sessions/cow.desktop',
     install_dir: get_option('datadir') / 'wayland-sessions',
@@ -740,6 +759,7 @@ if lowdown.found()
     foreach page : [
         ['cow', '1'], ['moocow', '1'], ['cowbar', '1'],
         ['cowbuttons', '1'], ['cowclock', '1'], ['cowdiag', '1'],
+        ['cow-appmenu', '1'],
         ['cowident', '1'], ['cowiconman', '1'], ['cow-module-cmd', '1'],
         ['cowpager', '1'], ['cowrearrange', '1'],
     ]

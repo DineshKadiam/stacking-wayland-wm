@@ -13,6 +13,12 @@ The optional `lowdown` build-host tool generates manual pages from their
 Markdown sources. When it is unavailable, CoW still builds, but the manuals are
 not generated or installed.
 
+The optional `cow-appmenu` helper requires libxml2 headers and library
+(`libxml2-dev` on Debian/Ubuntu, `libxml2-devel` on Fedora). This dependency
+is not linked into CoW itself. Use `-Dcow_appmenu=enabled` to require the
+helper, or `-Dcow_appmenu=disabled` to omit it. The default is automatic
+detection.
+
 In addition, two build-host tools are required so the embedded scripting
 language used by `script { ... }` blocks can be compiled:
 
