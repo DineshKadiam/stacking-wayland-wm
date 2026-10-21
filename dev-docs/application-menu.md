@@ -3,12 +3,14 @@
 `cow-appmenu` is a standalone C helper for the starter desktop. It writes a
 versioned JSON catalogue to standard output without connecting to CoW or
 Wayland. It reuses CoW's memory helpers and JSON library, and uses libxml2 for
-menu XML. It does not depend on Xfce, Garcon, GLib, or Python. Meson enables
+menu XML. Its sources and build definition live in `cow-appmenu/`, separately
+from the WM and graphical modules. It does not depend on Xfce, Garcon, GLib,
+or Python. Meson enables
 the helper when libxml2 is available; `-Dcow_appmenu=enabled` requires it.
 
 ```sh
 meson compile -C build cow-appmenu
-build/cow-appmenu | jq .
+build/cow-appmenu/cow-appmenu | jq .
 ```
 
 The initial implementation discovers `.desktop` files in
@@ -36,7 +38,7 @@ The resolver follows the
 for the supported elements listed below.
 
 ```sh
-build/cow-appmenu --menu examples/applications.menu | jq .menu
+build/cow-appmenu/cow-appmenu --menu examples/applications.menu | jq .menu
 ```
 
 Bare `--menu` discovers `menus/${XDG_MENU_PREFIX}applications.menu` in
@@ -45,7 +47,7 @@ Bare `--menu` discovers `menus/${XDG_MENU_PREFIX}applications.menu` in
 existing menu fails. To test discovery before installation:
 
 ```sh
-build/cow-appmenu --menu --fallback examples/applications.menu | jq .menu
+build/cow-appmenu/cow-appmenu --menu --fallback examples/applications.menu | jq .menu
 ```
 
 `menu_file` and `menu_source` identify the chosen file and whether it was
@@ -231,14 +233,14 @@ cannot catch these startup failures.
 ## CoW output
 
 ```sh
-build/cow-appmenu --menu examples/applications.menu --format cow \
+build/cow-appmenu/cow-appmenu --menu examples/applications.menu --format cow \
     --name Applications --terminal foot > /tmp/applications.conf
 ```
 
 Include the generated file and use `menu-show Applications`. Each menu uses
 typeahead; a flat “All applications” submenu searches across categories.
 Generation does not connect to CoW. Install the helper before selecting
-entries, or put the build directory on the session's `PATH`.
+entries, or put `build/cow-appmenu` on the session's `PATH`.
 
 The renderer uses the catalogue's executable-availability flag to disable
 unavailable launchers, as well as unsupported entries. Empty menus display a

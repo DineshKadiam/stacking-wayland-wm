@@ -708,35 +708,13 @@ subdir('modules/cowiconman')
 subdir('modules/cowpager')
 subdir('modules/cowrearrange')
 
-appmenu_xml = dependency('libxml-2.0', required: get_option('cow_appmenu'))
+subdir('cow-appmenu')
+
 if appmenu_xml.found()
-    cow_appmenu = executable('cow-appmenu',
-        'tools/cow-appmenu.c',
-        'tools/appmenu-entry.c',
-        'tools/appmenu-menu.c',
-        'tools/appmenu-layout.c',
-        'tools/appmenu-launch.c',
-        'tools/appmenu-output.c',
-        'tools/appmenu-xml.c',
-        'src/icon_lookup.c',
-        'src/memory.c',
-        'src/util.c',
-        'vendor/cJSON.c',
-        include_directories: include_dirs,
-        dependencies: [libbsd, appmenu_xml],
-        install: true,
-    )
-    test('application-catalogue', find_program('tests/application-catalogue.sh'),
-        args: [cow_appmenu])
-    test('application-launch', find_program('tests/application-launch.sh'),
-        args: [cow_appmenu])
-    test('application-menu-output', find_program('tests/application-menu-output.sh'),
-        args: [cow_appmenu, cow])
     test('application-panel', find_program('sh'),
         args: [files('tests/application-panel.sh'), cow_appmenu, cowbuttons, cow,
             files('config/cow/starter-panel.conf'), buttons_applications_test,
             cowiconman, config_layers_test, cowpager])
-    install_data('examples/applications.menu', install_dir: datadir / 'cow')
 endif
 
 install_data(
