@@ -28,6 +28,44 @@
 		}                                                          \
 	} while (0)
 
+static void
+check_tab_resize(void)
+{
+	struct cow_container_pane pane = { 0 };
+	struct cow_container container = { .root = &pane };
+	struct cow_view views[2] = {
+		{ .has_dimensions = true, .on_map_fired = true,
+		  .content_width = 800, .content_height = 600 },
+		{ .has_dimensions = true, .on_map_fired = true,
+		  .content_width = 800, .content_height = 600 }
+	};
+	struct cow_container_member members[2];
+	wl_list_init(&container.members);
+	for (int i = 0; i < 2; i++) {
+		members[i] = (struct cow_container_member) {
+			.view = &views[i], .container = &container, .pane = &pane
+		};
+		views[i].container_member = &members[i];
+		wl_list_insert(&container.members, &members[i].link);
+	}
+	container.active = pane.active = &members[0];
+	window_handle_dimensions(&views[0], NULL, 700, 500);
+	CHECK(views[1].pending_width == 700);
+	window_handle_dimensions(&views[0], NULL, 600, 400);
+	CHECK(views[1].pending_width == 600);
+	/* A delayed hidden-tab reply must not undo the active tab's resize. */
+	window_handle_dimensions(&views[1], NULL, 700, 500);
+	CHECK(views[1].content_width == 700);
+	CHECK(container.content_width == 600 && container.content_height == 400);
+	CHECK(!views[0].pending_resize);
+	window_handle_dimensions(&views[1], NULL, 600, 400);
+	CHECK(!views[0].pending_resize);
+	/* The new active tab may subsequently choose its own dimensions. */
+	container.active = pane.active = &members[1];
+	window_handle_dimensions(&views[1], NULL, 650, 450);
+	CHECK(views[0].pending_width == 650 && views[0].pending_height == 450);
+}
+
 int
 main(void)
 {
@@ -37,6 +75,7 @@ main(void)
 	wl_list_init(&cow_wm.views);
 	wl_list_init(&cow_wm.containers);
 	wl_list_init(&cow_wm.seats);
+	check_tab_resize();
 	struct cow_desk	  desk	 = { 0 };
 	struct cow_output output = {
 		.width	      = 905,
