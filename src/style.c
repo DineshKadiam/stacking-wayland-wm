@@ -714,6 +714,22 @@ cow_style_apply_for_event(struct cow_view *view, bool initial)
 	}
 }
 
+bool
+cow_style_title_matches_changed(const struct cow_view *view, const char *title)
+{
+	/* Selector matching only reads the view; keep the live title intact. */
+	struct cow_view next = *view;
+	next.title = (char *)title;
+	styles_lazy_init();
+	struct cow_style *style;
+	wl_list_for_each(style, &styles, link) {
+		if (cow_policy_matches_view(&style->policy, view) !=
+		    cow_policy_matches_view(&style->policy, &next))
+			return true;
+	}
+	return false;
+}
+
 void
 cow_style_apply_pending_initial(struct cow_view *view)
 {

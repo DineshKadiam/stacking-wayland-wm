@@ -76,6 +76,7 @@ void cow_style_destroy(struct cow_style *);
 bool cow_style_remove_by_name(const char *);
 bool cow_style_parse_body(struct cow_style *, const char *, struct cmd_q *);
 void cow_style_apply_for_event(struct cow_view *, bool);
+bool cow_style_title_matches_changed(const struct cow_view *, const char *);
 void cow_style_apply_pending_initial(struct cow_view *);
 void cow_style_cancel_pending_initial(struct cow_view *);
 void cow_style_reflow_anchors(struct cow_output *);

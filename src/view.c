@@ -1034,14 +1034,32 @@ window_handle_title(void *data, __unused struct river_window_v1 *rw,
 	const char *fresh = title ? title : "";
 	bool changed = (old == NULL) ? (fresh[0] != '\0') :
 				       (strcmp(old, fresh) != 0);
+	if (!changed)
+		return;
 
+	bool restyle = cow_style_title_matches_changed(view, fresh);
 	xstrset(&view->title, title);
-	view_mark_title_dirty(view);
-	cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
+	view->title_dirty = true;
+	cow_update_request(COW_UPDATE_TITLE);
 
-	if (changed)
-		cow_rule_fire(COW_RULE_ON_TITLE_CHANGE, view, view->desk,
-		    view->output);
+	/* Policy and rules see every change; only presentation is deferred. */
+	if (restyle)
+		cow_style_apply_for_event(view, false);
+	cow_rule_fire(COW_RULE_ON_TITLE_CHANGE, view, view->desk,
+	    view->output);
+}
+
+void
+cow_view_flush_titles(void)
+{
+	struct cow_view *view;
+	wl_list_for_each(view, &cow_wm.views, wm_link) {
+		if (!view->title_dirty || view->closed)
+			continue;
+		view->title_dirty = false;
+		view_mark_title_dirty(view);
+		cow_update_request(COW_UPDATE_MANAGE | COW_UPDATE_STATUS);
+	}
 }
 
 static void

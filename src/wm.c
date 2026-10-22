@@ -1780,7 +1780,7 @@ cow_wm_fini(void)
 		wl_display_disconnect(cow_wm.display);
 }
 
-static void cow_wm_after_event(void);
+static void cow_wm_after_event(struct event *);
 static void cow_wm_schedule_tick(struct event *);
 static void cow_wm_send_manage_dirty(void);
 
@@ -2027,13 +2027,28 @@ cow_wm_dispatch_focus_change(void)
 }
 
 static void
-cow_wm_after_event(void)
+cow_wm_title_cb(__unused evutil_socket_t fd, __unused short events,
+    __unused void *data)
+{
+	cow_view_flush_titles();
+}
+
+static void
+cow_wm_after_event(struct event *title_ev)
 {
 	cow_wm_fire_outputs_changed();
 	cow_wm_dispatch_focus_change();
 	cow_flush_binding_updates();
 
 	uint32_t updates = cow_update_take();
+	if ((updates & COW_UPDATE_TITLE) != 0 &&
+	    !evtimer_pending(title_ev, NULL)) {
+		/* Bound title-only refreshes to 20 Hz, without postponing the
+		 * deadline on each keystroke or delaying interactive operations.
+		 */
+		const struct timeval interval = { .tv_usec = 50000 };
+		evtimer_add(title_ev, &interval);
+	}
 	if ((updates & COW_UPDATE_STATUS) != 0)
 		cow_status_emit();
 	/* Wayland preserves request order, so manage_dirty naturally follows
@@ -2054,6 +2069,7 @@ cow_wm_run(void)
 	struct event	  *wl_ev = NULL, *tick_ev = NULL, *sigint_ev = NULL;
 	struct event	  *sigterm_ev = NULL, *sigusr1_ev = NULL;
 	struct event	  *sigusr2_ev = NULL;
+	struct event	  *title_ev = NULL;
 	struct cow_wm_wayland_events wayland_events = { 0 };
 
 	wl_ev = event_new(base, wl_display_get_fd(cow_wm.display),
@@ -2062,13 +2078,14 @@ cow_wm_run(void)
 	    wl_display_get_fd(cow_wm.display), EV_WRITE,
 	    cow_wm_wayland_write_cb, &wayland_events);
 	tick_ev = evtimer_new(base, cow_wm_tick_cb, NULL);
+	title_ev = evtimer_new(base, cow_wm_title_cb, NULL);
 	sigint_ev = evsignal_new(base, SIGINT, cow_wm_signal_cb, NULL);
 	sigterm_ev = evsignal_new(base, SIGTERM, cow_wm_signal_cb, NULL);
 	sigusr1_ev = evsignal_new(base, SIGUSR1, cow_wm_signal_cb, NULL);
 	sigusr2_ev = evsignal_new(base, SIGUSR2, cow_wm_signal_cb, NULL);
 
 	if (wl_ev == NULL || wayland_events.write_ev == NULL || tick_ev == NULL ||
-	    sigint_ev == NULL ||
+	    sigint_ev == NULL || title_ev == NULL ||
 	    sigterm_ev == NULL || sigusr1_ev == NULL || sigusr2_ev == NULL)
 		goto out;
 
@@ -2087,10 +2104,12 @@ cow_wm_run(void)
 		if (event_base_loop(base, EVLOOP_ONCE) < 0)
 			break;
 
-		cow_wm_after_event();
+		cow_wm_after_event(title_ev);
 	}
 
 out:
+	if (title_ev != NULL)
+		event_free(title_ev);
 	if (wl_ev != NULL)
 		event_free(wl_ev);
 	if (wayland_events.write_ev != NULL)

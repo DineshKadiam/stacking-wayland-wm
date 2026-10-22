@@ -24,6 +24,8 @@ enum cow_update_flags {
 	COW_UPDATE_MANAGE = 1U << 0,
 	/* Canonical state represented by the status snapshot changed. */
 	COW_UPDATE_STATUS = 1U << 1,
+	/* Title-only presentation work may wait for the next title refresh. */
+	COW_UPDATE_TITLE = 1U << 2,
 };
 
 /*

@@ -319,6 +319,7 @@ struct cow_view {
 	char		*app_id;
 	char		*application_icon;
 	char		*title;
+	bool		 title_dirty;
 	struct cow_view *parent;
 
 	/* Dimensions as reported by the window (from dimensions event) */
@@ -486,6 +487,7 @@ struct cow_view {
 /* Create/destroy view wrappers. */
 struct cow_view *cow_view_create(struct river_window_v1 *);
 void cow_view_destroy(struct cow_view *);
+void cow_view_flush_titles(void);
 void cow_view_clear_orphan(struct cow_view *);
 
 /* Configure/render a view during WM cycles. */

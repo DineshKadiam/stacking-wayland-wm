@@ -342,8 +342,8 @@ cow_rule_fire_json(enum cow_rule_type type, struct cow_view *view,
 	if (type <= COW_RULE_NONE || type >= COW_RULE_TYPE_COUNT)
 		return;
 	if (!cow_style_is_applying()) {
+		/* Title events already compare old/new style matches in view.c. */
 		if (view != NULL && (type == COW_RULE_ON_MAP ||
-		    type == COW_RULE_ON_TITLE_CHANGE ||
 		    type == COW_RULE_ON_MOVE))
 			cow_style_apply_for_event(view, type == COW_RULE_ON_MAP);
 		else if (view == NULL && (type == COW_RULE_ON_DESK ||
