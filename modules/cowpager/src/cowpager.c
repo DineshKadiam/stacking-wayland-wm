@@ -1209,6 +1209,35 @@ draw_window_icon(cairo_t *cr, const char *path, double x, double y, double w,
 	draw_icon_at(cr, path, x + w / 2.0, y + h / 2.0, size);
 }
 
+/* Return the height left for the icon, keeping it clear of the caption. */
+static double
+draw_window_label(cairo_t *cr, PangoFontDescription *font, const char *title,
+    bool focused, bool has_icon, double x, double y, double w, double h)
+{
+	if (!cfg.window_labels || title == NULL || *title == '\0' || w <= 4)
+		return h;
+	int text_h;
+	cow_text_measure(cr, font, title, NULL, &text_h);
+	if (text_h <= 0 || h < text_h + 4)
+		return h;
+
+	double icon_h = has_icon ? h - text_h - 4 : 0;
+	if (icon_h < 7)
+		icon_h = 0;
+	double text_y = icon_h > 0 ? y + h - text_h - 2 :
+	    y + (h - text_h) / 2;
+	const float *colour = focused ? cfg.window_focused_title :
+	    cfg.window_title;
+	cairo_save(cr);
+	cairo_rectangle(cr, x + 2, text_y, w - 4, text_h);
+	cairo_clip(cr);
+	cairo_set_source_rgba(cr, colour[0], colour[1], colour[2], colour[3]);
+	cow_text_render(cr, font, x + 2, text_y, w - 4, text_h, title,
+	    PANGO_ALIGN_CENTER, NULL);
+	cairo_restore(cr);
+	return icon_h;
+}
+
 static void
 fill_output_backgrounds(cairo_t *cr, const state_t *st, const canvas_t *cv,
     int desk, int col, int row, double cell_x, double cell_y, double cw, double ch)
@@ -1492,23 +1521,8 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		cairo_set_source_rgba(cr, r, g, b, a);
 		cairo_rectangle(cr, wx, wy, ww, wh);
 		cairo_fill(cr);
-		if (cfg.window_labels) {
-			float lr = w->focused ? cfg.window_focused_title[0] :
-				cfg.window_title[0];
-			float lg = w->focused ? cfg.window_focused_title[1] :
-				cfg.window_title[1];
-			float lb = w->focused ? cfg.window_focused_title[2] :
-				cfg.window_title[2];
-			float la = w->focused ? cfg.window_focused_title[3] :
-				cfg.window_title[3];
-			cairo_set_source_rgba(cr, lr, lg, lb, la);
-			int tw, th;
-			cow_text_measure(cr, font, w->title, &tw, &th);
-			if (wh >= th) {
-				draw_text_centered_clipped(cr, font, wx+2, 
-					wy+(wh - th) / 2, ww-4, th, w->title);
-			}
-		}
+		double icon_h = draw_window_label(cr, font, w->title, foc,
+		    cfg.window_icons && w->icon[0] != '\0', wx, wy, ww, wh);
 		double br, bg_, bb, ba = 1.0;
 		if (cfg.window_border_set) {
 			br = cfg.window_border[0];
@@ -1527,7 +1541,8 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		cairo_set_dash(cr, NULL, 0, 0);
 		cairo_rectangle(cr, wx + 0.5, wy + 0.5, ww - 1, wh - 1);
 		cairo_stroke(cr);
-		if (cfg.window_icons && w->icon[0] != '\0') {
+
+		if (cfg.window_icons && w->icon[0] != '\0' && icon_h >= 7) {
 			if (cfg.match_stacking) {
 				draw_window_icon(cr, w->icon, wx, wy, ww, wh);
 				continue;
@@ -1536,7 +1551,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 			icons[n_icons].x = wx;
 			icons[n_icons].y = wy;
 			icons[n_icons].w = ww;
-			icons[n_icons].h = wh;
+			icons[n_icons].h = icon_h;
 			icons[n_icons].iconified = 0;
 			n_icons++;
 		}
@@ -3094,6 +3109,11 @@ load_pager_style(char **fields, int n, const char **why)
 	}
 
 	float *slot = NULL;
+	float colour[4];
+	if (!cow_colour_parse(fields[2], colour)) {
+		*why = "bad colour";
+		return false;
+	}
 	if (strcmp(fields[1], "background") == 0) {
 		slot = cfg.background;
 		cfg.background_set = 1;
@@ -3147,10 +3167,7 @@ load_pager_style(char **fields, int n, const char **why)
 		*why = "unknown style";
 		return false;
 	}
-	if (!cow_colour_parse(fields[2], slot)) {
-		*why = "bad colour";
-		return false;
-	}
+	memcpy(slot, colour, sizeof(colour));
 	if (slot == cfg.page_separator)
 		cfg.page_separator_set = 1;
 	if (strcmp(fields[1], "background") == 0) {

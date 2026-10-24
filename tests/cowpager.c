@@ -26,6 +26,65 @@
 	} \
 } while (0)
 
+static void
+check_window_labels(cairo_t *cr)
+{
+	pager_config_init(&cfg);
+	CHECK(!cfg.window_labels);
+	const char *why = NULL;
+	char *option[] = { "window-labels", "true" };
+	CHECK(load_pager_option(option, 2, &why));
+	CHECK(cfg.window_labels);
+	option[1] = "invalid";
+	CHECK(!load_pager_option(option, 2, &why));
+	CHECK(cfg.window_labels);
+	state_t theme = { 0 };
+	theme.theme.has_inactive_fg = theme.theme.has_active_fg = true;
+	theme.theme.inactive_fg[0] = theme.theme.inactive_fg[3] = 1;
+	theme.theme.active_fg[1] = theme.theme.active_fg[3] = 1;
+	apply_theme_defaults(&theme);
+	CHECK(cfg.window_title[0] == 1 && cfg.window_focused_title[1] == 1);
+	char *colour[] = { "style", "window.title", "invalid" };
+	CHECK(!load_pager_style(colour, 3, &why));
+	CHECK(!cfg.window_title_set);
+	colour[2] = "0x0000ff";
+	CHECK(load_pager_style(colour, 3, &why));
+	apply_theme_defaults(&theme);
+	CHECK(cfg.window_title[0] == 0 && cfg.window_title[2] == 1);
+	PangoFontDescription *font = pango_font_description_from_string("Sans 10");
+	for (int focused = 0; focused < 2; focused++) {
+		cairo_save(cr);
+		cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+		cairo_paint(cr);
+		cairo_restore(cr);
+		double icon_h = draw_window_label(cr, font, "日本語 gyp long title",
+		    focused, true, 10, 10, 50, 60);
+		CHECK(icon_h >= 7 && icon_h < 60);
+		cairo_surface_t *surface = cairo_get_target(cr);
+		cairo_surface_flush(surface);
+		unsigned char *pixels = cairo_image_surface_get_data(surface);
+		int stride = cairo_image_surface_get_stride(surface), count = 0;
+		for (int y = 0; y < 100; y++) {
+			for (int x = 0; x < 100; x++) {
+				uint32_t pixel = ((uint32_t *)(pixels + y * stride))[x];
+				if (pixel == 0)
+					continue;
+				CHECK(x >= 12 && x < 58 && y >= 10 + icon_h && y < 68);
+				CHECK((pixel & 0x00ffffff) ==
+				    (focused ? (pixel & 0x0000ff00) : (pixel & 0x000000ff)));
+				count++;
+			}
+		}
+		CHECK(count > 0);
+	}
+	CHECK(draw_window_label(cr, font, "title", false, true,
+	    0, 0, 3, 60) == 60);
+	CHECK(draw_window_label(cr, font, "title", false, true,
+	    0, 0, 50, 3) == 3);
+	pango_font_description_free(font);
+	pager_config_init(&cfg);
+}
+
 int
 main(void)
 {
@@ -113,6 +172,7 @@ main(void)
 	cairo_surface_t *image = cairo_image_surface_create(
 	    CAIRO_FORMAT_ARGB32, 100, 100);
 	cairo_t *cr = cairo_create(image);
+	check_window_labels(cr);
 	draw_desk_pages(cr, &st, &layout, &outputs[0], &canvas, &desk,
 	    0, 0, 100, 100);
 	CHECK(cairo_status(cr) == CAIRO_STATUS_SUCCESS);

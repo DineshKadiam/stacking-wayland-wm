@@ -149,7 +149,10 @@ actual desktop and picks the topmost miniature first when windows overlap.
 Repeated clicks cycle through overlapping windows. The default, *false*,
 draws the focused window above the others.
 
-**window-labels** shows the title in each window miniature.
+**window-labels** shows titles in non-iconified window miniatures (default:
+*false*). Long titles are ellipsized; miniatures too short for text omit it.
+When icons are enabled, titles appear below them if both fit; otherwise a
+title that fits takes precedence over the icon.
 
 Supported colour roles:
 
@@ -211,8 +214,9 @@ background, including its image.
 is not set, cowpager retains its default behaviour of deriving a stable colour
 from each window identifier. **window.focused.bg** controls the focused window
 miniature, and **window.border** controls miniature outlines.
-**window.title** is the colour of the window title on regular miniature 
-windows, and **window.focused.title** is applied to the focused window.
+**window.title** and **window.focused.title** set the caption colours for
+unfocused and focused windows. They inherit CoW's inactive and active
+foreground colours unless explicitly set.
 
 **viewport.bg** and **viewport.border** override the monitor-derived fill and
 outline used to mark the currently visible viewport. A fully transparent
