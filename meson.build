@@ -417,6 +417,7 @@ foreach name, replacement : {
     'binding-updates': 'src/keybinding.c',
     'container': '',
     'container-state': '',
+    'stack-order': '',
     'style-state': '',
     'snap-target': 'src/pointer_op.c',
     'arguments': 'src/arguments.c',

@@ -125,7 +125,6 @@ struct pager_config {
 	int   window_focused_bg_set;
 	int   viewport_bg_set;
 	int   viewport_border_set;
-	
 };
 
 struct pager_selection {
@@ -1373,44 +1372,12 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 	 */
 	/* Paint the focused window last so overlapping thumbnails cannot
 	 * obscure its highlight. */
-	const pwin_t **draw_wins = st->n_wins > 0 ?
+	const pwin_t **draw_wins = !cfg.match_stacking && st->n_wins > 0 ?
 	    xcalloc(st->n_wins, sizeof(*draw_wins)) : NULL;
 	size_t n_draw_wins = 0;
-	
 	if (cfg.match_stacking) {
-		uint8_t lowest_layer;
-		uint8_t lowerbound_layer = 0;
-		uint64_t lowest_raise_seq;
-		uint64_t lowerbound_raise_seq = 0;
-		size_t lowest_index_known;
-		for (size_t wi = 0; wi < st->n_wins; wi++) {
-			lowest_layer = UINT8_MAX;
-			lowest_raise_seq = UINT64_MAX;
-			size_t wj;
-			for (wj = 0; wj < st->n_wins; wj++) {
-				const pwin_t *w = &st->wins[wj];
-				// Only consider something above the highest
-				// window we've already picked
-				if (w->layer > lowerbound_layer
-					|| (w->layer == lowerbound_layer &&
-						w->raise_seq > lowerbound_raise_seq)) {
-					// but look for the lowest of the remainder
-					if (w->layer < lowest_layer ||
-						(w->layer == lowest_layer &&
-							w->raise_seq < lowest_raise_seq)) {
-						lowest_layer = w->layer;
-						lowest_raise_seq = w->raise_seq;
-						lowest_index_known = wj;
-					}
-				}
-			}
-			// Update the 'highest picked'
-			lowerbound_raise_seq = lowest_raise_seq;
-			lowerbound_layer = lowest_layer;
-
-			draw_wins[n_draw_wins++] = &st->wins[lowest_index_known];
-		}
-	} else {			
+		n_draw_wins = st->n_wins;
+	} else {
 		for (int focus_pass = 0; focus_pass < 2; focus_pass++) {
 			for (size_t wi = 0; wi < st->n_wins; wi++) {
 				const pwin_t *w = &st->wins[wi];
@@ -1420,7 +1387,7 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		}
 	}
 	for (size_t wi = 0; wi < n_draw_wins; wi++) {
-		const pwin_t *w = draw_wins[wi];
+		const pwin_t *w = cfg.match_stacking ? &st->wins[wi] : draw_wins[wi];
 		if (w->container_hidden)
 			continue;
 		int foc = w->focused != 0;
@@ -1481,6 +1448,11 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		}
 		if (w->iconified) {
 			if (cfg.window_icons && w->icon[0] != '\0') {
+				if (cfg.match_stacking) {
+					draw_icon_at(cr, w->icon, wx + ww / 2,
+					    wy + wh / 2, cfg.window_icon_size);
+					continue;
+				}
 				icons[n_icons].path = w->icon;
 				icons[n_icons].x = wx;
 				icons[n_icons].y = wy;
@@ -1526,6 +1498,10 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		cairo_rectangle(cr, wx + 0.5, wy + 0.5, ww - 1, wh - 1);
 		cairo_stroke(cr);
 		if (cfg.window_icons && w->icon[0] != '\0') {
+			if (cfg.match_stacking) {
+				draw_window_icon(cr, w->icon, wx, wy, ww, wh);
+				continue;
+			}
 			icons[n_icons].path = w->icon;
 			icons[n_icons].x = wx;
 			icons[n_icons].y = wy;
@@ -2166,7 +2142,9 @@ hit_test_window(const state_t *st, double x, double y,
 	const pwin_t *hits[64];
 	int	      n_hits = 0;
 	for (size_t wi = 0; wi < st->n_wins; wi++) {
-		const pwin_t *w = &st->wins[wi];
+		/* Keep the topmost candidates even if the hit buffer fills. */
+		const pwin_t *w = &st->wins[cfg.match_stacking ?
+		    st->n_wins - 1 - wi : wi];
 		if (w->container_hidden)
 			continue;
 		if (w->desk != d->nr)
@@ -2246,6 +2224,8 @@ hit_test_window(const state_t *st, double x, double y,
 	int pick;
 	if (same_point) {
 		pick = (last_cycle + 1) % n_hits;
+	} else if (cfg.match_stacking) {
+		pick = 0;
 	} else {
 		pick = -1;
 		if (prefer_output != NULL && prefer_output[0] != '\0') {
@@ -3035,6 +3015,16 @@ fold_container_windows(state_t *st)
 	}
 }
 
+static int
+window_stack_compare(const void *a, const void *b)
+{
+	const pwin_t *wa = a, *wb = b;
+	if (wa->stack_order != wb->stack_order)
+		return (wa->stack_order > wb->stack_order) -
+		    (wa->stack_order < wb->stack_order);
+	return strcmp(wa->id, wb->id);
+}
+
 static void
 handle_status_line(const char *line, __unused void *data)
 {
@@ -3042,6 +3032,10 @@ handle_status_line(const char *line, __unused void *data)
 	if (!cow_module_snapshot_parse(&next, line))
 		return;
 	fold_container_windows(&next);
+	/* Sort once per snapshot, not once per desk on every redraw. */
+	if (cfg.match_stacking && next.n_wins > 1)
+		qsort(next.wins, next.n_wins, sizeof(*next.wins),
+		    window_stack_compare);
 
 	/* Keep the last user-focused output when cowpager itself receives
 	 * focus, so pager actions still target the user's workspace. */

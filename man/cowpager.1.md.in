@@ -144,8 +144,9 @@ automatically reduced further when the miniature is too small for the
 configured size.
 
 **match-stacking** stacks the miniature windows in an order tracking the
-actual desktop.  The default raises the currently active window above
-all others
+actual desktop and picks the topmost miniature first when windows overlap.
+Repeated clicks cycle through overlapping windows. The default, *false*,
+draws the focused window above the others.
 
 Supported colour roles:
 

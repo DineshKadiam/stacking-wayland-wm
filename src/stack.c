@@ -215,7 +215,12 @@ cow_stack_apply(void)
 	 * (layer, raise_seq).
 	 */
 	struct river_node_v1 *prev = NULL;
+	bool order_changed = false;
 	for (size_t i = 0; i < icon_count; i++) {
+		struct cow_view *view = icon_entries[i].view;
+		int rank = (int)i + 1;
+		order_changed |= view->stack_order != rank;
+		view->stack_order = rank;
 		struct river_node_v1 *n = icon_entries[i].view->icon_node;
 		if (prev == NULL)
 			river_node_v1_place_top(n);
@@ -224,6 +229,10 @@ cow_stack_apply(void)
 		prev = n;
 	}
 	for (size_t i = 0; i < view_count; i++) {
+		struct cow_view *view = entries[i].view;
+		int rank = (int)(icon_count + i) + 1;
+		order_changed |= view->stack_order != rank;
+		view->stack_order = rank;
 		struct river_node_v1 *n = entries[i].view->node;
 		if (prev == NULL)
 			river_node_v1_place_top(n);
@@ -234,6 +243,8 @@ cow_stack_apply(void)
 
 	xfree(entries);
 	xfree(icon_entries);
+	if (order_changed)
+		cow_update_request(COW_UPDATE_STATUS);
 }
 
 uint64_t

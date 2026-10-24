@@ -327,6 +327,8 @@ struct cow_view {
 	char		*app_id;
 	char		*application_icon;
 	char		*title;
+	/* Last applied bottom-to-top rank; zero means not yet stacked. */
+	int		 stack_order;
 	bool		 title_dirty;
 	struct cow_view *parent;
 

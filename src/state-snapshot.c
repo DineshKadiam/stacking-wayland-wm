@@ -260,13 +260,7 @@ state_snapshot_view(const struct cow_view *view)
 	    (view->flags & COW_VIEW_CIRCULATE_SKIP_FLAG) != 0);
 	rec_set_bool(r, "snap_target", !view->snap_skip);
 	rec_set_number(r, "raise_seq", (double)view->raise_seq);
-	// Break the 64-bit sequence into 32-bit low and high halves
-	// for tasks that need the precise value.  Conversion to double
-	// loses precision otherwise 
-	rec_set_number(r, "raise_seq_low", 
-		(double)(view->raise_seq & 0xFFFFFFFF));
-	rec_set_number(r, "raise_seq_high", 
-		(double)((view->raise_seq & 0xFFFFFFFF00000000) >> 32));
+	rec_set_number(r, "stack_order", view->stack_order);
 	rec_set_number(r, "layer", (double)view->layer);
 	rec_set_bool(r, "sticky_desk",
 	    (view->flags & COW_VIEW_STICKY_DESK_FLAG) != 0);

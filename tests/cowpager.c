@@ -29,6 +29,19 @@
 int
 main(void)
 {
+	state_t ordered = { 0 };
+	CHECK(cow_module_snapshot_parse(&ordered,
+	    "{\"outputs\":[],\"windows\":[{\"id\":\"top\",\"stack_order\":3},"
+	    "{\"id\":\"bottom\",\"stack_order\":1},"
+	    "{\"id\":\"unknown\"},{\"id\":\"equal\",\"stack_order\":1}]}"));
+	qsort(ordered.wins, ordered.n_wins, sizeof(*ordered.wins),
+	    window_stack_compare);
+	CHECK(ordered.n_wins == 4);
+	CHECK(strcmp(ordered.wins[0].id, "unknown") == 0);
+	CHECK(strcmp(ordered.wins[1].id, "bottom") == 0);
+	CHECK(strcmp(ordered.wins[2].id, "equal") == 0);
+	CHECK(strcmp(ordered.wins[3].id, "top") == 0);
+	cow_module_snapshot_fini(&ordered);
 	state_t containers = { 0 };
 	CHECK(cow_module_snapshot_parse(&containers,
 	    "{\"outputs\":[],\"windows\":["
@@ -69,6 +82,31 @@ main(void)
 
 	st.n_outs = 1;
 	pdesk_t desk = { 0 };
+	/* Matching the stack takes precedence over focus on the first click. */
+	pager_config_init(&cfg);
+	cfg.match_stacking = 1;
+	outputs[0].desks = &desk;
+	outputs[0].n_desks = 1;
+	pwin_t windows[2] = {
+		{ .id = "lower", .output = "HDMI-A-1", .w = 1920, .h = 1080,
+		  .focused = true, .stack_order = 1 },
+		{ .id = "upper", .output = "HDMI-A-1", .w = 1920, .h = 1080,
+		  .stack_order = 2 }
+	};
+	st.wins = windows;
+	st.n_wins = 2;
+	win_w = win_h = 200;
+	layout_t hit_layout;
+	compute_layout(&st, &hit_layout);
+	double hx = hit_layout.cell_w / 2;
+	double hy = hit_layout.chrome_h + (hit_layout.cell_h - hit_layout.chrome_h) / 2;
+	CHECK(hit_test_window(&st, hx, hy, NULL) == &windows[1]);
+	CHECK(hit_test_window(&st, hx, hy, NULL) == &windows[0]);
+	st.wins = NULL;
+	st.n_wins = 0;
+	outputs[0].desks = NULL;
+	outputs[0].n_desks = 0;
+	pager_config_init(&cfg);
 	layout_t layout = { 0 };
 	canvas_t canvas = { .w = 1920, .h = 1080,
 	    .page_cols = 1, .page_rows = 1 };
