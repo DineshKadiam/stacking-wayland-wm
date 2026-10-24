@@ -127,6 +127,7 @@ Supported layout commands:
     window-icons true
     window-icon-size 16
     match-stacking true
+    window-labels true
 
 **monitors** selects the outputs shown by this pager. Use a single output name
 or selector to track one monitor, or a comma-separated list to show several
@@ -148,6 +149,8 @@ actual desktop and picks the topmost miniature first when windows overlap.
 Repeated clicks cycle through overlapping windows. The default, *false*,
 draws the focused window above the others.
 
+**window-labels** shows the title in each window miniature.
+
 Supported colour roles:
 
     style background 0xffffff
@@ -165,6 +168,8 @@ Supported colour roles:
     style window.focused.bg 0xf7c733
     style viewport.bg 0x00000000
     style viewport.border 0xda70d6
+    style window.title 0x000000
+    style window.focused.title 0xffffff
 
 Colours may be opaque **0xRRGGBB** values or **0xRRGGBBAA** values carrying an
 alpha component. Each background layer has its own colour. For example, the
@@ -206,6 +211,8 @@ background, including its image.
 is not set, cowpager retains its default behaviour of deriving a stable colour
 from each window identifier. **window.focused.bg** controls the focused window
 miniature, and **window.border** controls miniature outlines.
+**window.title** is the colour of the window title on regular miniature 
+windows, and **window.focused.title** is applied to the focused window.
 
 **viewport.bg** and **viewport.border** override the monitor-derived fill and
 outline used to mark the currently visible viewport. A fully transparent

@@ -91,6 +91,7 @@ struct pager_config {
 	int verbose;
 	int desktop_labels;
 	int monitor_labels;
+	int window_labels;
 	int label_highlight;
 	int desktop_scale;
 	int window_icons;
@@ -109,6 +110,8 @@ struct pager_config {
 	float window_bg[4];
 	float window_border[4];
 	float window_focused_bg[4];
+	float window_title[4];
+	float window_focused_title[4];
 	float viewport_bg[4];
 	float viewport_border[4];
 	int   background_set;
@@ -123,6 +126,8 @@ struct pager_config {
 	int   window_bg_set;
 	int   window_border_set;
 	int   window_focused_bg_set;
+	int   window_title_set;
+	int   window_focused_title_set;
 	int   viewport_bg_set;
 	int   viewport_border_set;
 };
@@ -260,6 +265,7 @@ pager_config_init(struct pager_config *pc)
 	memset(pc, 0, sizeof(*pc));
 	pc->desktop_labels = 1;
 	pc->monitor_labels = 1;
+	pc->window_labels = 0;
 	pc->label_highlight = 1;
 	pc->desktop_scale = 32;
 	pc->window_icons = 1;
@@ -277,6 +283,8 @@ pager_config_init(struct pager_config *pc)
 	config_colour(pc->window_bg, 0x60a0c0);
 	config_colour(pc->window_border, 0x000000);
 	config_colour(pc->window_focused_bg, 0xf7c733);
+	config_colour(pc->window_title, 0xffffff);
+	config_colour(pc->window_focused_title, 0x000000);
 	config_colour(pc->viewport_bg, 0x00000000);
 	config_colour(pc->viewport_border, 0xda70d6);
 }
@@ -326,6 +334,12 @@ apply_theme_defaults(const state_t *st)
 	if (!cfg.window_focused_bg_set && st->theme.has_active_bg)
 		memcpy(cfg.window_focused_bg, st->theme.active_bg,
 		    sizeof(cfg.window_focused_bg));
+	if (!cfg.window_focused_title_set && st->theme.has_active_fg)
+		memcpy(cfg.window_focused_title, st->theme.active_fg,
+		    sizeof(cfg.window_focused_title));
+	if (!cfg.window_title_set && st->theme.has_inactive_fg)
+		memcpy(cfg.window_title, st->theme.inactive_fg,
+		    sizeof(cfg.window_title));
 }
 
 static int
@@ -1478,7 +1492,23 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		cairo_set_source_rgba(cr, r, g, b, a);
 		cairo_rectangle(cr, wx, wy, ww, wh);
 		cairo_fill(cr);
-
+		if (cfg.window_labels) {
+			float lr = w->focused ? cfg.window_focused_title[0] :
+				cfg.window_title[0];
+			float lg = w->focused ? cfg.window_focused_title[1] :
+				cfg.window_title[1];
+			float lb = w->focused ? cfg.window_focused_title[2] :
+				cfg.window_title[2];
+			float la = w->focused ? cfg.window_focused_title[3] :
+				cfg.window_title[3];
+			cairo_set_source_rgba(cr, lr, lg, lb, la);
+			int tw, th;
+			cow_text_measure(cr, font, w->title, &tw, &th);
+			if (wh >= th) {
+				draw_text_centered_clipped(cr, font, wx+2, 
+					wy+(wh - th) / 2, ww-4, th, w->title);
+			}
+		}
 		double br, bg_, bb, ba = 1.0;
 		if (cfg.window_border_set) {
 			br = cfg.window_border[0];
@@ -3095,6 +3125,12 @@ load_pager_style(char **fields, int n, const char **why)
 	} else if (strcmp(fields[1], "window.bg") == 0) {
 		slot = cfg.window_bg;
 		cfg.window_bg_set = 1;
+	} else if (strcmp(fields[1], "window.title") == 0) {
+		slot = cfg.window_title;
+		cfg.window_title_set = 1;
+	} else if (strcmp(fields[1], "window.focused.title") == 0) {
+		slot = cfg.window_focused_title;
+		cfg.window_focused_title_set = 1;
 	} else if (strcmp(fields[1], "window.border") == 0) {
 		slot = cfg.window_border;
 		cfg.window_border_set = 1;
@@ -3231,6 +3267,12 @@ load_pager_option(char **fields, int n, const char **why)
 			return false;
 		}
 		cfg.match_stacking = b ? 1 : 0;
+	} else if (strcmp(fields[0], "window-labels") == 0) {
+		if (n != 2 || !cow_module_config_parse_bool(fields[1], &b)) {
+			*why = "bad window-labels";
+			return false;
+		}
+		cfg.window_labels = b ? 1 : 0;
 	} else if (strcmp(fields[0], "label-highlight") == 0) {
 		if (n != 2 || !cow_module_config_parse_bool(fields[1], &b)) {
 			*why = "bad label-highlight";
