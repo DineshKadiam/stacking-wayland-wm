@@ -18,6 +18,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include "cow/module_theme.h"
 
@@ -70,6 +71,8 @@ struct cow_module_window_state {
 	int  focused;
 	int  iconified;
 	bool container_hidden;
+	uint8_t layer;
+	uint64_t raise_seq;
 };
 
 struct cow_module_snapshot {

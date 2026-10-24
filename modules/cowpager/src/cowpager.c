@@ -35,6 +35,7 @@
 #include <errno.h>
 #include <math.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -94,6 +95,7 @@ struct pager_config {
 	int desktop_scale;
 	int window_icons;
 	int window_icon_size;
+	int match_stacking;
 	float background[4];
 	float desk_bg[4];
 	float desk_active_border[4];
@@ -123,6 +125,7 @@ struct pager_config {
 	int   window_focused_bg_set;
 	int   viewport_bg_set;
 	int   viewport_border_set;
+	
 };
 
 struct pager_selection {
@@ -262,6 +265,7 @@ pager_config_init(struct pager_config *pc)
 	pc->desktop_scale = 32;
 	pc->window_icons = 1;
 	pc->window_icon_size = 16;
+	pc->match_stacking = 0;
 	config_colour(pc->background, 0xffffff);
 	memcpy(pc->desk_bg, pc->background, sizeof(pc->desk_bg));
 	config_colour(pc->desk_active_border, 0x4d9ef2);
@@ -1372,11 +1376,47 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 	const pwin_t **draw_wins = st->n_wins > 0 ?
 	    xcalloc(st->n_wins, sizeof(*draw_wins)) : NULL;
 	size_t n_draw_wins = 0;
-	for (int focus_pass = 0; focus_pass < 2; focus_pass++) {
+	
+	if (cfg.match_stacking) {
+		uint8_t lowest_layer;
+		uint8_t lowerbound_layer = 0;
+		uint64_t lowest_raise_seq;
+		uint64_t lowerbound_raise_seq = 0;
+		size_t lowest_index_known;
 		for (size_t wi = 0; wi < st->n_wins; wi++) {
-			const pwin_t *w = &st->wins[wi];
-			if ((w->focused != 0) == focus_pass)
-				draw_wins[n_draw_wins++] = w;
+			lowest_layer = UINT8_MAX;
+			lowest_raise_seq = UINT64_MAX;
+			size_t wj;
+			for (wj = 0; wj < st->n_wins; wj++) {
+				const pwin_t *w = &st->wins[wj];
+				// Only consider something above the highest
+				// window we've already picked
+				if (w->layer > lowerbound_layer
+					|| (w->layer == lowerbound_layer &&
+						w->raise_seq > lowerbound_raise_seq)) {
+					// but look for the lowest of the remainder
+					if (w->layer < lowest_layer ||
+						(w->layer == lowest_layer &&
+							w->raise_seq < lowest_raise_seq)) {
+						lowest_layer = w->layer;
+						lowest_raise_seq = w->raise_seq;
+						lowest_index_known = wj;
+					}
+				}
+			}
+			// Update the 'highest picked'
+			lowerbound_raise_seq = lowest_raise_seq;
+			lowerbound_layer = lowest_layer;
+
+			draw_wins[n_draw_wins++] = &st->wins[lowest_index_known];
+		}
+	} else {			
+		for (int focus_pass = 0; focus_pass < 2; focus_pass++) {
+			for (size_t wi = 0; wi < st->n_wins; wi++) {
+				const pwin_t *w = &st->wins[wi];
+				if ((w->focused != 0) == focus_pass)
+					draw_wins[n_draw_wins++] = w;
+			}
 		}
 	}
 	for (size_t wi = 0; wi < n_draw_wins; wi++) {
@@ -3191,6 +3231,12 @@ load_pager_option(char **fields, int n, const char **why)
 			return false;
 		}
 		cfg.monitor_labels = b ? 1 : 0;
+	} else if (strcmp(fields[0], "match-stacking") == 0) {
+		if (n != 2 || !cow_module_config_parse_bool(fields[1], &b)) {
+			*why = "bad match-stacking";
+			return false;
+		}
+		cfg.match_stacking = b ? 1 : 0;
 	} else if (strcmp(fields[0], "label-highlight") == 0) {
 		if (n != 2 || !cow_module_config_parse_bool(fields[1], &b)) {
 			*why = "bad label-highlight";

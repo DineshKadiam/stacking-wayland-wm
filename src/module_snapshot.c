@@ -166,6 +166,10 @@ parse_windows(struct cow_module_snapshot *snapshot, cJSON *array)
 		    cJSON_GetObjectItem(item, "iconified"));
 		window->container_hidden = cJSON_IsTrue(
 		    cJSON_GetObjectItem(item, "container_hidden"));
+		    
+		window->layer = json_int(item, "layer");
+		window->raise_seq = json_int(item, "raise_seq_low")
+			+ ((uint64_t)json_int(item, "raise_seq_high") << 32);
 	}
 	snapshot->n_wins = index;
 	return true;

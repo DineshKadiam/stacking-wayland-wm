@@ -126,6 +126,7 @@ Supported layout commands:
     desktop-scale 32
     window-icons true
     window-icon-size 16
+    match-stacking true
 
 **monitors** selects the outputs shown by this pager. Use a single output name
 or selector to track one monitor, or a comma-separated list to show several
@@ -141,6 +142,10 @@ miniatures (default: *true*). **window-icon-size** sets their maximum square
 size in pixels (default: *16*). An icon is centred in its window miniature and
 automatically reduced further when the miniature is too small for the
 configured size.
+
+**match-stacking** stacks the miniature windows in an order tracking the
+actual desktop.  The default raises the currently active window above
+all others
 
 Supported colour roles:
 
