@@ -16,8 +16,9 @@ jobs:
   release:
     name: Prepare and publish release
     if: ${{ forgejo.ref == 'refs/heads/main' }}
-    runs-on: codeberg-small
-    timeout-minutes: 30
+    runs-on: codeberg-medium
+    # Match the hosted runner's ten-minute runtime limit.
+    timeout-minutes: 10
     outputs:
       release_version: ${{ steps.validate.outputs.release_version }}
     env:
