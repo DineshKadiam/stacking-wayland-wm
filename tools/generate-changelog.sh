@@ -63,16 +63,42 @@ set --
 if [ -n "${RNA_WORKDIR:-}" ]; then
 	set -- --workdir "$RNA_WORKDIR"
 fi
-"$assistant" "$@" \
-	--config .release-notes-assistant.yaml \
-	--forgejo-url "$forgejo_url" \
-	--repository "$repository" \
-	--token "${GITEA_TOKEN:-}" \
-	--tag-from-version "$tag_format" \
-	--render-header "$header" \
-	--storage file \
-	--storage-location "$raw" \
-	release "$version"
+attempt=1
+delay=5
+rna_errors="$contributors_dir/rna-errors"
+while :; do
+	printf 'changelog: release-notes-assistant attempt %s/3\n' "$attempt" >&2
+	# RNA can leave incomplete output when an API request fails.
+	: > "$raw"
+	if "$assistant" "$@" \
+		--config .release-notes-assistant.yaml \
+		--forgejo-url "$forgejo_url" \
+		--repository "$repository" \
+		--token "${GITEA_TOKEN:-}" \
+		--tag-from-version "$tag_format" \
+		--render-header "$header" \
+		--storage file \
+		--storage-location "$raw" \
+		release "$version" 2> "$rna_errors"; then
+		cat "$rna_errors" >&2
+		break
+	else
+		status=$?
+	fi
+	cat "$rna_errors" >&2
+	# Retry only recognized transient failures, not arbitrary RNA panics or
+	# configuration/authentication errors. Our contributor curl calls below
+	# have their own request-level retries.
+	if [ "$attempt" -ge 3 ] || ! grep -Eq \
+	    'status (408|429|500|502|503|504)([[:space:]]|$)|i/o timeout|TLS handshake timeout|connection reset by peer|Temporary failure in name resolution' \
+	    "$rna_errors"; then
+		exit "$status"
+	fi
+	printf 'changelog: transient RNA failure; retrying in %ss\n' "$delay" >&2
+	sleep "$delay"
+	attempt=$((attempt + 1))
+	delay=$((delay * 2))
+done
 phase_done 'release-notes-assistant'
 
 awk '

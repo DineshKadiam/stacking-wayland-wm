@@ -9,13 +9,31 @@ export PATH="$tmp:$PATH"
 
 cat > "$tmp/assistant" <<'EOF'
 #!/bin/sh
+set -eu
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --storage-location) shift; output=$1 ;;
     esac
     shift
 done
+if [ -f "$FIXTURES/rna-failure" ]; then
+    test ! -s "$output"
+    printf 'attempt\n' >> "$FIXTURES/attempts"
+    mode=$(cat "$FIXTURES/rna-failure")
+    if [ "$mode" != once ] || [ "$(wc -l < "$FIXTURES/attempts")" -eq 1 ]; then
+        printf 'Partial release\n' > "$output"
+        case "$mode" in
+            permanent) echo 'panic: invalid configuration' >&2 ;;
+            *) echo 'panic: Get /api/v1/repos/cow-wm/cow/pulls?sort=recentupdate&limit=100&page=1: status 504 Gateway Timeout' >&2 ;;
+        esac
+        exit 2
+    fi
+fi
 cp "$FIXTURES/raw" "$output"
+EOF
+cat > "$tmp/sleep" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$1" >> "$FIXTURES/delays"
 EOF
 cat > "$tmp/curl" <<'EOF'
 #!/bin/sh
@@ -53,7 +71,7 @@ case "$url" in
     *) exit 1 ;;
 esac > "$output"
 EOF
-chmod +x "$tmp/assistant" "$tmp/curl"
+chmod +x "$tmp/assistant" "$tmp/curl" "$tmp/sleep"
 
 printf '# Changelog\n\n## [0.3]\n\nOld release.\n' > "$tmp/original"
 cat > "$tmp/raw" <<'EOF'
@@ -85,3 +103,35 @@ cp "$tmp/original" "$tmp/changelog"
 sh tools/generate-changelog.sh 0.4 "$tmp/assistant" "$tmp/notes" "$tmp/changelog"
 grep -q 'No pull requests' "$tmp/notes"
 test ! -e "$tmp/requests"
+
+# Retry transient RNA failures, discard partial output, and stop after three
+# attempts. Unrelated failures must fail immediately without publishing.
+for mode in once always permanent; do
+    printf '%s\n' "$mode" > "$tmp/rna-failure"
+    : > "$tmp/attempts"
+    : > "$tmp/delays"
+    cp "$tmp/original" "$tmp/changelog"
+    printf 'Existing notes\n' > "$tmp/notes"
+    status=0
+    sh tools/generate-changelog.sh 0.4 "$tmp/assistant" "$tmp/notes" "$tmp/changelog" || status=$?
+    case "$mode" in
+        once)
+            test "$status" -eq 0
+            test "$(wc -l < "$tmp/attempts")" -eq 2
+            test "$(cat "$tmp/delays")" = 5
+            grep -q 'No pull requests' "$tmp/notes"
+            ! grep -q Partial "$tmp/notes" ;;
+        always)
+            test "$status" -eq 2
+            test "$(wc -l < "$tmp/attempts")" -eq 3
+            test "$(tr '\n' ' ' < "$tmp/delays")" = '5 10 ' ;;
+        permanent)
+            test "$status" -eq 2
+            test "$(wc -l < "$tmp/attempts")" -eq 1
+            test ! -s "$tmp/delays" ;;
+    esac
+    if [ "$mode" != once ]; then
+        cmp "$tmp/original" "$tmp/changelog"
+        test "$(cat "$tmp/notes")" = 'Existing notes'
+    fi
+done
