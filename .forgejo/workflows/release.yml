@@ -17,7 +17,7 @@ jobs:
     name: Prepare and publish release
     if: ${{ forgejo.ref == 'refs/heads/main' }}
     runs-on: codeberg-small
-    timeout-minutes: 10
+    timeout-minutes: 30
     outputs:
       release_version: ${{ steps.validate.outputs.release_version }}
     env:
@@ -155,8 +155,7 @@ jobs:
       - name: Build and test distribution archive
         run: |
           meson setup build --buildtype=release -Dcow_appmenu=enabled
-          meson compile -C build
-          meson test -C build --print-errorlogs
+          # dist builds, tests and checks installation from the archive.
           meson dist -C build --formats gztar
           source_archive="build/meson-dist/cow-${RELEASE_VERSION}.tar.gz"
           test -f "$source_archive"
