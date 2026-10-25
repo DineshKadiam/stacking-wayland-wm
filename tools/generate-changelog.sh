@@ -14,6 +14,14 @@ changelog=${4:-CHANGELOG.md}
 forgejo_url=${FORGEJO_SERVER_URL:-https://codeberg.org}
 repository=${FORGEJO_REPOSITORY:-cow-wm/cow}
 
+phase_started=$(date +%s)
+phase_done()
+{
+	now=$(date +%s)
+	printf 'changelog: %s: %ss\n' "$1" "$((now - phase_started))" >&2
+	phase_started=$now
+}
+
 case "$version" in
 	*.*.*) tag_format='%[1]d.%[2]d.%[3]d' ;;
 	*.*) tag_format='%[1]d.%[2]d' ;;
@@ -29,12 +37,21 @@ attributed=$(mktemp)
 release=$(mktemp)
 updated=$(mktemp)
 contributors_dir=$(mktemp -d "${TMPDIR:-/tmp}/cow-contributors.XXXXXX")
+pids=
+workers=0
 cleanup()
 {
+	# Let bounded requests finish before removing their output directory.
+	for pid in $pids; do
+		wait "$pid" 2>/dev/null || :
+	done
 	rm -f "$raw" "$formatted" "$attributed" "$release" "$updated"
 	rm -rf "$contributors_dir"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 header=$(printf '## [%s](%s/%s/releases/tag/%s) - %s' \
 	"$version" "$forgejo_url" "$repository" "$version" \
@@ -56,6 +73,7 @@ fi
 	--storage file \
 	--storage-location "$raw" \
 	release "$version"
+phase_done 'release-notes-assistant'
 
 awk '
 	/^<!--start release-notes-assistant-->$/ { next }
@@ -92,44 +110,39 @@ awk '
 ' "$raw" > "$formatted"
 
 token=${GITEA_TOKEN:-}
-api_get_pull_page()
+api_get()
 {
+	destination=$1
+	endpoint=$2
+	shift 2
 	if [ -n "$token" ]; then
-		curl -fsSL -G -H "Authorization: token $token" \
-			--data-urlencode state=closed \
-			--data-urlencode sort=recentupdate \
-			--data-urlencode limit=50 \
-			--data-urlencode page="$1" \
-			"$forgejo_url/api/v1/repos/$repository/pulls"
-	else
-		curl -fsSL -G \
-			--data-urlencode state=closed \
-			--data-urlencode sort=recentupdate \
-			--data-urlencode limit=50 \
-			--data-urlencode page="$1" \
-			"$forgejo_url/api/v1/repos/$repository/pulls"
+		set -- -H "Authorization: token $token" "$@"
 	fi
+	# Use a file so curl can discard partial output before retrying.
+	curl -fsSL -G --connect-timeout 10 --max-time 30 \
+		--retry 2 --retry-max-time 60 --output "$destination" \
+		"$@" "$forgejo_url/api/v1/repos/$repository/$endpoint"
 }
 
 api_get_oldest_pulls()
 {
-	if [ -n "$token" ]; then
-		curl -fsSL -G -H "Authorization: token $token" \
-			--data-urlencode state=closed \
-			--data-urlencode poster="$1" \
-			--data-urlencode sort=oldest \
-			--data-urlencode limit=50 \
-			--data-urlencode page="$2" \
-			"$forgejo_url/api/v1/repos/$repository/pulls"
-	else
-		curl -fsSL -G \
-			--data-urlencode state=closed \
-			--data-urlencode poster="$1" \
-			--data-urlencode sort=oldest \
-			--data-urlencode limit=50 \
-			--data-urlencode page="$2" \
-			"$forgejo_url/api/v1/repos/$repository/pulls"
-	fi
+	api_get "$3" pulls \
+		--data-urlencode state=closed \
+		--data-urlencode poster="$1" \
+		--data-urlencode sort=oldest \
+		--data-urlencode limit=50 \
+		--data-urlencode page="$2"
+}
+
+wait_workers()
+{
+	failed=false
+	for pid in $pids; do
+		wait "$pid" || failed=true
+	done
+	[ "$failed" = false ] || exit 1
+	pids=
+	workers=0
 }
 
 # The raw RNA output contains all PRs selected for the previous-tag..HEAD
@@ -140,27 +153,43 @@ jq -Rsc 'split("\n") | map(select(length > 0) | tonumber)' \
 	> "$contributors_dir/release-numbers.json"
 
 wanted=$(cat "$contributors_dir/release-numbers.json")
+# Bulk fetch recent PRs, but do not walk unrelated repository history.
+# Older PRs updated since the release are resolved individually below.
+page_limit=$(( ($(jq length "$contributors_dir/release-numbers.json") + 49) / 50 ))
+: > "$contributors_dir/matched.jsonl"
 page=1
-while [ "$wanted" != "[]" ]; do
+while [ "$wanted" != "[]" ] && [ "$page" -le "$page_limit" ]; do
 	page_file="$contributors_dir/page-$page.json"
-	api_get_pull_page "$page" > "$page_file"
-	missing=$(jq -s --argjson wanted "$wanted" \
-		'$wanted - (add | map(.number)) | length' \
-		"$contributors_dir"/page-*.json)
-	[ "$missing" -eq 0 ] && break
+	api_get "$page_file" pulls \
+		--data-urlencode state=closed \
+		--data-urlencode sort=recentupdate \
+		--data-urlencode limit=50 --data-urlencode page="$page"
+	jq -c --argjson wanted "$wanted" \
+		'.[] | select(.number as $n | $wanted | index($n))' \
+		"$page_file" >> "$contributors_dir/matched.jsonl"
+	wanted=$(jq -c --argjson wanted "$wanted" \
+		'$wanted - map(.number)' "$page_file")
 	[ "$(jq 'length' "$page_file")" -lt 50 ] && break
 	page=$((page + 1))
 done
 
-if [ "$wanted" = "[]" ]; then
-	printf '[]\n' > "$contributors_dir/release-prs.json"
-else
-	jq -s --argjson wanted "$wanted" \
-		'add | map(select(.number as $n | $wanted | index($n))) |
-		    unique_by(.number)' \
-		"$contributors_dir"/page-*.json \
-		> "$contributors_dir/release-prs.json"
-fi
+for number in $(printf '%s\n' "$wanted" | jq -r '.[]'); do
+	api_get "$contributors_dir/pull-$number.json" "pulls/$number" &
+	pids="$pids $!"
+	workers=$((workers + 1))
+	if [ "$workers" -eq 4 ]; then
+		wait_workers
+	fi
+done
+wait_workers
+for number in $(printf '%s\n' "$wanted" | jq -r '.[]'); do
+	jq -ce --argjson number "$number" \
+		'select(.number == $number and (.user.login | type == "string"))' \
+		"$contributors_dir/pull-$number.json" >> "$contributors_dir/matched.jsonl"
+done
+jq -s 'unique_by(.number)' "$contributors_dir/matched.jsonl" \
+	> "$contributors_dir/release-prs.json"
+phase_done 'release PR lookup and formatting'
 jq -r '.[] | select(.user.login != null) |
     [.number, .user.login] | @tsv' "$contributors_dir/release-prs.json" \
 	> "$contributors_dir/authors.tsv"
@@ -169,7 +198,7 @@ jq -r '.[] | select(.user.login != null) |
 # Forgejo account avoids trying to infer identities from commit email
 # addresses, which is unreliable for rebased and maintainer-edited PRs.
 awk -F '\t' -v forgejo_url="$forgejo_url" '
-	NR == FNR {
+	FILENAME == ARGV[1] {
 		author[$1] = $2
 		next
 	}
@@ -194,14 +223,13 @@ awk -F '\t' -v forgejo_url="$forgejo_url" '
 jq -r '.[].user.login // empty' "$contributors_dir/release-prs.json" |
 sort -fu > "$contributors_dir/release-authors"
 
-pids=
 while read -r login; do
 	(
 		page=1
 		first=
 		while :; do
 			page_file="$contributors_dir/oldest-$login-$page.json"
-			api_get_oldest_pulls "$login" "$page" > "$page_file"
+			api_get_oldest_pulls "$login" "$page" "$page_file"
 			first=$(jq -r \
 				'[.[] | select(.merged == true)][0].number // empty' \
 				"$page_file")
@@ -212,13 +240,17 @@ while read -r login; do
 		[ -z "$first" ] || printf '%s\t%s\n' "$login" "$first"
 	) > "$contributors_dir/first-$login.tsv" &
 	pids="$pids $!"
+	workers=$((workers + 1))
+	if [ "$workers" -eq 4 ]; then
+		wait_workers
+	fi
 done < "$contributors_dir/release-authors"
 
-failed=false
-for pid in $pids; do
-	wait "$pid" || failed=true
-done
-[ "$failed" = false ] || exit 1
+wait_workers
+phase_done 'first-contributor lookup'
+requests=$(find "$contributors_dir" -name 'page-*.json' -o \
+	-name 'pull-*.json' -o -name 'oldest-*.json' | wc -l)
+printf 'changelog: contributor API requests: %s (excluding retries)\n' "$requests" >&2
 
 for first_file in "$contributors_dir"/first-*.tsv; do
 	[ -e "$first_file" ] || continue
@@ -273,3 +305,4 @@ mv "$updated" "$changelog"
 
 # Keep generated release notes consistent with the repository's Markdown.
 tools/format-markdown.py "$release_notes" "$changelog"
+phase_done 'changelog assembly and Markdown formatting'
