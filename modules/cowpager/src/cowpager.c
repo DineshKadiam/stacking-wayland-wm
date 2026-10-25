@@ -1541,10 +1541,9 @@ draw_desk_pages(cairo_t *cr, const state_t *st, __unused const layout_t *L,
 		cairo_set_dash(cr, NULL, 0, 0);
 		cairo_rectangle(cr, wx + 0.5, wy + 0.5, ww - 1, wh - 1);
 		cairo_stroke(cr);
-
 		if (cfg.window_icons && w->icon[0] != '\0' && icon_h >= 7) {
 			if (cfg.match_stacking) {
-				draw_window_icon(cr, w->icon, wx, wy, ww, wh);
+				draw_window_icon(cr, w->icon, wx, wy, ww, icon_h);
 				continue;
 			}
 			icons[n_icons].path = w->icon;
