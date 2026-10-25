@@ -1,5 +1,172 @@
 # Changelog
 
+## [0.4](https://codeberg.org/cow-wm/cow/releases/tag/0.4) - 2026-10-25
+
+### New contributors
+
+- [@farhaven](https://codeberg.org/farhaven) contributed for the first time in
+  [PR #402](https://codeberg.org/cow-wm/cow/pulls/402).
+- [@NyctraVex](https://codeberg.org/NyctraVex) contributed for the first time
+  in [PR #412](https://codeberg.org/cow-wm/cow/pulls/412).
+
+### Added
+
+- [PR](https://codeberg.org/cow-wm/cow/pulls/408): windows: provide top-level
+  containers for creating arbitrary window layouts —
+  [@thomasadam](https://codeberg.org/thomasadam)
+
+### Fixed
+
+- [PR](https://codeberg.org/cow-wm/cow/pulls/470): view: handle rapid title
+  updates — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/468): container: prevent hidden
+  tabs changing geometry — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/460): output: don't redraw
+  unchanged backgrounds — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/459): restart: persist
+  squeeze/rotation state — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/458): decor: position handle
+  highlight correctly — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/456): Squeeze Title Fixes —
+  [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/443): resize: keep opposite edges
+  fixed when interactive — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/453): DSL: don't treat w.desk as a
+  command — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/449): iconify: focus appropriate
+  window — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/448): dsl: allow single quotes —
+  [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/442): Fix shaded windows when
+  rotating titlebars — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/441): Squeeze/Decor fixes —
+  [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/436): decor: wrap frames around
+  squeezed titles — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/425): decor: preserve border style
+  on squeezed titlebars — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/422): focus: fix -f targets to not
+  conflict with n/p — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/409): fix: use portable option
+  ordering in show examples — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/407): fix: preserve maximized
+  window pages on restart — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/406): fix: recognize maximize
+  buttons script — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/394): cmd: prevent stack
+  corruption — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/390): module: fix snapshot issues
+  — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/389): cowpager: inherit font from
+  CoW — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/387): decor: preserve per-window
+  overrides styles — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/379): menu: handle clicks released
+  before selection — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/372): Make script command
+  execution sequential — [@thomasadam](https://codeberg.org/thomasadam)
+
+### Changed
+
+- [PR](https://codeberg.org/cow-wm/cow/pulls/471): Text captions for cowpager
+  entries — [@hakfoo](https://codeberg.org/hakfoo)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/473): cowpager: respect window
+  stacking order — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/467): default config: introduce
+  better hand-holding — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/462): Outputs: per-page
+  backgrounds — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/451): script: MRU: add filter for
+  windows — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/450): Add most-recently-used focus
+  circulation — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/445): move: snap: allow for ignore
+  list — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/439): window-shade: default to
+  titlebar direction — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/423): cowbuttons: add example CDE
+  panel — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/421): containers: generalise for
+  cowbuttons (FvwmButtons) — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/420): panframes: pass input
+  through to windows — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/417): rules: add on-focus-change
+  event — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/415): focus: add -f to move
+  desk/page to window — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/410): cowpager: make page
+  separator lines configurable — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/402): icon: make icon text
+  configurable — [@farhaven](https://codeberg.org/farhaven)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/401): icons: use active colours on
+  pointer hover — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/400): resize: add automatic-corner
+  option — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/396): alias: support passing
+  parameters to script blocks — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/385): events: add on-edgedrop-x
+  events when window is dragged into a screen edge, held, and dropped —
+  [@hakfoo](https://codeberg.org/hakfoo)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/383): code: refactor modules to
+  use event loops and not threads —
+  [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/380): menu: Allow "disabled" items
+  with distinct colour and blocked interactivity —
+  [@hakfoo](https://codeberg.org/hakfoo)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/376): commands: add 'alias' —
+  [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/375): Add named window selections
+  and interactive choice menus — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/374): rule: add fullscreen events
+  — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/367): Allow nested style {} blocks
+  inside script {} blocks — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/365): style/window-move: add
+  anchored window placement — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/364): menus: add configurable side
+  columns — [@thomasadam](https://codeberg.org/thomasadam)
+
+### Internal improvements
+
+- [PR](https://codeberg.org/cow-wm/cow/pulls/418): decor: share buffers between
+  windows — [@thomasadam](https://codeberg.org/thomasadam)
+
+### Other changes
+
+- [PR](https://codeberg.org/cow-wm/cow/pulls/465): bindings: new command notify
+  / chord hints — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/464): ta/deprecations —
+  [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/461): bindings: few fixes —
+  [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/416): Support running on NetBSD —
+  [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/427): focus: report failure when
+  no window matches — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/419): decor: add a squeeze toggle
+  — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/395): input: add synchronized
+  send-key command — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/412): Fix broken manuals grid —
+  [@NyctraVex](https://codeberg.org/NyctraVex)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/411): after-start: remove
+  after-start.sh — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/405): config: use global config
+  overriden in user's cow.conf — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/404): bindings: allow when no
+  background is present — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/397): menus: add -c and -o options
+  to show-menu to allow for any menu to launch centre-of-screen —
+  [@hakfoo](https://codeberg.org/hakfoo)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/384): scdoc: convert to markdown
+  (via lowdown) — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/371): build: CI: increase IRC
+  timeout — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/369): keyboard: remember layouts
+  per window — [@thomasadam](https://codeberg.org/thomasadam)
+- [PR](https://codeberg.org/cow-wm/cow/pulls/368): website: fix mobile
+  horizontal overflow — [@thomasadam](https://codeberg.org/thomasadam)
+
 ## [0.3](https://codeberg.org/cow-wm/cow/releases/tag/0.3) - 2026-09-05
 
 ### New contributors
