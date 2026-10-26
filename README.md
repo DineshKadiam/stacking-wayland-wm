@@ -1,3 +1,5 @@
+> Originally developed at [codeberg.org/cow-wm/cow](https://codeberg.org/cow-wm/cow) · ISC
+
 # CoW -- Compositor on Wayland
 
 <p align="center">
